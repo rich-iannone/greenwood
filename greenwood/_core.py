@@ -1,3 +1,33 @@
+"""Core survival primitives: the risk-set and event-table kernel.
+
+This is the shared numeric foundation behind Kaplan-Meier, the log-rank test, and Cox.
+Given a `Surv` response (and optionally group labels and case weights), it tabulates, at
+each unique exit time, the number at risk, the number of events, and the number censored,
+handling left truncation via the counting-process convention.
+
+Risk-set convention (matching R's `survfit`): an observation is at risk at time `t` if it
+has entered strictly before `t` and has not yet exited before `t`, i.e. `entry < t <= exit`.
+For right-censored data with no truncation, `entry = -inf`, so this reduces to `exit >= t`.
+Equivalently, `n_risk(t) = (weight entered before t) - (weight exited before t)`, which is
+what we compute with sorted cumulative weights.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
+
+import numpy as np
+import numpy.typing as npt
+
+if TYPE_CHECKING:
+    from ._surv import Surv
+
+__all__ = ["EventTable", "event_table"]
+
+Array = npt.NDArray[Any]
+
+
 @dataclass(frozen=True)
 class EventTable:
     """Per-time risk-set tabulation (optionally within strata).
