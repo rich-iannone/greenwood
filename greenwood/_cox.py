@@ -403,6 +403,53 @@ class CoxPH:
             total += (s2 - f * d2) / denom - np.outer(z1, z1)
         return total / m  # per-death share, so summing over the m tied rows recovers the total
 
+    def cox_zph(self, *, transform: str = "identity") -> ZPHResult:
+        """Test the proportional-hazards assumption (Grambsch-Therneau).
+
+        Regresses the scaled Schoenfeld residuals on a transform of time. `transform` is
+        `"identity"` (default) or `"log"`, both validated against R's `cox.zph`. (R defaults
+        to a Kaplan-Meier transform; `"km"` and `"rank"` are planned.)
+        """
+        residuals, times = self._schoenfeld()
+        if transform == "identity":
+            g = times
+        elif transform == "log":
+            g = np.log(times)
+        else:
+            raise ValueError(f"transform must be 'identity' or 'log', got {transform!r}.")
+
+        centered = g - g.mean()
+        p = self.coef_.shape[0]
+        u = np.zeros(p)
+        a = np.zeros((p, p))
+        c = np.zeros((p, p))
+        b = np.zeros((p, p))
+        cov_cache: dict[float, Array] = {}
+        for k in range(residuals.shape[0]):
+            gc = centered[k]
+            t = float(times[k])
+            if t not in cov_cache:
+                cov_cache[t] = self._risk_covariance(t)
+            v = cov_cache[t]
+            u += gc * residuals[k]
+            a += gc * gc * v
+            c += gc * v
+            b += v
+        # Correct for beta having been estimated (the Schoenfeld residuals are constrained).
+        var = a - c @ np.linalg.solve(b, c)
+
+        per_term: dict[str, dict[str, float]] = {}
+        for j, name in enumerate(self.term_names_):
+            stat = float(u[j] ** 2 / var[j, j])
+            per_term[name] = {"chisq": stat, "df": 1, "p_value": float(chi2.sf(stat, 1))}
+        global_stat = float(u @ np.linalg.solve(var, u))
+        global_test = {
+            "chisq": global_stat,
+            "df": self.df_,
+            "p_value": float(chi2.sf(global_stat, self.df_)),
+        }
+        return ZPHResult(transform=transform, per_term=per_term, global_test=global_test)
+
     # -- interop --------------------------------------------------------------
 
     def to_dataframe(self, *, exponentiate: bool = False) -> Any:
