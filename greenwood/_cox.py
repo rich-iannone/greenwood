@@ -360,22 +360,27 @@ class CoxPH:
         times (matching R's `basehaz`); the hazard increments only at event times.
         """
         risk_score = np.exp(self._x @ self.coef_) * self._weight
-        times = np.unique(self._exit)
-        increments = np.zeros(times.shape[0])
-        for i, t in enumerate(times):
-            dying = (self._exit == t) & self._event
-            if not dying.any():
-                continue
-            at_risk = (self._entry < t) & (self._exit >= t)
-            s0 = risk_score[at_risk].sum()
-            dw = self._weight[dying].sum()
-            if self.ties == "breslow":
-                increments[i] = dw / s0
-            else:  # efron
-                d0 = risk_score[dying].sum()
-                m = int(dying.sum())
-                increments[i] = sum((dw / m) / (s0 - (tie / m) * d0) for tie in range(m))
-        return times, np.cumsum(increments)
+        out: list[tuple[Any, Array, Array]] = []
+        for members, _ in self._strata_groups:
+            exit_s = self._exit[members]
+            event_s = self._event[members]
+            times = np.unique(exit_s)
+            increments = np.zeros(times.shape[0])
+            for i, t in enumerate(times):
+                dying = (exit_s == t) & event_s
+                if not dying.any():
+                    continue
+                at_risk = (self._entry[members] < t) & (exit_s >= t)
+                s0 = risk_score[members][at_risk].sum()
+                dw = self._weight[members][dying].sum()
+                if self.ties == "breslow":
+                    increments[i] = dw / s0
+                else:  # efron
+                    d0 = risk_score[members][dying].sum()
+                    m = int(dying.sum())
+                    increments[i] = sum((dw / m) / (s0 - (tie / m) * d0) for tie in range(m))
+            out.append((self._group_label(members), times, np.cumsum(increments)))
+        return out
 
     def baseline_hazard(self) -> Any:
         """Return the uncentered baseline cumulative hazard and survival as a frame."""
