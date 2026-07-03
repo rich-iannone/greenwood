@@ -517,11 +517,12 @@ class CoxPH:
         `"identity"` (default) or `"log"`, both validated against R's `cox.zph`. (R defaults
         to a Kaplan-Meier transform; `"km"` and `"rank"` are planned.)
         """
-        residuals, times = self._schoenfeld()
+        residuals, times, covariances = self._event_contributions()
+        t = np.array(times)
         if transform == "identity":
-            g = times
+            g = t
         elif transform == "log":
-            g = np.log(times)
+            g = np.log(t)
         else:
             raise ValueError(f"transform must be 'identity' or 'log', got {transform!r}.")
 
@@ -531,13 +532,9 @@ class CoxPH:
         a = np.zeros((p, p))
         c = np.zeros((p, p))
         b = np.zeros((p, p))
-        cov_cache: dict[float, Array] = {}
-        for k in range(residuals.shape[0]):
+        for k in range(len(residuals)):
             gc = centered[k]
-            t = float(times[k])
-            if t not in cov_cache:
-                cov_cache[t] = self._risk_covariance(t)
-            v = cov_cache[t]
+            v = covariances[k]
             u += gc * residuals[k]
             a += gc * gc * v
             c += gc * v
@@ -609,16 +606,19 @@ class CoxPH:
         event = self._event
         concordant = 0.0
         comparable = 0.0
-        for i in range(exit_.shape[0]):
-            if not event[i]:
-                continue
-            # Partners known to outlast i: later exit, or censored at the same time.
-            later = (exit_ > exit_[i]) | ((exit_ == exit_[i]) & ~event)
-            if not later.any():
-                continue
-            comparable += float(later.sum())
-            concordant += float(np.sum(risk[i] > risk[later]))
-            concordant += 0.5 * float(np.sum(risk[i] == risk[later]))
+        for members, _ in self._strata_groups:
+            rk = risk[members]
+            ex = exit_[members]
+            ev = event[members]
+            for i in range(ex.shape[0]):
+                if not ev[i]:
+                    continue
+                later = (ex > ex[i]) | ((ex == ex[i]) & ~ev)
+                if not later.any():
+                    continue
+                comparable += float(later.sum())
+                concordant += float(np.sum(rk[i] > rk[later]))
+                concordant += 0.5 * float(np.sum(rk[i] == rk[later]))
         return concordant / comparable
 
     # -- interop --------------------------------------------------------------
