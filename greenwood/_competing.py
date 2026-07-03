@@ -26,6 +26,27 @@ __all__ = ["AalenJohansen"]
 Array = npt.NDArray[Any]
 
 
+def _censoring_km(time: Array, cause: Array) -> tuple[Array, Array]:
+    """Nudged censoring Kaplan-Meier: (drop times, survival after each drop).
+
+    Events (any cause) are treated as leaving just before a tied censoring, matching R's
+    `finegray`. Returns the censoring times where the curve drops and the survival value
+    just after each drop.
+    """
+    censor_times = np.unique(time[cause == 0])
+    surv = 1.0
+    drop_times: list[float] = []
+    drop_surv: list[float] = []
+    for c in censor_times:
+        # At-risk for censoring excludes events tied at c (they are nudged just before).
+        n_risk = float((time > c).sum() + ((cause == 0) & (time == c)).sum())
+        d = float(((cause == 0) & (time == c)).sum())
+        surv *= 1.0 - d / n_risk
+        drop_times.append(float(c))
+        drop_surv.append(surv)
+    return np.array(drop_times), np.array(drop_surv)
+
+
 def _cif_block(
     exit_: Array, status: Array, causes: list[int], z: float
 ) -> dict[int, dict[str, Array]]:
