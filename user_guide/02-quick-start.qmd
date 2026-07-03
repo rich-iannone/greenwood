@@ -161,6 +161,20 @@ z = cox.cox_zph(transform="identity")
 z.to_dataframe()       # term, chisq, df, p_value (rows for each covariate plus GLOBAL)
 ```
 
+## Parametric AFT models
+
+`AFT` fits accelerated failure time models by maximum likelihood, with coefficients on the
+log-time scale (as in R's `survreg`). Choose the error distribution with `dist`:
+
+```python
+aft = gw.AFT("weibull").fit(y, df[["age", "sex"]])   # or "exponential", "lognormal", "loglogistic"
+
+aft.coef_          # coefficients (including the intercept)
+aft.scale_         # scale parameter (1 for the exponential model)
+gw.tidy.tidy(aft)  # tidy coefficient table
+gw.tidy.glance(aft)  # dist, n, nevent, scale, loglik, aic
+```
+
 ## Round-trip the response
 
 The `Surv` object serializes deterministically, the basis for reproducible pipelines:
