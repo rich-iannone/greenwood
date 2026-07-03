@@ -15,6 +15,9 @@ public capability roadmap.
   two or more groups. R-validated against `survdiff`.
 - **Visualization (plotnine)**: `plot_survival` with confidence ribbons, censoring marks,
   and an aligned numbers-at-risk table.
+- **Cox proportional hazards** (`CoxPH`): Efron/Breslow ties, hazard ratios, model-based
+  standard errors, Wald z-tests, and the likelihood-ratio / Wald / score global tests.
+  R-validated against `coxph`.
 
 ## Descriptive
 
@@ -24,8 +27,9 @@ public capability roadmap.
 
 ## Regression
 
-- **Cox proportional hazards**: ties, strata, robust/cluster SE, time-varying covariates,
-  proportional-hazards diagnostics, residuals, concordance.
+- **Cox extensions**: stratification, robust/cluster (sandwich) variance, time-varying
+  covariates, baseline-hazard prediction, residuals, concordance, and proportional-hazards
+  diagnostics (`cox.zph`).
 - **Parametric & flexible-parametric**: AFT models, Royston-Parmar splines, piecewise
   exponential.
 
