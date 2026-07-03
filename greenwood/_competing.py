@@ -181,3 +181,199 @@ class AalenJohansen:
 
             return pl.DataFrame(cols)
         raise ValueError(f"Unknown backend {backend!r}; use 'pandas' or 'polars'.")
+
+
+class FineGray:
+    """Fine-Gray subdistribution hazard model for a competing-risks endpoint.
+
+    The Fine-Gray model is a Cox-like regression on the subdistribution hazard of a target
+    cause. Subjects who experience a competing event remain in the risk set with a
+    time-decreasing inverse-probability-of-censoring weight, so the coefficients describe the
+    covariate effects on the cumulative incidence of the target cause. Coefficients and both
+    the model-based and clustered robust (Lin-Wei) standard errors are validated against R's
+    `survival::finegray` plus `coxph`.
+    """
+
+    def __init__(self, cause: Any, *, conf_level: float = 0.95) -> None:
+        if not 0.0 < conf_level < 1.0:
+            raise ValueError(f"conf_level must be in (0, 1), got {conf_level}.")
+        self.cause = cause
+        self.conf_level = conf_level
+
+    def fit(
+        self, surv: Surv, covariates: Any, *, max_iter: int = 30, tol: float = 1e-9
+    ) -> FineGray:
+        """Fit the model to a competing-risks `Surv` response and a covariate design."""
+        from ._cox import _design_matrix
+
+        if not surv.is_multistate:
+            raise ValueError(
+                "FineGray needs a multi-state response; build it with Surv.multistate."
+            )
+        assert surv.states is not None
+        if self.cause in surv.states:
+            target = surv.states.index(self.cause) + 1
+        elif isinstance(self.cause, int) and 1 <= self.cause <= len(surv.states):
+            target = self.cause
+        else:
+            raise ValueError(f"cause {self.cause!r} is not one of the states {surv.states}.")
+
+        x, names = _design_matrix(covariates)
+        if x.shape[0] != surv.n:
+            raise ValueError("Covariates and response must have the same number of rows.")
+
+        time = surv.stop
+        cause = surv.status
+        keep = ~np.isnan(x).any(axis=1)
+        x, time, cause = x[keep], time[keep], cause[keep]
+
+        drop_times, drop_surv = _censoring_km(time, cause)
+
+        def g_before(t: Array) -> Array:
+            """Censoring survival just before `t` (drops strictly before `t`).
+
+            Target and competing events are nudged just before their time (as in R's
+            `finegray`), so the censoring drop tied at an event time is not counted.
+            """
+            idx = np.searchsorted(drop_times, t, side="left") - 1
+            return np.where(idx >= 0, drop_surv[idx.clip(min=0)], 1.0)
+
+        competing = (cause != target) & (cause != 0)
+        g_before_i = g_before(time)  # denominator per subject
+        target_times = np.unique(time[cause == target])
+        p = x.shape[1]
+
+        def _weights(tj: float) -> Array:
+            w = np.zeros(time.shape[0])
+            w[time >= tj] = 1.0
+            mask = competing & (time < tj)
+            w[mask] = float(g_before(np.array([tj]))[0]) / g_before_i[mask]
+            return w
+
+        def terms(beta: Array) -> tuple[float, Array, Array]:
+            r = np.exp(x @ beta)
+            loglik = 0.0
+            grad = np.zeros(p)
+            info = np.zeros((p, p))
+            for tj in target_times:
+                w = _weights(float(tj))
+                rw = w * r
+                s0 = rw.sum()
+                s1 = (x * rw[:, None]).sum(axis=0)
+                s2 = (x * rw[:, None]).T @ x
+                dy = (time == tj) & (cause == target)
+                d = float(dy.sum())
+                z1 = s1 / s0
+                loglik += float((x[dy] @ beta).sum()) - d * np.log(s0)
+                grad += x[dy].sum(axis=0) - d * z1
+                info += d * (s2 / s0 - np.outer(z1, z1))
+            return loglik, grad, info
+
+        beta = np.zeros(p)
+        loglik = terms(beta)[0]
+        for _ in range(max_iter):
+            ll, grad, info = terms(beta)
+            step = np.linalg.solve(info, grad)
+            beta = beta + step
+            new_ll = terms(beta)[0]
+            if abs(new_ll - ll) <= tol * (abs(new_ll) + tol):
+                loglik = new_ll
+                break
+            loglik = new_ll
+
+        _, _, info = terms(beta)
+        naive_vcov = np.linalg.inv(info)
+
+        # Robust (Lin-Wei) sandwich from per-subject score residuals.
+        scores = self._score_residuals(
+            beta, x, time, cause, target, target_times, competing, g_before_i, g_before
+        )
+        robust_vcov = naive_vcov @ (scores.T @ scores) @ naive_vcov
+
+        z = float(norm.ppf(1.0 - (1.0 - self.conf_level) / 2.0))
+        self.term_names_ = names
+        self.coef_ = beta
+        self.hazard_ratio_ = np.exp(beta)
+        self.naive_vcov_ = naive_vcov
+        self.naive_std_error_ = np.sqrt(np.diag(naive_vcov))
+        self.vcov_ = robust_vcov
+        self.std_error_ = np.sqrt(np.diag(robust_vcov))
+        self.z_ = beta / self.std_error_
+        self.p_value_ = 2.0 * norm.sf(np.abs(self.z_))
+        self.conf_low_ = beta - z * self.std_error_
+        self.conf_high_ = beta + z * self.std_error_
+        self.loglik_ = float(loglik)
+        self.n_ = int(keep.sum())
+        self.n_event_ = int((cause == target).sum())
+        return self
+
+    def _score_residuals(
+        self,
+        beta: Array,
+        x: Array,
+        time: Array,
+        cause: Array,
+        target: int,
+        target_times: Array,
+        competing: Array,
+        g_before_i: Array,
+        g_before: Any,
+    ) -> Array:
+        """Per-subject score residuals of the weighted subdistribution partial likelihood."""
+        n, p = x.shape
+        r = np.exp(x @ beta)
+        scores = np.zeros((n, p))
+        for tj in target_times:
+            w = np.zeros(n)
+            w[time >= tj] = 1.0
+            mask = competing & (time < tj)
+            w[mask] = float(g_before(np.array([tj]))[0]) / g_before_i[mask]
+            rw = w * r
+            s0 = rw.sum()
+            xbar = (x * rw[:, None]).sum(axis=0) / s0
+            dy = (time == tj) & (cause == target)
+            d = float(dy.sum())
+            dlambda = d / s0
+            # Event term for the subjects failing (target) at tj.
+            scores[dy] += x[dy] - xbar
+            # Compensator for every weighted member of the risk set.
+            member = w > 0
+            scores[member] -= w[member, None] * (x[member] - xbar) * (r[member] * dlambda)[:, None]
+        return scores
+
+    def to_dataframe(self, *, exponentiate: bool = False) -> Any:
+        """Return a tidy coefficient table (subdistribution hazard ratios if exponentiated)."""
+        import pandas as pd
+
+        estimate = self.hazard_ratio_ if exponentiate else self.coef_
+        low = np.exp(self.conf_low_) if exponentiate else self.conf_low_
+        high = np.exp(self.conf_high_) if exponentiate else self.conf_high_
+        return pd.DataFrame(
+            {
+                "term": self.term_names_,
+                "estimate": estimate,
+                "std_error": self.std_error_,
+                "statistic": self.z_,
+                "p_value": self.p_value_,
+                "conf_low": low,
+                "conf_high": high,
+            }
+        )
+
+
+def _register_finegray() -> None:
+    from .tidy import register_glance, register_tidier
+
+    def _tidy(model: FineGray, *, exponentiate: bool = False, **_: Any) -> Any:
+        return model.to_dataframe(exponentiate=exponentiate)
+
+    def _glance(model: FineGray, **_: Any) -> Any:
+        import pandas as pd
+
+        return pd.DataFrame([{"n": model.n_, "nevent": model.n_event_, "loglik": model.loglik_}])
+
+    register_tidier("greenwood._competing.FineGray", _tidy)
+    register_glance("greenwood._competing.FineGray", _glance)
+
+
+_register_finegray()
