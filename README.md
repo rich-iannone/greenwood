@@ -18,14 +18,17 @@ This release ships:
 - the narwhals-native **risk-set and event-table kernel** shared by Kaplan-Meier, the
   log-rank test, and Cox;
 - the **`KaplanMeier`** estimator (survival function, Greenwood confidence intervals with
-  `plain`/`log`/`log-log` transforms, median and quantiles, step-function prediction) and
-  the **`NelsonAalen`** cumulative-hazard estimator, both validated to tolerance against R;
+  `plain`/`log`/`log-log` transforms, median and quantiles, **restricted mean survival
+  time**, step-function prediction) and the **`NelsonAalen`** cumulative-hazard estimator;
+- the **`logrank_test`**, covering the standard log-rank test and the G-rho
+  (Fleming-Harrington) family for two or more groups;
 - bundled datasets (`lung`, `veteran`, `ovarian`, `pbc`, `colon`) and an **R-parity test
-  harness** validating against R `survfit`;
+  harness**: every statistic above is validated to tolerance against R (`survfit`,
+  `survdiff`, and the `survival` restricted mean);
 - the **tidy layer** (`greenwood.tidy`), broom-compatible and aligned with Great Summaries.
 
-Group tests, Cox regression, parametric models, competing risks, and visualization arrive
-in subsequent releases. See [`ROADMAP.md`](ROADMAP.md).
+Cox regression, parametric models, competing risks, and visualization arrive in subsequent
+releases. See [`ROADMAP.md`](ROADMAP.md).
 
 ## Quick look
 
@@ -39,11 +42,13 @@ y = Surv.right(df["time"], event=(df["status"] == 2))
 km = gw.KaplanMeier(conf_type="log-log").fit(y, by=df["sex"])
 km.to_dataframe()          # tidy: strata, time, n_risk, n_event, estimate, conf_low, conf_high
 km.median(ci=True)         # median survival with confidence limits, per stratum
+km.rmst(365, ci=True)      # restricted mean survival time up to 365 days
 km.predict([180, 365])     # survival probability at specific times
-gw.tidy.glance(km)         # one-row-per-stratum summary
+
+gw.logrank_test(y, group=df["sex"])          # standard log-rank test
+gw.logrank_test(y, group=df["sex"], rho=1)   # Peto-Peto (G-rho) test
 
 # Coming in later releases:
-# gw.logrank_test(y, group=df["sex"])
 # gw.CoxPH().fit("Surv(time, status) ~ age + sex", data=df)
 # gw.plot_survival(km, risk_table=True)
 ```
