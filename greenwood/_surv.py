@@ -268,3 +268,19 @@ class Surv:
             return pl.DataFrame(cols)
         raise ValueError(f"Unknown backend {backend!r}; use 'pandas' or 'polars'.")
 
+    def to_dict(self) -> dict[str, Any]:
+        """Return a JSON-ready mapping fully describing the response."""
+
+        def _list(a: Array | None) -> list[Any] | None:
+            return None if a is None else a.tolist()
+
+        return {
+            "type": self.type.value,
+            "stop": self.stop.tolist(),
+            "status": self.status.tolist(),
+            "start": _list(self.start),
+            "lower": _list(self.lower),
+            "states": list(self.states) if self.states is not None else None,
+            "weights": _list(self.weights),
+        }
+
