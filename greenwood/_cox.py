@@ -26,7 +26,7 @@ from scipy.stats import chi2, norm
 if TYPE_CHECKING:
     from ._surv import Surv
 
-__all__ = ["CoxPH"]
+__all__ = ["CoxPH", "ZPHResult"]
 
 Array = npt.NDArray[Any]
 
