@@ -1,0 +1,48 @@
+---
+title: Greenwood
+toc: false
+---
+
+**Modern survival analysis for Python.**
+
+Greenwood is a time-to-event modeling library built for 2026: it works on pandas, Polars,
+PyArrow, and anything else [narwhals](https://narwhals-dev.github.io/narwhals/) supports;
+it is validated to tolerance against R's `survival` package; it visualizes with
+[plotnine](https://plotnine.org/); and it plugs into the Great Tables ecosystem for
+publication-quality tables. The name is a nod to Greenwood's formula, the classic variance
+estimator for the Kaplan-Meier curve.
+
+## Why Greenwood
+
+Python's survival tooling is fragmented and aging: lifelines is pandas-only and slowing,
+scikit-survival is capable but GPL-3, and `statsmodels` covers only a thin slice. None is
+narwhals-native, and none systematically validates against R. Greenwood aims to be the one
+survival library a Python user reaches for, under a permissive MIT license and with
+responsive maintenance.
+
+## Status
+
+This foundational release provides the `Surv` response object (right, left, interval, and
+counting-process censoring, with left truncation and multi-state endpoints) and the
+narwhals-native risk-set kernel that Kaplan-Meier, the log-rank test, and Cox build on. The
+estimators arrive in later releases; see the
+[roadmap](https://github.com/rich-iannone/greenwood/blob/main/ROADMAP.md).
+
+## A first look
+
+```python
+import greenwood as gw
+from greenwood import Surv
+
+# Load a bundled dataset and build a response (lung codes 1 = censored, 2 = dead).
+df = gw.data.load_dataset("lung")
+y = Surv.right(df["time"], event=(df["status"] == 2))
+
+# Tabulate the risk set at each event time (the kernel behind every estimator).
+gw.event_table(y).to_dataframe().head()
+
+# Coming soon:
+# gw.KaplanMeier().fit(y, by=df["sex"])
+# gw.logrank_test(y, group=df["sex"])
+# gw.CoxPH().fit("Surv(time, status) ~ age + sex", data=df)
+```
