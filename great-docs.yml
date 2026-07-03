@@ -15,9 +15,8 @@ authors:
     orcid: 0000-0003-3925-190X
 
 # API Reference Structure
-# This release exposes the Surv response object and the risk-set kernel. Sections
-# for the estimators (KaplanMeier, CoxPH, ...), tests, and visualization are added
-# as they land.
+# Sections for further estimators (CoxPH, ...), group tests, and visualization are
+# added as they land.
 reference:
   - title: The response
     desc: The Surv object, the spine of every analysis.
@@ -25,6 +24,14 @@ reference:
       - name: Surv
         members: true
       - CensoringType
+
+  - title: Non-parametric estimators
+    desc: Kaplan-Meier survival and Nelson-Aalen cumulative hazard.
+    contents:
+      - name: KaplanMeier
+        members: true
+      - name: NelsonAalen
+        members: true
 
   - title: Core kernel
     desc: The risk-set / event-table tabulation shared by KM, log-rank, and Cox.
