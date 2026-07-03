@@ -450,6 +450,30 @@ class CoxPH:
         }
         return ZPHResult(transform=transform, per_term=per_term, global_test=global_test)
 
+    def concordance(self) -> float:
+        """Harrell's concordance index (C-statistic) of the fitted risk scores.
+
+        Matches R's `survival::concordance`: a subject that dies at time `t` is treated as
+        having failed before another subject still under observation at `t` (including one
+        censored exactly at `t`); pairs tied in event time are excluded.
+        """
+        risk = self._x @ self.coef_
+        exit_ = self._exit
+        event = self._event
+        concordant = 0.0
+        comparable = 0.0
+        for i in range(exit_.shape[0]):
+            if not event[i]:
+                continue
+            # Partners known to outlast i: later exit, or censored at the same time.
+            later = (exit_ > exit_[i]) | ((exit_ == exit_[i]) & ~event)
+            if not later.any():
+                continue
+            comparable += float(later.sum())
+            concordant += float(np.sum(risk[i] > risk[later]))
+            concordant += 0.5 * float(np.sum(risk[i] == risk[later]))
+        return concordant / comparable
+
     # -- interop --------------------------------------------------------------
 
     def to_dataframe(self, *, exponentiate: bool = False) -> Any:
