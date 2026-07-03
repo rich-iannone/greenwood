@@ -1,6 +1,6 @@
 ---
 name: Question
-about: Ask how to do something with greenwood
+about: Ask how to do something with Greenwood
 title: "[question] "
 labels: question
 ---
