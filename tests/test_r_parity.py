@@ -128,3 +128,50 @@ def test_nelson_aalen_matches_r() -> None:
     na = gw.NelsonAalen().fit(y)
     assert_allclose_to_r(na.cumhaz_, expected["cumhaz"], what="NA cumhaz")
     assert_allclose_to_r(na.std_error_**2, expected["cumhaz_var"], what="NA cumhaz var")
+
+
+def test_rmst_matches_r() -> None:
+    fixture = load_fixture("rmst")
+    for name, event_is_2 in [("lung", True), ("veteran", False)]:
+        df = gw.data.load_dataset(name)
+        event = (df["status"] == 2) if event_is_2 else df["status"]
+        y = Surv.right(df["time"], event=event)
+        expected = fixture[name]
+        value, lower, upper = gw.KaplanMeier().fit(y).rmst(expected["tau"], ci=True)
+        assert_allclose_to_r(value, expected["rmst"], what=f"{name} rmst")
+        # Recover the se from the symmetric normal interval and compare.
+        z = 1.959963984540054
+        assert_allclose_to_r((value - lower) / z, expected["se"], what=f"{name} rmst se")
+
+
+# -- Log-rank / G-rho against survdiff ------------------------------------------
+
+
+def _check_logrank(result: gw.TestResult, fixture: dict[str, Any], label: str) -> None:
+    assert result.df == fixture["df"]
+    assert_allclose_to_r(result.statistic, fixture["chisq"], what=f"{label} chisq")
+    assert_allclose_to_r(result.p_value, fixture["p"], what=f"{label} p")
+    for g, obs, exp in zip(fixture["groups"], fixture["obs"], fixture["exp"], strict=True):
+        assert_allclose_to_r(result.observed[str(g)], obs, what=f"{label} observed[{g}]")
+        assert_allclose_to_r(result.expected[str(g)], exp, what=f"{label} expected[{g}]")
+
+
+def test_logrank_lung_sex_matches_r() -> None:
+    df = gw.data.load_dataset("lung")
+    y = Surv.right(df["time"], event=(df["status"] == 2))
+    result = gw.logrank_test(y, group=df["sex"].astype(str))
+    _check_logrank(result, load_fixture("logrank_lung_sex"), "log-rank lung/sex")
+
+
+def test_grho_lung_sex_rho1_matches_r() -> None:
+    df = gw.data.load_dataset("lung")
+    y = Surv.right(df["time"], event=(df["status"] == 2))
+    result = gw.logrank_test(y, group=df["sex"].astype(str), rho=1)
+    _check_logrank(result, load_fixture("grho_lung_sex_rho1"), "G-rho lung/sex")
+
+
+def test_logrank_veteran_celltype_matches_r() -> None:
+    df = gw.data.load_dataset("veteran")
+    y = Surv.right(df["time"], event=df["status"])
+    result = gw.logrank_test(y, group=df["celltype"])
+    _check_logrank(result, load_fixture("logrank_veteran_celltype"), "log-rank veteran/celltype")
