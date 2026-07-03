@@ -226,3 +226,8 @@ class CoxPH:
         )
 
 
+def _tidy_cox(model: CoxPH, *, exponentiate: bool = False, **_: Any) -> Any:
+    """broom-style `tidy`: one row per term; `exponentiate` gives hazard ratios."""
+    return model.to_dataframe(exponentiate=exponentiate)
+
+
