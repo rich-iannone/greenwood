@@ -34,6 +34,9 @@ This release ships:
   (with clustered robust standard errors), and **`MultiState`** transition/occupancy
   probabilities (the general Aalen-Johansen estimator), validated against R's `survfit` and
   `finegray`;
+- **prediction-performance metrics**: Harrell's `concordance_index`, and the IPCW
+  `brier_score` / `integrated_brier_score`, validated against R's `survival::concordance`
+  and `survival::brier`;
 - **plotnine visualization** (`plot_survival`) with confidence ribbons, censoring marks, and
   an aligned numbers-at-risk table;
 - bundled datasets (`lung`, `veteran`, `ovarian`, `pbc`, `colon`) and an **R-parity test
@@ -80,6 +83,11 @@ cause = mg["pstat"].where(mg["pstat"] == 1, 2 * mg["death"])   # 0 censor, 1 pcm
 cr = Surv.multistate(etime, event=cause, states=("pcm", "death"))
 gw.AalenJohansen().fit(cr).to_dataframe()
 gw.FineGray("pcm").fit(cr, mg[["age", "sex"]]).to_dataframe()   # subdistribution model
+
+# Prediction performance.
+gw.concordance_index(y, cox.predict(type="lp"))
+S = cox.predict(df[["age", "sex"]], type="survival", times=[180, 365]).iloc[:, 1:].to_numpy().T
+gw.brier_score(y, S, times=[180, 365])
 ```
 
 ## Development
