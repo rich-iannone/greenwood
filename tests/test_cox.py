@@ -89,3 +89,60 @@ def test_to_dataframe_columns(lung_surv) -> None:  # type: ignore[no-untyped-def
         "conf_low",
         "conf_high",
     ]
+
+
+def test_baseline_hazard_is_monotone(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    bh = CoxPH().fit(y, df[["age", "sex"]]).baseline_hazard()
+    assert list(bh.columns) == ["time", "cumhaz", "survival"]
+    assert np.all(np.diff(bh["cumhaz"]) >= 0)  # cumulative hazard is non-decreasing
+    assert np.all(np.diff(bh["survival"]) <= 1e-12)  # survival is non-increasing
+
+
+def test_predict_risk_is_exp_lp(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    cox = CoxPH().fit(y, df[["age", "sex"]])
+    np.testing.assert_allclose(cox.predict(type="risk"), np.exp(cox.predict(type="lp")))
+
+
+def test_predict_unknown_type(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    cox = CoxPH().fit(y, df[["age", "sex"]])
+    with pytest.raises(ValueError, match="Unknown predict type"):
+        cox.predict(type="hazard")
+
+
+def test_predict_survival_in_unit_interval(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    cox = CoxPH().fit(y, df[["age", "sex"]])
+    surv = cox.predict(df[["age", "sex"]].head(3), type="survival", times=[100, 500])
+    values = surv.drop(columns="time").to_numpy()
+    assert np.all((values >= 0) & (values <= 1))
+
+
+def test_residuals_unknown_type(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    cox = CoxPH().fit(y, df[["age", "sex"]])
+    with pytest.raises(ValueError, match="Unknown residual type"):
+        cox.residuals("deviance")
+
+
+def test_cox_zph_transform_validation(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    cox = CoxPH().fit(y, df[["age", "sex"]])
+    with pytest.raises(ValueError, match="transform"):
+        cox.cox_zph(transform="km")
+
+
+def test_cox_zph_result_to_dataframe(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    z = CoxPH().fit(y, df[["age", "sex"]]).cox_zph()
+    table = z.to_dataframe()
+    assert list(table["term"]) == ["age", "sex", "GLOBAL"]
+    assert "chisq" in table.columns
+
+
+def test_concordance_in_unit_interval(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    c = CoxPH().fit(y, df[["age", "sex"]]).concordance()
+    assert 0.0 <= c <= 1.0
