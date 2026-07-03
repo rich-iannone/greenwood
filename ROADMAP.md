@@ -13,13 +13,14 @@ public capability roadmap.
   mean survival time (RMST), step-function prediction, and stratification. R-validated.
 - **Group comparisons**: the log-rank test and the G-rho (Fleming-Harrington) family for
   two or more groups. R-validated against `survdiff`.
+- **Visualization (plotnine)**: `plot_survival` with confidence ribbons, censoring marks,
+  and an aligned numbers-at-risk table.
 
 ## Descriptive
 
 - **Stratified and trend tests**, pairwise comparisons with multiplicity control, and RMST
   differences.
-- **Visualization (plotnine)**: KM/CIF curves with CI ribbons, censoring marks, risk
-  tables, and forest plots.
+- **More plots**: cumulative-incidence curves and forest plots as those estimators land.
 
 ## Regression
 
