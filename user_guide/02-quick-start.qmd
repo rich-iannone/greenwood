@@ -134,6 +134,28 @@ gw.tidy.tidy(cox, exponentiate=True)   # term, estimate (HR), std_error, statist
 gw.tidy.glance(cox)                    # n, nevent, loglik, aic, likelihood-ratio test
 ```
 
+### Diagnostics and prediction
+
+```python
+cox.baseline_hazard()                  # time, cumhaz, survival (uncentered baseline)
+cox.predict(type="lp")                 # centered linear predictors
+cox.predict(newdata, type="survival", times=[180, 365])  # survival curves for new subjects
+
+cox.residuals("martingale")            # one per observation
+cox.residuals("schoenfeld")            # one row per event, per covariate
+
+cox.cox_zph()                          # Grambsch-Therneau proportional-hazards test
+cox.concordance()                      # Harrell's C-statistic
+```
+
+The proportional-hazards test returns per-covariate and global chi-square tests (with an
+`identity` or `log` time transform):
+
+```python
+z = cox.cox_zph(transform="identity")
+z.to_dataframe()       # term, chisq, df, p_value (rows for each covariate plus GLOBAL)
+```
+
 ## Round-trip the response
 
 The `Surv` object serializes deterministically, the basis for reproducible pipelines:
