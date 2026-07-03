@@ -60,6 +60,13 @@ reference:
       - name: TestResult
         members: true
 
+  - title: Prediction performance
+    desc: Concordance and the IPCW Brier score.
+    contents:
+      - concordance_index
+      - brier_score
+      - integrated_brier_score
+
   - title: Visualization
     desc: plotnine survival curves and aligned numbers-at-risk tables.
     contents:
