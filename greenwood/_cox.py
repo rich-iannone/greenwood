@@ -260,6 +260,32 @@ class CoxPH:
         self.score_stat_ = float(grad0 @ np.linalg.solve(info0, grad0))
         return self
 
+    # -- baseline hazard & prediction ----------------------------------------
+
+    def _baseline(self) -> tuple[Array, Array]:
+        """Uncentered Breslow/Efron baseline cumulative hazard at every unique time.
+
+        Reported at all unique exit times (event and censoring), matching R's `basehaz`;
+        the hazard only increments at event times.
+        """
+        risk_score = np.exp(self._x @ self.coef_) * self._weight
+        times = np.unique(self._exit)
+        increments = np.zeros(times.shape[0])
+        for i, t in enumerate(times):
+            dying = (self._exit == t) & self._event
+            if not dying.any():
+                continue
+            at_risk = (self._entry < t) & (self._exit >= t)
+            s0 = risk_score[at_risk].sum()
+            dw = self._weight[dying].sum()
+            if self.ties == "breslow":
+                increments[i] = dw / s0
+            else:  # efron
+                d0 = risk_score[dying].sum()
+                m = int(dying.sum())
+                increments[i] = sum((dw / m) / (s0 - (tie / m) * d0) for tie in range(m))
+        return times, np.cumsum(increments)
+
     # -- interop --------------------------------------------------------------
 
     def to_dataframe(self, *, exponentiate: bool = False) -> Any:
