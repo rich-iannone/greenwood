@@ -264,6 +264,25 @@ class KaplanMeier:
         """Median survival time per stratum (the 0.5-quantile)."""
         return self.quantile(0.5, ci=ci)
 
+    def rmst(self, tau: float, *, ci: bool = False) -> Any:
+        """Restricted mean survival time up to `tau` (area under the curve).
+
+        With `ci=True`, return `(rmst, lower, upper)` using a normal approximation
+        (`rmst +/- z * se`, lower bounded at 0). For a single stratum a scalar (or
+        3-tuple) is returned; when stratified, a dict keyed by stratum label.
+        """
+        z = float(norm.ppf(1.0 - (1.0 - self.conf_level) / 2.0))
+
+        def one(b: _Block) -> Any:
+            value, se = _rmst_block(b, float(tau))
+            if not ci:
+                return value
+            return (value, max(0.0, value - z * se), value + z * se)
+
+        if not self._grouped:
+            return one(self._blocks[0])
+        return {b.label: one(b) for b in self._blocks}
+
     # -- prediction -----------------------------------------------------------
 
     def predict(self, times: Any, *, what: str = "survival") -> Any:
