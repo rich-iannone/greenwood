@@ -148,4 +148,25 @@ write_json_fixture(
   "logrank_veteran_celltype"
 )
 
+# -- Numbers at risk at fixed times (for risk tables) -------------------------------
+
+risk_table_fixture <- function(fit, times) {
+  s <- summary(fit, times = times, extend = TRUE)
+  out <- list(times = times)
+  strata <- if (is.null(s$strata)) rep("overall", length(s$time)) else as.character(s$strata)
+  by_stratum <- list()
+  for (lev in unique(strata)) {
+    key <- sub("^[^=]*=", "", lev)
+    by_stratum[[key]] <- as.numeric(s$n.risk[strata == lev])
+  }
+  c(out, list(n_risk = by_stratum))
+}
+
+write_json_fixture(
+  risk_table_fixture(
+    survfit(Surv(time, status) ~ sex, data = lung), c(0, 250, 500, 750, 1000)
+  ),
+  "risk_table_lung_sex"
+)
+
 cat("done\n")
