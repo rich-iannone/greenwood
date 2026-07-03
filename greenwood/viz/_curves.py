@@ -8,3 +8,7 @@ def _require_plotnine() -> Any:
     return p9
 
 
+def _strata_label(block: Any) -> str:
+    return _OVERALL if block.label is None else str(block.label)
+
+
