@@ -149,3 +149,21 @@ def _tidy_kaplan_meier(km: KaplanMeier, **_: Any) -> Any:
     return km.to_dataframe()
 
 
+def _glance_kaplan_meier(km: KaplanMeier, **_: Any) -> Any:
+    """broom-style `glance`: one row per stratum with counts and median survival."""
+    import pandas as pd
+
+    rows: list[dict[str, Any]] = []
+    for b in km._blocks:
+        row: dict[str, Any] = {}
+        if km._grouped:
+            row["strata"] = b.label
+        row["n_start"] = float(b.n_risk[0]) if b.n_risk.size else float("nan")
+        row["events"] = float(b.n_event.sum())
+        row["median"] = _crossing_time(b.time, b.surv, 0.5)
+        row["median_lower"] = _crossing_time(b.time, b.conf_low, 0.5)
+        row["median_upper"] = _crossing_time(b.time, b.conf_high, 0.5)
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+
