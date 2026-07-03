@@ -1,0 +1,115 @@
+[build-system]
+requires = ["setuptools>=45", "wheel", "setuptools_scm>=6.2"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools_scm]
+
+[tool.setuptools.packages.find]
+include = ["greenwood", "greenwood.*"]
+
+[tool.setuptools.package-data]
+greenwood = ["py.typed", "data/*.csv.gz"]
+
+[project]
+name = "greenwood"
+description = "Modern survival analysis for Python: narwhals-native, R-validated, plotnine-visualized."
+readme = "README.md"
+keywords = [
+    "survival analysis",
+    "time to event",
+    "kaplan-meier",
+    "cox regression",
+    "proportional hazards",
+    "competing risks",
+    "hazard",
+    "censoring",
+    "epidemiology",
+    "biostatistics",
+    "reliability",
+]
+license = { file = "LICENSE" }
+authors = [{ name = "Richard Iannone", email = "riannone@me.com" }]
+maintainers = [{ name = "Richard Iannone", email = "riannone@me.com" }]
+dynamic = ["version"]
+requires-python = ">=3.10"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering",
+    "Typing :: Typed",
+]
+dependencies = [
+    "narwhals>=2.0",
+    "numpy>=1.24",
+    "scipy>=1.11",
+    "typing_extensions>=4.0",
+]
+
+[project.optional-dependencies]
+pd = ["pandas>=2.0"]
+pl = ["polars>=1.0"]
+formula = ["formulaic>=1.0"]
+viz = ["plotnine>=0.13"]
+tables = ["great-tables>=0.17"]
+fast = ["numba>=0.59"]
+all = ["greenwood[pd,pl,formula,viz,tables]"]
+dev = [
+    "pytest>=8",
+    "pytest-cov",
+    "pytest-snapshot",
+    "pytest-randomly",
+    "hypothesis>=6.100",
+    "ruff",
+    "pyright",
+    "build",
+    "pandas>=2.0",
+    "polars>=1.0",
+    "formulaic>=1.0",
+    "plotnine>=0.13",
+]
+docs = ["jupyter", "nbclient", "nbformat", "pandas>=2.0", "polars>=1.0", "plotnine>=0.13"]
+
+[project.urls]
+Homepage = "https://github.com/rich-iannone/greenwood"
+Repository = "https://github.com/rich-iannone/greenwood"
+Documentation = "https://rich-iannone.github.io/greenwood/"
+"Bug Tracker" = "https://github.com/rich-iannone/greenwood/issues"
+
+[tool.pyright]
+include = ["greenwood"]
+pythonVersion = "3.10"
+typeCheckingMode = "strict"
+reportPrivateUsage = false
+# Keep strict, but relax the "unknown type" family: they fire on interop with
+# untyped scientific deps (pandas ships no stubs) and on dynamic serialization.
+# The valuable strict checks (missing annotations, type mismatches) stay on.
+reportMissingTypeStubs = false
+reportUnknownMemberType = false
+reportUnknownArgumentType = false
+reportUnknownVariableType = false
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = "-ra --cov=greenwood --cov-report=term-missing --durations 10"
+testpaths = ["tests"]
+markers = [
+    "rparity: numeric validation against R fixtures",
+    "slow: longer-running tests",
+]
+
+[tool.coverage.report]
+exclude_also = ["if TYPE_CHECKING:"]
