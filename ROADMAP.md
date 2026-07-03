@@ -21,6 +21,8 @@ public capability roadmap.
   and survival prediction, martingale and Schoenfeld residuals, the Grambsch-Therneau
   proportional-hazards test (`cox_zph`), and the concordance index. R-validated against
   `coxph`, `basehaz`, `residuals`, `cox.zph`, and `concordance`.
+- **Parametric AFT models** (`AFT`): Weibull, exponential, log-normal, and log-logistic
+  accelerated failure time models, R-validated against `survreg`.
 
 ## Descriptive
 
@@ -32,8 +34,8 @@ public capability roadmap.
 
 - **Cox extensions**: time-varying covariates, deviance/dfbeta residuals, Efron-consistent
   robust variance, and further `cox_zph` time transforms (Kaplan-Meier, rank).
-- **Parametric & flexible-parametric**: AFT models, Royston-Parmar splines, piecewise
-  exponential.
+- **Flexible-parametric**: Royston-Parmar spline models and piecewise exponential, plus
+  parametric prediction (survival, hazard, quantiles) and generalized gamma.
 
 ## Advanced
 
