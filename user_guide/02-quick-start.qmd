@@ -119,6 +119,11 @@ covariates are dropped:
 ```python
 cox = gw.CoxPH().fit(y, df[["age", "sex"]])
 
+# Stratified baselines (shared coefficients), and the robust sandwich variance:
+gw.CoxPH().fit(y, df[["age", "ph.ecog"]], strata=df["sex"])
+gw.CoxPH().fit(y, df[["age", "sex"]], robust=True)
+gw.CoxPH().fit(y, df[["age", "sex"]], cluster=df["inst"])   # clustered robust variance
+
 cox.coef_            # log-hazard-ratio coefficients
 cox.hazard_ratio_    # exp(coef)
 cox.std_error_       # model-based standard errors
