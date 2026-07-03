@@ -245,3 +245,26 @@ class Surv:
             extra += f", states={self.states}"
         return f"Surv(type={self.type.value}, n={self.n}, events={self.n_events}{extra})"
 
+    # -- interop --------------------------------------------------------------
+
+    def as_dataframe(self, backend: str = "pandas") -> Any:
+        """Return the response as a tidy dataframe (one row per observation)."""
+        cols: dict[str, Array] = {}
+        if self.start is not None:
+            cols["start"] = self.start
+        if self.lower is not None:
+            cols["lower"] = self.lower
+        cols["stop"] = self.stop
+        cols["status"] = self.status
+        if self.weights is not None:
+            cols["weight"] = self.weights
+        if backend == "pandas":
+            import pandas as pd
+
+            return pd.DataFrame(cols)
+        if backend == "polars":
+            import polars as pl
+
+            return pl.DataFrame(cols)
+        raise ValueError(f"Unknown backend {backend!r}; use 'pandas' or 'polars'.")
+
