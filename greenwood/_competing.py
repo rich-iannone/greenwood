@@ -21,7 +21,7 @@ from scipy.stats import norm
 if TYPE_CHECKING:
     from ._surv import Surv
 
-__all__ = ["AalenJohansen", "FineGray"]
+__all__ = ["AalenJohansen", "FineGray", "MultiState"]
 
 Array = npt.NDArray[Any]
 
