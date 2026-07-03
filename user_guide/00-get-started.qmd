@@ -1,0 +1,29 @@
+---
+title: Get started
+---
+
+Greenwood turns time-to-event data into estimates, tests, models, and figures. It is built
+on [narwhals](https://narwhals-dev.github.io/narwhals/) for backend-agnostic compute,
+validated against R's `survival` package, and visualized with
+[plotnine](https://plotnine.org/).
+
+## The pipeline
+
+Every analysis starts from a `Surv` response and flows through a shared kernel:
+
+1. **`Surv` response**: captures the outcome and its censoring (right, left, interval, or
+the counting-process form with left truncation), plus optional weights and multi-state
+endpoints. It is validated eagerly, so downstream code can trust it.
+2. **Risk-set / event-table kernel**: at each unique event time, how many are at risk, how
+many had events, how many were censored. This single tabulation underlies Kaplan-Meier,
+the log-rank test, and Cox.
+3. **Estimators and models**: Kaplan-Meier, Nelson-Aalen, group tests, Cox, parametric and
+flexible-parametric models, competing risks, and multi-state (arriving phase by phase).
+4. **Outputs**: tidy frames, plotnine figures, and publication tables through Great Tables
+and Great Summaries.
+
+## What's here today
+
+This foundational release provides the `Surv` object and the risk-set kernel, both
+R-validated. Continue to [Installation](01-installation.qmd) and the
+[Quick start](02-quick-start.qmd).
