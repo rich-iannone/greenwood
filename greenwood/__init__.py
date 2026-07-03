@@ -15,6 +15,7 @@ from importlib.metadata import PackageNotFoundError, version
 
 from . import data, tidy, viz
 from ._core import EventTable, event_table
+from ._cox import CoxPH
 from ._nonparametric import KaplanMeier, NelsonAalen
 from ._surv import CensoringType, Surv
 from ._tests import TestResult, logrank_test
@@ -33,6 +34,7 @@ __all__ = [
     "event_table",
     "KaplanMeier",
     "NelsonAalen",
+    "CoxPH",
     "logrank_test",
     "TestResult",
     "plot_survival",
