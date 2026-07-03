@@ -1,3 +1,35 @@
+"""Cox proportional hazards regression.
+
+`CoxPH` fits the semiparametric proportional-hazards model by maximizing the partial
+likelihood with Newton-Raphson, supporting the Efron (default) and Breslow tie corrections.
+It reports coefficients, hazard ratios, model-based standard errors, Wald z-tests, and the
+three global tests (likelihood-ratio, Wald, score), all validated to tolerance against R's
+`survival::coxph`.
+
+The risk sets come from the same entry/exit convention as the rest of Greenwood, so left
+truncation and counting-process data are handled. Stratification, robust/cluster variance,
+baseline-hazard prediction, residuals, and proportional-hazards diagnostics build on this
+core in later releases.
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
+
+import numpy as np
+import numpy.typing as npt
+from scipy.stats import chi2, norm
+
+if TYPE_CHECKING:
+    from ._surv import Surv
+
+__all__ = ["CoxPH"]
+
+Array = npt.NDArray[Any]
+
+_TIES = frozenset({"efron", "breslow"})
+
+
 def _design_matrix(covariates: Any) -> tuple[Array, list[str]]:
     """Build a numeric design matrix and term names from covariates.
 
