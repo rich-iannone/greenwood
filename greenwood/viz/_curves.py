@@ -67,3 +67,12 @@ def _censor_frame(block: Any) -> Any:
     )
 
 
+def _n_at_risk(block: Any, times: Array) -> Array:
+    """Number at risk at each query time (as in R's `summary(fit, times=)$n.risk`)."""
+    idx = np.searchsorted(block.time, times, side="left")
+    out = np.zeros(times.shape[0])
+    valid = idx < block.time.shape[0]
+    out[valid] = block.n_risk[idx[valid]]
+    return out
+
+
