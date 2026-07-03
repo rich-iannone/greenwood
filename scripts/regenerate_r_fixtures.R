@@ -1,0 +1,77 @@
+#!/usr/bin/env Rscript
+# Regenerate the R-parity numeric fixtures for Greenwood.
+#
+# Correctness against R's `survival` is the credibility currency for Greenwood, so the
+# risk-set/event-table kernel is validated against `survfit`'s tabulation. Run from the
+# repo root:  Rscript scripts/regenerate_r_fixtures.R
+#
+# Writes JSON into tests/fixtures/r/. The Python harness (tests/_r_parity.py) loads these
+# and asserts to tolerance.
+
+suppressPackageStartupMessages({
+  library(survival)
+  if (!requireNamespace("jsonlite", quietly = TRUE)) {
+    stop("jsonlite is required: install.packages('jsonlite')")
+  }
+})
+
+out_dir <- file.path("tests", "fixtures", "r")
+dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
+
+write_json_fixture <- function(obj, name) {
+  path <- file.path(out_dir, paste0(name, ".json"))
+  jsonlite::write_json(obj, path, auto_unbox = TRUE, digits = 12, pretty = TRUE)
+  cat(sprintf("wrote %s\n", path))
+}
+
+# One survfit object -> a list of {time, n_risk, n_event, n_censor}, split by strata.
+tabulate_survfit <- function(sf) {
+  block <- function(t, r, e, c) {
+    list(time = t, n_risk = r, n_event = e, n_censor = c)
+  }
+  if (is.null(sf$strata)) {
+    return(list(overall = block(sf$time, sf$n.risk, sf$n.event, sf$n.censor)))
+  }
+  out <- list()
+  ends <- cumsum(sf$strata)
+  starts <- c(1L, head(ends, -1L) + 1L)
+  nms <- names(sf$strata)
+  for (i in seq_along(sf$strata)) {
+    ix <- starts[i]:ends[i]
+    # Strata names look like "sex=1"; key by the level value after "=".
+    key <- sub("^[^=]*=", "", nms[i])
+    out[[key]] <- block(sf$time[ix], sf$n.risk[ix], sf$n.event[ix], sf$n.censor[ix])
+  }
+  out
+}
+
+data(cancer, package = "survival") # lung: status 1 = censored, 2 = dead
+
+write_json_fixture(
+  tabulate_survfit(survfit(Surv(time, status) ~ 1, data = lung)),
+  "lung_km_overall"
+)
+write_json_fixture(
+  tabulate_survfit(survfit(Surv(time, status) ~ sex, data = lung)),
+  "lung_km_by_sex"
+)
+
+data(veteran, package = "survival")
+write_json_fixture(
+  tabulate_survfit(survfit(Surv(time, status) ~ 1, data = veteran)),
+  "veteran_km_overall"
+)
+
+# Left truncation / counting-process case, to validate the entry-aware risk set.
+trunc <- data.frame(
+  start = c(0, 2, 1, 3, 0, 4, 1, 2),
+  stop  = c(5, 6, 4, 8, 7, 9, 6, 5),
+  event = c(1, 0, 1, 1, 0, 1, 1, 0)
+)
+write_json_fixture(
+  c(tabulate_survfit(survfit(Surv(start, stop, event) ~ 1, data = trunc)),
+    list(data = as.list(trunc))),
+  "counting_truncation"
+)
+
+cat("done\n")
