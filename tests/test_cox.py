@@ -146,3 +146,40 @@ def test_concordance_in_unit_interval(lung_surv) -> None:  # type: ignore[no-unt
     df, y = lung_surv
     c = CoxPH().fit(y, df[["age", "sex"]]).concordance()
     assert 0.0 <= c <= 1.0
+
+
+def test_stratified_has_robust_flag_false(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    cox = CoxPH().fit(y, df[["age"]], strata=df["sex"])
+    assert cox.robust is False
+    # Stratified baseline hazard carries a strata column, one baseline per stratum.
+    bh = cox.baseline_hazard()
+    assert "strata" in bh.columns
+    assert set(bh["strata"]) == {1, 2}
+
+
+def test_robust_sets_flag_and_naive_available(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    cox = CoxPH(ties="breslow").fit(y, df[["age", "sex"]], robust=True)
+    assert cox.robust is True
+    # Robust and naive standard errors are both available and generally differ.
+    assert not np.allclose(cox.std_error_, cox.naive_std_error_)
+
+
+def test_cluster_implies_robust(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    cox = CoxPH(ties="breslow").fit(y, df[["age", "sex"]], cluster=df["inst"])
+    assert cox.robust is True
+
+
+def test_stratified_survival_prediction_not_supported(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    cox = CoxPH().fit(y, df[["age"]], strata=df["sex"])
+    with pytest.raises(NotImplementedError, match="stratified"):
+        cox.predict(type="survival")
+
+
+def test_strata_length_checked(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    with pytest.raises(ValueError, match="strata"):
+        CoxPH().fit(y, df[["age"]], strata=df["sex"].iloc[:-1])
