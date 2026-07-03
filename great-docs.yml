@@ -1,0 +1,34 @@
+# Great Docs Configuration
+# See https://posit-dev.github.io/great-docs/user-guide/configuration.html
+
+parser: numpy
+
+site_url: "https://rich-iannone.github.io/greenwood/"
+
+dynamic: true
+
+authors:
+  - name: Richard Iannone
+    role: Maintainer
+    email: riannone@me.com
+    github: rich-iannone
+    orcid: 0000-0003-3925-190X
+
+# API Reference Structure
+# This release exposes the Surv response object and the risk-set kernel. Sections
+# for the estimators (KaplanMeier, CoxPH, ...), tests, and visualization are added
+# as they land.
+reference:
+  - title: The response
+    desc: The Surv object, the spine of every analysis.
+    contents:
+      - name: Surv
+        members: true
+      - CensoringType
+
+  - title: Core kernel
+    desc: The risk-set / event-table tabulation shared by KM, log-rank, and Cox.
+    contents:
+      - name: EventTable
+        members: true
+      - event_table
