@@ -6,10 +6,13 @@ It reports coefficients, hazard ratios, model-based standard errors, Wald z-test
 three global tests (likelihood-ratio, Wald, score), all validated to tolerance against R's
 `survival::coxph`.
 
+It also provides the baseline (Breslow/Efron) cumulative hazard, survival prediction,
+martingale and Schoenfeld residuals, the Grambsch-Therneau proportional-hazards test
+(`cox_zph`), and the concordance index, all validated against R.
+
 The risk sets come from the same entry/exit convention as the rest of Greenwood, so left
-truncation and counting-process data are handled. Stratification, robust/cluster variance,
-baseline-hazard prediction, residuals, and proportional-hazards diagnostics build on this
-core in later releases.
+truncation and counting-process data are handled. Stratification and robust/cluster
+variance build on this core in later releases.
 """
 
 from __future__ import annotations
