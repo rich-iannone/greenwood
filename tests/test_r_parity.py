@@ -340,6 +340,26 @@ def test_aft_matches_r_survreg(dist: str) -> None:
         )
 
 
+def test_aalen_johansen_cif_matches_r() -> None:
+    df = gw.data.load_dataset("mgus2")
+    etime = np.where(df["pstat"] == 1, df["ptime"], df["futime"])
+    event = np.where(df["pstat"] == 1, 1, 2 * df["death"])  # 0 censor, 1 pcm, 2 death
+    y = Surv.multistate(etime, event=event, states=("pcm", "death"))
+    fixture = load_fixture("cif_mgus2")
+
+    table = gw.AalenJohansen().fit(y).to_dataframe()
+    pcm = table[table["cause"] == "pcm"].sort_values("time")
+    death = table[table["cause"] == "death"].sort_values("time")
+
+    assert_allclose_to_r(pcm["n_risk"].to_numpy(), fixture["n_risk"], what="n_risk")
+    assert_allclose_to_r(pcm["estimate"].to_numpy(), fixture["cif_pcm"], what="CIF pcm")
+    assert_allclose_to_r(death["estimate"].to_numpy(), fixture["cif_death"], what="CIF death")
+    assert_allclose_to_r(pcm["std_error"].to_numpy(), fixture["se_pcm"], atol=1e-8, what="se pcm")
+    assert_allclose_to_r(
+        death["std_error"].to_numpy(), fixture["se_death"], atol=1e-8, what="se death"
+    )
+
+
 def test_risk_table_numbers_match_r() -> None:
     # risk_table_data needs only numpy/pandas (no plotnine), so it runs here.
     fixture = load_fixture("risk_table_lung_sex")
