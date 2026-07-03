@@ -465,31 +465,50 @@ class CoxPH:
     def _event_contributions(self) -> tuple[list[Array], list[float], list[Array]]:
         """Per-event Schoenfeld residual, event time, and risk-set covariance share.
 
-    def _risk_covariance(self, t: float) -> Array:
-        """Per-event covariance of covariates over the risk set at time `t`."""
+        Iterates strata then event times; risk sets are confined to the stratum. For tied
+        Efron events, the risk mean is averaged and the covariance split across the ties.
+        """
         risk_score = np.exp(self._x @ self.coef_) * self._weight
-        at_risk = (self._entry < t) & (self._exit >= t)
-        dying = (self._exit == t) & self._event
-        rr = risk_score[at_risk]
-        rx = self._x[at_risk]
-        s0 = rr.sum()
-        s1 = (rx * rr[:, None]).sum(axis=0)
-        s2 = (rx * rr[:, None]).T @ rx
-        if self.ties == "breslow":
-            return s2 / s0 - np.outer(s1 / s0, s1 / s0)
-        dr = risk_score[dying]
-        dx = self._x[dying]
-        d0 = dr.sum()
-        d1 = (dx * dr[:, None]).sum(axis=0)
-        d2 = (dx * dr[:, None]).T @ dx
-        m = int(dying.sum())
-        total = np.zeros((s2.shape[0], s2.shape[0]))
-        for tie in range(m):
-            f = tie / m
-            denom = s0 - f * d0
-            z1 = (s1 - f * d1) / denom
-            total += (s2 - f * d2) / denom - np.outer(z1, z1)
-        return total / m  # per-death share, so summing over the m tied rows recovers the total
+        residuals: list[Array] = []
+        times: list[float] = []
+        covariances: list[Array] = []
+        for members, event_times in self._strata_groups:
+            xs = self._x[members]
+            es = self._entry[members]
+            xx = self._exit[members]
+            ev = self._event[members]
+            rs = risk_score[members]
+            for t in event_times:
+                at_risk = (es < t) & (xx >= t)
+                dying = (xx == t) & ev
+                rr = rs[at_risk]
+                rx = xs[at_risk]
+                s0 = rr.sum()
+                s1 = (rx * rr[:, None]).sum(axis=0)
+                s2 = (rx * rr[:, None]).T @ rx
+                if self.ties == "breslow":
+                    xbar = s1 / s0
+                    cov = s2 / s0 - np.outer(xbar, xbar)
+                else:  # efron: average over the tie-adjusted denominators
+                    dr = rs[dying]
+                    dx = xs[dying]
+                    d0 = dr.sum()
+                    d1 = (dx * dr[:, None]).sum(axis=0)
+                    d2 = (dx * dr[:, None]).T @ dx
+                    m = int(dying.sum())
+                    means = [(s1 - (tie / m) * d1) / (s0 - (tie / m) * d0) for tie in range(m)]
+                    xbar = np.mean(means, axis=0)
+                    cov = np.zeros_like(s2)
+                    for tie in range(m):
+                        f = tie / m
+                        z1 = (s1 - f * d1) / (s0 - f * d0)
+                        cov += (s2 - f * d2) / (s0 - f * d0) - np.outer(z1, z1)
+                    cov = cov / m
+                for xi in xs[dying]:
+                    residuals.append(xi - xbar)
+                    times.append(float(t))
+                    covariances.append(cov)
+        return residuals, times, covariances
 
     def cox_zph(self, *, transform: str = "identity") -> ZPHResult:
         """Test the proportional-hazards assumption (Grambsch-Therneau).
