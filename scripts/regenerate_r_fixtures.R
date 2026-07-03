@@ -199,4 +199,44 @@ write_json_fixture(coxph_fixture(Surv(time, status) ~ age + sex, lung, "efron"),
 write_json_fixture(coxph_fixture(Surv(time, status) ~ age + sex, lung, "breslow"), "cox_lung_age_sex_breslow")
 write_json_fixture(coxph_fixture(Surv(time, status) ~ age + sex + ph.ecog, lung, "efron"), "cox_lung_three_efron")
 
+# -- Cox diagnostics, baseline hazard, and prediction -------------------------------
+
+cox_diag_fixture <- function(ties) {
+  cm <- coxph(Surv(time, status) ~ age + sex, data = lung, ties = ties)
+  bh <- basehaz(cm, centered = FALSE)
+  sch <- residuals(cm, "schoenfeld")
+  zph_table <- function(tr) {
+    z <- cox.zph(cm, transform = tr, global = TRUE)
+    list(
+      age = list(chisq = z$table["age", "chisq"], df = z$table["age", "df"], p = z$table["age", "p"]),
+      sex = list(chisq = z$table["sex", "chisq"], df = z$table["sex", "df"], p = z$table["sex", "p"]),
+      global = list(chisq = z$table["GLOBAL", "chisq"], df = z$table["GLOBAL", "df"], p = z$table["GLOBAL", "p"])
+    )
+  }
+  newdata <- data.frame(age = c(50, 70), sex = c(1, 2))
+  times <- c(100, 300, 500)
+  sf <- summary(survfit(cm, newdata = newdata), times = times)
+  conc <- summary(cm)$concordance
+
+  list(
+    ties = ties,
+    basehaz_time = bh$time,
+    basehaz_cumhaz = bh$hazard,
+    martingale = unname(residuals(cm, "martingale")),
+    schoenfeld = list(age = unname(sch[, 1]), sex = unname(sch[, 2])),
+    lp = unname(predict(cm, type = "lp")),
+    concordance = unname(conc["C"]),
+    concordance_se = unname(conc["se(C)"]),
+    zph_identity = zph_table("identity"),
+    zph_log = zph_table("log"),
+    surv_times = times,
+    surv_newdata_age = newdata$age,
+    surv_newdata_sex = newdata$sex,
+    surv = list(subj1 = sf$surv[, 1], subj2 = sf$surv[, 2])
+  )
+}
+
+write_json_fixture(cox_diag_fixture("breslow"), "cox_diag_breslow")
+write_json_fixture(cox_diag_fixture("efron"), "cox_diag_efron")
+
 cat("done\n")
