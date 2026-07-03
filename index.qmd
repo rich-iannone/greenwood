@@ -16,10 +16,11 @@ estimator for the Kaplan-Meier curve.
 
 This release provides the `Surv` response object (right, left, interval, and
 counting-process censoring, with left truncation and multi-state endpoints), the
-narwhals-native risk-set kernel, and the non-parametric estimators `KaplanMeier` (survival
-function, Greenwood confidence intervals, median and quantiles) and `NelsonAalen`
-(cumulative hazard), both validated to tolerance against R. Group tests, Cox regression,
-parametric models, and visualization arrive in later releases; see the
+narwhals-native risk-set kernel, the non-parametric estimators `KaplanMeier` (survival
+function, Greenwood confidence intervals, median and quantiles, restricted mean survival
+time) and `NelsonAalen` (cumulative hazard), and the `logrank_test` (log-rank and the
+G-rho / Fleming-Harrington family). Every statistic is validated to tolerance against R.
+Cox regression, parametric models, and visualization arrive in later releases; see the
 [roadmap](https://github.com/rich-iannone/greenwood/blob/main/ROADMAP.md).
 
 ## A first look
@@ -37,7 +38,9 @@ km = gw.KaplanMeier(conf_type="log-log").fit(y, by=df["sex"])
 km.to_dataframe().head()
 km.median(ci=True)
 
+# Compare groups with the log-rank test.
+gw.logrank_test(y, group=df["sex"])
+
 # Coming soon:
-# gw.logrank_test(y, group=df["sex"])
 # gw.CoxPH().fit("Surv(time, status) ~ age + sex", data=df)
 ```
