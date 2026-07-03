@@ -1,3 +1,32 @@
+"""Non-parametric estimators: Kaplan-Meier survival and Nelson-Aalen cumulative hazard.
+
+Both are built on the risk-set / event-table kernel in `_core`, so they inherit its
+left-truncation and case-weight handling and its R-validated tabulation. The Kaplan-Meier
+survival function uses Greenwood's variance, with a choice of confidence-interval
+transforms matching R's `survfit` (`plain`, `log`, `log-log`).
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
+
+import numpy as np
+import numpy.typing as npt
+from scipy.stats import norm
+
+from ._core import event_table
+
+if TYPE_CHECKING:
+    from ._surv import Surv
+
+__all__ = ["KaplanMeier", "NelsonAalen"]
+
+Array = npt.NDArray[Any]
+
+_CONF_TYPES = frozenset({"plain", "log", "log-log"})
+
+
 def _km_confidence(surv: Array, sigma: Array, conf_type: str, z: float) -> tuple[Array, Array]:
     """Confidence limits for the survival function on the requested scale.
 
