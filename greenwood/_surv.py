@@ -284,3 +284,21 @@ class Surv:
             "weights": _list(self.weights),
         }
 
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Self:
+        """Rebuild a response from `to_dict` output."""
+
+        def _arr(key: str, dtype: Any = float) -> Array | None:
+            value = data.get(key)
+            return None if value is None else np.asarray(value, dtype=dtype)
+
+        return cls(
+            type=CensoringType(data["type"]),
+            stop=np.asarray(data["stop"], dtype=float),
+            status=np.asarray(data["status"], dtype=np.int64),
+            start=_arr("start"),
+            lower=_arr("lower"),
+            states=tuple(data["states"]) if data.get("states") is not None else None,
+            weights=_arr("weights"),
+        )
+
