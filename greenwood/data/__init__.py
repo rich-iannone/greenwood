@@ -11,6 +11,9 @@ Available datasets (all from R's `survival` package):
 - `ovarian`: ovarian cancer survival (26 x 6).
 - `pbc`: Mayo Clinic primary biliary cholangitis (418 x 20).
 - `colon`: chemotherapy for colon cancer (1858 x 16).
+- `mgus2`: monoclonal gammopathy (1384 x 11), a competing-risks dataset (progression to
+  plasma-cell malignancy vs death). Build the endpoint with `ptime`/`pstat` (progression)
+  and `futime`/`death`.
 """
 
 from __future__ import annotations
@@ -27,6 +30,7 @@ _DATASETS = {
     "ovarian": "ovarian.csv.gz",
     "pbc": "pbc.csv.gz",
     "colon": "colon.csv.gz",
+    "mgus2": "mgus2.csv.gz",
 }
 
 
