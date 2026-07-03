@@ -1,3 +1,37 @@
+def _km_confidence(surv: Array, sigma: Array, conf_type: str, z: float) -> tuple[Array, Array]:
+    """Confidence limits for the survival function on the requested scale.
+
+    `sigma` is the standard error of ``log(S)`` (the square root of Greenwood's sum), so
+    ``se(S) = S * sigma``. Limits are clipped to ``[0, 1]``, matching R's `survfit`.
+    """
+    with np.errstate(divide="ignore", invalid="ignore"):
+        if conf_type == "plain":
+            se = surv * sigma
+            lower = surv - z * se
+            upper = surv + z * se
+        elif conf_type == "log":
+            lower = surv * np.exp(-z * sigma)
+            upper = surv * np.exp(z * sigma)
+        else:  # "log-log"
+            log_s = np.log(surv)
+            a = np.log(-log_s)
+            se_a = sigma / np.abs(log_s)
+            lower = np.exp(-np.exp(a + z * se_a))
+            upper = np.exp(-np.exp(a - z * se_a))
+
+    # Degenerate points: S == 1 (no events yet) gives a [1, 1] interval; S == 0 (all
+    # remaining failed) has undefined variance, so the interval is NaN, matching R.
+    at_one = surv >= 1.0
+    at_zero = surv <= 0.0
+    lower = np.where(at_one, 1.0, lower)
+    upper = np.where(at_one, 1.0, upper)
+    lower = np.clip(lower, 0.0, 1.0)
+    upper = np.clip(upper, 0.0, 1.0)
+    lower = np.where(at_zero, np.nan, lower)
+    upper = np.where(at_zero, np.nan, upper)
+    return lower, upper
+
+
 @dataclass(frozen=True)
 class _Block:
     """One stratum's fitted curve."""
