@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
+import numpy as np
 import pytest
 
 import greenwood as gw
@@ -219,6 +220,71 @@ def test_cox_lung_three_covariates_matches_r() -> None:
     y = Surv.right(df["time"], event=(df["status"] == 2))
     cox = gw.CoxPH(ties="efron").fit(y, df[["age", "sex", "ph.ecog"]])
     _check_cox(cox, load_fixture("cox_lung_three_efron"), "cox three")
+
+
+@pytest.mark.parametrize("ties", ["breslow", "efron"])
+def test_cox_baseline_and_prediction_match_r(ties: str) -> None:
+    import pandas as pd
+
+    df = gw.data.load_dataset("lung")
+    y = Surv.right(df["time"], event=(df["status"] == 2))
+    fixture = load_fixture(f"cox_diag_{ties}")
+    cox = gw.CoxPH(ties=ties).fit(y, df[["age", "sex"]])
+
+    assert_allclose_to_r(
+        cox.baseline_hazard()["cumhaz"].to_numpy(), fixture["basehaz_cumhaz"], what="basehaz"
+    )
+    assert_allclose_to_r(cox.predict(type="lp"), fixture["lp"], what="lp")
+
+    newdata = pd.DataFrame({"age": fixture["surv_newdata_age"], "sex": fixture["surv_newdata_sex"]})
+    surv = cox.predict(newdata, type="survival", times=fixture["surv_times"])
+    assert_allclose_to_r(surv["subject_1"].to_numpy(), fixture["surv"]["subj1"], what="surv 1")
+    assert_allclose_to_r(surv["subject_2"].to_numpy(), fixture["surv"]["subj2"], what="surv 2")
+
+
+@pytest.mark.parametrize("ties", ["breslow", "efron"])
+def test_cox_schoenfeld_matches_r(ties: str) -> None:
+    df = gw.data.load_dataset("lung")
+    y = Surv.right(df["time"], event=(df["status"] == 2))
+    fixture = load_fixture(f"cox_diag_{ties}")
+    sch = gw.CoxPH(ties=ties).fit(y, df[["age", "sex"]]).residuals("schoenfeld")
+    # Row order within tied event times is arbitrary; compare as sorted columns.
+    for col in ("age", "sex"):
+        assert_allclose_to_r(
+            np.sort(sch[col].to_numpy()),
+            np.sort(fixture["schoenfeld"][col]),
+            what=f"schoenfeld {col}",
+        )
+
+
+def test_cox_martingale_matches_r_breslow() -> None:
+    df = gw.data.load_dataset("lung")
+    y = Surv.right(df["time"], event=(df["status"] == 2))
+    fixture = load_fixture("cox_diag_breslow")
+    resid = gw.CoxPH(ties="breslow").fit(y, df[["age", "sex"]]).residuals("martingale")
+    assert_allclose_to_r(resid, fixture["martingale"], what="martingale")
+
+
+@pytest.mark.parametrize("ties", ["breslow", "efron"])
+@pytest.mark.parametrize("transform", ["identity", "log"])
+def test_cox_zph_matches_r(ties: str, transform: str) -> None:
+    df = gw.data.load_dataset("lung")
+    y = Surv.right(df["time"], event=(df["status"] == 2))
+    fixture = load_fixture(f"cox_diag_{ties}")[f"zph_{transform}"]
+    z = gw.CoxPH(ties=ties).fit(y, df[["age", "sex"]]).cox_zph(transform=transform)
+    for term in ("age", "sex"):
+        assert_allclose_to_r(z.per_term[term]["chisq"], fixture[term]["chisq"], what=f"zph {term}")
+        assert_allclose_to_r(z.per_term[term]["p_value"], fixture[term]["p"], what=f"zph {term} p")
+    assert_allclose_to_r(z.global_test["chisq"], fixture["global"]["chisq"], what="zph global")
+
+
+@pytest.mark.parametrize("ties", ["breslow", "efron"])
+def test_cox_concordance_matches_r(ties: str) -> None:
+    df = gw.data.load_dataset("lung")
+    y = Surv.right(df["time"], event=(df["status"] == 2))
+    fixture = load_fixture(f"cox_diag_{ties}")
+    cox = gw.CoxPH(ties=ties).fit(y, df[["age", "sex"]])
+    assert_allclose_to_r(cox.concordance(), fixture["concordance"], what="concordance")
 
 
 def test_risk_table_numbers_match_r() -> None:
