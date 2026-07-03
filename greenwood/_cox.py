@@ -353,8 +353,11 @@ class CoxPH:
     def _group_label(self, members: Array) -> Any:
         return None if self._strata_labels is None else self._strata_labels[members[0]]
 
-        Reported at all unique exit times (event and censoring), matching R's `basehaz`;
-        the hazard only increments at event times.
+    def _baseline(self) -> list[tuple[Any, Array, Array]]:
+        """Uncentered baseline cumulative hazard per stratum.
+
+        Returns `(label, times, cumhaz)` per stratum group, reported at all unique exit
+        times (matching R's `basehaz`); the hazard increments only at event times.
         """
         risk_score = np.exp(self._x @ self.coef_) * self._weight
         times = np.unique(self._exit)
