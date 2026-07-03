@@ -8,7 +8,14 @@ from greenwood import data
 
 
 def test_available_datasets() -> None:
-    assert set(data.available_datasets()) == {"lung", "veteran", "ovarian", "pbc", "colon"}
+    assert set(data.available_datasets()) == {
+        "lung",
+        "veteran",
+        "ovarian",
+        "pbc",
+        "colon",
+        "mgus2",
+    }
 
 
 def test_load_lung() -> None:
