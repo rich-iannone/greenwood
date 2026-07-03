@@ -360,6 +360,19 @@ def test_aalen_johansen_cif_matches_r() -> None:
     )
 
 
+def test_finegray_matches_r() -> None:
+    df = gw.data.load_dataset("mgus2")
+    etime = np.where(df["pstat"] == 1, df["ptime"], df["futime"])
+    cause = np.where(df["pstat"] == 1, 1, 2 * df["death"])
+    y = Surv.multistate(etime, event=cause, states=("pcm", "death"))
+    fixture = load_fixture("finegray_mgus2_pcm")
+    fg = gw.FineGray("pcm").fit(y, df[["age", "sex"]])
+    assert fg.term_names_ == fixture["terms"]
+    assert_allclose_to_r(fg.coef_, fixture["coef"], what="fine-gray coef")
+    assert_allclose_to_r(fg.naive_std_error_, fixture["naive_se"], what="fine-gray naive se")
+    assert_allclose_to_r(fg.std_error_, fixture["robust_se"], what="fine-gray robust se")
+
+
 def test_risk_table_numbers_match_r() -> None:
     # risk_table_data needs only numpy/pandas (no plotnine), so it runs here.
     fixture = load_fixture("risk_table_lung_sex")
