@@ -118,7 +118,7 @@ def _cox_terms(
     exit_: Array,
     event: Array,
     weight: Array,
-    event_times: Array,
+    strata_groups: list[tuple[Array, Array]],
     ties: str,
 ) -> tuple[float, Array, Array]:
     """Partial log-likelihood, gradient, and observed information at `beta`."""
