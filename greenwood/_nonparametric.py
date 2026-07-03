@@ -1,3 +1,56 @@
+def _fit_blocks(surv: Surv, by: Any, weights: Any, conf_type: str, z: float) -> list[_Block]:
+    et = event_table(surv, group=by, weights=weights)
+    if et.strata is None:
+        labels = [None]
+        masks = [np.ones(len(et), dtype=bool)]
+    else:
+        labels = list(dict.fromkeys(et.strata.tolist()))
+        masks = [et.strata == lab for lab in labels]
+
+    blocks: list[_Block] = []
+    for label, mask in zip(labels, masks, strict=True):
+        n = et.n_risk[mask].astype(float)
+        d = et.n_event[mask].astype(float)
+        c = et.n_censor[mask].astype(float)
+        t = et.time[mask].astype(float)
+
+        with np.errstate(divide="ignore", invalid="ignore"):
+            factor = np.where(n > 0, 1.0 - d / n, 1.0)
+        surv_hat = np.cumprod(factor)
+
+        denom = n * (n - d)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            # When everyone remaining fails (n == d, S -> 0) the Greenwood term is
+            # infinite, so the variance and se are undefined there, matching R.
+            increment = np.where(denom > 0, d / denom, np.inf)
+        greenwood = np.cumsum(increment)  # Var(log S)
+        sigma = np.sqrt(greenwood)
+        with np.errstate(invalid="ignore"):
+            std_error = surv_hat * sigma  # 0 * inf -> nan at S == 0, as in R
+
+        conf_low, conf_high = _km_confidence(surv_hat, sigma, conf_type, z)
+
+        cumhaz = np.cumsum(np.where(n > 0, d / n, 0.0))
+        cumhaz_var = np.cumsum(np.where(n > 0, d / n**2, 0.0))
+
+        blocks.append(
+            _Block(
+                label=label,
+                time=t,
+                n_risk=n,
+                n_event=d,
+                n_censor=c,
+                surv=surv_hat,
+                std_error=std_error,
+                conf_low=conf_low,
+                conf_high=conf_high,
+                cumhaz=cumhaz,
+                cumhaz_var=cumhaz_var,
+            )
+        )
+    return blocks
+
+
 class KaplanMeier:
     """Kaplan-Meier product-limit estimator of the survival function.
 
