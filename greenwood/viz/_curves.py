@@ -202,3 +202,6 @@ def _risk_table_plot(km: KaplanMeier, *, times: Any = None, xlab: str = "Time") 
     return plot
 
 
+def risk_table(km: KaplanMeier, times: Any = None) -> Any:
+    """Return the numbers-at-risk table as a standalone plotnine plot."""
+    return _risk_table_plot(km, times=times)
