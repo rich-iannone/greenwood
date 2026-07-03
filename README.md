@@ -29,6 +29,8 @@ This release ships:
   **Grambsch-Therneau proportional-hazards test** (`cox_zph`), and the concordance index;
 - **`AFT`** parametric accelerated failure time models (Weibull, exponential, log-normal,
   log-logistic), validated against R's `survreg`;
+- **`AalenJohansen`** cumulative incidence functions for competing risks (per-cause CIFs
+  with delta-method standard errors), validated against R's `survfit`;
 - **plotnine visualization** (`plot_survival`) with confidence ribbons, censoring marks, and
   an aligned numbers-at-risk table;
 - bundled datasets (`lung`, `veteran`, `ovarian`, `pbc`, `colon`) and an **R-parity test
@@ -36,8 +38,9 @@ This release ships:
   `survdiff`, `coxph`, and the `survival` restricted mean);
 - the **tidy layer** (`greenwood.tidy`), broom-compatible and aligned with Great Summaries.
 
-Competing risks and multi-state models, flexible-parametric (spline) models, and further
-Cox extensions arrive in subsequent releases. See [`ROADMAP.md`](ROADMAP.md).
+The Fine-Gray subdistribution model and Gray's test, multi-state models,
+flexible-parametric (spline) models, and further Cox extensions arrive in subsequent
+releases. See [`ROADMAP.md`](ROADMAP.md).
 
 ## Quick look
 
@@ -67,6 +70,13 @@ cox.predict(df[["age", "sex"]].head(), type="survival", times=[180, 365])
 
 aft = gw.AFT("weibull").fit(y, df[["age", "sex"]])   # parametric AFT model
 gw.tidy.tidy(aft)                                     # coefficients on the log-time scale
+
+# Competing risks: cumulative incidence per cause.
+mg = gw.data.load_dataset("mgus2")
+etime = mg["ptime"].where(mg["pstat"] == 1, mg["futime"])
+cause = mg["pstat"].where(mg["pstat"] == 1, 2 * mg["death"])   # 0 censor, 1 pcm, 2 death
+cr = Surv.multistate(etime, event=cause, states=("pcm", "death"))
+gw.AalenJohansen().fit(cr).to_dataframe()
 ```
 
 ## Development
