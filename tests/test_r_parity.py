@@ -322,6 +322,24 @@ def test_cox_cluster_robust_variance_matches_r() -> None:
     assert_allclose_to_r(cox.std_error_, fixture["robust_se"], what="cluster robust se")
 
 
+@pytest.mark.parametrize("dist", ["weibull", "exponential", "lognormal", "loglogistic"])
+def test_aft_matches_r_survreg(dist: str) -> None:
+    df = gw.data.load_dataset("lung")
+    y = Surv.right(df["time"], event=(df["status"] == 2))
+    fixture = load_fixture(f"aft_{dist}")
+    model = gw.AFT(dist).fit(y, df[["age", "sex"]])
+    assert model.term_names_ == fixture["terms"]
+    # Coefficients agree with survreg to ~5 significant figures (optimizer tolerance).
+    assert_allclose_to_r(model.coef_, fixture["coef"], atol=1e-4, what=f"{dist} coef")
+    assert_allclose_to_r(model.std_error_, fixture["coef_se"], atol=1e-4, what=f"{dist} se")
+    assert_allclose_to_r(model.scale_, fixture["scale"], atol=1e-4, what=f"{dist} scale")
+    assert_allclose_to_r(model.loglik_, fixture["loglik"], atol=1e-3, what=f"{dist} loglik")
+    if dist != "exponential":
+        assert_allclose_to_r(
+            model.log_scale_se_, fixture["log_scale_se"], atol=1e-4, what=f"{dist} log-scale se"
+        )
+
+
 def test_risk_table_numbers_match_r() -> None:
     # risk_table_data needs only numpy/pandas (no plotnine), so it runs here.
     fixture = load_fixture("risk_table_lung_sex")
