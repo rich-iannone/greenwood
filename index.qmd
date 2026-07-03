@@ -12,14 +12,6 @@ it is validated to tolerance against R's `survival` package; it visualizes with
 publication-quality tables. The name is a nod to Greenwood's formula, the classic variance
 estimator for the Kaplan-Meier curve.
 
-## Why Greenwood
-
-Python's survival tooling is fragmented and aging: lifelines is pandas-only and slowing,
-scikit-survival is capable but GPL-3, and `statsmodels` covers only a thin slice. None is
-narwhals-native, and none systematically validates against R. Greenwood aims to be the one
-survival library a Python user reaches for, under a permissive MIT license and with
-responsive maintenance.
-
 ## Status
 
 This foundational release provides the `Surv` response object (right, left, interval, and
