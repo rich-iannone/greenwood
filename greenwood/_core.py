@@ -66,3 +66,74 @@ def _tabulate_block(
     return times, n_risk, n_event, n_censor
 
 
+def event_table(surv: Surv, *, group: Any = None, weights: Any = None) -> EventTable:
+    """Tabulate the risk set at each unique exit time.
+
+    Parameters
+    ----------
+    surv
+        A `Surv` response (right-censored or counting-process; interval and multi-state
+        endpoints are tabulated later, once their estimators land).
+    group
+        Optional group labels (any narwhals series / array / sequence, length `n`). When
+        given, the table is stratified and carries a `strata` column.
+    weights
+        Optional case weights. Defaults to the response's weights, or 1.
+
+    Returns
+    -------
+    EventTable
+        The per-time tabulation, ascending in time within each stratum.
+    """
+    from ._surv import CensoringType, _to_1d_array
+
+    if surv.type not in (CensoringType.RIGHT, CensoringType.COUNTING):
+        raise NotImplementedError(
+            f"event_table currently supports right-censored and counting-process "
+            f"responses, not {surv.type.value!r}."
+        )
+
+    entry = surv.entry
+    exit_ = surv.stop
+    event = surv.event
+
+    if weights is not None:
+        weight = _to_1d_array(weights)
+    elif surv.weights is not None:
+        weight = surv.weights
+    else:
+        weight = np.ones(surv.n)
+
+    if group is None:
+        time, n_risk, n_event, n_censor = _tabulate_block(entry, exit_, event, weight)
+        return EventTable(time=time, n_risk=n_risk, n_event=n_event, n_censor=n_censor)
+
+    labels = _to_1d_array(group, dtype=object)
+    if labels.shape[0] != surv.n:
+        raise ValueError("`group` must have the same length as the response.")
+
+    # Stable, deterministic stratum order: first appearance.
+    _, first_idx = np.unique(labels, return_index=True)
+    ordered_levels = labels[np.sort(first_idx)]
+
+    times_all: list[Array] = []
+    risk_all: list[Array] = []
+    event_all: list[Array] = []
+    censor_all: list[Array] = []
+    strata_all: list[Array] = []
+    for level in ordered_levels:
+        mask = labels == level
+        t, r, e, c = _tabulate_block(entry[mask], exit_[mask], event[mask], weight[mask])
+        times_all.append(t)
+        risk_all.append(r)
+        event_all.append(e)
+        censor_all.append(c)
+        strata_all.append(np.full(t.shape[0], level, dtype=object))
+
+    return EventTable(
+        time=np.concatenate(times_all),
+        n_risk=np.concatenate(risk_all),
+        n_event=np.concatenate(event_all),
+        n_censor=np.concatenate(censor_all),
+        strata=np.concatenate(strata_all),
+    )
