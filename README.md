@@ -22,15 +22,18 @@ This release ships:
   time**, step-function prediction) and the **`NelsonAalen`** cumulative-hazard estimator;
 - the **`logrank_test`**, covering the standard log-rank test and the G-rho
   (Fleming-Harrington) family for two or more groups;
+- **`CoxPH`** proportional hazards regression (Efron and Breslow ties, hazard ratios,
+  model-based standard errors, Wald z-tests, and the likelihood-ratio / Wald / score global
+  tests);
 - **plotnine visualization** (`plot_survival`) with confidence ribbons, censoring marks, and
   an aligned numbers-at-risk table;
 - bundled datasets (`lung`, `veteran`, `ovarian`, `pbc`, `colon`) and an **R-parity test
   harness**: every statistic above is validated to tolerance against R (`survfit`,
-  `survdiff`, and the `survival` restricted mean);
+  `survdiff`, `coxph`, and the `survival` restricted mean);
 - the **tidy layer** (`greenwood.tidy`), broom-compatible and aligned with Great Summaries.
 
-Cox regression, parametric models, and competing risks arrive in subsequent releases.
-See [`ROADMAP.md`](ROADMAP.md).
+Parametric models, competing risks, and Cox extensions (stratification, robust variance,
+diagnostics) arrive in subsequent releases. See [`ROADMAP.md`](ROADMAP.md).
 
 ## Quick look
 
@@ -52,8 +55,8 @@ gw.logrank_test(y, group=df["sex"], rho=1)   # Peto-Peto (G-rho) test
 
 gw.plot_survival(km, risk_table=True)        # plotnine curves + aligned risk table
 
-# Coming in later releases:
-# gw.CoxPH().fit("Surv(time, status) ~ age + sex", data=df)
+cox = gw.CoxPH().fit(y, df[["age", "sex"]])  # Cox proportional hazards
+gw.tidy.tidy(cox, exponentiate=True)         # hazard ratios with confidence intervals
 ```
 
 ## Development
