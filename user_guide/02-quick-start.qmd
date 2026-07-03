@@ -191,6 +191,15 @@ aj = gw.AalenJohansen().fit(y, by=mg["sex"])
 aj.to_dataframe()   # strata, cause, time, n_risk, estimate (CIF), std_error, conf_low, conf_high
 ```
 
+The `FineGray` subdistribution hazard model regresses covariates on the cumulative
+incidence of a target cause, with clustered robust standard errors:
+
+```python
+fg = gw.FineGray("pcm").fit(y, mg[["age", "sex"]])
+gw.tidy.tidy(fg, exponentiate=True)   # subdistribution hazard ratios
+fg.std_error_                         # clustered robust standard errors
+```
+
 ## Round-trip the response
 
 The `Surv` object serializes deterministically, the basis for reproducible pipelines:
