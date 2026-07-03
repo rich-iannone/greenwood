@@ -25,7 +25,7 @@ value (e.g. from R `survival`) you expected.
 
 ## Environment
 
-- greenwood version:
+- Greenwood version:
 - Python version:
 - Dataframe backend + version (pandas / Polars / ...):
 - OS:
