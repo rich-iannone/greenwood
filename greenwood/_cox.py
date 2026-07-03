@@ -383,11 +383,19 @@ class CoxPH:
         return out
 
     def baseline_hazard(self) -> Any:
-        """Return the uncentered baseline cumulative hazard and survival as a frame."""
+        """Return the uncentered baseline cumulative hazard and survival as a frame.
+
+        When the model is stratified, rows carry a `strata` column.
+        """
         import pandas as pd
 
-        times, cumhaz = self._baseline()
-        return pd.DataFrame({"time": times, "cumhaz": cumhaz, "survival": np.exp(-cumhaz)})
+        frames = []
+        for label, times, cumhaz in self._baseline():
+            frame = pd.DataFrame({"time": times, "cumhaz": cumhaz, "survival": np.exp(-cumhaz)})
+            if self._strata_labels is not None:
+                frame.insert(0, "strata", label)
+            frames.append(frame)
+        return pd.concat(frames, ignore_index=True)
 
     def _linear_predictor(self, x: Array) -> Array:
         """Centered linear predictor `(x - xbar) . beta` (as in R `predict(type='lp')`)."""
