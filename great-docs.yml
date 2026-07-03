@@ -40,6 +40,12 @@ reference:
       - name: TestResult
         members: true
 
+  - title: Visualization
+    desc: plotnine survival curves and aligned numbers-at-risk tables.
+    contents:
+      - plot_survival
+      - risk_table
+
   - title: Core kernel
     desc: The risk-set / event-table tabulation shared by KM, log-rank, and Cox.
     contents:
