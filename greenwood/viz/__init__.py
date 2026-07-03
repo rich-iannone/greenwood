@@ -1,10 +1,22 @@
 """plotnine-based visualization for Greenwood.
 
-Survival and cumulative-incidence curves (with confidence ribbons, censoring marks, and
-aligned risk tables), forest plots, and diagnostic plots, all returned as composable
-plotnine `ggplot` objects. Populated in a later release; this is the package placeholder.
+Survival curves (with confidence ribbons and censoring marks) and aligned numbers-at-risk
+tables, returned as composable plotnine objects. plotnine is an optional dependency (the
+`viz` extra); the functions import it lazily, so importing `greenwood` never requires it.
 """
 
 from __future__ import annotations
 
-__all__: list[str] = []
+from ._curves import (
+    plot_survival,
+    risk_table,
+    risk_table_data,
+    theme_survival,
+)
+
+__all__ = [
+    "plot_survival",
+    "risk_table",
+    "risk_table_data",
+    "theme_survival",
+]
