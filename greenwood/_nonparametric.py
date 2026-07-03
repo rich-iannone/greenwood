@@ -30,8 +30,8 @@ _CONF_TYPES = frozenset({"plain", "log", "log-log"})
 def _km_confidence(surv: Array, sigma: Array, conf_type: str, z: float) -> tuple[Array, Array]:
     """Confidence limits for the survival function on the requested scale.
 
-    `sigma` is the standard error of ``log(S)`` (the square root of Greenwood's sum), so
-    ``se(S) = S * sigma``. Limits are clipped to ``[0, 1]``, matching R's `survfit`.
+    `sigma` is the standard error of `log(S)` (the square root of Greenwood's sum), so
+    `se(S) = S * sigma`. Limits are clipped to `[0, 1]`, matching R's `survfit`.
     """
     with np.errstate(divide="ignore", invalid="ignore"):
         if conf_type == "plain":
