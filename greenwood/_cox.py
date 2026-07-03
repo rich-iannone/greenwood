@@ -64,7 +64,7 @@ def _design_matrix(covariates: Any) -> tuple[Array, list[str]]:
 
     Accepts a 2-D NumPy array or any narwhals-compatible dataframe. Numeric columns pass
     through; non-numeric columns are treatment-coded (drop-first dummies) with names like
-    ``celltypesmallcell``.
+    `celltypesmallcell`.
     """
     if isinstance(covariates, np.ndarray):
         x = np.asarray(covariates, dtype=float)
@@ -258,6 +258,15 @@ class CoxPH:
         self.lr_stat_ = 2.0 * (loglik - loglik_null)
         self.wald_stat_ = float(beta @ np.linalg.solve(var, beta))
         self.score_stat_ = float(grad0 @ np.linalg.solve(info0, grad0))
+
+        # Retain the fitted design for diagnostics, baseline hazard, and prediction.
+        self._x = x
+        self._entry = entry
+        self._exit = exit_
+        self._event = event
+        self._weight = weight
+        self._event_times = event_times
+        self._xbar = (weight[:, None] * x).sum(axis=0) / weight.sum()
         return self
 
     # -- baseline hazard & prediction ----------------------------------------
