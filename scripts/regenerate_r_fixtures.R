@@ -380,4 +380,14 @@ write_json_fixture(
 
 # Gray's test needs the cmprsk package (not in this toolchain); planned next.
 
+# -- Prediction performance: IPCW Brier score (survival:::brier) --------------------
+
+brier_fit <- coxph(Surv(time, status) ~ age + sex, data = lung, x = TRUE)
+brier_times <- c(180, 365, 540)
+brier_out <- survival:::brier(brier_fit, times = brier_times)
+write_json_fixture(
+  list(times = brier_times, brier = unname(brier_out$brier[, "Model"])),
+  "brier_lung"
+)
+
 cat("done\n")
