@@ -33,6 +33,13 @@ reference:
       - name: NelsonAalen
         members: true
 
+  - title: Group comparisons
+    desc: The log-rank test and the G-rho (Fleming-Harrington) family.
+    contents:
+      - logrank_test
+      - name: TestResult
+        members: true
+
   - title: Core kernel
     desc: The risk-set / event-table tabulation shared by KM, log-rank, and Cox.
     contents:
