@@ -9,14 +9,15 @@ public capability roadmap.
   weights, multi-state endpoints) and the narwhals risk-set/event-table kernel, validated
   against R's `survival`, plus the tidy protocol.
 - **Kaplan-Meier & Nelson-Aalen**: survival and cumulative-hazard estimators with Greenwood
-  variance, `plain`/`log`/`log-log` confidence intervals, median and quantiles,
-  step-function prediction, and stratification. R-validated.
+  variance, `plain`/`log`/`log-log` confidence intervals, median and quantiles, restricted
+  mean survival time (RMST), step-function prediction, and stratification. R-validated.
+- **Group comparisons**: the log-rank test and the G-rho (Fleming-Harrington) family for
+  two or more groups. R-validated against `survdiff`.
 
 ## Descriptive
 
-- **Restricted mean survival time (RMST)** with variance, and remaining CI transforms.
-- **Group comparisons**: log-rank, the G-rho (Fleming-Harrington) family, stratified and
-  trend tests, pairwise comparisons, RMST differences.
+- **Stratified and trend tests**, pairwise comparisons with multiplicity control, and RMST
+  differences.
 - **Visualization (plotnine)**: KM/CIF curves with CI ribbons, censoring marks, risk
   tables, and forest plots.
 
