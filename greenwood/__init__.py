@@ -16,6 +16,7 @@ from . import data, tidy, viz
 from ._core import EventTable, event_table
 from ._nonparametric import KaplanMeier, NelsonAalen
 from ._surv import CensoringType, Surv
+from ._tests import TestResult, logrank_test
 
 try:
     __version__ = version("greenwood")
@@ -30,6 +31,8 @@ __all__ = [
     "event_table",
     "KaplanMeier",
     "NelsonAalen",
+    "logrank_test",
+    "TestResult",
     "data",
     "tidy",
     "viz",
