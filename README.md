@@ -24,9 +24,9 @@ This release ships:
   (Fleming-Harrington) family for two or more groups;
 - **`CoxPH`** proportional hazards regression (Efron and Breslow ties, hazard ratios,
   model-based standard errors, Wald z-tests, and the likelihood-ratio / Wald / score global
-  tests), with **baseline hazard and survival prediction**, martingale and Schoenfeld
-  residuals, the **Grambsch-Therneau proportional-hazards test** (`cox_zph`), and the
-  concordance index;
+  tests), with **stratification**, the **robust (Lin-Wei) sandwich variance** and clustering,
+  **baseline hazard and survival prediction**, martingale and Schoenfeld residuals, the
+  **Grambsch-Therneau proportional-hazards test** (`cox_zph`), and the concordance index;
 - **plotnine visualization** (`plot_survival`) with confidence ribbons, censoring marks, and
   an aligned numbers-at-risk table;
 - bundled datasets (`lung`, `veteran`, `ovarian`, `pbc`, `colon`) and an **R-parity test
