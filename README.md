@@ -27,6 +27,8 @@ This release ships:
   tests), with **stratification**, the **robust (Lin-Wei) sandwich variance** and clustering,
   **baseline hazard and survival prediction**, martingale and Schoenfeld residuals, the
   **Grambsch-Therneau proportional-hazards test** (`cox_zph`), and the concordance index;
+- **`AFT`** parametric accelerated failure time models (Weibull, exponential, log-normal,
+  log-logistic), validated against R's `survreg`;
 - **plotnine visualization** (`plot_survival`) with confidence ribbons, censoring marks, and
   an aligned numbers-at-risk table;
 - bundled datasets (`lung`, `veteran`, `ovarian`, `pbc`, `colon`) and an **R-parity test
@@ -34,8 +36,8 @@ This release ships:
   `survdiff`, `coxph`, and the `survival` restricted mean);
 - the **tidy layer** (`greenwood.tidy`), broom-compatible and aligned with Great Summaries.
 
-Parametric models, competing risks, and Cox extensions (stratification, robust variance,
-diagnostics) arrive in subsequent releases. See [`ROADMAP.md`](ROADMAP.md).
+Competing risks and multi-state models, flexible-parametric (spline) models, and further
+Cox extensions arrive in subsequent releases. See [`ROADMAP.md`](ROADMAP.md).
 
 ## Quick look
 
@@ -62,6 +64,9 @@ gw.tidy.tidy(cox, exponentiate=True)         # hazard ratios with confidence int
 cox.cox_zph()                                # proportional-hazards test
 cox.concordance()                            # C-statistic
 cox.predict(df[["age", "sex"]].head(), type="survival", times=[180, 365])
+
+aft = gw.AFT("weibull").fit(y, df[["age", "sex"]])   # parametric AFT model
+gw.tidy.tidy(aft)                                     # coefficients on the log-time scale
 ```
 
 ## Development
