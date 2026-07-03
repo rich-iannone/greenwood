@@ -1,3 +1,43 @@
+"""The `Surv` response object: the spine of every survival analysis.
+
+`Surv` mirrors R's `Surv()`. It captures a time-to-event outcome in one of several
+censoring flavors and validates it eagerly, so every downstream estimator can rely on a
+clean, consistent representation.
+
+Censoring types supported:
+
+- **right** (`Surv.right`): the common case, `(time, event)`.
+- **left** (`Surv.left`): left-censored `(time, event)`.
+- **interval** (`Surv.interval`): the event is known only to lie in `(lower, upper]`;
+  open bounds encode left/right censoring.
+- **counting** (`Surv.counting`): the counting-process form `(start, stop, event]`, which
+  also expresses **left truncation / late entry** and **time-varying covariates**.
+
+Multi-state and competing-risks endpoints are expressed by an integer `status` with more
+than one event code plus a `states` label tuple (`Surv.multistate`); the estimators that
+consume them arrive in later phases, but construction and validation live here now.
+
+Inputs may be any narwhals-compatible series (pandas, Polars, ...), a NumPy array, or a
+plain sequence; everything is coerced to NumPy internally.
+"""
+
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass
+from enum import Enum
+from typing import Any
+
+import narwhals as nw  # pyright: ignore[reportMissingImports]  # installed + typed; pyright quirk
+import numpy as np
+import numpy.typing as npt
+from typing_extensions import Self
+
+__all__ = ["Surv", "CensoringType"]
+
+Array = npt.NDArray[Any]
+
+
 class CensoringType(str, Enum):
     """The censoring flavor of a `Surv` response."""
 
