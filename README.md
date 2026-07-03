@@ -24,7 +24,9 @@ This release ships:
   (Fleming-Harrington) family for two or more groups;
 - **`CoxPH`** proportional hazards regression (Efron and Breslow ties, hazard ratios,
   model-based standard errors, Wald z-tests, and the likelihood-ratio / Wald / score global
-  tests);
+  tests), with **baseline hazard and survival prediction**, martingale and Schoenfeld
+  residuals, the **Grambsch-Therneau proportional-hazards test** (`cox_zph`), and the
+  concordance index;
 - **plotnine visualization** (`plot_survival`) with confidence ribbons, censoring marks, and
   an aligned numbers-at-risk table;
 - bundled datasets (`lung`, `veteran`, `ovarian`, `pbc`, `colon`) and an **R-parity test
@@ -57,6 +59,9 @@ gw.plot_survival(km, risk_table=True)        # plotnine curves + aligned risk ta
 
 cox = gw.CoxPH().fit(y, df[["age", "sex"]])  # Cox proportional hazards
 gw.tidy.tidy(cox, exponentiate=True)         # hazard ratios with confidence intervals
+cox.cox_zph()                                # proportional-hazards test
+cox.concordance()                            # C-statistic
+cox.predict(df[["age", "sex"]].head(), type="survival", times=[180, 365])
 ```
 
 ## Development
