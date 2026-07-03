@@ -68,6 +68,16 @@ def _missing_mask(labels: Array) -> Array:
     return np.array([v is None or (isinstance(v, float) and v != v) for v in labels], dtype=bool)
 
 
+def _to_labels(values: Any, n: int, name: str) -> Array:
+    """Coerce group labels (narwhals series, array, or sequence) to a length-`n` array."""
+    from ._surv import _to_1d_array
+
+    labels = _to_1d_array(values, dtype=object)
+    if labels.shape[0] != n:
+        raise ValueError(f"`{name}` must have the same length as the response ({n}).")
+    return labels
+
+
 def _design_matrix(covariates: Any) -> tuple[Array, list[str]]:
     """Build a numeric design matrix and term names from covariates.
 
