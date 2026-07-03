@@ -2,8 +2,8 @@
 title: Quick start
 ---
 
-The estimators are not built yet, but the foundation (the `Surv` response and the risk-set
-kernel) is fully usable and R-validated.
+This walks through building a response, tabulating the risk set, and fitting the
+Kaplan-Meier and Nelson-Aalen estimators, all validated against R.
 
 ## Build a response
 
@@ -44,6 +44,36 @@ Stratify by a group:
 
 ```python
 gw.event_table(y, group=df["sex"]).to_dataframe()
+```
+
+## Fit Kaplan-Meier
+
+`KaplanMeier` estimates the survival function with Greenwood confidence intervals. Choose
+the interval transform with `conf_type` (`"log"`, the R default, `"plain"`, or
+`"log-log"`), and stratify with `by`:
+
+```python
+km = gw.KaplanMeier(conf_type="log-log").fit(y, by=df["sex"])
+
+km.to_dataframe()      # strata, time, n_risk, n_event, n_censor, estimate, conf_low, conf_high
+km.median(ci=True)     # {1: (270.0, 210.0, 306.0), 2: (426.0, 345.0, 524.0)}
+km.quantile(0.25)      # first-quartile survival time per stratum
+km.predict([180, 365]) # survival probability at 180 and 365 days
+```
+
+Broom-style summaries are available through the tidy layer, so Great Summaries can build
+tables directly on a fitted curve:
+
+```python
+gw.tidy.tidy(km)       # one row per time point
+gw.tidy.glance(km)     # one row per stratum: events, median, median_lower, median_upper
+```
+
+## Nelson-Aalen cumulative hazard
+
+```python
+na = gw.NelsonAalen().fit(y)
+na.to_dataframe()      # time, n_risk, n_event, estimate (cumulative hazard), std_error, CI
 ```
 
 ## Round-trip the response
