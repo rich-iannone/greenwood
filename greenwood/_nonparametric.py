@@ -167,3 +167,85 @@ def _glance_kaplan_meier(km: KaplanMeier, **_: Any) -> Any:
     return pd.DataFrame(rows)
 
 
+class NelsonAalen:
+    """Nelson-Aalen estimator of the cumulative hazard.
+
+    The cumulative hazard is the running sum of ``d / n`` over event times, with Aalen
+    variance ``sum(d / n^2)``. Confidence limits use the `conf_type` transform (`"plain"`
+    or `"log"`).
+    """
+
+    def __init__(self, *, conf_type: str = "log", conf_level: float = 0.95) -> None:
+        if conf_type not in ("plain", "log"):
+            raise ValueError(f"conf_type must be 'plain' or 'log', got {conf_type!r}.")
+        if not 0.0 < conf_level < 1.0:
+            raise ValueError(f"conf_level must be in (0, 1), got {conf_level}.")
+        self.conf_type = conf_type
+        self.conf_level = conf_level
+
+    def fit(self, surv: Surv, *, by: Any = None, weights: Any = None) -> NelsonAalen:
+        """Fit the estimator to a `Surv` response, optionally stratified by `by`."""
+        z = float(norm.ppf(1.0 - (1.0 - self.conf_level) / 2.0))
+        self._blocks = _fit_blocks(surv, by, weights, "log", z)
+        self._grouped = by is not None
+        self._z = z
+        return self
+
+    def _concat(self, attr: str) -> Array:
+        return np.concatenate([getattr(b, attr) for b in self._blocks])
+
+    @property
+    def time_(self) -> Array:
+        return self._concat("time")
+
+    @property
+    def cumhaz_(self) -> Array:
+        return self._concat("cumhaz")
+
+    @property
+    def std_error_(self) -> Array:
+        return np.sqrt(self._concat("cumhaz_var"))
+
+    @property
+    def strata_(self) -> Array | None:
+        if not self._grouped:
+            return None
+        return np.concatenate(
+            [np.full(b.time.shape[0], b.label, dtype=object) for b in self._blocks]
+        )
+
+    def to_dataframe(self, backend: str = "pandas") -> Any:
+        """Return the fitted cumulative hazard as a tidy frame."""
+        cumhaz = self.cumhaz_
+        se = self.std_error_
+        with np.errstate(divide="ignore", invalid="ignore"):
+            if self.conf_type == "plain":
+                lower = cumhaz - self._z * se
+                upper = cumhaz + self._z * se
+            else:  # log
+                factor = np.where(cumhaz > 0, np.exp(self._z * se / cumhaz), 1.0)
+                lower = cumhaz / factor
+                upper = cumhaz * factor
+        lower = np.clip(lower, 0.0, None)
+
+        cols: dict[str, Array] = {}
+        if self._grouped:
+            cols["strata"] = self.strata_  # type: ignore[assignment]
+        cols["time"] = self.time_
+        cols["n_risk"] = self._concat("n_risk")
+        cols["n_event"] = self._concat("n_event")
+        cols["estimate"] = cumhaz
+        cols["std_error"] = se
+        cols["conf_low"] = lower
+        cols["conf_high"] = upper
+        if backend == "pandas":
+            import pandas as pd
+
+            return pd.DataFrame(cols)
+        if backend == "polars":
+            import polars as pl
+
+            return pl.DataFrame(cols)
+        raise ValueError(f"Unknown backend {backend!r}; use 'pandas' or 'polars'.")
+
+
