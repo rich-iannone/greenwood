@@ -1,6 +1,6 @@
-# Contributing to greenwood
+# Contributing to Greenwood
 
-Thanks for your interest in improving greenwood! This project is in active early
+Thanks for your interest in improving Greenwood! This project is in active early
 development (see [`ROADMAP.md`](../ROADMAP.md)). Contributions of code, tests, docs, and
 R-parity fixtures are all welcome.
 
