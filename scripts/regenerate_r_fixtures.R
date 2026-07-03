@@ -328,7 +328,22 @@ write_json_fixture(
   "cif_mgus2"
 )
 
-# Fine-Gray subdistribution regression and Gray's test are planned next; their fixtures
-# (via survival::finegray and cmprsk) are added when those estimators land.
+fg <- finegray(Surv(etime, event_f) ~ age + sex + id, data = mg, etype = "pcm")
+fgmod <- coxph(
+  Surv(fgstart, fgstop, fgstatus) ~ age + sex + cluster(id),
+  weights = fgwt, data = fg, ties = "breslow"
+)
+sfg <- summary(fgmod)$coefficients
+write_json_fixture(
+  list(
+    terms = rownames(sfg),
+    coef = unname(sfg[, "coef"]),
+    naive_se = unname(sfg[, "se(coef)"]),
+    robust_se = unname(sfg[, "robust se"])
+  ),
+  "finegray_mgus2_pcm"
+)
+
+# Gray's test needs the cmprsk package (not in this toolchain); planned next.
 
 cat("done\n")
