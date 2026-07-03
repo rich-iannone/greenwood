@@ -284,4 +284,26 @@ write_json_fixture(
   "cox_cluster"
 )
 
+# -- Parametric AFT models via survreg ----------------------------------------------
+
+aft_fixture <- function(dist) {
+  m <- survreg(Surv(time, status) ~ age + sex, data = lung, dist = dist)
+  se <- sqrt(diag(m$var))
+  ncoef <- length(m$coef)
+  list(
+    dist = dist,
+    terms = names(m$coef),
+    coef = unname(m$coef),
+    coef_se = unname(se[seq_len(ncoef)]),
+    scale = unname(m$scale),
+    log_scale_se = if (dist == "exponential") NA else unname(se[ncoef + 1]),
+    loglik = m$loglik[2],
+    n = length(m$linear.predictors)
+  )
+}
+
+for (d in c("weibull", "exponential", "lognormal", "loglogistic")) {
+  write_json_fixture(aft_fixture(d), paste0("aft_", d))
+}
+
 cat("done\n")
