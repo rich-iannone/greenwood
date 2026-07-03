@@ -1,3 +1,28 @@
+"""Kaplan-Meier survival curves and numbers-at-risk tables, drawn with plotnine.
+
+Everything returns composable plotnine objects: `plot_survival` gives a `ggplot`, and with
+`risk_table=True` it returns a `plotnine.composition` stacking the curve over an aligned
+numbers-at-risk table (the x-axes line up). plotnine is an optional dependency (the `viz`
+extra), so it is imported lazily.
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
+
+import numpy as np
+import numpy.typing as npt
+
+if TYPE_CHECKING:
+    from .._nonparametric import KaplanMeier
+
+__all__ = ["plot_survival", "risk_table", "risk_table_data", "theme_survival"]
+
+Array = npt.NDArray[Any]
+
+_OVERALL = "Overall"
+
+
 def _require_plotnine() -> Any:
     try:
         import plotnine as p9
