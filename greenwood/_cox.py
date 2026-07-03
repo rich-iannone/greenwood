@@ -406,7 +406,8 @@ class CoxPH:
 
         `type` is one of `"lp"` (centered linear predictor), `"risk"` (`exp(lp)`), or
         `"survival"`. For `"survival"`, returns a frame of survival probabilities at `times`
-        (defaulting to the event times), one column per row of `newdata`.
+        (defaulting to the event times), one column per row of `newdata`. Survival prediction
+        for stratified models is not yet supported.
         """
         if newdata is None:
             x = self._x
@@ -420,7 +421,11 @@ class CoxPH:
         if type == "survival":
             import pandas as pd
 
-            base_times, base_cumhaz = self._baseline()
+            if self._strata_labels is not None:
+                raise NotImplementedError(
+                    "Survival prediction for stratified models is not yet supported."
+                )
+            _, base_times, base_cumhaz = self._baseline()[0]
             query = base_times if times is None else np.atleast_1d(np.asarray(times, dtype=float))
             idx = np.searchsorted(base_times, query, side="right") - 1
             h0 = np.where(idx >= 0, base_cumhaz[idx.clip(min=0)], 0.0)
@@ -437,7 +442,7 @@ class CoxPH:
         """Return `"martingale"` or `"schoenfeld"` residuals.
 
         Martingale residuals are one per observation; Schoenfeld residuals are one row per
-        event (columns are the covariates), ordered by event time.
+        event (columns are the covariates), ordered by stratum and then event time.
         """
         if type == "martingale":
             base_times, base_cumhaz = self._baseline()
