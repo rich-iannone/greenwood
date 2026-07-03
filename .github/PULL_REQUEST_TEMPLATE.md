@@ -1,6 +1,6 @@
 # Summary
 
-Thank you for contributing to greenwood! Please explain the context and purpose of your
+Thank you for contributing to Greenwood! Please explain the context and purpose of your
 contribution, and list the changes made to the code or docs.
 
 # Related GitHub Issues and PRs
