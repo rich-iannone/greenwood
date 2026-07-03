@@ -169,4 +169,34 @@ write_json_fixture(
   "risk_table_lung_sex"
 )
 
+# -- Cox proportional hazards via coxph ---------------------------------------------
+
+coxph_fixture <- function(formula, data, ties) {
+  cm <- coxph(formula, data = data, ties = ties)
+  s <- summary(cm)
+  co <- s$coefficients
+  ci <- s$conf.int
+  list(
+    terms = rownames(co),
+    coef = unname(co[, "coef"]),
+    se = unname(co[, "se(coef)"]),
+    z = unname(co[, "z"]),
+    p = unname(co[, "Pr(>|z|)"]),
+    exp_coef = unname(co[, "exp(coef)"]),
+    conf_low = unname(ci[, "lower .95"]),
+    conf_high = unname(ci[, "upper .95"]),
+    loglik_null = cm$loglik[1],
+    loglik = cm$loglik[2],
+    n = cm$n,
+    nevent = cm$nevent,
+    lr = list(stat = unname(s$logtest["test"]), df = unname(s$logtest["df"]), p = unname(s$logtest["pvalue"])),
+    wald = list(stat = unname(s$waldtest["test"]), df = unname(s$waldtest["df"]), p = unname(s$waldtest["pvalue"])),
+    score = list(stat = unname(s$sctest["test"]), df = unname(s$sctest["df"]), p = unname(s$sctest["pvalue"]))
+  )
+}
+
+write_json_fixture(coxph_fixture(Surv(time, status) ~ age + sex, lung, "efron"), "cox_lung_age_sex_efron")
+write_json_fixture(coxph_fixture(Surv(time, status) ~ age + sex, lung, "breslow"), "cox_lung_age_sex_breslow")
+write_json_fixture(coxph_fixture(Surv(time, status) ~ age + sex + ph.ecog, lung, "efron"), "cox_lung_three_efron")
+
 cat("done\n")
