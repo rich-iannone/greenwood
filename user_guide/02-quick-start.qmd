@@ -175,6 +175,22 @@ gw.tidy.tidy(aft)  # tidy coefficient table
 gw.tidy.glance(aft)  # dist, n, nevent, scale, loglik, aic
 ```
 
+## Competing risks
+
+`AalenJohansen` estimates the cumulative incidence function (CIF) for each competing cause.
+Build a multi-state response where the event codes are 0 for censoring and 1, 2, ... for
+the causes:
+
+```python
+mg = gw.data.load_dataset("mgus2")
+etime = mg["ptime"].where(mg["pstat"] == 1, mg["futime"])
+cause = mg["pstat"].where(mg["pstat"] == 1, 2 * mg["death"])   # 0 censor, 1 pcm, 2 death
+y = Surv.multistate(etime, event=cause, states=("pcm", "death"))
+
+aj = gw.AalenJohansen().fit(y, by=mg["sex"])
+aj.to_dataframe()   # strata, cause, time, n_risk, estimate (CIF), std_error, conf_low, conf_high
+```
+
 ## Round-trip the response
 
 The `Surv` object serializes deterministically, the basis for reproducible pipelines:
