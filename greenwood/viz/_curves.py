@@ -179,3 +179,26 @@ def plot_survival(
     return plot / _risk_table_plot(km, times=times, xlab=xlab)
 
 
+def _risk_table_plot(km: KaplanMeier, *, times: Any = None, xlab: str = "Time") -> Any:
+    """A compact numbers-at-risk table as a plotnine plot (x aligned with the curve)."""
+    p9 = _require_plotnine()
+    data = risk_table_data(km, times=times)
+    # Show whole counts as integers (e.g. 90, not 90.0); keep weighted counts as-is.
+    data["label"] = [f"{v:g}" for v in data["n_risk"]]
+    grouped = km._grouped
+
+    aes_kwargs = {"color": "strata"} if grouped else {}
+    plot = (
+        p9.ggplot(data, p9.aes(x="time", y="strata", label="label"))
+        + p9.geom_text(p9.aes(**aes_kwargs), size=9, show_legend=False)
+        + p9.labs(x=xlab, y="", title="Number at risk")
+        + p9.theme_minimal()
+        + p9.theme(
+            panel_grid=p9.element_blank(),
+            axis_ticks=p9.element_blank(),
+            plot_title=p9.element_text(size=10),
+        )
+    )
+    return plot
+
+
