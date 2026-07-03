@@ -358,8 +358,8 @@ def _glance_kaplan_meier(km: KaplanMeier, **_: Any) -> Any:
 class NelsonAalen:
     """Nelson-Aalen estimator of the cumulative hazard.
 
-    The cumulative hazard is the running sum of ``d / n`` over event times, with Aalen
-    variance ``sum(d / n^2)``. Confidence limits use the `conf_type` transform (`"plain"`
+    The cumulative hazard is the running sum of `d / n` over event times, with Aalen
+    variance `sum(d / n^2)`. Confidence limits use the `conf_type` transform (`"plain"`
     or `"log"`).
     """
 
