@@ -557,6 +557,45 @@ class CoxPH:
         }
         return ZPHResult(transform=transform, per_term=per_term, global_test=global_test)
 
+    def _score_residuals(self, beta: Array) -> Array:
+        """Breslow-form score (dfbeta-precursor) residuals, one per observation.
+
+        Confined to strata; summed over the event times at which each subject is at risk.
+        Used to form the robust (Lin-Wei) sandwich variance.
+        """
+        n, p = self._x.shape
+        scores = np.zeros((n, p))
+        for members, event_times in self._strata_groups:
+            xs = self._x[members]
+            es = self._entry[members]
+            xx = self._exit[members]
+            ev = self._event[members]
+            ws = self._weight[members]
+            ri = np.exp(xs @ beta)
+            order = np.argsort(event_times)
+            etimes = event_times[order]
+            xbar = np.zeros((etimes.shape[0], p))
+            dlambda = np.zeros(etimes.shape[0])
+            for k, t in enumerate(etimes):
+                at_risk = (es < t) & (xx >= t)
+                dying = (xx == t) & ev
+                rr = (ri * ws)[at_risk]
+                s0 = rr.sum()
+                xbar[k] = (xs[at_risk] * rr[:, None]).sum(axis=0) / s0
+                dlambda[k] = ws[dying].sum() / s0
+            index = {float(t): k for k, t in enumerate(etimes)}
+            for local, gi in enumerate(members):
+                x_i = xs[local]
+                at = (es[local] < etimes) & (etimes <= xx[local])
+                compensator = ri[local] * (
+                    x_i * (dlambda[at]).sum() - (xbar[at] * dlambda[at][:, None]).sum(axis=0)
+                )
+                score = -compensator
+                if ev[local]:
+                    score = score + (x_i - xbar[index[float(xx[local])]])
+                scores[gi] = ws[local] * score
+        return scores
+
     def concordance(self) -> float:
         """Harrell's concordance index (C-statistic) of the fitted risk scores.
 
