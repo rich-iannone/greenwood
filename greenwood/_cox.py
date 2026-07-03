@@ -293,6 +293,10 @@ class CoxPH:
         times, cumhaz = self._baseline()
         return pd.DataFrame({"time": times, "cumhaz": cumhaz, "survival": np.exp(-cumhaz)})
 
+    def _linear_predictor(self, x: Array) -> Array:
+        """Centered linear predictor `(x - xbar) . beta` (as in R `predict(type='lp')`)."""
+        return (x - self._xbar) @ self.coef_
+
     # -- interop --------------------------------------------------------------
 
     def to_dataframe(self, *, exponentiate: bool = False) -> Any:
