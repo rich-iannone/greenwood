@@ -286,6 +286,13 @@ class CoxPH:
                 increments[i] = sum((dw / m) / (s0 - (tie / m) * d0) for tie in range(m))
         return times, np.cumsum(increments)
 
+    def baseline_hazard(self) -> Any:
+        """Return the uncentered baseline cumulative hazard and survival as a frame."""
+        import pandas as pd
+
+        times, cumhaz = self._baseline()
+        return pd.DataFrame({"time": times, "cumhaz": cumhaz, "survival": np.exp(-cumhaz)})
+
     # -- interop --------------------------------------------------------------
 
     def to_dataframe(self, *, exponentiate: bool = False) -> Any:
