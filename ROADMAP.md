@@ -16,10 +16,11 @@ public capability roadmap.
 - **Visualization (plotnine)**: `plot_survival` with confidence ribbons, censoring marks,
   and an aligned numbers-at-risk table.
 - **Cox proportional hazards** (`CoxPH`): Efron/Breslow ties, hazard ratios, model-based
-  standard errors, Wald z-tests, and the likelihood-ratio / Wald / score global tests, plus
-  baseline hazard and survival prediction, martingale and Schoenfeld residuals, the
-  Grambsch-Therneau proportional-hazards test (`cox_zph`), and the concordance index.
-  R-validated against `coxph`, `basehaz`, `residuals`, `cox.zph`, and `concordance`.
+  standard errors, Wald z-tests, and the likelihood-ratio / Wald / score global tests;
+  stratification and the robust (Lin-Wei) sandwich variance with clustering; baseline hazard
+  and survival prediction, martingale and Schoenfeld residuals, the Grambsch-Therneau
+  proportional-hazards test (`cox_zph`), and the concordance index. R-validated against
+  `coxph`, `basehaz`, `residuals`, `cox.zph`, and `concordance`.
 
 ## Descriptive
 
@@ -29,9 +30,8 @@ public capability roadmap.
 
 ## Regression
 
-- **Cox extensions**: stratification, robust/cluster (sandwich) variance, time-varying
-  covariates, deviance/score/dfbeta residuals, and further `cox_zph` time transforms
-  (Kaplan-Meier, rank).
+- **Cox extensions**: time-varying covariates, deviance/dfbeta residuals, Efron-consistent
+  robust variance, and further `cox_zph` time transforms (Kaplan-Meier, rank).
 - **Parametric & flexible-parametric**: AFT models, Royston-Parmar splines, piecewise
   exponential.
 
