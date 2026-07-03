@@ -445,46 +445,25 @@ class CoxPH:
         event (columns are the covariates), ordered by stratum and then event time.
         """
         if type == "martingale":
-            base_times, base_cumhaz = self._baseline()
-            idx = np.searchsorted(base_times, self._exit, side="right") - 1
-            h0 = np.where(idx >= 0, base_cumhaz[idx.clip(min=0)], 0.0)
-            cumhaz_i = h0 * np.exp(self._x @ self.coef_)
+            risk = np.exp(self._x @ self.coef_)
+            cumhaz_i = np.zeros(self._x.shape[0])
+            for (members, _), (_, times, cumhaz) in zip(
+                self._strata_groups, self._baseline(), strict=True
+            ):
+                idx = np.searchsorted(times, self._exit[members], side="right") - 1
+                h0 = np.where(idx >= 0, cumhaz[idx.clip(min=0)], 0.0)
+                cumhaz_i[members] = h0 * risk[members]
             return self._event.astype(float) - cumhaz_i
         if type == "schoenfeld":
             import pandas as pd
 
-            residuals, _ = self._schoenfeld()
-            return pd.DataFrame({name: residuals[:, j] for j, name in enumerate(self.term_names_)})
+            residuals, _, _ = self._event_contributions()
+            arr = np.array(residuals)
+            return pd.DataFrame({name: arr[:, j] for j, name in enumerate(self.term_names_)})
         raise ValueError(f"Unknown residual type {type!r}; use 'martingale' or 'schoenfeld'.")
 
-    def _schoenfeld(self) -> tuple[Array, Array]:
-        """Schoenfeld residuals (one row per event) and each row's event time."""
-        risk_score = np.exp(self._x @ self.coef_) * self._weight
-        rows: list[Array] = []
-        times: list[float] = []
-        for t in self._event_times:
-            at_risk = (self._entry < t) & (self._exit >= t)
-            dying = (self._exit == t) & self._event
-            rr = risk_score[at_risk]
-            rx = self._x[at_risk]
-            s0 = rr.sum()
-            s1 = (rx * rr[:, None]).sum(axis=0)
-            if self.ties == "breslow":
-                xbar = s1 / s0
-            else:  # efron: average the risk mean over the tie-adjusted denominators
-                dr = risk_score[dying]
-                dx = self._x[dying]
-                d0 = dr.sum()
-                d1 = (dx * dr[:, None]).sum(axis=0)
-                m = int(dying.sum())
-                xbar = np.mean(
-                    [(s1 - (tie / m) * d1) / (s0 - (tie / m) * d0) for tie in range(m)],
-                    axis=0,
-                )
-            for xi in self._x[dying]:
-                rows.append(xi - xbar)
-                times.append(float(t))
-        return np.array(rows), np.array(times)
+    def _event_contributions(self) -> tuple[list[Array], list[float], list[Array]]:
+        """Per-event Schoenfeld residual, event time, and risk-set covariance share.
 
     def _risk_covariance(self, t: float) -> Array:
         """Per-event covariance of covariates over the risk set at time `t`."""
