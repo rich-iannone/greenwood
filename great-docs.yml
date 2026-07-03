@@ -34,11 +34,13 @@ reference:
         members: true
 
   - title: Regression
-    desc: Cox proportional hazards, with diagnostics and prediction.
+    desc: Cox proportional hazards and parametric AFT models.
     contents:
       - name: CoxPH
         members: true
       - name: ZPHResult
+        members: true
+      - name: AFT
         members: true
 
   - title: Group comparisons
