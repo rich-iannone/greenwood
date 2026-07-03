@@ -44,9 +44,11 @@ reference:
         members: true
 
   - title: Competing risks
-    desc: Aalen-Johansen cumulative incidence functions.
+    desc: Cumulative incidence functions and the Fine-Gray subdistribution model.
     contents:
       - name: AalenJohansen
+        members: true
+      - name: FineGray
         members: true
 
   - title: Group comparisons
