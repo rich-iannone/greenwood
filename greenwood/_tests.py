@@ -56,3 +56,15 @@ class TestResult:
         )
 
 
+def _at_risk(entry: Array, exit_: Array, weight: Array, times: Array) -> Array:
+    """Weighted number at risk at each of `times`: entered before t and not yet exited."""
+    e_order = np.argsort(entry, kind="stable")
+    e_cumw = np.concatenate(([0.0], np.cumsum(weight[e_order])))
+    entered_before = e_cumw[np.searchsorted(entry[e_order], times, side="left")]
+
+    x_order = np.argsort(exit_, kind="stable")
+    x_cumw = np.concatenate(([0.0], np.cumsum(weight[x_order])))
+    exited_before = x_cumw[np.searchsorted(exit_[x_order], times, side="left")]
+    return entered_before - exited_before
+
+
