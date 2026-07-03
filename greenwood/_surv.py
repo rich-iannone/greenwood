@@ -120,3 +120,78 @@ class Surv:
             if np.any(self.weights <= 0):
                 raise ValueError("`weights` must be strictly positive.")
 
+    # -- constructors ---------------------------------------------------------
+
+    @classmethod
+    def right(cls, time: Any, event: Any = None, *, weights: Any = None) -> Self:
+        """Right-censored response `(time, event)`. `event=None` means all events."""
+        stop = _to_1d_array(time)
+        status = _coerce_event(event, stop.shape[0])
+        w = _to_1d_array(weights) if weights is not None else None
+        return cls(type=CensoringType.RIGHT, stop=stop, status=status, weights=w)
+
+    @classmethod
+    def left(cls, time: Any, event: Any = None, *, weights: Any = None) -> Self:
+        """Left-censored response `(time, event)`."""
+        stop = _to_1d_array(time)
+        status = _coerce_event(event, stop.shape[0])
+        w = _to_1d_array(weights) if weights is not None else None
+        return cls(type=CensoringType.LEFT, stop=stop, status=status, weights=w)
+
+    @classmethod
+    def counting(cls, start: Any, stop: Any, event: Any = None, *, weights: Any = None) -> Self:
+        """Counting-process response `(start, stop, event]` (left truncation / time-varying)."""
+        start_a = _to_1d_array(start)
+        stop_a = _to_1d_array(stop)
+        status = _coerce_event(event, stop_a.shape[0])
+        w = _to_1d_array(weights) if weights is not None else None
+        return cls(
+            type=CensoringType.COUNTING, stop=stop_a, status=status, start=start_a, weights=w
+        )
+
+    @classmethod
+    def interval(cls, lower: Any, upper: Any, *, weights: Any = None) -> Self:
+        """Interval-censored response; the event lies in `(lower, upper]`.
+
+        Use `numpy.inf` for `upper` to mark right-censoring and `0` for `lower` to mark
+        left-censoring. `lower == upper` denotes an exact observation.
+        """
+        lower_a = _to_1d_array(lower)
+        upper_a = _to_1d_array(upper)
+        # status: 1 = exact event, 0 = right-censored (upper = inf), 2 = interval.
+        status = np.where(~np.isfinite(upper_a), 0, np.where(lower_a == upper_a, 1, 2)).astype(
+            np.int64
+        )
+        finite_upper = np.where(np.isfinite(upper_a), upper_a, lower_a)
+        w = _to_1d_array(weights) if weights is not None else None
+        return cls(
+            type=CensoringType.INTERVAL,
+            stop=finite_upper,
+            status=status,
+            lower=lower_a,
+            weights=w,
+        )
+
+    @classmethod
+    def multistate(
+        cls,
+        time: Any,
+        event: Any,
+        states: tuple[str, ...],
+        *,
+        start: Any = None,
+        weights: Any = None,
+    ) -> Self:
+        """Multi-state / competing-risks response.
+
+        `event` holds integer codes (0 = censored, `k` = transition to `states[k-1]`).
+        """
+        stop = _to_1d_array(time)
+        status = _to_1d_array(event, dtype=int).astype(np.int64)
+        start_a = _to_1d_array(start) if start is not None else None
+        w = _to_1d_array(weights) if weights is not None else None
+        ctype = CensoringType.COUNTING if start is not None else CensoringType.RIGHT
+        return cls(
+            type=ctype, stop=stop, status=status, start=start_a, states=tuple(states), weights=w
+        )
+
