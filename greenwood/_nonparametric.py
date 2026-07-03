@@ -137,6 +137,36 @@ def _crossing_time(time: Array, curve: Array, level: float) -> float:
     return float(time[hit[0]]) if hit.size else float("nan")
 
 
+def _rmst_block(block: _Block, tau: float) -> tuple[float, float]:
+    """Restricted mean survival time up to `tau` and its standard error.
+
+    RMST is the area under the Kaplan-Meier curve on `[0, tau]`. The variance uses the
+    standard estimator `sum_i A_i^2 d_i / (n_i (n_i - d_i))` over event times `t_i <=
+    tau`, where `A_i` is the area under the curve from `t_i` to `tau` (as in R's
+    `survival::survfit` restricted mean).
+    """
+    t = block.time
+    s = block.surv
+    n = block.n_risk
+    d = block.n_event
+
+    # Piecewise-constant segments: height on [start, next_start). The curve is 1 on
+    # [0, t[0]) and s[i] on [t[i], t[i+1]); the final segment runs to tau.
+    starts = np.concatenate([[0.0], t])
+    heights = np.concatenate([[1.0], s])
+    next_starts = np.concatenate([t, [tau]])
+    widths = np.clip(np.minimum(next_starts, tau) - np.minimum(starts, tau), 0.0, None)
+    seg_area = heights * widths
+    rmst = float(seg_area.sum())
+
+    # A_i = area from each event time to tau (reverse-cumulative segment areas).
+    area_from = np.cumsum(seg_area[::-1])[::-1][1:]  # aligned with t
+    with np.errstate(divide="ignore", invalid="ignore"):
+        contrib = np.where((t <= tau) & (n - d > 0), area_from**2 * d / (n * (n - d)), 0.0)
+    se = float(np.sqrt(contrib.sum()))
+    return rmst, se
+
+
 class KaplanMeier:
     """Kaplan-Meier product-limit estimator of the survival function.
 
