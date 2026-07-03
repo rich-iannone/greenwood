@@ -93,6 +93,27 @@ def test_nelson_aalen_cumhaz() -> None:
     np.testing.assert_allclose(na.std_error_**2, [1 / 9, 1 / 9 + 1 / 4, 1 / 9 + 1 / 4 + 1.0])
 
 
+def test_km_rmst_equals_area_under_curve() -> None:
+    # All events at 1,2,3: S = 2/3, 1/3, 0. Area to tau=3 is
+    # 1*(1-0) + (2/3)*(2-1) + (1/3)*(3-2) = 1 + 2/3 + 1/3 = 2.
+    km = KaplanMeier().fit(Surv.right([1, 2, 3], [1, 1, 1]))
+    assert km.rmst(3.0) == pytest.approx(2.0)
+
+
+def test_km_rmst_truncates_at_tau() -> None:
+    km = KaplanMeier().fit(Surv.right([1, 2, 3], [1, 1, 1]))
+    # Up to tau=1.5: 1*(1) + (2/3)*(0.5) = 1.3333...
+    assert km.rmst(1.5) == pytest.approx(1.0 + (2 / 3) * 0.5)
+
+
+def test_km_rmst_grouped_and_ci() -> None:
+    km = KaplanMeier().fit(Surv.right([1, 2, 1, 2], [1, 1, 1, 1]), by=["a", "a", "b", "b"])
+    out = km.rmst(2.0, ci=True)
+    assert set(out) == {"a", "b"}
+    value, lower, upper = out["a"]
+    assert lower <= value <= upper
+
+
 def test_km_tidy_and_glance_via_registry() -> None:
     km = KaplanMeier().fit(Surv.right([1, 2, 3, 4], [1, 1, 1, 1]))
     tidy_df = gw.tidy.tidy(km)
