@@ -27,6 +27,35 @@ __all__ = ["CoxPH"]
 
 Array = npt.NDArray[Any]
 
+
+@dataclass(frozen=True)
+class ZPHResult:
+    """Proportional-hazards test results (Grambsch-Therneau).
+
+    `per_term` maps each covariate to a `{chisq, df, p_value}` dict; `global_test` holds
+    the same for the overall test.
+    """
+
+    transform: str
+    per_term: dict[str, dict[str, float]]
+    global_test: dict[str, float]
+
+    def __repr__(self) -> str:
+        rows = ", ".join(f"{k}: p={v['p_value']:.4g}" for k, v in self.per_term.items())
+        return (
+            f"ZPHResult(transform={self.transform!r}, {rows}, "
+            f"GLOBAL p={self.global_test['p_value']:.4g})"
+        )
+
+    def to_dataframe(self) -> Any:
+        """Return the test table (one row per term plus GLOBAL)."""
+        import pandas as pd
+
+        rows = [{"term": k, **v} for k, v in self.per_term.items()]
+        rows.append({"term": "GLOBAL", **self.global_test})
+        return pd.DataFrame(rows)
+
+
 _TIES = frozenset({"efron", "breslow"})
 
 
