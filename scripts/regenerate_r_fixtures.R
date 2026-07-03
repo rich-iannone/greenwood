@@ -74,4 +74,37 @@ write_json_fixture(
   "counting_truncation"
 )
 
+# -- Kaplan-Meier survival + Greenwood CIs, and Nelson-Aalen cumulative hazard ------
+
+# Compute the KM/NA reference for one subset (a data.frame with `time`, `status`).
+# `surv`/`se` are conf.type-independent; lower/upper are exported per conf.type.
+km_one <- function(d) {
+  fp <- survfit(Surv(time, status) ~ 1, data = d, conf.type = "plain")
+  fl <- survfit(Surv(time, status) ~ 1, data = d, conf.type = "log")
+  fll <- survfit(Surv(time, status) ~ 1, data = d, conf.type = "log-log")
+  # survfit stores std.err on the log scale: se(log S) = se(S) / S, so se(S) = std.err * S.
+  se_surv <- fl$std.err * fl$surv
+  varh <- cumsum(fl$n.event / fl$n.risk^2) # Aalen variance of the Nelson-Aalen cumhaz
+  q <- quantile(fl, probs = 0.5, conf.int = TRUE)
+  list(
+    time = fl$time, surv = fl$surv, se = se_surv,
+    lower_plain = fp$lower, upper_plain = fp$upper,
+    lower_log = fl$lower, upper_log = fl$upper,
+    lower_loglog = fll$lower, upper_loglog = fll$upper,
+    cumhaz = fl$cumhaz, cumhaz_var = varh,
+    median = unname(q$quantile), median_lower = unname(q$lower),
+    median_upper = unname(q$upper)
+  )
+}
+
+write_json_fixture(list(overall = km_one(lung)), "km_lung_overall")
+
+lung_by_sex <- list()
+for (s in sort(unique(lung$sex))) {
+  lung_by_sex[[as.character(s)]] <- km_one(lung[lung$sex == s, ])
+}
+write_json_fixture(lung_by_sex, "km_lung_by_sex")
+
+write_json_fixture(list(overall = km_one(veteran)), "km_veteran_overall")
+
 cat("done\n")
