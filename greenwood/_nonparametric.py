@@ -144,3 +144,8 @@ class KaplanMeier:
         raise ValueError(f"Unknown backend {backend!r}; use 'pandas' or 'polars'.")
 
 
+def _tidy_kaplan_meier(km: KaplanMeier, **_: Any) -> Any:
+    """broom-style `tidy`: one row per time point (`estimate` is survival)."""
+    return km.to_dataframe()
+
+
