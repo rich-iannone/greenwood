@@ -22,13 +22,15 @@ This release ships:
   time**, step-function prediction) and the **`NelsonAalen`** cumulative-hazard estimator;
 - the **`logrank_test`**, covering the standard log-rank test and the G-rho
   (Fleming-Harrington) family for two or more groups;
+- **plotnine visualization** (`plot_survival`) with confidence ribbons, censoring marks, and
+  an aligned numbers-at-risk table;
 - bundled datasets (`lung`, `veteran`, `ovarian`, `pbc`, `colon`) and an **R-parity test
   harness**: every statistic above is validated to tolerance against R (`survfit`,
   `survdiff`, and the `survival` restricted mean);
 - the **tidy layer** (`greenwood.tidy`), broom-compatible and aligned with Great Summaries.
 
-Cox regression, parametric models, competing risks, and visualization arrive in subsequent
-releases. See [`ROADMAP.md`](ROADMAP.md).
+Cox regression, parametric models, and competing risks arrive in subsequent releases.
+See [`ROADMAP.md`](ROADMAP.md).
 
 ## Quick look
 
@@ -48,9 +50,10 @@ km.predict([180, 365])     # survival probability at specific times
 gw.logrank_test(y, group=df["sex"])          # standard log-rank test
 gw.logrank_test(y, group=df["sex"], rho=1)   # Peto-Peto (G-rho) test
 
+gw.plot_survival(km, risk_table=True)        # plotnine curves + aligned risk table
+
 # Coming in later releases:
 # gw.CoxPH().fit("Surv(time, status) ~ age + sex", data=df)
-# gw.plot_survival(km, risk_table=True)
 ```
 
 ## Development
