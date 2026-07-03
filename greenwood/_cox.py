@@ -121,11 +121,13 @@ def _cox_terms(
     strata_groups: list[tuple[Array, Array]],
     ties: str,
 ) -> tuple[float, Array, Array]:
-    """Partial log-likelihood, gradient, and observed information at `beta`."""
-    p = beta.shape[0]
-    eta = x @ beta
-    risk_score = np.exp(eta) * weight
+    """Partial log-likelihood, gradient, and observed information at `beta`.
 
+    `strata_groups` is a list of `(member_index, event_times)` pairs; risk sets are
+    confined to a stratum, and the terms are summed across strata (the coefficients are
+    shared). An unstratified model is a single group.
+    """
+    p = beta.shape[0]
     loglik = 0.0
     grad = np.zeros(p)
     info = np.zeros((p, p))
