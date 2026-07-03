@@ -14,10 +14,12 @@ estimator for the Kaplan-Meier curve.
 
 ## Status
 
-This foundational release provides the `Surv` response object (right, left, interval, and
-counting-process censoring, with left truncation and multi-state endpoints) and the
-narwhals-native risk-set kernel that Kaplan-Meier, the log-rank test, and Cox build on. The
-estimators arrive in later releases; see the
+This release provides the `Surv` response object (right, left, interval, and
+counting-process censoring, with left truncation and multi-state endpoints), the
+narwhals-native risk-set kernel, and the non-parametric estimators `KaplanMeier` (survival
+function, Greenwood confidence intervals, median and quantiles) and `NelsonAalen`
+(cumulative hazard), both validated to tolerance against R. Group tests, Cox regression,
+parametric models, and visualization arrive in later releases; see the
 [roadmap](https://github.com/rich-iannone/greenwood/blob/main/ROADMAP.md).
 
 ## A first look
@@ -30,11 +32,12 @@ from greenwood import Surv
 df = gw.data.load_dataset("lung")
 y = Surv.right(df["time"], event=(df["status"] == 2))
 
-# Tabulate the risk set at each event time (the kernel behind every estimator).
-gw.event_table(y).to_dataframe().head()
+# Kaplan-Meier survival, stratified, with log-log confidence intervals.
+km = gw.KaplanMeier(conf_type="log-log").fit(y, by=df["sex"])
+km.to_dataframe().head()
+km.median(ci=True)
 
 # Coming soon:
-# gw.KaplanMeier().fit(y, by=df["sex"])
 # gw.logrank_test(y, group=df["sex"])
 # gw.CoxPH().fit("Surv(time, status) ~ age + sex", data=df)
 ```
