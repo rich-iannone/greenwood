@@ -195,3 +195,53 @@ class Surv:
             type=ctype, stop=stop, status=status, start=start_a, states=tuple(states), weights=w
         )
 
+    # -- derived views used by the kernel -------------------------------------
+
+    @property
+    def n(self) -> int:
+        """Number of observations."""
+        return int(self.stop.shape[0])
+
+    @property
+    def entry(self) -> Array:
+        """Entry times; `-inf` where there is no left truncation."""
+        if self.start is not None:
+            return self.start
+        return np.full(self.n, -np.inf)
+
+    @property
+    def event(self) -> Array:
+        """Boolean "any event occurred" indicator (`status >= 1`)."""
+        return self.status >= 1
+
+    @property
+    def is_truncated(self) -> bool:
+        """Whether the response carries left-truncation entry times."""
+        return self.start is not None
+
+    @property
+    def is_multistate(self) -> bool:
+        """Whether the response has more than one event state."""
+        return self.states is not None
+
+    @property
+    def n_events(self) -> int:
+        """Count of observations with an event (any state)."""
+        return int(np.count_nonzero(self.event))
+
+    @property
+    def n_censored(self) -> int:
+        """Count of censored observations."""
+        return self.n - self.n_events
+
+    def __len__(self) -> int:
+        return self.n
+
+    def __repr__(self) -> str:
+        extra = ""
+        if self.is_truncated:
+            extra += ", truncated"
+        if self.is_multistate:
+            extra += f", states={self.states}"
+        return f"Surv(type={self.type.value}, n={self.n}, events={self.n_events}{extra})"
+
