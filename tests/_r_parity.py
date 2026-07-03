@@ -42,7 +42,7 @@ def assert_allclose_to_r(
     R's non-finite tokens (`NA`, `NaN`, `Inf`, `-Inf`, JSON `null`) are coerced to their
     NumPy equivalents, and NaN positions must line up on both sides.
     """
-    a = np.asarray(actual, dtype=float)
+    a = np.atleast_1d(np.asarray(actual, dtype=float))
     e = _to_float_array(expected)
     if a.shape != e.shape:
         raise AssertionError(f"{what}: shape {a.shape} != R shape {e.shape}.")
