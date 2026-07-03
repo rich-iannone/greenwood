@@ -54,3 +54,16 @@ def _step_frame(block: Any) -> Any:
     )
 
 
+def _censor_frame(block: Any) -> Any:
+    import pandas as pd
+
+    mask = block.n_censor > 0
+    return pd.DataFrame(
+        {
+            "time": block.time[mask],
+            "estimate": block.surv[mask],
+            "strata": _strata_label(block),
+        }
+    )
+
+
