@@ -35,4 +35,7 @@ write_gz(pbc, "pbc")
 data(colon, package = "survival")
 write_gz(colon, "colon")
 
+data(mgus2, package = "survival")
+write_gz(mgus2, "mgus2")
+
 cat("done\n")
