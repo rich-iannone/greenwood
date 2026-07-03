@@ -348,6 +348,35 @@ class CoxPH:
             return pd.DataFrame({name: residuals[:, j] for j, name in enumerate(self.term_names_)})
         raise ValueError(f"Unknown residual type {type!r}; use 'martingale' or 'schoenfeld'.")
 
+    def _schoenfeld(self) -> tuple[Array, Array]:
+        """Schoenfeld residuals (one row per event) and each row's event time."""
+        risk_score = np.exp(self._x @ self.coef_) * self._weight
+        rows: list[Array] = []
+        times: list[float] = []
+        for t in self._event_times:
+            at_risk = (self._entry < t) & (self._exit >= t)
+            dying = (self._exit == t) & self._event
+            rr = risk_score[at_risk]
+            rx = self._x[at_risk]
+            s0 = rr.sum()
+            s1 = (rx * rr[:, None]).sum(axis=0)
+            if self.ties == "breslow":
+                xbar = s1 / s0
+            else:  # efron: average the risk mean over the tie-adjusted denominators
+                dr = risk_score[dying]
+                dx = self._x[dying]
+                d0 = dr.sum()
+                d1 = (dx * dr[:, None]).sum(axis=0)
+                m = int(dying.sum())
+                xbar = np.mean(
+                    [(s1 - (tie / m) * d1) / (s0 - (tie / m) * d0) for tie in range(m)],
+                    axis=0,
+                )
+            for xi in self._x[dying]:
+                rows.append(xi - xbar)
+                times.append(float(t))
+        return np.array(rows), np.array(times)
+
     # -- interop --------------------------------------------------------------
 
     def to_dataframe(self, *, exponentiate: bool = False) -> Any:
