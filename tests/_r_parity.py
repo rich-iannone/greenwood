@@ -37,11 +37,38 @@ def assert_allclose_to_r(
     atol: float = DEFAULT_ATOL,
     what: str = "value",
 ) -> None:
-    """Assert an array of Greenwood values matches R to tolerance."""
+    """Assert an array of Greenwood values matches R to tolerance.
+
+    R's non-finite tokens (`NA`, `NaN`, `Inf`, `-Inf`, JSON `null`) are coerced to their
+    NumPy equivalents, and NaN positions must line up on both sides.
+    """
     a = np.asarray(actual, dtype=float)
-    e = np.asarray(expected, dtype=float)
+    e = _to_float_array(expected)
     if a.shape != e.shape:
         raise AssertionError(f"{what}: shape {a.shape} != R shape {e.shape}.")
-    if not np.allclose(a, e, rtol=rtol, atol=atol):
-        diff = np.max(np.abs(a - e)) if a.size else float("nan")
+    if not np.array_equal(np.isnan(a), np.isnan(e)):
+        raise AssertionError(f"{what}: NaN positions differ from R.")
+    if not np.allclose(a, e, rtol=rtol, atol=atol, equal_nan=True):
+        finite = ~np.isnan(a)
+        diff = np.max(np.abs(a[finite] - e[finite])) if finite.any() else float("nan")
         raise AssertionError(f"{what}: does not match R (max abs diff {diff}).")
+
+
+def _to_float_array(values: Any) -> Any:
+    """Coerce an R-exported list to floats, mapping NA/NaN/Inf tokens and null."""
+
+    def one(v: Any) -> float:
+        if v is None:
+            return float("nan")
+        if isinstance(v, str):
+            token = v.strip()
+            if token in ("NA", "NaN", "nan", "null", ""):
+                return float("nan")
+            if token in ("Inf", "inf", "Infinity"):
+                return float("inf")
+            if token in ("-Inf", "-inf", "-Infinity"):
+                return float("-inf")
+            return float(token)
+        return float(v)
+
+    return np.array([one(v) for v in np.atleast_1d(values)], dtype=float)
