@@ -408,6 +408,27 @@ def test_multistate_occupancy_matches_r() -> None:
         assert_allclose_to_r(table[state].to_numpy(), fixture[state], what=f"occupancy {state}")
 
 
+def test_brier_score_matches_r() -> None:
+    df = gw.data.load_dataset("lung")
+    y = Surv.right(df["time"], event=(df["status"] == 2))
+    fixture = load_fixture("brier_lung")
+    times = np.asarray(fixture["times"], dtype=float)
+    cox = gw.CoxPH().fit(y, df[["age", "sex"]])
+    pred = cox.predict(df[["age", "sex"]], type="survival", times=times)
+    probs = pred[[f"subject_{i + 1}" for i in range(len(df))]].to_numpy().T
+    assert_allclose_to_r(gw.brier_score(y, probs, times), fixture["brier"], what="brier")
+
+
+def test_concordance_index_matches_r() -> None:
+    # concordance_index of the Cox linear predictor equals the model's concordance.
+    df = gw.data.load_dataset("lung")
+    y = Surv.right(df["time"], event=(df["status"] == 2))
+    fixture = load_fixture("cox_diag_efron")
+    cox = gw.CoxPH(ties="efron").fit(y, df[["age", "sex"]])
+    c = gw.concordance_index(y, cox.predict(type="lp"))
+    assert_allclose_to_r(c, fixture["concordance"], what="concordance_index")
+
+
 def test_risk_table_numbers_match_r() -> None:
     # risk_table_data needs only numpy/pandas (no plotnine), so it runs here.
     fixture = load_fixture("risk_table_lung_sex")
