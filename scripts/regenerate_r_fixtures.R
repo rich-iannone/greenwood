@@ -107,4 +107,45 @@ write_json_fixture(lung_by_sex, "km_lung_by_sex")
 
 write_json_fixture(list(overall = km_one(veteran)), "km_veteran_overall")
 
+# -- Restricted mean survival time (RMST) up to tau ---------------------------------
+
+rmst_one <- function(d, tau) {
+  tab <- summary(survfit(Surv(time, status) ~ 1, data = d), rmean = tau)$table
+  list(tau = tau, rmst = unname(tab["rmean"]), se = unname(tab["se(rmean)"]))
+}
+
+write_json_fixture(
+  list(lung = rmst_one(lung, 365), veteran = rmst_one(veteran, 180)),
+  "rmst"
+)
+
+# -- Log-rank and G-rho (Fleming-Harrington) tests via survdiff ---------------------
+
+sd_fixture <- function(sd) {
+  labels <- sub("^[^=]*=", "", names(sd$n))
+  df <- length(sd$n) - 1
+  list(
+    groups = labels,
+    n = as.numeric(sd$n),
+    obs = as.numeric(sd$obs),
+    exp = as.numeric(sd$exp),
+    chisq = as.numeric(sd$chisq),
+    df = df,
+    p = pchisq(as.numeric(sd$chisq), df, lower.tail = FALSE)
+  )
+}
+
+write_json_fixture(
+  sd_fixture(survdiff(Surv(time, status) ~ sex, data = lung, rho = 0)),
+  "logrank_lung_sex"
+)
+write_json_fixture(
+  sd_fixture(survdiff(Surv(time, status) ~ sex, data = lung, rho = 1)),
+  "grho_lung_sex_rho1"
+)
+write_json_fixture(
+  sd_fixture(survdiff(Surv(time, status) ~ celltype, data = veteran, rho = 0)),
+  "logrank_veteran_celltype"
+)
+
 cat("done\n")
