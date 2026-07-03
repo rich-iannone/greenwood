@@ -109,6 +109,31 @@ Because the result is a plotnine object, you can keep composing it with themes, 
 labels, and the risk-table times are configurable (`gw.plot_survival(km, times=[0, 200,
 400, 600])`).
 
+## Cox proportional hazards
+
+`CoxPH` fits the proportional-hazards model by maximizing the partial likelihood (Efron
+ties by default, or `ties="breslow"`). Pass a `Surv` response and a covariate design (a
+dataframe or a 2-D array); non-numeric columns are treatment-coded, and rows with missing
+covariates are dropped:
+
+```python
+cox = gw.CoxPH().fit(y, df[["age", "sex"]])
+
+cox.coef_            # log-hazard-ratio coefficients
+cox.hazard_ratio_    # exp(coef)
+cox.std_error_       # model-based standard errors
+cox.p_value_         # Wald z-test p-values
+cox.loglik_, cox.lr_stat_, cox.wald_stat_, cox.score_stat_
+```
+
+The tidy layer gives broom-style output, so Great Summaries can build a regression table on
+top of a fitted model:
+
+```python
+gw.tidy.tidy(cox, exponentiate=True)   # term, estimate (HR), std_error, statistic, p_value, CI
+gw.tidy.glance(cox)                    # n, nevent, loglik, aic, likelihood-ratio test
+```
+
 ## Round-trip the response
 
 The `Surv` object serializes deterministically, the basis for reproducible pipelines:
