@@ -58,6 +58,7 @@ km = gw.KaplanMeier(conf_type="log-log").fit(y, by=df["sex"])
 km.to_dataframe()      # strata, time, n_risk, n_event, n_censor, estimate, conf_low, conf_high
 km.median(ci=True)     # {1: (270.0, 210.0, 306.0), 2: (426.0, 345.0, 524.0)}
 km.quantile(0.25)      # first-quartile survival time per stratum
+km.rmst(365, ci=True)  # restricted mean survival time up to 365 days, per stratum
 km.predict([180, 365]) # survival probability at 180 and 365 days
 ```
 
@@ -74,6 +75,23 @@ gw.tidy.glance(km)     # one row per stratum: events, median, median_lower, medi
 ```python
 na = gw.NelsonAalen().fit(y)
 na.to_dataframe()      # time, n_risk, n_event, estimate (cumulative hazard), std_error, CI
+```
+
+## Compare groups
+
+`logrank_test` compares survival across two or more groups. The default is the standard
+log-rank test; set `rho`/`gamma` for the G-rho (Fleming-Harrington) family, where
+`rho=1, gamma=0` gives the Peto-Peto (Wilcoxon-type) test:
+
+```python
+result = gw.logrank_test(y, group=df["sex"])
+result.statistic       # 10.3267
+result.p_value         # 0.00131
+result.df              # 1
+result.observed        # weighted observed events per group
+result.expected        # weighted expected events per group
+
+gw.logrank_test(y, group=df["sex"], rho=1)   # Peto-Peto weighting
 ```
 
 ## Round-trip the response
