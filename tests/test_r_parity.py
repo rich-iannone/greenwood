@@ -175,3 +175,15 @@ def test_logrank_veteran_celltype_matches_r() -> None:
     y = Surv.right(df["time"], event=df["status"])
     result = gw.logrank_test(y, group=df["celltype"])
     _check_logrank(result, load_fixture("logrank_veteran_celltype"), "log-rank veteran/celltype")
+
+
+def test_risk_table_numbers_match_r() -> None:
+    # risk_table_data needs only numpy/pandas (no plotnine), so it runs here.
+    fixture = load_fixture("risk_table_lung_sex")
+    df = gw.data.load_dataset("lung")
+    y = Surv.right(df["time"], event=(df["status"] == 2))
+    km = gw.KaplanMeier().fit(y, by=df["sex"])
+    rtd = gw.viz.risk_table_data(km, times=fixture["times"])
+    for label, expected in fixture["n_risk"].items():
+        sub = rtd[rtd["strata"] == label].sort_values("time")
+        assert_allclose_to_r(sub["n_risk"].to_numpy(), expected, what=f"n_risk sex={label}")
