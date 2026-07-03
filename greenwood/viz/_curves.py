@@ -19,3 +19,38 @@ def _default_times(km: KaplanMeier) -> list[float]:
     return sorted({round(float(t)) for t in raw})
 
 
+def _step_frame(block: Any) -> Any:
+    """Expand a block into right-continuous step coordinates for line and ribbon.
+
+    Rows with a NaN confidence limit (the point where survival reaches 0) are kept for the
+    line but dropped from the ribbon by the caller.
+    """
+    import pandas as pd
+
+    xs = [0.0]
+    est = [1.0]
+    low = [1.0]
+    high = [1.0]
+    prev_e, prev_l, prev_h = 1.0, 1.0, 1.0
+    for i in range(block.time.shape[0]):
+        t = float(block.time[i])
+        xs.extend([t, t])
+        est.extend([prev_e, float(block.surv[i])])
+        low.extend([prev_l, float(block.conf_low[i])])
+        high.extend([prev_h, float(block.conf_high[i])])
+        prev_e, prev_l, prev_h = (
+            float(block.surv[i]),
+            float(block.conf_low[i]),
+            float(block.conf_high[i]),
+        )
+    return pd.DataFrame(
+        {
+            "time": xs,
+            "estimate": est,
+            "conf_low": low,
+            "conf_high": high,
+            "strata": _strata_label(block),
+        }
+    )
+
+
