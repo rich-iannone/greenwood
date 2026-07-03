@@ -43,6 +43,12 @@ reference:
       - name: AFT
         members: true
 
+  - title: Competing risks
+    desc: Aalen-Johansen cumulative incidence functions.
+    contents:
+      - name: AalenJohansen
+        members: true
+
   - title: Group comparisons
     desc: The log-rank test and the G-rho (Fleming-Harrington) family.
     contents:
