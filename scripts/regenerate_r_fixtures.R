@@ -306,4 +306,29 @@ for (d in c("weibull", "exponential", "lognormal", "loglogistic")) {
   write_json_fixture(aft_fixture(d), paste0("aft_", d))
 }
 
+# -- Competing risks: Aalen-Johansen CIF and Fine-Gray -------------------------------
+
+data(mgus2, package = "survival")
+mg <- mgus2
+mg$etime <- ifelse(mg$pstat == 1, mg$ptime, mg$futime)
+mg$event <- ifelse(mg$pstat == 1, 1L, 2L * mg$death) # 0 = censor, 1 = pcm, 2 = death
+mg$event_f <- factor(mg$event, 0:2, c("censor", "pcm", "death"))
+
+sf <- survfit(Surv(etime, event_f) ~ 1, data = mg)
+# pstate columns: (s0), pcm, death; std.err aligned.
+write_json_fixture(
+  list(
+    time = sf$time,
+    n_risk = sf$n.risk[, 1],
+    cif_pcm = sf$pstate[, 2],
+    cif_death = sf$pstate[, 3],
+    se_pcm = sf$std.err[, 2],
+    se_death = sf$std.err[, 3]
+  ),
+  "cif_mgus2"
+)
+
+# Fine-Gray subdistribution regression and Gray's test are planned next; their fixtures
+# (via survival::finegray and cmprsk) are added when those estimators land.
+
 cat("done\n")
