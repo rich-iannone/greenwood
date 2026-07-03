@@ -94,6 +94,21 @@ result.expected        # weighted expected events per group
 gw.logrank_test(y, group=df["sex"], rho=1)   # Peto-Peto weighting
 ```
 
+## Visualize
+
+`plot_survival` returns a composable plotnine plot with confidence ribbons and censoring
+marks. Pass `risk_table=True` to stack an aligned numbers-at-risk table beneath it:
+
+```python
+gw.plot_survival(km)                                  # a plotnine ggplot
+gw.plot_survival(km, risk_table=True)                 # curve + aligned risk table
+gw.plot_survival(km, conf_int=False, censor_marks=False)
+```
+
+Because the result is a plotnine object, you can keep composing it with themes, scales, and
+labels, and the risk-table times are configurable (`gw.plot_survival(km, times=[0, 200,
+400, 600])`).
+
 ## Round-trip the response
 
 The `Surv` object serializes deterministically, the basis for reproducible pipelines:
