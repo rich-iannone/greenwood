@@ -10,9 +10,10 @@ It also provides the baseline (Breslow/Efron) cumulative hazard, survival predic
 martingale and Schoenfeld residuals, the Grambsch-Therneau proportional-hazards test
 (`cox_zph`), and the concordance index, all validated against R.
 
-The risk sets come from the same entry/exit convention as the rest of Greenwood, so left
-truncation and counting-process data are handled. Stratification and robust/cluster
-variance build on this core in later releases.
+Stratification (per-stratum baselines with shared coefficients) and the robust (Lin-Wei)
+sandwich variance, with optional clustering, are supported. The risk sets use the same
+entry/exit convention as the rest of Greenwood, so left truncation and counting-process
+data are handled.
 """
 
 from __future__ import annotations
