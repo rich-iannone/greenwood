@@ -329,6 +329,25 @@ class CoxPH:
 
     # -- residuals & diagnostics ---------------------------------------------
 
+    def residuals(self, type: str = "martingale") -> Any:
+        """Return `"martingale"` or `"schoenfeld"` residuals.
+
+        Martingale residuals are one per observation; Schoenfeld residuals are one row per
+        event (columns are the covariates), ordered by event time.
+        """
+        if type == "martingale":
+            base_times, base_cumhaz = self._baseline()
+            idx = np.searchsorted(base_times, self._exit, side="right") - 1
+            h0 = np.where(idx >= 0, base_cumhaz[idx.clip(min=0)], 0.0)
+            cumhaz_i = h0 * np.exp(self._x @ self.coef_)
+            return self._event.astype(float) - cumhaz_i
+        if type == "schoenfeld":
+            import pandas as pd
+
+            residuals, _ = self._schoenfeld()
+            return pd.DataFrame({name: residuals[:, j] for j, name in enumerate(self.term_names_)})
+        raise ValueError(f"Unknown residual type {type!r}; use 'martingale' or 'schoenfeld'.")
+
     # -- interop --------------------------------------------------------------
 
     def to_dataframe(self, *, exponentiate: bool = False) -> Any:
