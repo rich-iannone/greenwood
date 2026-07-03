@@ -601,7 +601,8 @@ class CoxPH:
 
         Matches R's `survival::concordance`: a subject that dies at time `t` is treated as
         having failed before another subject still under observation at `t` (including one
-        censored exactly at `t`); pairs tied in event time are excluded.
+        censored exactly at `t`); pairs tied in event time are excluded. For stratified
+        models, only within-stratum pairs are compared.
         """
         risk = self._x @ self.coef_
         exit_ = self._exit
