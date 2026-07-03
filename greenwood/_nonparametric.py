@@ -1,3 +1,20 @@
+@dataclass(frozen=True)
+class _Block:
+    """One stratum's fitted curve."""
+
+    label: object
+    time: Array
+    n_risk: Array
+    n_event: Array
+    n_censor: Array
+    surv: Array
+    std_error: Array  # se(S), Greenwood
+    conf_low: Array
+    conf_high: Array
+    cumhaz: Array
+    cumhaz_var: Array
+
+
 def _fit_blocks(surv: Surv, by: Any, weights: Any, conf_type: str, z: float) -> list[_Block]:
     et = event_table(surv, group=by, weights=weights)
     if et.strata is None:
