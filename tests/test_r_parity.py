@@ -177,6 +177,50 @@ def test_logrank_veteran_celltype_matches_r() -> None:
     _check_logrank(result, load_fixture("logrank_veteran_celltype"), "log-rank veteran/celltype")
 
 
+def _check_cox(cox: gw.CoxPH, fixture: dict[str, Any], label: str) -> None:
+    assert cox.term_names_ == fixture["terms"]
+    assert cox.n_ == fixture["n"]
+    assert cox.n_event_ == fixture["nevent"]
+    assert_allclose_to_r(cox.coef_, fixture["coef"], what=f"{label} coef")
+    assert_allclose_to_r(cox.std_error_, fixture["se"], what=f"{label} se")
+    assert_allclose_to_r(cox.z_, fixture["z"], rtol=1e-6, atol=1e-6, what=f"{label} z")
+    assert_allclose_to_r(cox.p_value_, fixture["p"], rtol=1e-6, atol=1e-8, what=f"{label} p")
+    assert_allclose_to_r(cox.hazard_ratio_, fixture["exp_coef"], what=f"{label} HR")
+    assert_allclose_to_r(cox.loglik_null_, fixture["loglik_null"], atol=1e-6, what=f"{label} ll0")
+    assert_allclose_to_r(cox.loglik_, fixture["loglik"], atol=1e-6, what=f"{label} ll")
+    # HR confidence limits (exponentiated scale).
+    tidy_exp = cox.to_dataframe(exponentiate=True)
+    assert_allclose_to_r(tidy_exp["conf_low"].to_numpy(), fixture["conf_low"], what=f"{label} lo")
+    assert_allclose_to_r(tidy_exp["conf_high"].to_numpy(), fixture["conf_high"], what=f"{label} hi")
+    # Global tests: LR and score are exact; R stores the Wald test rounded to 2 decimals.
+    assert_allclose_to_r(cox.lr_stat_, fixture["lr"]["stat"], atol=1e-4, what=f"{label} LR")
+    assert_allclose_to_r(
+        cox.score_stat_, fixture["score"]["stat"], atol=1e-4, what=f"{label} score"
+    )
+    assert_allclose_to_r(cox.wald_stat_, fixture["wald"]["stat"], atol=1e-2, what=f"{label} Wald")
+
+
+def test_cox_lung_age_sex_efron_matches_r() -> None:
+    df = gw.data.load_dataset("lung")
+    y = Surv.right(df["time"], event=(df["status"] == 2))
+    cox = gw.CoxPH(ties="efron").fit(y, df[["age", "sex"]])
+    _check_cox(cox, load_fixture("cox_lung_age_sex_efron"), "cox efron")
+
+
+def test_cox_lung_age_sex_breslow_matches_r() -> None:
+    df = gw.data.load_dataset("lung")
+    y = Surv.right(df["time"], event=(df["status"] == 2))
+    cox = gw.CoxPH(ties="breslow").fit(y, df[["age", "sex"]])
+    _check_cox(cox, load_fixture("cox_lung_age_sex_breslow"), "cox breslow")
+
+
+def test_cox_lung_three_covariates_matches_r() -> None:
+    df = gw.data.load_dataset("lung")
+    y = Surv.right(df["time"], event=(df["status"] == 2))
+    cox = gw.CoxPH(ties="efron").fit(y, df[["age", "sex", "ph.ecog"]])
+    _check_cox(cox, load_fixture("cox_lung_three_efron"), "cox three")
+
+
 def test_risk_table_numbers_match_r() -> None:
     # risk_table_data needs only numpy/pandas (no plotnine), so it runs here.
     fixture = load_fixture("risk_table_lung_sex")
