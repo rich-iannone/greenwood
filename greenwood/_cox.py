@@ -207,8 +207,23 @@ class CoxPH:
         self.ties = ties
         self.conf_level = conf_level
 
-    def fit(self, surv: Surv, covariates: Any, *, max_iter: int = 30, tol: float = 1e-9) -> CoxPH:
-        """Fit the model to a `Surv` response and a covariate design."""
+    def fit(
+        self,
+        surv: Surv,
+        covariates: Any,
+        *,
+        strata: Any = None,
+        robust: bool = False,
+        cluster: Any = None,
+        max_iter: int = 30,
+        tol: float = 1e-9,
+    ) -> CoxPH:
+        """Fit the model to a `Surv` response and a covariate design.
+
+        `strata` gives per-stratum baseline hazards with shared coefficients. `robust=True`
+        (or providing `cluster` ids) reports the Lin-Wei sandwich variance; `cluster` sums
+        the score residuals within groups before forming the sandwich.
+        """
         from ._surv import CensoringType
 
         if surv.type not in (CensoringType.RIGHT, CensoringType.COUNTING):
@@ -226,8 +241,15 @@ class CoxPH:
         event = surv.event
         weight = surv.weights if surv.weights is not None else np.ones(surv.n)
 
-        # Complete-case analysis: drop rows with any missing covariate.
+        strata_labels = None if strata is None else _to_labels(strata, surv.n, "strata")
+        cluster_labels = None if cluster is None else _to_labels(cluster, surv.n, "cluster")
+
+        # Complete-case analysis: drop rows with any missing covariate, stratum, or cluster.
         keep = ~np.isnan(x).any(axis=1)
+        if strata_labels is not None:
+            keep &= ~_missing_mask(strata_labels)
+        if cluster_labels is not None:
+            keep &= ~_missing_mask(cluster_labels)
         x, entry, exit_, event, weight = (
             x[keep],
             entry[keep],
@@ -235,14 +257,26 @@ class CoxPH:
             event[keep],
             weight[keep],
         )
+        if strata_labels is not None:
+            strata_labels = strata_labels[keep]
+        if cluster_labels is not None:
+            cluster_labels = cluster_labels[keep]
         if not event.any():
             raise ValueError("No events remain after dropping missing rows.")
 
-        event_times = np.unique(exit_[event])
+        # Group members by stratum (a single group when unstratified).
+        if strata_labels is None:
+            strata_groups = [(np.arange(x.shape[0]), np.unique(exit_[event]))]
+        else:
+            strata_groups = []
+            for level in dict.fromkeys(strata_labels.tolist()):
+                members = np.nonzero(strata_labels == level)[0]
+                ev_times = np.unique(exit_[members][event[members]])
+                strata_groups.append((members, ev_times))
         p = x.shape[1]
 
         def terms(beta: Array) -> tuple[float, Array, Array]:
-            return _cox_terms(beta, x, entry, exit_, event, weight, event_times, self.ties)
+            return _cox_terms(beta, x, entry, exit_, event, weight, strata_groups, self.ties)
 
         beta = np.zeros(p)
         loglik_null, grad0, info0 = terms(beta)
@@ -265,12 +299,35 @@ class CoxPH:
                 break
 
         _, _, info = terms(beta)
-        var = np.linalg.inv(info)
+        naive_var = np.linalg.inv(info)
+
+        # Retain the fitted design for diagnostics, baseline hazard, and prediction.
+        self._x = x
+        self._entry = entry
+        self._exit = exit_
+        self._event = event
+        self._weight = weight
+        self._strata_groups = strata_groups
+        self._strata_labels = strata_labels
+        self._xbar = (weight[:, None] * x).sum(axis=0) / weight.sum()
 
         self.term_names_ = names
         self.coef_ = beta
-        self.vcov_ = var
-        self.std_error_ = np.sqrt(np.diag(var))
+        self.naive_vcov_ = naive_var
+        self.naive_std_error_ = np.sqrt(np.diag(naive_var))
+        self.robust = robust or cluster is not None
+
+        if self.robust:
+            scores = self._score_residuals(beta)
+            if cluster_labels is not None:
+                levels = list(dict.fromkeys(cluster_labels.tolist()))
+                scores = np.array([scores[cluster_labels == lev].sum(axis=0) for lev in levels])
+            meat = scores.T @ scores
+            self.vcov_ = naive_var @ meat @ naive_var
+        else:
+            self.vcov_ = naive_var
+
+        self.std_error_ = np.sqrt(np.diag(self.vcov_))
         self.hazard_ratio_ = np.exp(beta)
         self.z_ = beta / self.std_error_
         self.p_value_ = 2.0 * norm.sf(np.abs(self.z_))
@@ -287,17 +344,8 @@ class CoxPH:
         # Global tests (all chi-square on p degrees of freedom).
         self.df_ = p
         self.lr_stat_ = 2.0 * (loglik - loglik_null)
-        self.wald_stat_ = float(beta @ np.linalg.solve(var, beta))
+        self.wald_stat_ = float(beta @ np.linalg.solve(self.vcov_, beta))
         self.score_stat_ = float(grad0 @ np.linalg.solve(info0, grad0))
-
-        # Retain the fitted design for diagnostics, baseline hazard, and prediction.
-        self._x = x
-        self._entry = entry
-        self._exit = exit_
-        self._event = event
-        self._weight = weight
-        self._event_times = event_times
-        self._xbar = (weight[:, None] * x).sum(axis=0) / weight.sum()
         return self
 
     # -- baseline hazard & prediction ----------------------------------------
