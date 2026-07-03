@@ -63,6 +63,11 @@ class ZPHResult:
 _TIES = frozenset({"efron", "breslow"})
 
 
+def _missing_mask(labels: Array) -> Array:
+    """Boolean mask of missing entries (None or NaN) in an object array."""
+    return np.array([v is None or (isinstance(v, float) and v != v) for v in labels], dtype=bool)
+
+
 def _design_matrix(covariates: Any) -> tuple[Array, list[str]]:
     """Build a numeric design matrix and term names from covariates.
 
