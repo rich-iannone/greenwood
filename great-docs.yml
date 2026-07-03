@@ -33,6 +33,12 @@ reference:
       - name: NelsonAalen
         members: true
 
+  - title: Regression
+    desc: Cox proportional hazards.
+    contents:
+      - name: CoxPH
+        members: true
+
   - title: Group comparisons
     desc: The log-rank test and the G-rho (Fleming-Harrington) family.
     contents:
