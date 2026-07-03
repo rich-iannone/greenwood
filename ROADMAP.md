@@ -28,6 +28,9 @@ public capability roadmap.
   subdistribution hazard model with clustered robust standard errors, and Aalen-Johansen
   multi-state transition/occupancy probabilities. R-validated against `survfit` and
   `finegray`.
+- **Prediction-performance metrics**: Harrell's concordance index and the IPCW (Graf)
+  Brier score with its time integral. R-validated against `survival::concordance` and
+  `survival::brier`.
 
 ## Descriptive
 
@@ -47,9 +50,8 @@ public capability roadmap.
 - **Competing risks & multi-state**: Gray's test, multi-state standard errors, and
   pseudo-observations (building on the Aalen-Johansen CIF, Fine-Gray model, and multi-state
   occupancy probabilities already shipped).
-- **Frailty, penalized, additive, cure, and prediction metrics**: shared frailty,
-  elastic-net Cox, additive hazards, cure models, time-dependent AUC, Brier/IPCW,
-  calibration.
+- **Frailty, penalized, additive, cure, and further metrics**: shared frailty, elastic-net
+  Cox, additive hazards, cure models, time-dependent AUC, and calibration.
 
 ## Toward 1.0
 
