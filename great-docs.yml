@@ -34,9 +34,11 @@ reference:
         members: true
 
   - title: Regression
-    desc: Cox proportional hazards.
+    desc: Cox proportional hazards, with diagnostics and prediction.
     contents:
       - name: CoxPH
+        members: true
+      - name: ZPHResult
         members: true
 
   - title: Group comparisons
