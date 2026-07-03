@@ -239,4 +239,49 @@ cox_diag_fixture <- function(ties) {
 write_json_fixture(cox_diag_fixture("breslow"), "cox_diag_breslow")
 write_json_fixture(cox_diag_fixture("efron"), "cox_diag_efron")
 
+# -- Stratified Cox and robust (sandwich) variance ----------------------------------
+
+cm_strata <- coxph(Surv(time, status) ~ age + ph.ecog + strata(sex), data = lung)
+ss <- summary(cm_strata)
+write_json_fixture(
+  list(
+    terms = rownames(ss$coefficients),
+    coef = unname(ss$coefficients[, "coef"]),
+    se = unname(sqrt(diag(cm_strata$var))),
+    loglik_null = cm_strata$loglik[1],
+    loglik = cm_strata$loglik[2],
+    n = cm_strata$n,
+    nevent = cm_strata$nevent,
+    lr = unname(ss$logtest["test"]),
+    wald = unname(ss$waldtest["test"]),
+    score = unname(ss$sctest["test"])
+  ),
+  "cox_strata"
+)
+
+cm_robust <- coxph(Surv(time, status) ~ age + sex, data = lung, robust = TRUE, ties = "breslow")
+sr <- summary(cm_robust)$coefficients
+write_json_fixture(
+  list(
+    terms = rownames(sr),
+    coef = unname(sr[, "coef"]),
+    naive_se = unname(sr[, "se(coef)"]),
+    robust_se = unname(sr[, "robust se"]),
+    z = unname(sr[, "z"]),
+    p = unname(sr[, "Pr(>|z|)"])
+  ),
+  "cox_robust"
+)
+
+cm_cluster <- coxph(Surv(time, status) ~ age + sex + cluster(inst), data = lung, ties = "breslow")
+write_json_fixture(
+  list(
+    terms = names(cm_cluster$coef),
+    coef = unname(cm_cluster$coef),
+    robust_se = unname(sqrt(diag(cm_cluster$var))),
+    n = cm_cluster$n
+  ),
+  "cox_cluster"
+)
+
 cat("done\n")
