@@ -8,11 +8,13 @@ public capability roadmap.
 - The `Surv` response object (right/left/interval/counting censoring, left truncation,
   weights, multi-state endpoints) and the narwhals risk-set/event-table kernel, validated
   against R's `survival`, plus the tidy protocol.
+- **Kaplan-Meier & Nelson-Aalen**: survival and cumulative-hazard estimators with Greenwood
+  variance, `plain`/`log`/`log-log` confidence intervals, median and quantiles,
+  step-function prediction, and stratification. R-validated.
 
 ## Descriptive
 
-- **Kaplan-Meier & Nelson-Aalen**: survival and cumulative-hazard estimators, CI
-  transforms, median/quantiles, RMST, left truncation.
+- **Restricted mean survival time (RMST)** with variance, and remaining CI transforms.
 - **Group comparisons**: log-rank, the G-rho (Fleming-Harrington) family, stratified and
   trend tests, pairwise comparisons, RMST differences.
 - **Visualization (plotnine)**: KM/CIF curves with CI ribbons, censoring marks, risk
