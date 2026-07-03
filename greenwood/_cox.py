@@ -231,3 +231,22 @@ def _tidy_cox(model: CoxPH, *, exponentiate: bool = False, **_: Any) -> Any:
     return model.to_dataframe(exponentiate=exponentiate)
 
 
+def _glance_cox(model: CoxPH, **_: Any) -> Any:
+    """broom-style `glance`: one-row model summary."""
+    import pandas as pd
+
+    return pd.DataFrame(
+        [
+            {
+                "n": model.n_,
+                "nevent": model.n_event_,
+                "loglik": model.loglik_,
+                "aic": -2.0 * model.loglik_ + 2.0 * model.df_,
+                "lr_statistic": model.lr_stat_,
+                "df": model.df_,
+                "lr_p_value": float(chi2.sf(model.lr_stat_, model.df_)),
+            }
+        ]
+    )
+
+
