@@ -350,8 +350,8 @@ class CoxPH:
 
     # -- baseline hazard & prediction ----------------------------------------
 
-    def _baseline(self) -> tuple[Array, Array]:
-        """Uncentered Breslow/Efron baseline cumulative hazard at every unique time.
+    def _group_label(self, members: Array) -> Any:
+        return None if self._strata_labels is None else self._strata_labels[members[0]]
 
         Reported at all unique exit times (event and censoring), matching R's `basehaz`;
         the hazard only increments at event times.
