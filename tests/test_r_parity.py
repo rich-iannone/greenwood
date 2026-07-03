@@ -287,6 +287,41 @@ def test_cox_concordance_matches_r(ties: str) -> None:
     assert_allclose_to_r(cox.concordance(), fixture["concordance"], what="concordance")
 
 
+def test_cox_stratified_matches_r() -> None:
+    df = gw.data.load_dataset("lung")
+    y = Surv.right(df["time"], event=(df["status"] == 2))
+    fixture = load_fixture("cox_strata")
+    cox = gw.CoxPH().fit(y, df[["age", "ph.ecog"]], strata=df["sex"])
+    assert cox.term_names_ == fixture["terms"]
+    assert cox.n_ == fixture["n"]
+    assert cox.n_event_ == fixture["nevent"]
+    assert_allclose_to_r(cox.coef_, fixture["coef"], what="strata coef")
+    assert_allclose_to_r(cox.std_error_, fixture["se"], what="strata se")
+    assert_allclose_to_r(cox.loglik_, fixture["loglik"], atol=1e-6, what="strata loglik")
+    assert_allclose_to_r(cox.lr_stat_, fixture["lr"], atol=1e-4, what="strata LR")
+    assert_allclose_to_r(cox.score_stat_, fixture["score"], atol=1e-4, what="strata score")
+
+
+def test_cox_robust_variance_matches_r() -> None:
+    df = gw.data.load_dataset("lung")
+    y = Surv.right(df["time"], event=(df["status"] == 2))
+    fixture = load_fixture("cox_robust")
+    cox = gw.CoxPH(ties="breslow").fit(y, df[["age", "sex"]], robust=True)
+    assert_allclose_to_r(cox.coef_, fixture["coef"], what="robust coef")
+    assert_allclose_to_r(cox.naive_std_error_, fixture["naive_se"], what="naive se")
+    assert_allclose_to_r(cox.std_error_, fixture["robust_se"], what="robust se")
+
+
+def test_cox_cluster_robust_variance_matches_r() -> None:
+    df = gw.data.load_dataset("lung")
+    y = Surv.right(df["time"], event=(df["status"] == 2))
+    fixture = load_fixture("cox_cluster")
+    cox = gw.CoxPH(ties="breslow").fit(y, df[["age", "sex"]], cluster=df["inst"])
+    assert cox.n_ == fixture["n"]
+    assert_allclose_to_r(cox.coef_, fixture["coef"], what="cluster coef")
+    assert_allclose_to_r(cox.std_error_, fixture["robust_se"], what="cluster robust se")
+
+
 def test_risk_table_numbers_match_r() -> None:
     # risk_table_data needs only numpy/pandas (no plotnine), so it runs here.
     fixture = load_fixture("risk_table_lung_sex")
