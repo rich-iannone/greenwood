@@ -214,6 +214,23 @@ ms.predict([12, 60])   # occupancy at specific times
 ms.transition_         # the P(0, t) transition-probability matrices
 ```
 
+## Prediction performance
+
+Evaluate a fitted model or an external risk score with the concordance index and the
+inverse-probability-of-censoring-weighted (IPCW) Brier score:
+
+```python
+cox = gw.CoxPH().fit(y, df[["age", "sex"]])
+
+gw.concordance_index(y, cox.predict(type="lp"))   # Harrell's C
+
+times = [180, 365, 540]
+surv = cox.predict(df[["age", "sex"]], type="survival", times=times)
+probs = surv.iloc[:, 1:].to_numpy().T             # (n_obs, len(times))
+gw.brier_score(y, probs, times)                   # IPCW Brier score at each time
+gw.integrated_brier_score(y, probs, times)         # time-averaged Brier score
+```
+
 ## Round-trip the response
 
 The `Surv` object serializes deterministically, the basis for reproducible pipelines:
