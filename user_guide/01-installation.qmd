@@ -1,0 +1,39 @@
+---
+title: Installation
+---
+
+Greenwood targets Python 3.10+ and is not yet on PyPI. Once released:
+
+```bash
+pip install greenwood
+```
+
+## Optional extras
+
+The core depends only on narwhals, NumPy, and SciPy. Backend- and feature-specific pieces
+are optional extras:
+
+| Extra | Adds |
+|---|---|
+| `pd` | pandas |
+| `pl` | Polars |
+| `formula` | formulaic (the `Surv(...) ~ x` formula API) |
+| `viz` | plotnine (visualization) |
+| `tables` | Great Tables (publication tables) |
+| `fast` | numba (accelerated kernels) |
+| `all` | pd, pl, formula, viz, tables |
+
+```bash
+pip install "greenwood[all]"
+```
+
+## From source
+
+```bash
+git clone https://github.com/rich-iannone/greenwood.git
+cd greenwood
+make install   # pip install -e ".[dev]"
+make check     # ruff + pyright + pytest
+```
+
+The version is derived from git tags by `setuptools_scm`; no version string is committed.
