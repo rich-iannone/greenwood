@@ -30,7 +30,8 @@ This release ships:
 - **`AFT`** parametric accelerated failure time models (Weibull, exponential, log-normal,
   log-logistic), validated against R's `survreg`;
 - **`AalenJohansen`** cumulative incidence functions for competing risks (per-cause CIFs
-  with delta-method standard errors), validated against R's `survfit`;
+  with delta-method standard errors), and the **`FineGray`** subdistribution hazard model
+  (with clustered robust standard errors), validated against R's `survfit` and `finegray`;
 - **plotnine visualization** (`plot_survival`) with confidence ribbons, censoring marks, and
   an aligned numbers-at-risk table;
 - bundled datasets (`lung`, `veteran`, `ovarian`, `pbc`, `colon`) and an **R-parity test
@@ -38,9 +39,8 @@ This release ships:
   `survdiff`, `coxph`, and the `survival` restricted mean);
 - the **tidy layer** (`greenwood.tidy`), broom-compatible and aligned with Great Summaries.
 
-The Fine-Gray subdistribution model and Gray's test, multi-state models,
-flexible-parametric (spline) models, and further Cox extensions arrive in subsequent
-releases. See [`ROADMAP.md`](ROADMAP.md).
+Gray's test, multi-state models, flexible-parametric (spline) models, and further Cox
+extensions arrive in subsequent releases. See [`ROADMAP.md`](ROADMAP.md).
 
 ## Quick look
 
@@ -77,6 +77,7 @@ etime = mg["ptime"].where(mg["pstat"] == 1, mg["futime"])
 cause = mg["pstat"].where(mg["pstat"] == 1, 2 * mg["death"])   # 0 censor, 1 pcm, 2 death
 cr = Surv.multistate(etime, event=cause, states=("pcm", "death"))
 gw.AalenJohansen().fit(cr).to_dataframe()
+gw.FineGray("pcm").fit(cr, mg[["age", "sex"]]).to_dataframe()   # subdistribution model
 ```
 
 ## Development
