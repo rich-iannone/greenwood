@@ -66,3 +66,55 @@ def test_grouped_has_strata_column() -> None:
 def test_group_length_checked() -> None:
     with pytest.raises(ValueError, match="same length"):
         AalenJohansen().fit(_simple_multistate(), by=["a", "b"])
+
+
+# -- Fine-Gray -------------------------------------------------------------------
+
+
+def _mgus2_cr():  # type: ignore[no-untyped-def]
+    df = gw.data.load_dataset("mgus2")
+    etime = np.where(df["pstat"] == 1, df["ptime"], df["futime"])
+    cause = np.where(df["pstat"] == 1, 1, 2 * df["death"])
+    return df, gw.Surv.multistate(etime, event=cause, states=("pcm", "death"))
+
+
+def test_finegray_requires_multistate() -> None:
+    from greenwood import FineGray
+
+    with pytest.raises(ValueError, match="multi-state"):
+        FineGray("pcm").fit(gw.Surv.right([1, 2, 3], [1, 1, 1]), np.zeros((3, 1)))
+
+
+def test_finegray_unknown_cause() -> None:
+    from greenwood import FineGray
+
+    df, y = _mgus2_cr()
+    with pytest.raises(ValueError, match="not one of the states"):
+        FineGray("relapse").fit(y, df[["age"]])
+
+
+def test_finegray_accepts_cause_by_code() -> None:
+    from greenwood import FineGray
+
+    df, y = _mgus2_cr()
+    by_label = FineGray("pcm").fit(y, df[["age", "sex"]]).coef_
+    by_code = FineGray(1).fit(y, df[["age", "sex"]]).coef_
+    np.testing.assert_allclose(by_label, by_code)
+
+
+def test_finegray_tidy_and_glance() -> None:
+    from greenwood import FineGray
+
+    df, y = _mgus2_cr()
+    fg = FineGray("pcm").fit(y, df[["age", "sex"]])
+    tidy = gw.tidy.tidy(fg, exponentiate=True)
+    np.testing.assert_allclose(tidy["estimate"].to_numpy(), fg.hazard_ratio_)
+    assert gw.tidy.glance(fg).iloc[0]["nevent"] > 0
+
+
+def test_finegray_length_mismatch() -> None:
+    from greenwood import FineGray
+
+    df, y = _mgus2_cr()
+    with pytest.raises(ValueError, match="same number of rows"):
+        FineGray("pcm").fit(y, df[["age"]].iloc[:-1])
