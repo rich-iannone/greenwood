@@ -297,6 +297,38 @@ class CoxPH:
         """Centered linear predictor `(x - xbar) . beta` (as in R `predict(type='lp')`)."""
         return (x - self._xbar) @ self.coef_
 
+    def predict(self, newdata: Any = None, *, type: str = "lp", times: Any = None) -> Any:
+        """Predict from the fitted model.
+
+        `type` is one of `"lp"` (centered linear predictor), `"risk"` (`exp(lp)`), or
+        `"survival"`. For `"survival"`, returns a frame of survival probabilities at `times`
+        (defaulting to the event times), one column per row of `newdata`.
+        """
+        if newdata is None:
+            x = self._x
+        else:
+            x, _ = _design_matrix(newdata)
+
+        if type == "lp":
+            return self._linear_predictor(x)
+        if type == "risk":
+            return np.exp(self._linear_predictor(x))
+        if type == "survival":
+            import pandas as pd
+
+            base_times, base_cumhaz = self._baseline()
+            query = base_times if times is None else np.atleast_1d(np.asarray(times, dtype=float))
+            idx = np.searchsorted(base_times, query, side="right") - 1
+            h0 = np.where(idx >= 0, base_cumhaz[idx.clip(min=0)], 0.0)
+            risk = np.exp(x @ self.coef_)  # uncentered: S(t|x) = exp(-H0(t) exp(x.beta))
+            surv = np.exp(-np.outer(h0, risk))
+            frame = pd.DataFrame({f"subject_{i + 1}": surv[:, i] for i in range(x.shape[0])})
+            frame.insert(0, "time", query)
+            return frame
+        raise ValueError(f"Unknown predict type {type!r}; use 'lp', 'risk', or 'survival'.")
+
+    # -- residuals & diagnostics ---------------------------------------------
+
     # -- interop --------------------------------------------------------------
 
     def to_dataframe(self, *, exponentiate: bool = False) -> Any:
