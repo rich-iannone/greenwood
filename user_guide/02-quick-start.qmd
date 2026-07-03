@@ -1,0 +1,57 @@
+---
+title: Quick start
+---
+
+The estimators are not built yet, but the foundation (the `Surv` response and the risk-set
+kernel) is fully usable and R-validated.
+
+## Build a response
+
+```python
+import greenwood as gw
+from greenwood import Surv
+
+df = gw.data.load_dataset("lung")
+
+# survival::lung codes status as 1 = censored, 2 = dead, so convert explicitly.
+y = Surv.right(df["time"], event=(df["status"] == 2))
+y
+# Surv(type=right, n=228, events=165)
+```
+
+Other censoring flavors:
+
+```python
+Surv.counting(start=df["t0"], stop=df["t1"], event=df["ev"])   # left truncation / time-varying
+Surv.interval(lower=df["lo"], upper=df["hi"])                  # interval-censored
+Surv.multistate(df["time"], event=df["cause"], states=("relapse", "death"))  # competing risks
+```
+
+## Tabulate the risk set
+
+`event_table` is the kernel every estimator builds on. It matches R's `survfit` tabulation:
+
+```python
+et = gw.event_table(y)
+et.to_dataframe().head()
+#    time  n_risk  n_event  n_censor
+# 0     5     228        1         0
+# 1    11     227        3         0
+# ...
+```
+
+Stratify by a group:
+
+```python
+gw.event_table(y, group=df["sex"]).to_dataframe()
+```
+
+## Round-trip the response
+
+The `Surv` object serializes deterministically, the basis for reproducible pipelines:
+
+```python
+text = y.to_json()
+restored = Surv.from_json(text)
+assert restored.to_json() == text
+```
