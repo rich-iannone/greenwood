@@ -76,3 +76,25 @@ def _n_at_risk(block: Any, times: Array) -> Array:
     return out
 
 
+def risk_table_data(km: KaplanMeier, times: Any = None) -> Any:
+    """Return a tidy frame of the number at risk per stratum at each of `times`."""
+    import pandas as pd
+
+    query = np.asarray(_default_times(km) if times is None else times, dtype=float)
+    rows: list[dict[str, Any]] = []
+    for block in km._blocks:
+        counts = _n_at_risk(block, query)
+        for t, n in zip(query, counts, strict=True):
+            rows.append({"strata": _strata_label(block), "time": float(t), "n_risk": float(n)})
+    return pd.DataFrame(rows)
+
+
+def theme_survival() -> Any:
+    """A light publication theme for survival plots."""
+    p9 = _require_plotnine()
+    return p9.theme_minimal() + p9.theme(
+        legend_position="top",
+        panel_grid_minor=p9.element_blank(),
+    )
+
+
