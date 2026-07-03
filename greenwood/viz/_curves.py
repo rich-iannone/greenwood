@@ -98,3 +98,84 @@ def theme_survival() -> Any:
     )
 
 
+def plot_survival(
+    km: KaplanMeier,
+    *,
+    conf_int: bool = True,
+    censor_marks: bool = True,
+    risk_table: bool = False,
+    times: Any = None,
+    xlab: str = "Time",
+    ylab: str = "Survival probability",
+) -> Any:
+    """Plot Kaplan-Meier survival curve(s) with plotnine.
+
+    Parameters
+    ----------
+    km
+        A fitted `KaplanMeier`.
+    conf_int
+        Draw the confidence band as a stepped ribbon.
+    censor_marks
+        Mark censoring times with tick points on the curve.
+    risk_table
+        If true, return a `plotnine.composition` stacking the curve over an aligned
+        numbers-at-risk table instead of a bare `ggplot`.
+    times
+        Times for the risk table (defaults to six evenly spaced, rounded times).
+    xlab, ylab
+        Axis labels.
+
+    Returns
+    -------
+    A plotnine `ggplot` (or a composition when `risk_table=True`).
+    """
+    import pandas as pd
+
+    p9 = _require_plotnine()
+
+    steps = pd.concat([_step_frame(b) for b in km._blocks], ignore_index=True)
+    grouped = km._grouped
+
+    plot = p9.ggplot(steps, p9.aes(x="time", y="estimate"))
+    if conf_int:
+        ribbon = steps.dropna(subset=["conf_low", "conf_high"])
+        if grouped:
+            plot = plot + p9.geom_ribbon(
+                ribbon,
+                p9.aes(ymin="conf_low", ymax="conf_high", fill="strata"),
+                alpha=0.18,
+                show_legend=False,
+            )
+        else:
+            plot = plot + p9.geom_ribbon(
+                ribbon,
+                p9.aes(ymin="conf_low", ymax="conf_high"),
+                alpha=0.18,
+                fill="#20558A",
+            )
+    if grouped:
+        plot = plot + p9.geom_line(p9.aes(color="strata"))
+    else:
+        plot = plot + p9.geom_line(color="#20558A")
+
+    if censor_marks:
+        censors = pd.concat([_censor_frame(b) for b in km._blocks], ignore_index=True)
+        if len(censors):
+            plot = plot + p9.geom_point(
+                censors, p9.aes(x="time", y="estimate"), shape="+", size=3, show_legend=False
+            )
+
+    plot = (
+        plot
+        + p9.scale_y_continuous(limits=[0.0, 1.0])
+        + p9.labs(x=xlab, y=ylab, color="Group", fill="Group")
+        + theme_survival()
+    )
+
+    if not risk_table:
+        return plot
+
+    return plot / _risk_table_plot(km, times=times, xlab=xlab)
+
+
