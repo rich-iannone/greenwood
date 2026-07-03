@@ -216,3 +216,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Great Docs build output
+great-docs/
+/*.md
+!README.md
+!ROADMAP.md
