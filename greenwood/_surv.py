@@ -302,3 +302,11 @@ class Surv:
             weights=_arr("weights"),
         )
 
+    def to_json(self, *, indent: int | None = 2) -> str:
+        """Serialize to a deterministic JSON string."""
+        return json.dumps(self.to_dict(), indent=indent)
+
+    @classmethod
+    def from_json(cls, text: str) -> Self:
+        """Deserialize from `to_json` output."""
+        return cls.from_dict(json.loads(text))
