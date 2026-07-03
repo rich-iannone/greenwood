@@ -51,6 +51,12 @@ def _fit_blocks(surv: Surv, by: Any, weights: Any, conf_type: str, z: float) -> 
     return blocks
 
 
+def _crossing_time(time: Array, curve: Array, level: float) -> float:
+    """First time at which a monotone-decreasing `curve` drops to <= `level`."""
+    hit = np.nonzero(curve <= level)[0]
+    return float(time[hit[0]]) if hit.size else float("nan")
+
+
 class KaplanMeier:
     """Kaplan-Meier product-limit estimator of the survival function.
 
