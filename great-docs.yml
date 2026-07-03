@@ -43,12 +43,14 @@ reference:
       - name: AFT
         members: true
 
-  - title: Competing risks
-    desc: Cumulative incidence functions and the Fine-Gray subdistribution model.
+  - title: Competing risks & multi-state
+    desc: Cumulative incidence, the Fine-Gray model, and multi-state transition probabilities.
     contents:
       - name: AalenJohansen
         members: true
       - name: FineGray
+        members: true
+      - name: MultiState
         members: true
 
   - title: Group comparisons
