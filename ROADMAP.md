@@ -23,9 +23,11 @@ public capability roadmap.
   `coxph`, `basehaz`, `residuals`, `cox.zph`, and `concordance`.
 - **Parametric AFT models** (`AFT`): Weibull, exponential, log-normal, and log-logistic
   accelerated failure time models, R-validated against `survreg`.
-- **Competing risks** (`AalenJohansen`, `FineGray`): per-cause cumulative incidence
-  functions with delta-method standard errors, and the Fine-Gray subdistribution hazard
-  model with clustered robust standard errors. R-validated against `survfit` and `finegray`.
+- **Competing risks & multi-state** (`AalenJohansen`, `FineGray`, `MultiState`): per-cause
+  cumulative incidence functions with delta-method standard errors, the Fine-Gray
+  subdistribution hazard model with clustered robust standard errors, and Aalen-Johansen
+  multi-state transition/occupancy probabilities. R-validated against `survfit` and
+  `finegray`.
 
 ## Descriptive
 
@@ -42,9 +44,9 @@ public capability roadmap.
 
 ## Advanced
 
-- **Competing risks & multi-state**: Gray's test, multi-state transition probabilities, and
-  pseudo-observations (building on the Aalen-Johansen CIF and Fine-Gray model already
-  shipped).
+- **Competing risks & multi-state**: Gray's test, multi-state standard errors, and
+  pseudo-observations (building on the Aalen-Johansen CIF, Fine-Gray model, and multi-state
+  occupancy probabilities already shipped).
 - **Frailty, penalized, additive, cure, and prediction metrics**: shared frailty,
   elastic-net Cox, additive hazards, cure models, time-dependent AUC, Brier/IPCW,
   calibration.

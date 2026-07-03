@@ -118,3 +118,51 @@ def test_finegray_length_mismatch() -> None:
     df, y = _mgus2_cr()
     with pytest.raises(ValueError, match="same number of rows"):
         FineGray("pcm").fit(y, df[["age"]].iloc[:-1])
+
+
+# -- Multi-state -----------------------------------------------------------------
+
+
+def test_multistate_illness_death_occupancy() -> None:
+    from greenwood import MultiState
+
+    # Two subjects: one mgus->pcm->death, one mgus->death directly.
+    ms = MultiState().fit(
+        start=[0, 5, 0],
+        stop=[5, 8, 6],
+        state=["mgus", "pcm", "mgus"],
+        event=["pcm", "death", "death"],
+        states=("mgus", "pcm", "death"),
+    )
+    table = ms.to_dataframe()
+    # Occupancy probabilities sum to 1 at every time.
+    row_sums = table[["mgus", "pcm", "death"]].sum(axis=1).to_numpy()
+    np.testing.assert_allclose(row_sums, 1.0)
+    # Everyone starts in mgus.
+    assert table.iloc[0]["mgus"] <= 1.0 and table["death"].iloc[-1] > 0.0
+
+
+def test_multistate_length_mismatch() -> None:
+    from greenwood import MultiState
+
+    with pytest.raises(ValueError, match="same length"):
+        MultiState().fit(start=[0, 0], stop=[1, 2], state=["a", "a"], event=["b"])
+
+
+def test_multistate_predict_step_function() -> None:
+    from greenwood import MultiState
+
+    ms = MultiState().fit(
+        start=[0, 0], stop=[2, 4], state=["a", "a"], event=["b", "b"], states=("a", "b")
+    )
+    pred = ms.predict([0.0, 3.0, 5.0])
+    assert list(pred.columns) == ["time", "a", "b"]
+    np.testing.assert_allclose(pred[["a", "b"]].sum(axis=1).to_numpy(), 1.0)
+
+
+def test_multistate_infers_states() -> None:
+    from greenwood import MultiState
+
+    ms = MultiState().fit(start=[0, 0], stop=[1, 2], state=["a", "a"], event=["b", None])
+    assert ms.states_ == ("a", "b")
+    assert list(ms.to_dataframe().columns) == ["time", "a", "b"]

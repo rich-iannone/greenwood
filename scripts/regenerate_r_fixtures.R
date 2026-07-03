@@ -344,6 +344,40 @@ write_json_fixture(
   "finegray_mgus2_pcm"
 )
 
+# Multi-state (illness-death) occupancy probabilities: mgus -> pcm -> death.
+ms_rows <- list()
+k <- 1
+for (i in seq_len(nrow(mg))) {
+  pt <- mg$ptime[i]
+  ft <- mg$futime[i]
+  prog <- mg$pstat[i] == 1
+  died <- mg$death[i] == 1
+  if (prog && pt < ft) {
+    ms_rows[[k]] <- data.frame(id = mg$id[i], t0 = 0, t1 = pt, from = "mgus", ev = "pcm")
+    k <- k + 1
+    ms_rows[[k]] <- data.frame(
+      id = mg$id[i], t0 = pt, t1 = ft, from = "pcm", ev = if (died) "death" else "censor"
+    )
+    k <- k + 1
+  } else {
+    ev <- if (died) "death" else if (prog) "pcm" else "censor"
+    ms_rows[[k]] <- data.frame(id = mg$id[i], t0 = 0, t1 = ft, from = "mgus", ev = ev)
+    k <- k + 1
+  }
+}
+msd <- do.call(rbind, ms_rows)
+msd <- msd[msd$t1 > msd$t0, ]
+msd$ev <- factor(msd$ev, levels = c("censor", "pcm", "death"))
+msd$from <- factor(msd$from, levels = c("mgus", "pcm", "death"))
+msf <- survfit(Surv(t0, t1, ev) ~ 1, data = msd, id = id, istate = from)
+write_json_fixture(
+  list(
+    time = msf$time, states = msf$states,
+    mgus = msf$pstate[, 1], pcm = msf$pstate[, 2], death = msf$pstate[, 3]
+  ),
+  "multistate_mgus2"
+)
+
 # Gray's test needs the cmprsk package (not in this toolchain); planned next.
 
 cat("done\n")

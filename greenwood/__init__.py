@@ -14,7 +14,7 @@ from __future__ import annotations
 from importlib.metadata import PackageNotFoundError, version
 
 from . import data, tidy, viz
-from ._competing import AalenJohansen, FineGray
+from ._competing import AalenJohansen, FineGray, MultiState
 from ._core import EventTable, event_table
 from ._cox import CoxPH, ZPHResult
 from ._nonparametric import KaplanMeier, NelsonAalen
@@ -41,6 +41,7 @@ __all__ = [
     "AFT",
     "AalenJohansen",
     "FineGray",
+    "MultiState",
     "logrank_test",
     "TestResult",
     "plot_survival",

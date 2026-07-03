@@ -373,6 +373,41 @@ def test_finegray_matches_r() -> None:
     assert_allclose_to_r(fg.std_error_, fixture["robust_se"], what="fine-gray robust se")
 
 
+def _mgus2_illness_death():  # type: ignore[no-untyped-def]
+    """Build the mgus -> pcm -> death counting-process intervals from mgus2."""
+    df = gw.data.load_dataset("mgus2")
+    t0: list[float] = []
+    t1: list[float] = []
+    frm: list[str] = []
+    evt: list[Any] = []
+    for i in range(len(df)):
+        pt, ft = df["ptime"][i], df["futime"][i]
+        prog, died = df["pstat"][i] == 1, df["death"][i] == 1
+        if prog and pt < ft:
+            t0 += [0, pt]
+            t1 += [pt, ft]
+            frm += ["mgus", "pcm"]
+            evt += ["pcm", "death" if died else None]
+        else:
+            t0 += [0]
+            t1 += [ft]
+            frm += ["mgus"]
+            evt += ["death" if died else ("pcm" if prog else None)]
+    keep = [b > a for a, b in zip(t0, t1, strict=True)]
+    sel = lambda xs: [x for x, k in zip(xs, keep, strict=True) if k]  # noqa: E731
+    return sel(t0), sel(t1), sel(frm), sel(evt)
+
+
+def test_multistate_occupancy_matches_r() -> None:
+    t0, t1, frm, evt = _mgus2_illness_death()
+    fixture = load_fixture("multistate_mgus2")
+    ms = gw.MultiState().fit(t0, t1, frm, evt, states=("mgus", "pcm", "death"))
+    table = ms.to_dataframe()
+    assert_allclose_to_r(table["time"].to_numpy(), fixture["time"], what="ms time")
+    for state in ("mgus", "pcm", "death"):
+        assert_allclose_to_r(table[state].to_numpy(), fixture[state], what=f"occupancy {state}")
+
+
 def test_risk_table_numbers_match_r() -> None:
     # risk_table_data needs only numpy/pandas (no plotnine), so it runs here.
     fixture = load_fixture("risk_table_lung_sex")

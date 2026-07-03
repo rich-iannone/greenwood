@@ -200,6 +200,20 @@ gw.tidy.tidy(fg, exponentiate=True)   # subdistribution hazard ratios
 fg.std_error_                         # clustered robust standard errors
 ```
 
+For general multi-state models, `MultiState` estimates the Aalen-Johansen transition and
+state-occupancy probabilities from counting-process intervals (each labelled with the state
+occupied and the state transitioned to):
+
+```python
+ms = gw.MultiState().fit(
+    start=intervals["t0"], stop=intervals["t1"],
+    state=intervals["from_state"], event=intervals["to_state"],
+)
+ms.to_dataframe()      # occupancy probability over time, one column per state
+ms.predict([12, 60])   # occupancy at specific times
+ms.transition_         # the P(0, t) transition-probability matrices
+```
+
 ## Round-trip the response
 
 The `Surv` object serializes deterministically, the basis for reproducible pipelines:

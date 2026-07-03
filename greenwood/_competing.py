@@ -377,3 +377,111 @@ def _register_finegray() -> None:
 
 
 _register_finegray()
+
+
+class MultiState:
+    """Aalen-Johansen estimator of multi-state transition and occupancy probabilities.
+
+    Given counting-process intervals `(start, stop]` each labelled with the state occupied
+    (`state`) and the state transitioned to at `stop` (`event`, or a censoring marker), this
+    forms the Aalen-Johansen product `P(0, t) = prod (I + dA(s))` and reports the state
+    occupancy probabilities over time. Occupancy probabilities are validated to tolerance
+    against R's `survfit` multi-state `pstate`. (Competing risks and Kaplan-Meier are special
+    cases handled by `AalenJohansen` and `KaplanMeier`.)
+    """
+
+    def fit(
+        self, start: Any, stop: Any, state: Any, event: Any, *, states: Any = None
+    ) -> MultiState:
+        """Fit to counting-process multi-state intervals.
+
+        Parameters
+        ----------
+        start, stop
+            Interval bounds `(start, stop]`.
+        state
+            The state occupied during each interval (the "from" state).
+        event
+            The state transitioned to at `stop`; a censoring marker (`None`/NaN/`0`) means
+            no transition.
+        states
+            Optional ordered list of all state labels (default: sorted unique).
+        """
+        from ._surv import _to_1d_array
+
+        t0 = _to_1d_array(start)
+        t1 = _to_1d_array(stop)
+        frm = _to_1d_array(state, dtype=object)
+        evt = _to_1d_array(event, dtype=object)
+        if not (t0.shape[0] == t1.shape[0] == frm.shape[0] == evt.shape[0]):
+            raise ValueError("start, stop, state, and event must have the same length.")
+
+        def is_censor(v: Any) -> bool:
+            return v is None or v == 0 or (isinstance(v, float) and v != v)
+
+        if states is None:
+            labels = set(frm.tolist()) | {v for v in evt.tolist() if not is_censor(v)}
+            self.states_ = tuple(sorted(labels, key=str))
+        else:
+            self.states_ = tuple(states)
+        index = {s: i for i, s in enumerate(self.states_)}
+        n_states = len(self.states_)
+
+        from_idx = np.array([index[s] for s in frm], dtype=int)
+        to_idx = np.array([-1 if is_censor(v) else index[v] for v in evt], dtype=int)
+
+        # Initial distribution from the entry intervals (earliest start).
+        entry = t0 == t0.min()
+        p0 = np.array([float((from_idx[entry] == j).sum()) for j in range(n_states)])
+        p0 /= p0.sum()
+
+        times = np.unique(t1)
+        prob = np.eye(n_states)
+        occupancy = np.empty((times.shape[0], n_states))
+        transition = np.empty((times.shape[0], n_states, n_states))
+        for row, t in enumerate(times):
+            increment = np.zeros((n_states, n_states))
+            for j in range(n_states):
+                y_j = float(((from_idx == j) & (t0 < t) & (t1 >= t)).sum())
+                if y_j == 0:
+                    continue
+                for k in range(n_states):
+                    if k != j:
+                        d = float(((from_idx == j) & (t1 == t) & (to_idx == k)).sum())
+                        increment[j, k] = d / y_j
+                increment[j, j] = -increment[j].sum()
+            prob = prob @ (np.eye(n_states) + increment)
+            transition[row] = prob
+            occupancy[row] = p0 @ prob
+
+        self.time_ = times
+        self.occupancy_ = occupancy
+        self.transition_ = transition  # P(0, t): row = time, [from, to]
+        self._p0 = p0
+        return self
+
+    def predict(self, times: Any) -> Any:
+        """State occupancy probabilities at `times` (right-continuous step function)."""
+        import pandas as pd
+
+        query = np.atleast_1d(np.asarray(times, dtype=float))
+        idx = np.searchsorted(self.time_, query, side="right") - 1
+        out = np.where(idx[:, None] >= 0, self.occupancy_[idx.clip(min=0)], self._p0[None, :])
+        frame = pd.DataFrame({str(s): out[:, j] for j, s in enumerate(self.states_)})
+        frame.insert(0, "time", query)
+        return frame
+
+    def to_dataframe(self, backend: str = "pandas") -> Any:
+        """Return occupancy probabilities over time (one column per state)."""
+        cols: dict[str, Array] = {"time": self.time_}
+        for j, state in enumerate(self.states_):
+            cols[str(state)] = self.occupancy_[:, j]
+        if backend == "pandas":
+            import pandas as pd
+
+            return pd.DataFrame(cols)
+        if backend == "polars":
+            import polars as pl
+
+            return pl.DataFrame(cols)
+        raise ValueError(f"Unknown backend {backend!r}; use 'pandas' or 'polars'.")
