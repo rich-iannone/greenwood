@@ -189,6 +189,74 @@ class AFT:
         design, _ = _design_matrix(newdata)
         return np.column_stack([np.ones(design.shape[0]), design])
 
+    def predict(
+        self,
+        newdata: Any = None,
+        *,
+        type: str = "survival",
+        times: Any = None,
+        p: Any = 0.5,
+        conditional_after: Any = None,
+    ) -> Any:
+        """Predict from the fitted AFT model.
+
+        `type` is one of:
+
+        - `"lp"`: the linear predictor `X . beta` (the fitted `log(T)` location).
+        - `"quantile"`: predicted survival-time quantiles at the failure probabilities `p`
+          (default the median). Matches R `predict(survreg, type="quantile")`.
+        - `"survival"`: survival probabilities `S(t | x)` at each time in `times` (defaulting
+          to a grid), returned as a frame with a `time` column and one column per subject.
+
+        For `type="survival"`, `conditional_after` (a scalar or one value per subject)
+        predicts conditional on having already survived to that time: the value at time `t` is
+        `P(T > t | T > c) = S(t) / S(c)`, and is 1 for `t <= c`.
+        """
+        x = self._design(newdata)
+        mu = x @ self.coef_
+        sigma = self.scale_
+
+        if type == "lp":
+            return mu
+        if type == "quantile":
+            import pandas as pd
+
+            p_arr = np.atleast_1d(np.asarray(p, dtype=float))
+            w = _error_quantile(self.dist, p_arr)
+            quantiles = np.exp(mu[:, None] + sigma * w[None, :])  # (n_subjects, n_p)
+            frame = pd.DataFrame(
+                {f"subject_{i + 1}": quantiles[i] for i in range(quantiles.shape[0])}
+            )
+            frame.insert(0, "p", p_arr)
+            return frame
+        if type == "survival":
+            import pandas as pd
+
+            if times is None:
+                w = _error_quantile(self.dist, np.linspace(0.01, 0.99, 50))
+                query = np.unique(np.round(np.exp(mu.mean() + sigma * w), 6))
+            else:
+                query = np.atleast_1d(np.asarray(times, dtype=float))
+            z = (np.log(query)[:, None] - mu[None, :]) / sigma  # (n_times, n_subjects)
+            _, log_s = _log_density_survival(self.dist, z)
+            if conditional_after is None:
+                surv = np.exp(log_s)
+            else:
+                c = np.asarray(conditional_after, dtype=float)
+                if c.ndim == 0:
+                    c = np.full(mu.shape[0], float(c))
+                if c.shape[0] != mu.shape[0]:
+                    raise ValueError("conditional_after must be a scalar or one value per subject.")
+                with np.errstate(divide="ignore"):
+                    zc = (np.log(c) - mu) / sigma
+                _, log_s_c = _log_density_survival(self.dist, zc)
+                log_s_c = np.where(c > 0, log_s_c, 0.0)  # S(c) = 1 for c <= 0
+                surv = np.exp(np.minimum(log_s - log_s_c[None, :], 0.0))  # ratio capped at 1
+            frame = pd.DataFrame({f"subject_{i + 1}": surv[:, i] for i in range(surv.shape[1])})
+            frame.insert(0, "time", query)
+            return frame
+        raise ValueError(f"Unknown predict type {type!r}; use 'lp', 'quantile', or 'survival'.")
+
     def to_dataframe(self) -> Any:
         """Return a tidy coefficient table (one row per term, including the intercept)."""
         import pandas as pd
