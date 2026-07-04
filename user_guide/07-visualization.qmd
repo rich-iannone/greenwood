@@ -19,7 +19,7 @@ the built-in appearance. This page covers the survival curve plot, confidence ba
 censoring marks, and the numbers-at-risk table.
 
 Plotnine is an optional dependency. If you installed Greenwood with the `viz` extra, or with
-`all`, you already have it. We use the `lung` dataset throughout.
+`all`, you already have it. We use the `lung` dataset throughout. First we build the response.
 
 ```{python}
 import greenwood as gw
@@ -27,12 +27,20 @@ from greenwood import Surv
 
 lung = gw.data.load_dataset("lung")
 y = Surv.right(lung["time"], event=(lung["status"] == 2))
-km = gw.KaplanMeier(conf_type="log-log").fit(y, by=lung["sex"])
+y
 ```
 
-Everything below draws from the fitted `km` object. Before plotting it, it helps to see the
-numbers the plot is built from. Calling `to_dataframe` on the fitted estimator returns the
-step-function estimates in tidy form, one row per stratum and time, with the survival
+We then fit a Kaplan-Meier estimator stratified by sex, one curve per group, using the
+log-log confidence interval transform. Printing the fitted estimator summarizes each stratum.
+
+```{python}
+km = gw.KaplanMeier(conf_type="log-log").fit(y, by=lung["sex"])
+km
+```
+
+Everything below draws from this fitted `km` object. Before plotting, it also helps to see
+the numbers the curve is built from. Calling `to_dataframe` on the fitted estimator returns
+the step-function estimates in tidy form, one row per stratum and time, with the survival
 probability and its confidence limits. The preview shows the first and last rows along with
 the full dimensions of the table.
 
