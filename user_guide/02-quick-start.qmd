@@ -3,241 +3,88 @@ title: Quick start
 guide-section: "Getting started"
 ---
 
-This walks through building a response, tabulating the risk set, and fitting the
-Kaplan-Meier and Nelson-Aalen estimators, all validated against R.
+```{python}
+#| echo: false
+#| output: false
+import great_docs as gd
 
-## Build a response
+gd.enable_tbl_preview(n_head=8, n_tail=3)
+```
 
-```python
+This is a short tour that goes from raw data to a survival curve, a plot, and a fitted model.
+Each step is only a few lines. The rest of the guide explains every piece in depth, and links
+are collected at the end.
+
+## Represent the data
+
+Survival data pairs a follow-up time with an indicator of whether the event was actually
+observed or the subject was censored (still event-free when we last saw them). Greenwood keeps
+the two together in a `Surv` object. We use the bundled `lung` dataset, the survival times of
+patients with advanced lung cancer.
+
+```{python}
 import greenwood as gw
 from greenwood import Surv
 
-df = gw.data.load_dataset("lung")
-
-# survival::lung codes status as 1 = censored, 2 = dead, so convert explicitly.
-y = Surv.right(df["time"], event=(df["status"] == 2))
+lung = gw.data.load_dataset("lung")
+y = Surv.right(lung["time"], event=(lung["status"] == 2))
 y
-# Surv(type=right, n=228, events=165)
 ```
 
-Other censoring flavors:
+The summary reports 228 patients, of whom 165 died during the study; the rest were censored.
+One detail to note: this dataset codes `status` as 1 for censored and 2 for dead, so we turn
+it into a plain event indicator with `status == 2`.
 
-```python
-Surv.counting(start=df["t0"], stop=df["t1"], event=df["ev"])   # left truncation / time-varying
-Surv.interval(lower=df["lo"], upper=df["hi"])                  # interval-censored
-Surv.multistate(df["time"], event=df["cause"], states=("relapse", "death"))  # competing risks
+## Estimate the survival curve
+
+The Kaplan-Meier estimator turns those times into a survival curve, the probability of
+surviving past each point in time. Printing the fitted estimator reports the median survival.
+
+```{python}
+km = gw.KaplanMeier().fit(y)
+km
 ```
 
-## Tabulate the risk set
+The median is 310 days: half of the patients are still alive at 310 days. The two columns
+after it give a 95 percent confidence interval for that median, 285 to 363 days.
 
-`event_table` is the kernel every estimator builds on. It matches R's `survfit` tabulation:
+## Plot the curve
 
-```python
-et = gw.event_table(y)
-et.to_dataframe().head()
-#    time  n_risk  n_event  n_censor
-# 0     5     228        1         0
-# 1    11     227        3         0
-# ...
+`plot_survival` draws the curve as a figure, with a shaded confidence band and a tick mark
+wherever a patient was censored.
+
+```{python}
+gw.plot_survival(km)
 ```
 
-Stratify by a group:
+The curve starts at 1.0 and steps down at each death. It does not reach 0 because some
+patients were still alive at the end of follow-up, so their survival time is only known to be
+at least that long.
 
-```python
-gw.event_table(y, group=df["sex"]).to_dataframe()
+## Model a covariate effect
+
+To ask how a characteristic changes the risk of death, fit a Cox proportional hazards model.
+Here we include `age` and `sex`. Printing the model shows a coefficient table.
+
+```{python}
+cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+cox
 ```
 
-## Fit Kaplan-Meier
+The `exp(coef)` column holds hazard ratios. For `sex` (coded 1 for male, 2 for female) the
+hazard ratio is about 0.60, which means women had roughly 40 percent lower risk of death than
+men over the study, holding age fixed. A ratio below 1 is lower risk, above 1 is higher risk.
 
-`KaplanMeier` estimates the survival function with Greenwood confidence intervals. Choose
-the interval transform with `conf_type` (`"log"`, the R default, `"plain"`, or
-`"log-log"`), and stratify with `by`:
+## Next steps
 
-```python
-km = gw.KaplanMeier(conf_type="log-log").fit(y, by=df["sex"])
+That is the core loop: represent the data, estimate a curve, visualize it, and model an
+effect. Each part of the guide takes one of these steps further.
 
-km.to_dataframe()      # strata, time, n_risk, n_event, n_censor, estimate, conf_low, conf_high
-km.median(ci=True)     # {1: (270.0, 210.0, 306.0), 2: (426.0, 345.0, 524.0)}
-km.quantile(0.25)      # first-quartile survival time per stratum
-km.rmst(365, ci=True)  # restricted mean survival time up to 365 days, per stratum
-km.predict([180, 365]) # survival probability at 180 and 365 days
-```
-
-Broom-style summaries are available through the tidy layer, so Great Summaries can build
-tables directly on a fitted curve:
-
-```python
-gw.tidy.tidy(km)       # one row per time point
-gw.tidy.glance(km)     # one row per stratum: events, median, median_lower, median_upper
-```
-
-## Nelson-Aalen cumulative hazard
-
-```python
-na = gw.NelsonAalen().fit(y)
-na.to_dataframe()      # time, n_risk, n_event, estimate (cumulative hazard), std_error, CI
-```
-
-## Compare groups
-
-`logrank_test` compares survival across two or more groups. The default is the standard
-log-rank test; set `rho`/`gamma` for the G-rho (Fleming-Harrington) family, where
-`rho=1, gamma=0` gives the Peto-Peto (Wilcoxon-type) test:
-
-```python
-result = gw.logrank_test(y, group=df["sex"])
-result.statistic       # 10.3267
-result.p_value         # 0.00131
-result.df              # 1
-result.observed        # weighted observed events per group
-result.expected        # weighted expected events per group
-
-gw.logrank_test(y, group=df["sex"], rho=1)   # Peto-Peto weighting
-```
-
-## Visualize
-
-`plot_survival` returns a composable plotnine plot with confidence ribbons and censoring
-marks. Pass `risk_table=True` to stack an aligned numbers-at-risk table beneath it:
-
-```python
-gw.plot_survival(km)                                  # a plotnine ggplot
-gw.plot_survival(km, risk_table=True)                 # curve + aligned risk table
-gw.plot_survival(km, conf_int=False, censor_marks=False)
-```
-
-Because the result is a plotnine object, you can keep composing it with themes, scales, and
-labels, and the risk-table times are configurable (`gw.plot_survival(km, times=[0, 200,
-400, 600])`).
-
-## Cox proportional hazards
-
-`CoxPH` fits the proportional-hazards model by maximizing the partial likelihood (Efron
-ties by default, or `ties="breslow"`). Pass a `Surv` response and a covariate design (a
-dataframe or a 2-D array); non-numeric columns are treatment-coded, and rows with missing
-covariates are dropped:
-
-```python
-cox = gw.CoxPH().fit(y, df[["age", "sex"]])
-
-# Stratified baselines (shared coefficients), and the robust sandwich variance:
-gw.CoxPH().fit(y, df[["age", "ph.ecog"]], strata=df["sex"])
-gw.CoxPH().fit(y, df[["age", "sex"]], robust=True)
-gw.CoxPH().fit(y, df[["age", "sex"]], cluster=df["inst"])   # clustered robust variance
-
-cox.coef_            # log-hazard-ratio coefficients
-cox.hazard_ratio_    # exp(coef)
-cox.std_error_       # model-based standard errors
-cox.p_value_         # Wald z-test p-values
-cox.loglik_, cox.lr_stat_, cox.wald_stat_, cox.score_stat_
-```
-
-The tidy layer gives broom-style output, so Great Summaries can build a regression table on
-top of a fitted model:
-
-```python
-gw.tidy.tidy(cox, exponentiate=True)   # term, estimate (HR), std_error, statistic, p_value, CI
-gw.tidy.glance(cox)                    # n, nevent, loglik, aic, likelihood-ratio test
-```
-
-### Diagnostics and prediction
-
-```python
-cox.baseline_hazard()                  # time, cumhaz, survival (uncentered baseline)
-cox.predict(type="lp")                 # centered linear predictors
-cox.predict(newdata, type="survival", times=[180, 365])  # survival curves for new subjects
-
-cox.residuals("martingale")            # one per observation
-cox.residuals("schoenfeld")            # one row per event, per covariate
-
-cox.cox_zph()                          # Grambsch-Therneau proportional-hazards test
-cox.concordance()                      # Harrell's C-statistic
-```
-
-The proportional-hazards test returns per-covariate and global chi-square tests (with an
-`identity` or `log` time transform):
-
-```python
-z = cox.cox_zph(transform="identity")
-z.to_dataframe()       # term, chisq, df, p_value (rows for each covariate plus GLOBAL)
-```
-
-## Parametric AFT models
-
-`AFT` fits accelerated failure time models by maximum likelihood, with coefficients on the
-log-time scale (as in R's `survreg`). Choose the error distribution with `dist`:
-
-```python
-aft = gw.AFT("weibull").fit(y, df[["age", "sex"]])   # or "exponential", "lognormal", "loglogistic"
-
-aft.coef_          # coefficients (including the intercept)
-aft.scale_         # scale parameter (1 for the exponential model)
-gw.tidy.tidy(aft)  # tidy coefficient table
-gw.tidy.glance(aft)  # dist, n, nevent, scale, loglik, aic
-```
-
-## Competing risks
-
-`AalenJohansen` estimates the cumulative incidence function (CIF) for each competing cause.
-Build a multi-state response where the event codes are 0 for censoring and 1, 2, ... for
-the causes:
-
-```python
-mg = gw.data.load_dataset("mgus2")
-etime = mg["ptime"].where(mg["pstat"] == 1, mg["futime"])
-cause = mg["pstat"].where(mg["pstat"] == 1, 2 * mg["death"])   # 0 censor, 1 pcm, 2 death
-y = Surv.multistate(etime, event=cause, states=("pcm", "death"))
-
-aj = gw.AalenJohansen().fit(y, by=mg["sex"])
-aj.to_dataframe()   # strata, cause, time, n_risk, estimate (CIF), std_error, conf_low, conf_high
-```
-
-The `FineGray` subdistribution hazard model regresses covariates on the cumulative
-incidence of a target cause, with clustered robust standard errors:
-
-```python
-fg = gw.FineGray("pcm").fit(y, mg[["age", "sex"]])
-gw.tidy.tidy(fg, exponentiate=True)   # subdistribution hazard ratios
-fg.std_error_                         # clustered robust standard errors
-```
-
-For general multi-state models, `MultiState` estimates the Aalen-Johansen transition and
-state-occupancy probabilities from counting-process intervals (each labelled with the state
-occupied and the state transitioned to):
-
-```python
-ms = gw.MultiState().fit(
-    start=intervals["t0"], stop=intervals["t1"],
-    state=intervals["from_state"], event=intervals["to_state"],
-)
-ms.to_dataframe()      # occupancy probability over time, one column per state
-ms.predict([12, 60])   # occupancy at specific times
-ms.transition_         # the P(0, t) transition-probability matrices
-```
-
-## Prediction performance
-
-Evaluate a fitted model or an external risk score with the concordance index and the
-inverse-probability-of-censoring-weighted (IPCW) Brier score:
-
-```python
-cox = gw.CoxPH().fit(y, df[["age", "sex"]])
-
-gw.concordance_index(y, cox.predict(type="lp"))   # Harrell's C
-
-times = [180, 365, 540]
-surv = cox.predict(df[["age", "sex"]], type="survival", times=times)
-probs = surv.iloc[:, 1:].to_numpy().T             # (n_obs, len(times))
-gw.brier_score(y, probs, times)                   # IPCW Brier score at each time
-gw.integrated_brier_score(y, probs, times)         # time-averaged Brier score
-```
-
-## Round-trip the response
-
-The `Surv` object serializes deterministically, the basis for reproducible pipelines:
-
-```python
-text = y.to_json()
-restored = Surv.from_json(text)
-assert restored.to_json() == text
-```
+- [Survival data and the Surv object](03-survival-data.qmd) and
+  [Data sources and formats](04-data-sources.qmd) cover the input side in full.
+- [Estimating survival with Kaplan-Meier](05-kaplan-meier.qmd),
+  [Comparing groups](06-comparing-groups.qmd), and
+  [Visualizing survival](07-visualization.qmd) cover description and comparison.
+- [Cox regression](08-cox-regression.qmd) and
+  [Parametric survival models](10-parametric-models.qmd) cover modeling, and
+  [Prediction performance](13-prediction-performance.qmd) covers evaluation.
