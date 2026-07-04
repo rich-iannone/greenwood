@@ -92,6 +92,16 @@ def test_array_covariates(lung_surv) -> None:  # type: ignore[no-untyped-def]
     assert model.term_names_ == ["(Intercept)", "x0", "x1"]
 
 
+def test_formula_matches_explicit(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    import numpy as np
+
+    df, y = lung_surv
+    explicit = AFT("weibull").fit(y, df[["age", "sex"]])
+    formula = AFT("weibull").fit(y, "age + sex", data=df)
+    assert formula.term_names_ == ["(Intercept)", "age", "sex"]
+    np.testing.assert_allclose(formula.coef_, explicit.coef_)
+
+
 @pytest.mark.parametrize("dist", ["weibull", "exponential", "lognormal", "loglogistic"])
 def test_predict_survival_quantile_consistent(lung_surv, dist) -> None:  # type: ignore[no-untyped-def]
     # The survival and quantile predictions are exact inverses: S(quantile_p) == 1 - p.
