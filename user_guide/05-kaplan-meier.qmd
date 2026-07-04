@@ -138,6 +138,23 @@ This reports the average number of event-free days during the first year, with a
 interval. Choose `tau` based on a clinically or practically meaningful horizon, and use the
 same `tau` when comparing groups.
 
+## Restricted mean residual life
+
+A related question is how much additional time a subject can expect, given that they have
+already survived to some landmark time `s`. The restricted mean residual life answers this: it
+is the area under the conditional survival curve from `s` to `tau`, divided by the survival at
+`s`. In other words, it is the restricted mean survival measured from `s` onward, among
+subjects still event-free at `s`. Setting `s=0` recovers the restricted mean survival time.
+
+```{python}
+km.rmrl(180, 730, ci=True)
+```
+
+Here the value is the expected number of additional event-free days between 180 and 730 days,
+for a subject known to be alive at 180 days. This is useful for updating a prognosis partway
+through follow-up, and it complements the conditional survival curves shown in
+[Cox model diagnostics](09-cox-diagnostics.qmd).
+
 ## Comparing subgroups
 
 Passing a grouping variable to `by` fits a separate curve within each stratum, which is the
