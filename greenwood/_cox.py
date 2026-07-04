@@ -79,7 +79,36 @@ def _to_labels(values: Any, n: int, name: str) -> Array:
     return labels
 
 
-def _design_matrix(covariates: Any) -> tuple[Array, list[str]]:
+def _formula_design(formula: str, data: Any) -> tuple[Array, list[str]]:
+    """Build a design matrix from a Wilkinson formula (right-hand side) via formulaic.
+
+    `formula` is the right-hand side only (no `~`), for example
+    `"age + sex + ph.ecog"`, `"age + C(celltype)"`, or `"age * sex"`. The intercept column
+    that formulaic adds is dropped, so the result matches the no-intercept design the models
+    expect (an AFT adds its own intercept). Missing values are preserved so the caller's
+    complete-case handling drops the same rows as the response.
+    """
+    try:
+        from formulaic import model_matrix  # pyright: ignore[reportMissingImports]
+    except ImportError as error:  # pragma: no cover
+        raise ImportError(
+            "A formula requires the `formulaic` package. Install it with "
+            "`pip install greenwood[formula]`."
+        ) from error
+    if data is None:
+        raise ValueError("A formula string requires the `data` argument.")
+    import narwhals as nw  # pyright: ignore[reportMissingImports]  # installed + typed; pyright quirk
+
+    # Normalize any backend (pandas, Polars, PyArrow, ...) to pandas for formulaic.
+    frame = nw.from_native(data, eager_only=True).to_pandas()
+    matrix = model_matrix(f"~ {formula}", frame, na_action="ignore")
+    names = [c for c in matrix.columns if c != "Intercept"]
+    if not names:
+        raise ValueError("The formula produced no covariates.")
+    return np.asarray(matrix[names].to_numpy(), dtype=float), list(names)
+
+
+def _design_matrix(covariates: Any, data: Any = None) -> tuple[Array, list[str]]:
     """Build a numeric design matrix and term names from covariates.
 
     Accepts a 2-D NumPy array or any narwhals-compatible dataframe. Numeric columns pass
