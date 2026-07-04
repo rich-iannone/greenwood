@@ -131,3 +131,67 @@ def _survival_at(km: Any, time: float) -> tuple[float, float, float]:
     return float(row["estimate"]), float(row["conf_low"]), float(row["conf_high"])
 
 
+def calibration(
+    surv: Surv, predicted: Any, time: float, *, n_bins: int = 10, conf_level: float = 0.95
+) -> Any:
+    """Assess calibration of predicted survival probabilities at a fixed time.
+
+    Subjects are grouped into `n_bins` bins by their predicted survival probability at
+    `time`. Within each bin the mean prediction is compared against the observed survival, a
+    Kaplan-Meier estimate at `time` for that bin's subjects. A well-calibrated model has the
+    observed values close to the predicted ones (points near the diagonal).
+
+    Parameters
+    ----------
+    surv
+        The `Surv` response (right-censored or counting-process).
+    predicted
+        Predicted survival probability at `time`, one per subject (for example a column of
+        `CoxPH.predict(newdata, type="survival", times=[time])`).
+    time
+        The horizon at which predictions are assessed.
+    n_bins
+        Number of prediction bins (default 10). Bins are quantile-based; empty bins are
+        dropped, so ties in `predicted` may yield fewer rows.
+    conf_level
+        Confidence level for the observed (Kaplan-Meier) interval.
+
+    Returns
+    -------
+    A pandas DataFrame with one row per bin: `bin`, `n`, `predicted` (mean), `observed`,
+    `observed_lower`, `observed_upper`.
+    """
+    import pandas as pd
+
+    from ._nonparametric import KaplanMeier
+    from ._resample import _subset_surv
+
+    pred = np.asarray(predicted, dtype=float)
+    if pred.shape[0] != surv.n:
+        raise ValueError("`predicted` must have one value per subject.")
+    if n_bins < 2:
+        raise ValueError("n_bins must be at least 2.")
+    horizon = float(time)
+
+    edges = np.quantile(pred, np.linspace(0.0, 1.0, n_bins + 1))
+    edges[0], edges[-1] = -np.inf, np.inf
+    bin_idx = np.clip(np.searchsorted(edges, pred, side="right") - 1, 0, n_bins - 1)
+
+    rows: list[dict[str, Any]] = []
+    for b in range(n_bins):
+        members = np.where(bin_idx == b)[0]
+        if members.size == 0:
+            continue
+        km = KaplanMeier(conf_level=conf_level).fit(_subset_surv(surv, members))
+        observed, lower, upper = _survival_at(km, horizon)
+        rows.append(
+            {
+                "bin": len(rows) + 1,
+                "n": int(members.size),
+                "predicted": float(pred[members].mean()),
+                "observed": observed,
+                "observed_lower": lower,
+                "observed_upper": upper,
+            }
+        )
+    return pd.DataFrame(rows)
