@@ -89,7 +89,7 @@ km_loglog = gw.KaplanMeier(conf_type="log-log").fit(y)
 ```
 
 Pulling out just the estimate and its interval limits lets you compare this fit against the
-default one. We select those columns and show the first few rows.
+default one. We select those columns to keep the table narrow.
 
 ```{python}
 km_loglog.to_dataframe()[["time", "estimate", "conf_low", "conf_high"]]
