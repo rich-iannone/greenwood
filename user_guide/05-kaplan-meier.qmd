@@ -48,7 +48,7 @@ The fitted `km` object holds the whole curve internally. The most direct way to 
 few rows.
 
 ```{python}
-km.to_dataframe().head()
+km.to_dataframe()
 ```
 
 Each row corresponds to a distinct observed time. The columns tell a complete story:
@@ -92,7 +92,7 @@ Pulling out just the estimate and its interval limits lets you compare this fit 
 default one. We select those columns and show the first few rows.
 
 ```{python}
-km_loglog.to_dataframe()[["time", "estimate", "conf_low", "conf_high"]].head()
+km_loglog.to_dataframe()[["time", "estimate", "conf_low", "conf_high"]]
 ```
 
 The point estimates are identical across transforms; only the interval limits differ. Choose
@@ -184,7 +184,7 @@ Reading `na` with `to_dataframe` gives the same table layout as before, but now 
 survival, it starts at 0 and climbs as events accumulate. We show the first few rows.
 
 ```{python}
-na.to_dataframe().head()
+na.to_dataframe()
 ```
 
 ## Next steps
