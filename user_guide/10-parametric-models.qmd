@@ -109,9 +109,33 @@ covariate means subjects with a one-unit-higher value survive 1.5 times as long 
 holding other covariates fixed.
 :::
 
+## Predicting survival and quantiles
+
+Because a parametric model specifies the whole distribution, it can predict smoothly at any
+time and extrapolate beyond the observed follow-up. We predict for two new subjects, a
+50-year-old and a 70-year-old, both with `sex` coded 1.
+
+```{python}
+newdata = pd.DataFrame({"age": [50, 70], "sex": [1, 1]})
+aft.predict(newdata, type="quantile", p=[0.25, 0.5, 0.75])
+```
+
+With `type="quantile"` the model returns survival-time quantiles: each column is a subject and
+each row a failure probability. The middle row (`p = 0.5`) is the predicted median survival
+time, and the older subject's is shorter, as expected. These quantiles match R's `survreg`.
+
+For the survival curve itself, use `type="survival"` with the times you want.
+
+```{python}
+aft.predict(newdata, type="survival", times=[180, 365, 730])
+```
+
+Each column is a subject and each row a requested time, giving the estimated probability of
+surviving past that time.
+
 ## Next steps
 
-You can now fit and compare parametric survival models.
+You can now fit, compare, and predict from parametric survival models.
 
 - [Cox regression](08-cox-regression.qmd) is the semiparametric alternative, useful when you
   prefer not to assume a distribution.
