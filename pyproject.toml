@@ -55,11 +55,12 @@ dependencies = [
 [project.optional-dependencies]
 pd = ["pandas>=2.0"]
 pl = ["polars>=1.0"]
+pa = ["pyarrow>=15"]
 formula = ["formulaic>=1.0"]
 viz = ["plotnine>=0.13"]
 tables = ["great-tables>=0.17"]
 fast = ["numba>=0.59"]
-all = ["greenwood[pd,pl,formula,viz,tables]"]
+all = ["greenwood[pd,pl,pa,formula,viz,tables]"]
 dev = [
     "pytest>=8",
     "pytest-cov",
@@ -71,10 +72,11 @@ dev = [
     "build",
     "pandas>=2.0",
     "polars>=1.0",
+    "pyarrow>=15",
     "formulaic>=1.0",
     "plotnine>=0.13",
 ]
-docs = ["jupyter", "nbclient", "nbformat", "pandas>=2.0", "polars>=1.0", "plotnine>=0.13"]
+docs = ["jupyter", "nbclient", "nbformat", "pandas>=2.0", "polars>=1.0", "pyarrow>=15", "plotnine>=0.13"]
 
 [project.urls]
 Homepage = "https://github.com/rich-iannone/greenwood"
