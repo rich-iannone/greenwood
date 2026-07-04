@@ -101,6 +101,13 @@ render however you like, including through Great Tables.
 gw.viz.risk_table_data(km, times=[0, 250, 500, 750, 1000])
 ```
 
+To draw just the aligned table as its own plot, without a curve above it, use `risk_table`. It
+returns a plotnine object, so you can display or save it on its own.
+
+```{python}
+gw.risk_table(km, times=[0, 250, 500, 750, 1000])
+```
+
 ## Customizing the plot
 
 Because the result is a plotnine object, you refine it by adding layers and themes with the
