@@ -339,6 +339,21 @@ def test_aft_matches_r_survreg(dist: str) -> None:
             model.log_scale_se_, fixture["log_scale_se"], atol=1e-4, what=f"{dist} log-scale se"
         )
 
+    # Predicted survival-time quantiles match survreg's predict(type="quantile").
+    # Agreement is at the coefficient optimizer floor (relative ~1e-5 on day-scale values).
+    import pandas as pd
+
+    newdata = pd.DataFrame(fixture["pred_newdata"])
+    pred = model.predict(newdata, type="quantile", p=fixture["pred_p"])
+    ours = pred[[c for c in pred.columns if c != "p"]].to_numpy().T  # subjects x p
+    assert_allclose_to_r(
+        ours.ravel(),
+        np.array(fixture["pred_quantile"]).ravel(),
+        rtol=1e-3,
+        atol=1e-2,
+        what=f"{dist} quantiles",
+    )
+
 
 def test_aalen_johansen_cif_matches_r() -> None:
     df = gw.data.load_dataset("mgus2", backend="pandas")
