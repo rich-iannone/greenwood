@@ -102,7 +102,7 @@ its data frame to see the earliest times, where the columns after `time` give th
 probability of `mgus`, `pcm`, and `death` respectively.
 
 ```{python}
-ms.to_dataframe().head()
+ms.to_dataframe()
 ```
 
 Each column after `time` is the probability that a subject is in that state at that time.
