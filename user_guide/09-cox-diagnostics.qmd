@@ -1,0 +1,187 @@
+---
+title: Cox model diagnostics
+guide-section: "Regression"
+---
+
+```{python}
+#| echo: false
+#| output: false
+import great_docs as gd
+
+gd.enable_tbl_preview(n_head=8, n_tail=3)
+```
+
+Fitting a Cox model is only half the work. Before you trust its hazard ratios, you should
+check that its central assumption holds, look at residuals for influential or poorly fit
+observations, and understand what the model predicts. This page covers the proportional
+hazards test, residuals, baseline hazard and survival prediction, stratification, robust
+standard errors, and the concordance index. Together these turn a fitted model into a
+defensible one.
+
+We begin with the `lung` outcomes. The response `y` is a `Surv` object pairing each follow-up
+time with an event indicator, and it is the target every model on this page is fit against.
+
+```{python}
+import greenwood as gw
+from greenwood import Surv
+
+lung = gw.data.load_dataset("lung")
+y = Surv.right(lung["time"], event=(lung["status"] == 2))
+y
+```
+
+The printed response records 165 events among 228 subjects, with a `+` marking each censored
+observation. We fit a Cox model to it using `age` and `sex` as covariates. This is the model
+we diagnose throughout the page, so we fit it once here and reuse it below.
+
+```{python}
+cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+```
+
+## Checking the proportional hazards assumption
+
+The Cox model assumes each covariate's effect on the hazard is constant over time. When this
+fails, for example if a treatment helps early but not late, the reported hazard ratio is a
+misleading average. The Grambsch-Therneau test checks the assumption by looking for a trend
+in the scaled Schoenfeld residuals against time. A small p-value is evidence that the
+assumption is violated for that covariate.
+
+Calling `cox_zph` returns a `ZPHResult`, an object that bundles the test statistics together.
+Displaying it directly gives a compact summary of the test.
+
+```{python}
+zph = cox.cox_zph()
+zph
+```
+
+For the full per-covariate breakdown, call `to_dataframe` on that result. This is the table
+you will read most often.
+
+```{python}
+zph.to_dataframe()
+```
+
+The table has one row per covariate plus a `GLOBAL` row that tests all covariates jointly.
+Large p-values, as here, are reassuring: they give no evidence against proportional hazards.
+The test uses a time transform, which defaults to `"identity"`; `"log"` is also available.
+
+::: {.callout-warning}
+## A non-significant test is not proof
+Failing to reject the proportional hazards assumption does not prove it holds, especially in
+small samples. Complement the test by plotting scaled Schoenfeld residuals or by fitting
+time-stratified models when you have reason to suspect a time-varying effect.
+:::
+
+## Residuals
+
+Residuals reveal how individual observations relate to the fitted model. Martingale
+residuals, one per subject, are the difference between the observed number of events and the
+number the model expected; large negative values flag subjects who lived much longer than
+predicted. Schoenfeld residuals, one per event, underlie the proportional hazards test and
+are useful for spotting time trends in a covariate's effect.
+
+The martingale residuals come back as a NumPy array with one entry per subject. There are 228
+of them, so we look at the first five rather than the whole array.
+
+```{python}
+cox.residuals("martingale")[:5]
+```
+
+The Schoenfeld residuals come back as a DataFrame instead, with one row per event and one
+column per covariate. We show the head to keep the output short.
+
+```{python}
+cox.residuals("schoenfeld").head()
+```
+
+## Baseline hazard and predicted survival
+
+Although the Cox model does not assume a shape for the baseline hazard, it can estimate one
+after fitting. The baseline cumulative hazard, and the survival curve derived from it,
+describe a reference subject.
+
+```{python}
+cox.baseline_hazard().head()
+```
+
+More useful in practice is predicting the survival curve for specific covariate values.
+First we build a small frame of the subjects we want predictions for: a 50-year-old with
+`sex` 1 and a 70-year-old with `sex` 2. Showing it confirms the covariate values before we
+predict from them.
+
+```{python}
+import pandas as pd
+
+newdata = pd.DataFrame({"age": [50, 70], "sex": [1, 2]})
+newdata
+```
+
+Given that new data and a set of times, `predict` returns the estimated survival probability
+for each subject.
+
+```{python}
+cox.predict(newdata, type="survival", times=[180, 365, 730])
+```
+
+Each column is a subject from `newdata`, and each row is a requested time. The `type="lp"`
+and `type="risk"` options instead return the linear predictor and the relative risk.
+
+## Stratification
+
+Sometimes a variable violates the proportional hazards assumption but is not of direct
+interest, such as enrolling hospital. Stratification lets each level of that variable have
+its own baseline hazard while sharing the coefficients of the covariates you do care about.
+You pass the stratifying variable to `strata`. Here we stratify by `sex` while keeping `age`
+and `ph.ecog` as covariates.
+
+```{python}
+stratified = gw.CoxPH().fit(y, lung[["age", "ph.ecog"]], strata=lung["sex"])
+```
+
+As with any fitted model, we read its coefficient table with `to_dataframe` rather than
+printing the model object.
+
+```{python}
+stratified.to_dataframe()
+```
+
+Notice that the stratifying variable, `sex`, does not appear as a coefficient. Its effect is
+absorbed into the separate baselines, which is exactly the point of stratification.
+
+## Robust and clustered standard errors
+
+When observations are not independent, for example when the same subject contributes several
+rows or when subjects are grouped into clusters, the model-based standard errors are too
+small. The robust, or sandwich, variance corrects for this. Set `robust=True` for the
+Lin-Wei sandwich estimator, and pass `cluster` to group correlated observations.
+
+```{python}
+robust = gw.CoxPH().fit(y, lung[["age", "sex"]], robust=True)
+robust.to_dataframe()[["term", "std_error"]]
+```
+
+The coefficients are unchanged; only the standard errors, and therefore the p-values and
+intervals, are adjusted. The model-based standard errors remain available as
+`naive_std_error_` for comparison.
+
+## The concordance index
+
+The concordance index, or C-statistic, measures how well the model's risk ordering agrees
+with the observed order of events. It is the probability that, for a random comparable pair
+of subjects, the one who failed first had the higher predicted risk. A value of 0.5 is no
+better than chance and 1.0 is perfect discrimination.
+
+```{python}
+cox.concordance()
+```
+
+## Next steps
+
+You can now validate a Cox model and use it to predict.
+
+- [Prediction performance](13-prediction-performance.qmd) extends discrimination and adds
+  the Brier score for calibration, including for external risk scores.
+- [Parametric survival models](10-parametric-models.qmd) provide an alternative when the
+  proportional hazards assumption is untenable.
+- Revisit [Cox regression](08-cox-regression.qmd) for the modeling basics if any of this is
+  unfamiliar.
