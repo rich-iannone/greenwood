@@ -33,7 +33,8 @@ km = gw.KaplanMeier(conf_type="log-log").fit(y, by=lung["sex"])
 Everything below draws from the fitted `km` object. Before plotting it, it helps to see the
 numbers the plot is built from. Calling `to_dataframe` on the fitted estimator returns the
 step-function estimates in tidy form, one row per stratum and time, with the survival
-probability and its confidence limits. We show the first several rows.
+probability and its confidence limits. The preview shows the first and last rows along with
+the full dimensions of the table.
 
 ```{python}
 km.to_dataframe()
