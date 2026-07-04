@@ -114,6 +114,14 @@ expressed.
 Surv.counting(start=[0, 2, 1], stop=[5, 6, 4], event=[1, 0, 1])
 ```
 
+Left censoring, where all you know is that the event had already happened by the time of
+observation, uses `Surv.left`. It takes the same `(time, event)` arguments as `Surv.right`,
+but the time is an upper bound on the unknown event time rather than a lower one.
+
+```{python}
+Surv.left(time=[5, 6, 4], event=[1, 0, 1])
+```
+
 Interval censoring, where the event is known only to fall between two times, uses
 `Surv.interval`. Use `numpy.inf` for the upper bound to mark right censoring.
 
@@ -193,6 +201,43 @@ confirm nothing was lost by comparing the JSON of the original and the restored 
 restored = Surv.from_json(text)
 print("round-trips exactly:", restored.to_json() == y.to_json())
 ```
+
+For working in memory rather than as text, `to_dict` and `from_dict` perform the same
+round-trip with a plain Python dictionary, and `as_dataframe` gives a tidy, one-row-per-subject
+view that is convenient for inspection or export.
+
+```{python}
+y.as_dataframe()
+```
+
+The dictionary form is the same structure `to_json` serializes, so `Surv.from_dict` rebuilds
+an equivalent response from it.
+
+```{python}
+Surv.from_dict(Surv.right([5, 6, 4], event=[1, 0, 1]).to_dict())
+```
+
+## The risk-set table
+
+Under every non-parametric estimate is one tabulation: at each distinct event time, how many
+subjects are still at risk, how many have the event, and how many are censored. This risk-set
+table is what Kaplan-Meier, the log-rank test, and Cox all build on, and you can compute it
+directly with `event_table`. It matches R's `survfit` tabulation.
+
+```{python}
+gw.event_table(y).to_dataframe()
+```
+
+Each row is a distinct time. The `n_risk` column counts the subjects under observation just
+before that time, `n_event` the events at it, and `n_censor` the censorings. Pass `group=` to
+tabulate within strata, which adds a `strata` column.
+
+```{python}
+gw.event_table(y, group=lung["sex"]).to_dataframe()
+```
+
+You rarely need this table directly, but it is the shared foundation the estimators are built
+on, and it is handy when you want to check counts by hand or drive a custom calculation.
 
 ## Next steps
 
