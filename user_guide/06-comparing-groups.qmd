@@ -1,0 +1,123 @@
+---
+title: Comparing groups
+guide-section: "Estimation"
+---
+
+```{python}
+#| echo: false
+#| output: false
+import great_docs as gd
+
+gd.enable_tbl_preview(n_head=8, n_tail=3)
+```
+
+Once you have survival curves for two or more groups, the natural question is whether the
+differences between them are real or could be explained by chance. The log-rank test and its
+relatives answer this. They compare the observed number of events in each group against the
+number expected if the groups shared a common survival experience, accumulated across every
+event time. This page explains the test, its weighted variants, and how to read the results.
+
+We continue with the `lung` dataset, comparing survival between the two sexes.
+
+```{python}
+import greenwood as gw
+from greenwood import Surv
+
+lung = gw.data.load_dataset("lung")
+y = Surv.right(lung["time"], event=(lung["status"] == 2))
+y
+```
+
+The response `y` is a `Surv` object pairing each subject's follow-up time with an event
+indicator, where a trailing `+` marks a censored observation. The grouping variable
+`lung["sex"]` splits these same subjects into the two groups we are about to compare.
+
+## The log-rank test
+
+The log-rank test is the standard method for comparing survival across groups. At each event
+time it forms a small contingency table of who was at risk and who had an event in each
+group, computes the events expected under the null hypothesis of no difference, and combines
+the observed-minus-expected discrepancies into a single chi-square statistic.
+
+```{python}
+result = gw.logrank_test(y, group=lung["sex"])
+```
+
+The call returns a `TestResult` object, which we store in `result`. Displaying it prints a
+readable summary of the whole test at once.
+
+```{python}
+result
+```
+
+The result carries the test statistic, its degrees of freedom (one less than the number of
+groups), and the p-value. A small p-value is evidence that the survival curves differ. You
+can also inspect the weighted observed and expected event counts per group, which show the
+direction of the difference. These live on the `result` object as the `observed` and
+`expected` attributes, one entry per group.
+
+```{python}
+print("observed:", result.observed)
+print("expected:", result.expected)
+```
+
+Here one group has more observed events than expected and the other fewer, which is the
+signature of a survival difference. The test works for any number of groups; with three or
+more it produces an overall test on the corresponding degrees of freedom.
+
+::: {.callout-note}
+## What the log-rank test does and does not tell you
+The test tells you whether the curves differ overall. It does not tell you by how much, at
+what times, or in which direction beyond the observed-versus-expected counts. Pair it with a
+Kaplan-Meier plot and with effect measures such as a hazard ratio from
+[Cox regression](08-cox-regression.qmd) or a restricted-mean-survival difference.
+:::
+
+## Weighted tests: the G-rho family
+
+The standard log-rank test weights every event time equally, which makes it most sensitive
+to differences in the tails of the curves where events accumulate. Sometimes you care more
+about early differences. The Fleming-Harrington, or G-rho, family generalizes the log-rank
+test by weighting each event time by a power of the pooled survival probability.
+
+The `rho` parameter controls this. With `rho=0` you get the ordinary log-rank test. With
+`rho=1` you get the Peto-Peto test, a Wilcoxon-type test that gives more weight to early
+event times and is therefore more sensitive to early separation of the curves.
+
+This returns the same kind of `TestResult` as before, so you can read it the same way. Only
+the weighting has changed, so compare its statistic and p-value against the unweighted test
+above to see how much the emphasis on early event times matters here.
+
+```{python}
+gw.logrank_test(y, group=lung["sex"], rho=1)
+```
+
+Choosing between them is a matter of what alternative you want to detect, and the choice
+should be made before looking at the results rather than by picking whichever gives the
+smaller p-value.
+
+::: {.callout-warning}
+## Choose the weighting in advance
+Running several weighted tests and reporting the most significant one inflates the false
+positive rate. Decide on the test, and its `rho`, based on subject-matter reasoning before
+you see the data.
+:::
+
+## From tests to models
+
+A group comparison test is the right tool when you have one categorical grouping and want a
+yes-or-no answer about a difference. When you need to adjust for other variables, handle a
+continuous predictor, or estimate the size of an effect, you move to regression. The
+log-rank test has a close connection to the Cox model: the score test from a Cox model with
+a single group indicator is essentially the log-rank test, which is why the two usually
+agree.
+
+## Next steps
+
+You can now describe and formally compare survival across groups.
+
+- [Visualizing survival](07-visualization.qmd) shows how to present grouped curves clearly.
+- [Cox regression](08-cox-regression.qmd) estimates hazard ratios and adjusts for multiple
+  covariates.
+- Revisit [Kaplan-Meier](05-kaplan-meier.qmd) for restricted-mean-survival summaries, which
+  give an interpretable effect size to accompany a significant test.
