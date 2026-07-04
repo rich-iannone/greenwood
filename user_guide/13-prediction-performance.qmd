@@ -121,6 +121,48 @@ For an honest assessment, evaluate on a held-out test set or use cross-validatio
 one part of the data and scoring predictions on another.
 :::
 
+## Cross-validation
+
+Rather than splitting the data by hand, `cross_validate` runs k-fold cross-validation for
+you: it fits a fresh copy of the model on each set of training folds and scores its
+predictions on the held-out fold. Pass an unfitted model, the response, and the covariates.
+
+```{python}
+gw.cross_validate(gw.CoxPH(), y, lung[["age", "sex"]], k=5, metric="concordance", seed=1)
+```
+
+The result reports the score on each fold plus their mean and standard deviation. The
+cross-validated concordance is usually a little lower than the value computed on the training
+data, which is exactly the optimism we are trying to remove. Set `metric="brier"` with a list
+of `times` to cross-validate the integrated Brier score instead, and the same call works for
+an `AFT` model.
+
+## Calibration
+
+Discrimination and the Brier score both summarize a model in a single number. Calibration
+asks a more detailed question: at a chosen time, do the predicted survival probabilities match
+what actually happens? `calibration` groups subjects into bins by their predicted survival at
+a horizon, then compares the mean prediction in each bin against the observed survival, a
+Kaplan-Meier estimate for that bin.
+
+```{python}
+surv_at_year = cox.predict(lung[["age", "sex"]], type="survival", times=[365.0])
+predicted = surv_at_year.iloc[0, 1:].to_numpy()
+gw.calibration(y, predicted, 365.0, n_bins=5)
+```
+
+Each row is a bin, from the lowest predicted survival to the highest. A well-calibrated model
+has `observed` close to `predicted` in every bin, with the observed values inside their
+confidence limits. Systematic gaps, for example predictions consistently higher than observed,
+signal miscalibration even when discrimination is good.
+
+::: {.callout-tip}
+## Assess calibration out of sample too
+Like the other metrics, calibration is optimistic on the training data. For a fair picture,
+compute it on held-out predictions, for instance the test-fold predictions from a
+cross-validation split.
+:::
+
 ## Next steps
 
 You can now quantify how well a survival model discriminates and predicts.
