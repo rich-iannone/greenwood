@@ -118,3 +118,16 @@ def integrated_brier_score(surv: Surv, survival_prob: Any, times: Any) -> float:
     scores = brier_score(surv, survival_prob, query)
     area = float(np.sum(np.diff(query) * (scores[:-1] + scores[1:]) / 2.0))
     return area / float(query[-1] - query[0])
+
+
+def _survival_at(km: Any, time: float) -> tuple[float, float, float]:
+    """Read a Kaplan-Meier estimate and its confidence limits at a single time."""
+    frame = km.to_dataframe()
+    grid = frame["time"].to_numpy()
+    idx = int(np.searchsorted(grid, time, side="right")) - 1
+    if idx < 0:
+        return 1.0, 1.0, 1.0
+    row = frame.iloc[idx]
+    return float(row["estimate"]), float(row["conf_low"]), float(row["conf_high"])
+
+
