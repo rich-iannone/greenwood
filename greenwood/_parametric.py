@@ -165,6 +165,7 @@ class AFT:
         params = result.x
         vcov = np.linalg.inv(_num_hessian(neg_loglik, params))
 
+        self._x = x
         self.term_names_ = names
         self.coef_ = params[:n_coef]
         self.vcov_ = vcov
