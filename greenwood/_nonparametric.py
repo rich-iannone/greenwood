@@ -361,6 +361,34 @@ class KaplanMeier:
             return one(self._blocks[0])
         return {b.label: one(b) for b in self._blocks}
 
+    def rmrl(self, s: float, tau: float, *, ci: bool = False) -> Any:
+        """Restricted mean residual life at time `s`, over the window `(s, tau]`.
+
+        This is the expected additional survival time beyond `s`, restricted to `tau` and
+        conditional on having survived to `s`: `RMRL(s; tau) = integral_s^tau S(u) du / S(s)`.
+        It generalizes `rmst` (which is `rmrl(0, tau)`) to a later landmark time.
+
+        With `ci=True`, return `(rmrl, lower, upper)` using a normal approximation
+        (`rmrl +/- z * se`, lower bounded at 0). For a single stratum a scalar (or 3-tuple)
+        is returned; when stratified, a dict keyed by stratum label. If everyone has failed by
+        `s`, the value is `nan`.
+        """
+        if tau <= s:
+            raise ValueError(f"tau ({tau}) must be greater than s ({s}).")
+        if s < 0.0:
+            raise ValueError(f"s must be non-negative, got {s}.")
+        z = float(norm.ppf(1.0 - (1.0 - self.conf_level) / 2.0))
+
+        def one(b: _Block) -> Any:
+            value, se = _rmrl_block(b, float(s), float(tau))
+            if not ci:
+                return value
+            return (value, max(0.0, value - z * se), value + z * se)
+
+        if not self._grouped:
+            return one(self._blocks[0])
+        return {b.label: one(b) for b in self._blocks}
+
     # -- prediction -----------------------------------------------------------
 
     def predict(self, times: Any, *, what: str = "survival") -> Any:
