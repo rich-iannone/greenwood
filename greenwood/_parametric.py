@@ -126,8 +126,12 @@ class AFT:
             ]
         )
 
-    def fit(self, surv: Surv, covariates: Any) -> AFT:
-        """Fit the model to a right-censored `Surv` response and a covariate design."""
+    def fit(self, surv: Surv, covariates: Any, *, data: Any = None) -> AFT:
+        """Fit the model to a right-censored `Surv` response and a covariate design.
+
+        `covariates` is a dataframe or 2-D array, or a right-hand-side formula string (for
+        example `"age + sex"`) evaluated against `data`. An intercept is added automatically.
+        """
         from ._surv import CensoringType
 
         if surv.type is not CensoringType.RIGHT:
@@ -135,7 +139,7 @@ class AFT:
                 f"AFT currently supports right-censored responses, not {surv.type.value!r}."
             )
 
-        design, cov_names = _design_matrix(covariates)
+        design, cov_names = _design_matrix(covariates, data)
         if design.shape[0] != surv.n:
             raise ValueError("Covariates and response must have the same number of rows.")
 
