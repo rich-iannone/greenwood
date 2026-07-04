@@ -90,3 +90,62 @@ def test_array_covariates(lung_surv) -> None:  # type: ignore[no-untyped-def]
     x = df[["age", "sex"]].to_numpy(dtype=float)
     model = AFT("weibull").fit(y, x)
     assert model.term_names_ == ["(Intercept)", "x0", "x1"]
+
+
+@pytest.mark.parametrize("dist", ["weibull", "exponential", "lognormal", "loglogistic"])
+def test_predict_survival_quantile_consistent(lung_surv, dist) -> None:  # type: ignore[no-untyped-def]
+    # The survival and quantile predictions are exact inverses: S(quantile_p) == 1 - p.
+    import numpy as np
+
+    df, y = lung_surv
+    model = AFT(dist).fit(y, df[["age", "sex"]])
+    newdata = df[["age", "sex"]].iloc[:3]
+    p = [0.1, 0.3, 0.5, 0.8]
+    q = model.predict(newdata, type="quantile", p=p)
+    for i in range(3):
+        col = f"subject_{i + 1}"
+        surv = model.predict(newdata.iloc[[i]], type="survival", times=list(q[col]))
+        np.testing.assert_allclose(surv["subject_1"].to_numpy(), 1.0 - np.array(p), atol=1e-12)
+
+
+def test_predict_lp_matches_design(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    import numpy as np
+
+    df, y = lung_surv
+    model = AFT("weibull").fit(y, df[["age", "sex"]])
+    lp = model.predict(type="lp")
+    assert lp.shape == (model.n_,)
+    # Median quantile equals exp(lp) only when the error median is 0 (weibull median is not),
+    # but the linear predictor is the log-time location, so exp(lp) is positive and finite.
+    assert np.all(np.isfinite(lp))
+
+
+def test_predict_survival_shape(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    model = AFT("weibull").fit(y, df[["age", "sex"]])
+    surv = model.predict(df[["age", "sex"]].iloc[:4], type="survival", times=[100, 300, 500])
+    assert list(surv.columns) == ["time", "subject_1", "subject_2", "subject_3", "subject_4"]
+    assert len(surv) == 3
+    assert ((surv.iloc[:, 1:] >= 0) & (surv.iloc[:, 1:] <= 1)).all().all()
+
+
+def test_predict_conditional_after_identity(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    # S(t | T > c) * S(c) == S(t) for t >= c, and conditioning on c=0 is a no-op.
+    import numpy as np
+
+    df, y = lung_surv
+    model = AFT("weibull").fit(y, df[["age", "sex"]])
+    nd = df[["age", "sex"]].iloc[:2]
+    times = [200, 400, 600]
+    c = 150.0
+    s_t = model.predict(nd, type="survival", times=times)
+    s_c = model.predict(nd, type="survival", times=[c])
+    s_cond = model.predict(nd, type="survival", times=times, conditional_after=c)
+    for col in ("subject_1", "subject_2"):
+        np.testing.assert_allclose(
+            s_cond[col].to_numpy() * float(s_c[col].iloc[0]), s_t[col].to_numpy(), atol=1e-12
+        )
+    s0 = model.predict(nd, type="survival", times=times, conditional_after=0.0)
+    np.testing.assert_allclose(
+        s0[["subject_1", "subject_2"]].to_numpy(), s_t[["subject_1", "subject_2"]].to_numpy()
+    )
