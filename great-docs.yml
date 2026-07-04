@@ -80,6 +80,9 @@ reference:
       - pairwise_logrank_test
       - name: TestResult
         members: true
+      - logrank_n_events
+      - logrank_power
+      - logrank_sample_size
 
   - title: Prediction performance
     desc: Concordance and the IPCW Brier score.
