@@ -88,10 +88,10 @@ cox.residuals("martingale")[:5]
 ```
 
 The Schoenfeld residuals come back as a DataFrame instead, with one row per event and one
-column per covariate. We show the head to keep the output short.
+column per covariate.
 
 ```{python}
-cox.residuals("schoenfeld").head()
+cox.residuals("schoenfeld")
 ```
 
 ## Baseline hazard and predicted survival
@@ -101,7 +101,7 @@ after fitting. The baseline cumulative hazard, and the survival curve derived fr
 describe a reference subject.
 
 ```{python}
-cox.baseline_hazard().head()
+cox.baseline_hazard()
 ```
 
 More useful in practice is predicting the survival curve for specific covariate values.
@@ -138,8 +138,8 @@ and `ph.ecog` as covariates.
 stratified = gw.CoxPH().fit(y, lung[["age", "ph.ecog"]], strata=lung["sex"])
 ```
 
-As with any fitted model, we read its coefficient table with `to_dataframe` rather than
-printing the model object.
+As with any fitted model, we can print `stratified` for a summary, or read its coefficient
+table as data with `to_dataframe`.
 
 ```{python}
 stratified.to_dataframe()
