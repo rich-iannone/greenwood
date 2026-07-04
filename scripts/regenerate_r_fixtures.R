@@ -304,7 +304,10 @@ aft_fixture <- function(dist) {
     scale = unname(m$scale),
     log_scale_se = if (dist == "exponential") NA else unname(se[ncoef + 1]),
     loglik = m$loglik[2],
-    n = length(m$linear.predictors)
+    n = length(m$linear.predictors),
+    pred_p = aft_pred_p,
+    pred_newdata = list(age = aft_pred_newdata$age, sex = aft_pred_newdata$sex),
+    pred_quantile = pred_q
   )
 }
 
