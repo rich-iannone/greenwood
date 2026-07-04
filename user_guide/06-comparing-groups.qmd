@@ -142,6 +142,40 @@ The statistic is pooled across the strata, matching R's `survdiff` with a `strat
 Stratification is the test-level counterpart to a stratified Cox model, where each stratum
 has its own baseline hazard.
 
+## Study design: sample size and power
+
+The log-rank test also answers a planning question asked before any data are collected: how
+large must a study be? Under proportional hazards, its power depends on the data only through
+the number of events, so Greenwood provides Schoenfeld's calculators. To detect a given hazard
+ratio at a target power, `logrank_n_events` returns the events required.
+
+```{python}
+gw.logrank_n_events(hazard_ratio=0.5, power=0.9, alpha=0.05)
+```
+
+Running it the other way, `logrank_power` gives the power a planned study would have for a
+given number of events, which is useful for checking whether an existing dataset can support a
+comparison.
+
+```{python}
+gw.logrank_power(hazard_ratio=0.5, n_events=60)
+```
+
+Events are not the same as subjects. To turn the required events into a sample size, divide by
+the probability that a subject has the event during the study, which you estimate from the
+expected survival and the planned follow-up. `logrank_sample_size` does this.
+
+```{python}
+gw.logrank_sample_size(hazard_ratio=0.5, prob_event=0.4, power=0.9)
+```
+
+::: {.callout-note}
+## What the calculators assume
+These formulas assume proportional hazards, a two-group comparison, and (by default) a
+balanced, two-sided test at `alpha=0.05`. Use `allocation` for an unbalanced design and
+`sides=1` for a one-sided test. A balanced design needs the fewest events.
+:::
+
 ## From tests to models
 
 A group comparison test is the right tool when you have one categorical grouping and want a
