@@ -75,6 +75,7 @@ reference:
     desc: The log-rank test and the G-rho (Fleming-Harrington) family.
     contents:
       - logrank_test
+      - pairwise_logrank_test
       - name: TestResult
         members: true
 
@@ -84,6 +85,7 @@ reference:
       - concordance_index
       - brier_score
       - integrated_brier_score
+      - cross_validate
 
   - title: Visualization
     desc: plotnine survival curves and aligned numbers-at-risk tables.
