@@ -430,7 +430,14 @@ class CoxPH:
         """Centered linear predictor `(x - xbar) . beta` (as in R `predict(type='lp')`)."""
         return (x - self._xbar) @ self.coef_
 
-    def predict(self, newdata: Any = None, *, type: str = "lp", times: Any = None) -> Any:
+    def predict(
+        self,
+        newdata: Any = None,
+        *,
+        type: str = "lp",
+        times: Any = None,
+        conditional_after: Any = None,
+    ) -> Any:
         """Predict from the fitted model.
 
         `type` is one of `"lp"` (centered linear predictor), `"risk"` (`exp(lp)`), or
