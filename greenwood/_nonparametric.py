@@ -167,6 +167,48 @@ def _rmst_block(block: _Block, tau: float) -> tuple[float, float]:
     return rmst, se
 
 
+def _rmrl_block(block: _Block, s: float, tau: float) -> tuple[float, float]:
+    """Restricted mean residual life at `s` over the window `(s, tau]`, and its SE.
+
+    RMRL(s; tau) = (1 / S(s)) * integral_s^tau S(u) du, the expected additional survival
+    beyond `s` restricted to `tau`, given survival to `s`. The variance is the restricted-mean
+    (Greenwood) estimator applied to the conditional curve, summed over event times in
+    `(s, tau]`; at `s = 0` this reduces exactly to `_rmst_block` (S(0) = 1).
+    """
+    t = block.time
+    surv = block.surv
+    n = block.n_risk
+    d = block.n_event
+
+    # Survival at s (right-continuous KM value at the last event time <= s).
+    idx = int(np.searchsorted(t, s, side="right")) - 1
+    s_at = float(surv[idx]) if idx >= 0 else 1.0
+    if s_at <= 0.0:
+        return float("nan"), float("nan")  # everyone has failed by s; RMRL undefined
+
+    starts = np.concatenate([[0.0], t])
+    heights = np.concatenate([[1.0], surv])
+    next_starts = np.concatenate([t, [tau]])
+
+    # Area under S(u) over the window [s, tau].
+    lo = np.clip(starts, s, tau)
+    hi = np.clip(next_starts, s, tau)
+    area_window = float((heights * np.clip(hi - lo, 0.0, None)).sum())
+    rmrl = area_window / s_at
+
+    # A_i = area from each event time to tau (full curve); variance uses times in (s, tau].
+    seg_area = heights * np.clip(
+        np.minimum(next_starts, tau) - np.minimum(starts, tau), 0.0, None
+    )
+    area_from = np.cumsum(seg_area[::-1])[::-1][1:]  # aligned with t
+    with np.errstate(divide="ignore", invalid="ignore"):
+        contrib = np.where(
+            (t > s) & (t <= tau) & (n - d > 0), area_from**2 * d / (n * (n - d)), 0.0
+        )
+    se = float(np.sqrt(contrib.sum())) / s_at
+    return rmrl, se
+
+
 class KaplanMeier:
     """Kaplan-Meier product-limit estimator of the survival function.
 
