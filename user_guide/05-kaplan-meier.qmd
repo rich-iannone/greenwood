@@ -181,7 +181,7 @@ na = gw.NelsonAalen().fit(y)
 
 Reading `na` with `to_dataframe` gives the same table layout as before, but now the
 `estimate` column holds the cumulative hazard rather than the survival probability. Unlike
-survival, it starts at 0 and climbs as events accumulate. We show the first few rows.
+survival, it starts at 0 and climbs as events accumulate.
 
 ```{python}
 na.to_dataframe()
