@@ -41,6 +41,30 @@ class TestResult:
         Human-readable description of the test and its weights.
     observed, expected
         Weighted observed and expected event counts per group, keyed by group label.
+
+    Examples
+    --------
+    A `TestResult` is what `logrank_test` returns. Store it and read off its attributes: the
+    chi-square `statistic`, the `p_value`, and the per-group `observed` weighted event counts.
+
+    ```{python}
+    import greenwood as gw
+    from greenwood import Surv
+
+    lung = gw.data.load_dataset("lung")
+    y = Surv.right(lung["time"], event=(lung["status"] == 2))
+    result = gw.logrank_test(y, group=lung["sex"])
+
+    result.statistic
+    ```
+
+    ```{python}
+    result.p_value
+    ```
+
+    ```{python}
+    result.observed
+    ```
     """
 
     statistic: float
@@ -192,6 +216,26 @@ def logrank_test(
     -------
     TestResult
         Statistic, degrees of freedom, p-value, and per-group observed/expected counts.
+
+    Examples
+    --------
+    Compare survival between the two sexes in the bundled `lung` dataset. Printing the result
+    shows the chi-square `statistic`, the degrees of freedom `df` (here 1, one fewer than the
+    number of groups), and the upper-tail `p_value`; a small p-value is evidence that the
+    survival curves differ.
+
+    ```{python}
+    import greenwood as gw
+    from greenwood import Surv
+
+    lung = gw.data.load_dataset("lung")
+    y = Surv.right(lung["time"], event=(lung["status"] == 2))
+    gw.logrank_test(y, group=lung["sex"])
+    ```
+
+    Pass `rho=1` for the Peto-Peto (Wilcoxon) weighting, which puts more weight on early event
+    times, and `strata=` to run a stratified test that controls for a nuisance variable while
+    comparing `group`.
     """
     from ._surv import CensoringType, _to_1d_array
 
@@ -295,6 +339,26 @@ def pairwise_logrank_test(
     -------
     A pandas DataFrame with one row per pair: `group1`, `group2`, `statistic`, `p_value`,
     and `p_adjusted`.
+
+    Examples
+    --------
+    The `veteran` dataset has four cell types, so a single log-rank test only tells you the
+    groups differ somewhere. The pairwise test compares every pair of cell types and returns a
+    DataFrame with one row per pair, carrying the raw `p_value` and the multiplicity-adjusted
+    `p_adjusted`.
+
+    ```{python}
+    import greenwood as gw
+    from greenwood import Surv
+
+    vet = gw.data.load_dataset("veteran")
+    y = Surv.right(vet["time"], event=vet["status"])
+    gw.pairwise_logrank_test(y, group=vet["celltype"])
+    ```
+
+    The `p_adjusted` column controls the family-wise error rate across the pairs. The
+    adjustment is set by `correction=`, which defaults to `"holm"`; other choices are `"bh"`
+    (Benjamini-Hochberg), `"bonferroni"`, and `"none"`.
     """
     import pandas as pd
 
