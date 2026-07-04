@@ -1,5 +1,6 @@
 ---
 title: Installation
+guide-section: "Getting started"
 ---
 
 Greenwood targets Python 3.10+ and is not yet on PyPI. Once released:
