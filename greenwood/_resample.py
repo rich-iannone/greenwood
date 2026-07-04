@@ -42,15 +42,16 @@ def _risk_score(model: Any, x: Array) -> Array:
     """A risk score where larger means higher risk (earlier event), for concordance."""
     from ._cox import CoxPH
     from ._parametric import AFT
+    from ._penalized import CoxNet
 
-    if isinstance(model, CoxPH):
+    if isinstance(model, (CoxPH, CoxNet)):
         return model.predict(x, type="lp")
     if isinstance(model, AFT):
         # The AFT linear predictor is the log-time location: larger means longer survival,
         # so negate it to get a risk score.
         return -model.predict(x, type="lp")
     raise TypeError(
-        f"cross_validate with metric='concordance' needs a CoxPH or AFT model, "
+        f"cross_validate with metric='concordance' needs a CoxPH, CoxNet, or AFT model, "
         f"got {type(model).__name__}."
     )
 
@@ -98,10 +99,11 @@ def cross_validate(
     from ._cox import CoxPH, _design_matrix
     from ._metrics import concordance_index, integrated_brier_score
     from ._parametric import AFT
+    from ._penalized import CoxNet
 
-    if not isinstance(model, (CoxPH, AFT)):
+    if not isinstance(model, (CoxPH, CoxNet, AFT)):
         raise TypeError(
-            f"cross_validate needs a CoxPH or AFT model, got {type(model).__name__}."
+            f"cross_validate needs a CoxPH, CoxNet, or AFT model, got {type(model).__name__}."
         )
     if k < 2:
         raise ValueError("k must be at least 2.")
@@ -111,6 +113,13 @@ def cross_validate(
     design, _ = _design_matrix(covariates, data)
     if design.shape[0] != surv.n:
         raise ValueError("Covariates and response must have the same number of rows.")
+
+    # Complete-case: drop rows with a missing covariate once, up front, so every fold's
+    # train and test sets are aligned with the response.
+    keep = ~np.isnan(design).any(axis=1)
+    if not keep.all():
+        design = design[keep]
+        surv = _subset_surv(surv, np.nonzero(keep)[0])
 
     brier_times: list[float] = []
     if metric == "brier":
