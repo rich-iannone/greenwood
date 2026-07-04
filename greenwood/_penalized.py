@@ -56,6 +56,26 @@ class CoxNet:
     Call `fit(surv, covariates)` with a right-censored or counting-process `Surv` response.
     `covariates` may be a dataframe, a 2-D array, or a formula string with `data`. Stratified
     penalized fits are not supported.
+
+    Examples
+    --------
+    Build a `Surv` response from the bundled `lung` dataset and fit a lasso (`l1_ratio=1.0`)
+    elastic-net Cox model over several covariates. The `ph.ecog`, `ph.karno`, and `wt.loss`
+    columns have missing values, which `CoxNet` drops automatically. Printing the fitted object
+    shows the penalized coefficients and how many were driven to zero.
+
+    ```{python}
+    import greenwood as gw
+    from greenwood import Surv
+
+    lung = gw.data.load_dataset("lung")
+    y = Surv.right(lung["time"], event=(lung["status"] == 2))
+    cols = ["age", "sex", "ph.ecog", "ph.karno", "wt.loss"]
+    coxnet = gw.CoxNet(penalizer=0.05, l1_ratio=1.0).fit(y, lung[cols])
+    coxnet
+    ```
+
+    The `coxnet` object fit here is reused by the method examples below.
     """
 
     def __init__(
@@ -96,7 +116,19 @@ class CoxNet:
         )
 
     def fit(self, surv: Surv, covariates: Any, *, data: Any = None) -> CoxNet:
-        """Fit the penalized model to a `Surv` response and a covariate design."""
+        """Fit the penalized model to a `Surv` response and a covariate design.
+
+        Examples
+        --------
+        `penalizer` sets the overall penalty strength and `l1_ratio` the elastic-net mixing:
+        `l1_ratio=1` is a lasso (sparse, selects variables), `l1_ratio=0` is ridge (smooth
+        shrinkage), and `penalizer=0` recovers the ordinary Cox fit. Here is a ridge fit to the
+        same `y` response and `lung` data from the class example above:
+
+        ```{python}
+        gw.CoxNet(penalizer=0.05, l1_ratio=0.0).fit(y, lung[cols])
+        ```
+        """
         from ._surv import CensoringType
 
         if surv.type not in (CensoringType.RIGHT, CensoringType.COUNTING):
@@ -181,7 +213,20 @@ class CoxNet:
         return self._event_times, cumhaz
 
     def predict(self, newdata: Any = None, *, type: str = "lp", times: Any = None) -> Any:
-        """Predict `"lp"` (centered linear predictor), `"risk"` (`exp(lp)`), or `"survival"`."""
+        """Predict `"lp"` (centered linear predictor), `"risk"` (`exp(lp)`), or `"survival"`.
+
+        Examples
+        --------
+        The default `type="lp"` returns the centered linear predictor. Here are the values for
+        the first five subjects (reusing the `coxnet` fit above):
+
+        ```{python}
+        coxnet.predict(lung[cols], type="lp")[:5]
+        ```
+
+        Pass `type="risk"` for the relative risk `exp(lp)`, or `type="survival"` for predicted
+        survival curves.
+        """
         x = self._x if newdata is None else _design_matrix(newdata)[0]
         lp = (x - self._center) @ self.coef_
         if type == "lp":
@@ -203,7 +248,18 @@ class CoxNet:
         raise ValueError(f"Unknown predict type {type!r}; use 'lp', 'risk', or 'survival'.")
 
     def to_dataframe(self) -> Any:
-        """Return the (penalized) coefficient table: one row per term."""
+        """Return the (penalized) coefficient table: one row per term.
+
+        Examples
+        --------
+        The coefficient table gives one row per term, with the penalized estimate and its
+        hazard ratio; terms shrunk to zero by the lasso appear as zero coefficients (reusing the
+        `coxnet` fit above):
+
+        ```{python}
+        coxnet.to_dataframe()
+        ```
+        """
         import pandas as pd
 
         return pd.DataFrame(
