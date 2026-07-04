@@ -83,14 +83,14 @@ def load_dataset(name: str, *, backend: str | None = None) -> Any:
     resource = files("greenwood.data").joinpath(_DATASETS[name])
     text = gzip.decompress(resource.read_bytes()).decode("utf-8")
 
-    if backend == "pandas":
-        import io
-
-        import pandas as pd
-
-        return pd.read_csv(io.StringIO(text))
-    if backend == "polars":
+    resolved = _resolve_backend(backend)
+    if resolved == "polars":
         import polars as pl
 
         return pl.read_csv(text.encode("utf-8"))
-    raise ValueError(f"Unknown backend {backend!r}; use 'pandas' or 'polars'.")
+
+    import io
+
+    import pandas as pd
+
+    return pd.read_csv(io.StringIO(text))
