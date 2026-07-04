@@ -322,6 +322,43 @@ def test_cox_cluster_robust_variance_matches_r() -> None:
     assert_allclose_to_r(cox.std_error_, fixture["robust_se"], what="cluster robust se")
 
 
+def test_cox_time_varying_matches_r() -> None:
+    # Counting-process (start, stop] Cox with a time-varying covariate, vs R coxph on `heart`.
+    import pandas as pd
+
+    fixture = load_fixture("cox_timevarying")
+    y = Surv.counting(start=fixture["start"], stop=fixture["stop"], event=fixture["event"])
+    x = pd.DataFrame(
+        {"age": fixture["age"], "surgery": fixture["surgery"], "transplant": fixture["transplant"]}
+    )
+    cox = gw.CoxPH(ties="breslow").fit(y, x)
+    assert cox.n_ == fixture["n"] and cox.n_event_ == fixture["nevent"]
+    assert_allclose_to_r(cox.coef_, fixture["coef"], what="time-varying coef")
+    assert_allclose_to_r(cox.std_error_, fixture["se"], what="time-varying se")
+    assert_allclose_to_r(cox.loglik_, fixture["loglik"], what="time-varying loglik")
+
+
+def test_cox_survival_ci_matches_r() -> None:
+    import pandas as pd
+
+    df = gw.data.load_dataset("lung", backend="pandas")
+    y = Surv.right(df["time"], event=(df["status"] == 2))
+    fixture = load_fixture("cox_survci_breslow")
+    cox = gw.CoxPH(ties="breslow").fit(y, df[["age", "sex"]])
+    newdata = pd.DataFrame({"age": fixture["newdata_age"], "sex": fixture["newdata_sex"]})
+    pred = cox.predict(newdata, type="survival", times=fixture["times"], ci=True)
+    for j, subj in enumerate(("subj1", "subj2"), start=1):
+        assert_allclose_to_r(
+            pred[f"subject_{j}"].to_numpy(), fixture["surv"][subj], what=f"{subj} surv"
+        )
+        assert_allclose_to_r(
+            pred[f"subject_{j}_lower"].to_numpy(), fixture["lower"][subj], what=f"{subj} lower"
+        )
+        assert_allclose_to_r(
+            pred[f"subject_{j}_upper"].to_numpy(), fixture["upper"][subj], what=f"{subj} upper"
+        )
+
+
 @pytest.mark.parametrize("dist", ["weibull", "exponential", "lognormal", "loglogistic"])
 def test_aft_matches_r_survreg(dist: str) -> None:
     df = gw.data.load_dataset("lung", backend="pandas")
