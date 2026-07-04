@@ -75,9 +75,9 @@ and look at its results through the tidy functions below.
 cox = gw.CoxPH().fit(y, lung[["age", "sex", "ph.ecog"]])
 ```
 
-A fitted model is not something you inspect directly. Instead you read its results through
-tidy output frames. The `tidy` function returns one row per model term, and passing
-`exponentiate=True` reports hazard ratios rather than raw coefficients.
+Printing a fitted model shows a readable summary, but for programmatic use you read its
+results through tidy output frames. The `tidy` function returns one row per model term, and
+passing `exponentiate=True` reports hazard ratios rather than raw coefficients.
 
 ```{python}
 gw.tidy.tidy(cox, exponentiate=True)
