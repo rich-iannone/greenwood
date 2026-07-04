@@ -1,0 +1,208 @@
+---
+title: Survival data and the Surv object
+guide-section: "Foundations"
+---
+
+```{python}
+#| echo: false
+#| output: false
+import great_docs as gd
+
+gd.enable_tbl_preview(n_head=8, n_tail=3)
+```
+
+Survival analysis studies the time until an event happens: death, relapse, machine failure,
+customer churn, or any other well-defined endpoint. What makes this kind of data special,
+and what separates survival analysis from ordinary regression, is that we usually cannot
+observe the event time for everyone. Some subjects are still event-free when the study ends,
+some drop out early, and some enter late. Handling these partially observed times correctly
+is the entire point of the field, and it starts with how you represent the data.
+
+This page explains the structure of survival data and introduces the `Surv` object, the
+response type that every estimator and model in Greenwood consumes.
+
+## Why survival data is different
+
+Imagine a study that follows patients for two years and records the time until relapse. At
+the end of the study, three situations are possible for any given patient.
+
+The first is a fully observed event: the patient relapsed at a known time, say 8 months. The
+second is right censoring: the patient was relapse-free at their last visit, say at 20
+months, so all we know is that their true relapse time is greater than 20 months. The third
+is a variation on censoring caused by how subjects enter and leave the study.
+
+Right censoring is by far the most common situation, and it is why we cannot simply average
+the observed times or run a standard regression on them. A censored time of 20 months is not
+the same as an event at 20 months, and treating it as one would badly bias every estimate.
+Survival methods are built to use the partial information in a censored observation without
+pretending it is a complete one.
+
+::: {#fig-censoring}
+<svg viewBox="0 0 680 210" xmlns="http://www.w3.org/2000/svg" style="max-width:680px;width:100%;height:auto;font-family:sans-serif;color:inherit">
+<text x="125" y="59" text-anchor="end" font-size="13" fill="currentColor">Subject A</text>
+<line x1="140" y1="55" x2="280" y2="55" stroke="currentColor" stroke-width="3"/>
+<circle cx="280" cy="55" r="6" fill="#4c78a8"/>
+<text x="292" y="59" font-size="13" fill="currentColor">Event (t = 8)</text>
+<text x="125" y="109" text-anchor="end" font-size="13" fill="currentColor">Subject B</text>
+<line x1="140" y1="105" x2="490" y2="105" stroke="currentColor" stroke-width="3"/>
+<circle cx="490" cy="105" r="6" fill="none" stroke="currentColor" stroke-width="2"/>
+<text x="502" y="109" font-size="13" fill="currentColor">Censored (t = 20)</text>
+<line x1="140" y1="150" x2="560" y2="150" stroke="currentColor" stroke-width="1"/>
+<g font-size="11" fill="currentColor" text-anchor="middle">
+<line x1="140" y1="150" x2="140" y2="156" stroke="currentColor"/><text x="140" y="170">0</text>
+<line x1="210" y1="150" x2="210" y2="156" stroke="currentColor"/><text x="210" y="170">4</text>
+<line x1="280" y1="150" x2="280" y2="156" stroke="currentColor"/><text x="280" y="170">8</text>
+<line x1="350" y1="150" x2="350" y2="156" stroke="currentColor"/><text x="350" y="170">12</text>
+<line x1="420" y1="150" x2="420" y2="156" stroke="currentColor"/><text x="420" y="170">16</text>
+<line x1="490" y1="150" x2="490" y2="156" stroke="currentColor"/><text x="490" y="170">20</text>
+<line x1="560" y1="150" x2="560" y2="156" stroke="currentColor"/><text x="560" y="170">24</text>
+</g>
+<text x="350" y="195" text-anchor="middle" font-size="12" fill="currentColor">Months of follow-up</text>
+</svg>
+
+Two subjects observed over a study window. Subject A reaches the event at month 8. Subject B is still event-free at month 20, so their true event time is only known to exceed 20: this is right censoring.
+:::
+
+Greenwood also supports less common but important patterns: left censoring (the event
+happened before a known time), interval censoring (the event happened between two known
+times), and left truncation or late entry (a subject only becomes observable after some
+delay). All of these are expressed through the same response object.
+
+::: {.callout-note}
+## The key idea
+A survival observation carries two pieces of information: a time, and a status that says
+what the time means (an event, or a censoring point). You must always keep them together.
+Greenwood does this for you with the `Surv` object.
+:::
+
+## The Surv object
+
+`Surv` is the response you pass to estimators and models. It bundles the times with their
+status codes and validates them, so that downstream code can rely on a clean, consistent
+representation. You build one with a constructor that names the censoring type.
+
+The most common constructor is `Surv.right`, for right-censored data. It takes the observed
+times and an event indicator, where a truthy value (or `1`) means the event occurred and a
+falsy value (or `0`) means the observation was censored.
+
+```{python}
+import greenwood as gw
+from greenwood import Surv
+
+# Four subjects: events at 5 and 4, censored at 6 and 9.
+y = Surv.right(time=[5, 6, 4, 9], event=[1, 0, 1, 0])
+y
+```
+
+The `repr` gives a quick summary: the censoring type, the number of observations, and how
+many of them were events. You can also reach the derived quantities directly.
+
+```{python}
+print("observations:", y.n)
+print("events:", y.n_events)
+print("censored:", y.n_censored)
+```
+
+### Other censoring types
+
+When subjects enter the risk set after time zero, or when a covariate changes during
+follow-up, you use the counting-process form. Each observation is an interval `(start,
+stop]` with an event indicator at the stop time. This is also how left truncation is
+expressed.
+
+```{python}
+Surv.counting(start=[0, 2, 1], stop=[5, 6, 4], event=[1, 0, 1])
+```
+
+Interval censoring, where the event is known only to fall between two times, uses
+`Surv.interval`. Use `numpy.inf` for the upper bound to mark right censoring.
+
+```{python}
+import numpy as np
+
+Surv.interval(lower=[1, 2, 3], upper=[2, np.inf, 5])
+```
+
+Competing risks and multi-state endpoints, where more than one kind of event can occur, use
+`Surv.multistate`. The event codes are `0` for censoring and `1, 2, ...` for the competing
+causes, and you name the states.
+
+```{python}
+Surv.multistate(time=[5, 6, 7, 8], event=[1, 2, 0, 1], states=("relapse", "death"))
+```
+
+## Building a response from a data frame
+
+In practice your data lives in a data frame. Greenwood is dataframe-agnostic through
+narwhals, so you can pass pandas or Polars columns directly. The bundled `lung` dataset,
+from the North Central Cancer Treatment Group, is a good example.
+
+```{python}
+lung = gw.data.load_dataset("lung")
+lung.head()
+```
+
+There is a subtlety here that trips up almost everyone at least once. In this dataset, and
+in several others that come from R, the `status` column is coded `1` for censored and `2`
+for dead, rather than the `0`/`1` convention. Greenwood does not guess at this coding, and
+it will raise an error if you pass `1`/`2` values directly. You convert the column
+explicitly instead.
+
+```{python}
+y = Surv.right(lung["time"], event=(lung["status"] == 2))
+y
+```
+
+::: {.callout-warning}
+## Check your event coding
+Greenwood requires the event indicator to be boolean or `0`/`1`, where `1` means the event
+occurred. If your data uses another convention, such as `1` for censored and `2` for the
+event, convert it first with a comparison like `status == 2`. This deliberate strictness
+prevents a silent and serious error where censoring and events are swapped.
+:::
+
+## Validation and reproducibility
+
+The `Surv` constructor validates its inputs immediately. Times must be finite and
+non-negative, the arrays must have matching lengths, and for the counting-process form each
+start must be strictly less than its stop. When something is wrong, you get a clear error at
+construction time rather than a confusing failure deep inside an estimator.
+
+```{python}
+try:
+    Surv.right([5, -1, 3], [1, 1, 1])
+except ValueError as error:
+    print(error)
+```
+
+A response also serializes to and from JSON without loss, which is useful for saving an
+analysis input or moving it between systems. Calling `to_json` returns a plain string, so you
+can write it to a file or send it over the wire. Here is the serialized form of the `lung`
+response, truncated to its first stretch so you can see the shape of it.
+
+```{python}
+text = y.to_json(indent=None)
+text[:200]
+```
+
+That string carries the times and status codes together, which is exactly what a `Surv`
+object holds. Reading it back with `from_json` reconstructs an equivalent response, and we can
+confirm nothing was lost by comparing the JSON of the original and the restored object.
+
+```{python}
+restored = Surv.from_json(text)
+print("round-trips exactly:", restored.to_json() == y.to_json())
+```
+
+## Next steps
+
+You now know how to represent survival data and how to avoid the most common coding mistake.
+From here you can bring in your own data or start estimating.
+
+- [Data sources and formats](04-data-sources.qmd) shows how to load data from pandas, Polars,
+  and other backends, and lists the datasets bundled with the package.
+- [Estimating survival with Kaplan-Meier](05-kaplan-meier.qmd) shows how to estimate and
+  summarize the survival curve.
+- [Comparing groups](06-comparing-groups.qmd) covers the log-rank family of tests.
+- The [Quick start](02-quick-start.qmd) is a fast tour of everything if you prefer to skim
+  first.
