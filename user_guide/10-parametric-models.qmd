@@ -48,10 +48,12 @@ You fit one by naming a distribution. The Weibull is the default and the most co
 
 ```{python}
 aft = gw.AFT("weibull").fit(y, lung[["age", "sex"]])
+aft
 ```
 
-As with the other models, you read a fitted `aft` through its tidy table rather than printing
-it directly. Passing it to `gw.tidy.tidy` returns a DataFrame of the estimated coefficients.
+Printing the fitted model gives a summary in the style of R's `survreg`: the coefficient
+table, the scale parameter, the sample size, and the log-likelihood. For the coefficients as
+data, pass the model to `gw.tidy.tidy`, which returns a DataFrame.
 
 ```{python}
 gw.tidy.tidy(aft)
