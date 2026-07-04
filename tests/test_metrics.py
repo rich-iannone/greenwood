@@ -73,3 +73,54 @@ def test_integrated_brier_between_pointwise() -> None:
     bs = gw.brier_score(y, probs, times)
     ibs = gw.integrated_brier_score(y, probs, times)
     assert bs.min() <= ibs <= bs.max()
+
+
+def test_calibration_structure_and_coverage() -> None:
+    df = gw.data.load_dataset("lung", backend="pandas")
+    y = Surv.right(df["time"], event=(df["status"] == 2))
+    cox = gw.CoxPH().fit(y, df[["age", "sex"]])
+    pred = cox.predict(df[["age", "sex"]], type="survival", times=[365.0]).iloc[0, 1:].to_numpy()
+    cal = gw.calibration(y, pred, 365.0, n_bins=5)
+    assert list(cal.columns) == [
+        "bin", "n", "predicted", "observed", "observed_lower", "observed_upper",
+    ]
+    assert cal["n"].sum() == len(df)  # bins partition the subjects
+    assert list(cal["predicted"]) == sorted(cal["predicted"])  # bins ordered by prediction
+    assert ((cal["observed"] >= 0) & (cal["observed"] <= 1)).all()
+
+
+def test_calibration_single_bin_is_overall_km() -> None:
+    # A constant prediction collapses to one bin; the observed is the overall KM at the time.
+    df = gw.data.load_dataset("lung", backend="pandas")
+    y = Surv.right(df["time"], event=(df["status"] == 2))
+    cal = gw.calibration(y, np.full(len(df), 0.5), 365.0, n_bins=3)
+    assert len(cal) == 1
+    km_at = float(gw.KaplanMeier().fit(y).predict([365.0])[0])
+    np.testing.assert_allclose(cal["observed"].iloc[0], km_at)
+
+
+def test_calibration_diagonal_on_well_specified_model() -> None:
+    # Simulate from an exponential Cox model; predicted survival should track observed.
+    rng = np.random.default_rng(0)
+    n = 4000
+    x = rng.normal(size=n)
+    baseline = 0.02
+    event_time = rng.exponential(1.0 / (baseline * np.exp(0.7 * x)))
+    censor_time = rng.exponential(1.0 / 0.01, size=n)
+    time = np.minimum(event_time, censor_time)
+    event = (event_time <= censor_time).astype(int)
+    y = Surv.right(time, event=event)
+    cox = gw.CoxPH().fit(y, x.reshape(-1, 1))
+    horizon = float(np.quantile(time, 0.4))
+    pred = cox.predict(x.reshape(-1, 1), type="survival", times=[horizon]).iloc[0, 1:].to_numpy()
+    cal = gw.calibration(y, pred, horizon, n_bins=10)
+    # A correctly specified model is close to the diagonal on average.
+    assert np.mean(np.abs(cal["predicted"] - cal["observed"])) < 0.05
+
+
+def test_calibration_input_validation() -> None:
+    y = Surv.right([1, 2, 3, 4], [1, 1, 1, 1])
+    with pytest.raises(ValueError, match="one value per subject"):
+        gw.calibration(y, [0.5, 0.5], 2.0)
+    with pytest.raises(ValueError, match="n_bins"):
+        gw.calibration(y, [0.1, 0.2, 0.3, 0.4], 2.0, n_bins=1)
