@@ -19,6 +19,7 @@ Available datasets (all from R's `survival` package):
 from __future__ import annotations
 
 import gzip
+import importlib.util
 from importlib.resources import files
 from typing import Any
 
