@@ -109,6 +109,30 @@ class AalenJohansen:
             raise ValueError(f"conf_level must be in (0, 1), got {conf_level}.")
         self.conf_level = conf_level
 
+    def __repr__(self) -> str:
+        if getattr(self, "states_", None) is None:
+            return "AalenJohansen() <unfitted>"
+        states = ", ".join(str(s) for s in self.states_)
+        head = [
+            "AalenJohansen (Aalen-Johansen cumulative incidence)",
+            "",
+            f"states: {states}",
+        ]
+        df = self.to_dataframe()
+        if self._grouped:
+            n_strata = df["strata"].nunique()
+            head.append(f"strata: {n_strata}")
+            return "\n".join(head)
+        from ._repr import align_table, num
+
+        head.append(f"n = {int(df['n_risk'].iloc[0])}")
+        labels, rows = [], []
+        for cause, g in df.groupby("cause", sort=False):
+            labels.append(str(cause))
+            rows.append([num(g["estimate"].iloc[-1])])
+        table = align_table(["final CIF"], rows, labels)
+        return "\n".join(head) + "\n\n" + table
+
     def fit(self, surv: Surv, *, by: Any = None) -> AalenJohansen:
         """Fit cumulative incidence functions to a competing-risks `Surv` response."""
         if not surv.is_multistate:
@@ -199,6 +223,31 @@ class FineGray:
             raise ValueError(f"conf_level must be in (0, 1), got {conf_level}.")
         self.cause = cause
         self.conf_level = conf_level
+
+    def __repr__(self) -> str:
+        if getattr(self, "coef_", None) is None:
+            return f"FineGray(cause={self.cause!r}) <unfitted>"
+        from ._repr import align_table, fixed, num
+
+        rows = [
+            [num(c), num(hr), num(se), fixed(z, 3), num(p)]
+            for c, hr, se, z, p in zip(
+                self.coef_, self.hazard_ratio_, self.std_error_, self.z_, self.p_value_, strict=True
+            )
+        ]
+        table = align_table(
+            ["coef", "exp(coef)", "se(coef)", "z", "p"], rows, list(self.term_names_)
+        )
+        return "\n".join(
+            [
+                f"FineGray (Fine-Gray subdistribution hazard model, cause={self.cause!r})",
+                "",
+                table,
+                "",
+                f"n = {self.n_}, events = {self.n_event_}",
+                "Standard errors: robust (clustered)",
+            ]
+        )
 
     def fit(
         self, surv: Surv, covariates: Any, *, max_iter: int = 30, tol: float = 1e-9
@@ -389,6 +438,26 @@ class MultiState:
     against R's `survfit` multi-state `pstate`. (Competing risks and Kaplan-Meier are special
     cases handled by `AalenJohansen` and `KaplanMeier`.)
     """
+
+    def __repr__(self) -> str:
+        if getattr(self, "states_", None) is None:
+            return "MultiState() <unfitted>"
+        from ._repr import align_table, num
+
+        states = ", ".join(str(s) for s in self.states_)
+        final = self.occupancy_[-1]
+        rows = [[num(p)] for p in final]
+        table = align_table(["final occupancy"], rows, [str(s) for s in self.states_])
+        return "\n".join(
+            [
+                "MultiState (Aalen-Johansen multi-state model)",
+                "",
+                f"states: {states}",
+                f"times: {len(self.time_)}",
+                "",
+                table,
+            ]
+        )
 
     def fit(
         self, start: Any, stop: Any, state: Any, event: Any, *, states: Any = None

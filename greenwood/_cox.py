@@ -207,6 +207,35 @@ class CoxPH:
         self.ties = ties
         self.conf_level = conf_level
 
+    def __repr__(self) -> str:
+        if getattr(self, "coef_", None) is None:
+            return f"CoxPH(ties={self.ties!r}, conf_level={self.conf_level}) <unfitted>"
+        from scipy.stats import chi2
+
+        from ._repr import align_table, fixed, num
+
+        rows = [
+            [num(c), num(hr), num(se), fixed(z, 3), num(p)]
+            for c, hr, se, z, p in zip(
+                self.coef_, self.hazard_ratio_, self.std_error_, self.z_, self.p_value_, strict=True
+            )
+        ]
+        table = align_table(
+            ["coef", "exp(coef)", "se(coef)", "z", "p"], rows, list(self.term_names_)
+        )
+        lr_p = float(chi2.sf(self.lr_stat_, self.df_))
+        lines = [
+            f"CoxPH (Cox proportional hazards model, ties={self.ties!r})",
+            "",
+            table,
+            "",
+            f"n = {self.n_}, events = {self.n_event_}",
+            f"Likelihood ratio test = {num(self.lr_stat_)} on {self.df_} df, p = {num(lr_p)}",
+        ]
+        if self.robust:
+            lines.append("Standard errors: robust (sandwich)")
+        return "\n".join(lines)
+
     def fit(
         self,
         surv: Surv,

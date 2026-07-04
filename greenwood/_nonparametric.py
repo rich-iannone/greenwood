@@ -193,6 +193,42 @@ class KaplanMeier:
         self.conf_type = conf_type
         self.conf_level = conf_level
 
+    def __repr__(self) -> str:
+        if getattr(self, "_blocks", None) is None:
+            return f"KaplanMeier(conf_type={self.conf_type!r}) <unfitted>"
+        from ._repr import align_table, whole
+
+        df = self.to_dataframe()
+        lcl, ucl = f"{self.conf_level}LCL", f"{self.conf_level}UCL"
+        headers = ["n", "events", "median", lcl, ucl]
+        if self._grouped:
+            med = self.median(ci=True)
+            labels, rows = [], []
+            for label, g in df.groupby("strata", sort=False):
+                m, lo, hi = med[label]
+                labels.append(str(label))
+                rows.append(
+                    [
+                        whole(g["n_risk"].iloc[0]),
+                        whole(g["n_event"].sum()),
+                        whole(m),
+                        whole(lo),
+                        whole(hi),
+                    ]
+                )
+            table = align_table(headers, rows, labels)
+        else:
+            m, lo, hi = self.median(ci=True)
+            row = [
+                whole(df["n_risk"].iloc[0]),
+                whole(df["n_event"].sum()),
+                whole(m),
+                whole(lo),
+                whole(hi),
+            ]
+            table = align_table(headers, [row])
+        return "KaplanMeier (Kaplan-Meier survival estimate)\n\n" + table
+
     def fit(self, surv: Surv, *, by: Any = None, weights: Any = None) -> KaplanMeier:
         """Fit the estimator to a `Surv` response, optionally stratified by `by`."""
         z = float(norm.ppf(1.0 - (1.0 - self.conf_level) / 2.0))
@@ -370,6 +406,34 @@ class NelsonAalen:
             raise ValueError(f"conf_level must be in (0, 1), got {conf_level}.")
         self.conf_type = conf_type
         self.conf_level = conf_level
+
+    def __repr__(self) -> str:
+        if getattr(self, "_blocks", None) is None:
+            return f"NelsonAalen(conf_type={self.conf_type!r}) <unfitted>"
+        from ._repr import align_table, num, whole
+
+        df = self.to_dataframe()
+        headers = ["n", "events", "max cumhaz"]
+        if self._grouped:
+            labels, rows = [], []
+            for label, g in df.groupby("strata", sort=False):
+                labels.append(str(label))
+                rows.append(
+                    [
+                        whole(g["n_risk"].iloc[0]),
+                        whole(g["n_event"].sum()),
+                        num(g["estimate"].iloc[-1]),
+                    ]
+                )
+            table = align_table(headers, rows, labels)
+        else:
+            row = [
+                whole(df["n_risk"].iloc[0]),
+                whole(df["n_event"].sum()),
+                num(df["estimate"].iloc[-1]),
+            ]
+            table = align_table(headers, [row])
+        return "NelsonAalen (Nelson-Aalen cumulative hazard estimate)\n\n" + table
 
     def fit(self, surv: Surv, *, by: Any = None, weights: Any = None) -> NelsonAalen:
         """Fit the estimator to a `Surv` response, optionally stratified by `by`."""

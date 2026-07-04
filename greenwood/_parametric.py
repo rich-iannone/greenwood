@@ -91,6 +91,28 @@ class AFT:
         self.dist = dist
         self.conf_level = conf_level
 
+    def __repr__(self) -> str:
+        if getattr(self, "coef_", None) is None:
+            return f"AFT(dist={self.dist!r}, conf_level={self.conf_level}) <unfitted>"
+        from ._repr import align_table, fixed, num
+
+        rows = [
+            [num(c), num(se), fixed(z, 3), num(p)]
+            for c, se, z, p in zip(self.coef_, self.std_error_, self.z_, self.p_value_, strict=True)
+        ]
+        table = align_table(["coef", "se(coef)", "z", "p"], rows, list(self.term_names_))
+        return "\n".join(
+            [
+                f"AFT (accelerated failure time model, dist={self.dist!r})",
+                "",
+                table,
+                "",
+                f"Scale = {num(self.scale_)}",
+                f"n = {self.n_}, events = {self.n_event_}",
+                f"Log-likelihood = {num(self.loglik_)}",
+            ]
+        )
+
     def fit(self, surv: Surv, covariates: Any) -> AFT:
         """Fit the model to a right-censored `Surv` response and a covariate design."""
         from ._surv import CensoringType
