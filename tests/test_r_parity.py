@@ -178,6 +178,31 @@ def test_logrank_veteran_celltype_matches_r() -> None:
     _check_logrank(result, load_fixture("logrank_veteran_celltype"), "log-rank veteran/celltype")
 
 
+def test_stratified_logrank_matches_r() -> None:
+    df = gw.data.load_dataset("lung", backend="pandas")
+    df = df[df["ph.ecog"].notna()]
+    y = Surv.right(df["time"], event=(df["status"] == 2))
+    result = gw.logrank_test(y, group=df["sex"], strata=df["ph.ecog"])
+    fixture = load_fixture("logrank_stratified_lung_sex_ecog")
+    assert_allclose_to_r(result.statistic, fixture["chisq"], what="stratified logrank chisq")
+    assert_allclose_to_r(result.p_value, fixture["p"], what="stratified logrank p")
+    assert result.df == fixture["df"]
+
+
+def test_pairwise_logrank_matches_r() -> None:
+    df = gw.data.load_dataset("veteran", backend="pandas")
+    y = Surv.right(df["time"], event=df["status"])
+    fixture = load_fixture("pairwise_logrank_veteran")
+    for correction, key in [("holm", "holm"), ("bh", "bh"), ("bonferroni", "bonferroni")]:
+        pw = gw.pairwise_logrank_test(y, df["celltype"], correction=correction)
+        # Order rows by (group1, group2) to align with R's combn ordering.
+        pw = pw.sort_values(["group1", "group2"]).reset_index(drop=True)
+        assert_allclose_to_r(pw["p_value"].to_numpy(), fixture["p_value"], what="pairwise raw p")
+        assert_allclose_to_r(
+            pw["p_adjusted"].to_numpy(), fixture[key], what=f"pairwise {correction} p"
+        )
+
+
 def _check_cox(cox: gw.CoxPH, fixture: dict[str, Any], label: str) -> None:
     assert cox.term_names_ == fixture["terms"]
     assert cox.n_ == fixture["n"]
