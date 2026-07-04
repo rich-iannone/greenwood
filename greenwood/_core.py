@@ -35,6 +35,22 @@ class EventTable:
     Every array is aligned row-wise. When `strata` is not `None`, rows are grouped by
     stratum (each stratum's times are ascending). Counts are weighted when case weights
     are supplied, so they may be floats.
+
+    Examples
+    --------
+    An `EventTable` is produced by `event_table`. Build one from the bundled `lung`
+    dataset and view it as a frame with `to_dataframe`. The table built here is reused by
+    the `to_dataframe` method example below.
+
+    ```{python}
+    import greenwood as gw
+    from greenwood import Surv
+
+    lung = gw.data.load_dataset("lung")
+    y = Surv.right(lung["time"], event=(lung["status"] == 2))
+    et = gw.event_table(y)
+    et.to_dataframe()
+    ```
     """
 
     time: Array
@@ -47,7 +63,17 @@ class EventTable:
         return int(self.time.shape[0])
 
     def to_dataframe(self, backend: str = "pandas") -> Any:
-        """Return the tabulation as a tidy dataframe."""
+        """Return the tabulation as a tidy dataframe.
+
+        Examples
+        --------
+        One row per unique exit time. Pass `backend="polars"` for a Polars frame instead.
+        This reuses the `et` table from the class example above.
+
+        ```{python}
+        et.to_dataframe()
+        ```
+        """
         cols: dict[str, Array] = {}
         if self.strata is not None:
             cols["strata"] = self.strata
@@ -114,6 +140,28 @@ def event_table(surv: Surv, *, group: Any = None, weights: Any = None) -> EventT
     -------
     EventTable
         The per-time tabulation, ascending in time within each stratum.
+
+    Examples
+    --------
+    Tabulate the risk set from the bundled `lung` dataset. Each row is a unique exit
+    `time` with the number still at risk (`n_risk`), the number of events (`n_event`), and
+    the number censored (`n_censor`) at that time.
+
+    ```{python}
+    import greenwood as gw
+    from greenwood import Surv
+
+    lung = gw.data.load_dataset("lung")
+    y = Surv.right(lung["time"], event=(lung["status"] == 2))
+    gw.event_table(y).to_dataframe()
+    ```
+
+    Passing `group=` stratifies the table, adding a `strata` column with one block of rows
+    per group.
+
+    ```{python}
+    gw.event_table(y, group=lung["sex"]).to_dataframe()
+    ```
     """
     from ._surv import CensoringType, _to_1d_array
 
