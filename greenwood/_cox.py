@@ -39,6 +39,22 @@ class ZPHResult:
 
     `per_term` maps each covariate to a `{chisq, df, p_value}` dict; `global_test` holds
     the same for the overall test.
+
+    Examples
+    --------
+    A `ZPHResult` comes from a fitted model's `cox_zph` method. Fit a Cox model to the
+    bundled `lung` dataset, run the proportional-hazards test, and print the result:
+
+    ```{python}
+    import greenwood as gw
+    from greenwood import Surv
+
+    lung = gw.data.load_dataset("lung")
+    y = Surv.right(lung["time"], event=(lung["status"] == 2))
+    cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+    zph = cox.cox_zph()
+    zph
+    ```
     """
 
     transform: str
@@ -53,7 +69,17 @@ class ZPHResult:
         )
 
     def to_dataframe(self) -> Any:
-        """Return the test table (one row per term plus GLOBAL)."""
+        """Return the test table (one row per term plus GLOBAL).
+
+        Examples
+        --------
+        The test statistics are available as a tidy frame, one row per term plus a
+        `GLOBAL` row (reusing the `zph` result from the class example above):
+
+        ```{python}
+        zph.to_dataframe()
+        ```
+        """
         import pandas as pd
 
         rows = [{"term": k, **v} for k, v in self.per_term.items()]
@@ -228,6 +254,30 @@ class CoxPH:
     dataframe of covariates). Rows with missing values are dropped (complete-case, as in R's
     default `na.omit`). Results are exposed as arrays (`coef_`, `std_error_`, `hazard_ratio_`,
     …) and as a tidy frame via `to_dataframe`, and feed `greenwood.tidy`.
+
+    Examples
+    --------
+    Build a `Surv` response from the bundled `lung` dataset and fit the model on `age` and
+    `sex`. Printing the fitted object reports the coefficient table and global tests in the
+    style of R's `summary.coxph`.
+
+    ```{python}
+    import greenwood as gw
+    from greenwood import Surv
+
+    lung = gw.data.load_dataset("lung")
+    y = Surv.right(lung["time"], event=(lung["status"] == 2))
+    cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+    cox
+    ```
+
+    Hazard ratios (and their confidence limits) come from `tidy` with `exponentiate=True`.
+    The `cox` object fit here, along with `y` and `lung`, is reused by the method examples
+    below.
+
+    ```{python}
+    gw.tidy.tidy(cox, exponentiate=True)
+    ```
     """
 
     def __init__(self, *, ties: str = "efron", conf_level: float = 0.95) -> None:
@@ -286,6 +336,19 @@ class CoxPH:
         per-stratum baseline hazards with shared coefficients. `robust=True` (or providing
         `cluster` ids) reports the Lin-Wei sandwich variance; `cluster` sums the score
         residuals within groups before forming the sandwich.
+
+        Examples
+        --------
+        Passing `strata=` gives each stratum its own baseline hazard while sharing the
+        coefficients. Here we fit `age` and `ph.ecog` stratified by sex, reusing the `y`
+        response and `lung` data from the class example above:
+
+        ```{python}
+        gw.CoxPH().fit(y, lung[["age", "ph.ecog"]], strata=lung["sex"]).to_dataframe()
+        ```
+
+        The `covariates` argument also accepts a right-hand-side formula string (for example
+        `"age + sex + C(ph.ecog)"`), and `robust=True` reports the Lin-Wei sandwich variance.
         """
         from ._surv import CensoringType
 
@@ -449,6 +512,15 @@ class CoxPH:
         """Return the uncentered baseline cumulative hazard and survival as a frame.
 
         When the model is stratified, rows carry a `strata` column.
+
+        Examples
+        --------
+        The baseline cumulative hazard (and the implied baseline survival) is reported at
+        every event time, reusing the `cox` fit from the class example above:
+
+        ```{python}
+        cox.baseline_hazard()
+        ```
         """
         import pandas as pd
 
@@ -487,6 +559,26 @@ class CoxPH:
         With `ci=True` (survival only), the frame also carries `_lower` and `_upper` columns
         per subject: a pointwise confidence band from the cumulative-hazard standard error
         (the log transform used by R's `survfit`), at the model's `conf_level`.
+
+        Examples
+        --------
+        The default `type="lp"` returns the centered linear predictor, one value per fitted
+        subject (reusing the `cox` fit from the class example above):
+
+        ```{python}
+        cox.predict(type="lp")[:5]
+        ```
+
+        With `type="survival"` and `newdata`, the result is a frame of survival
+        probabilities at the requested `times`, one column per new subject. Row slicing with
+        `[:3]` works on both pandas and Polars frames:
+
+        ```{python}
+        cox.predict(lung[["age", "sex"]][:3], type="survival", times=[180, 365])
+        ```
+
+        Passing `ci=True` adds pointwise confidence bands, and `conditional_after=` gives
+        survival conditional on having already survived to a landmark time.
         """
         if newdata is None:
             x = self._x
@@ -595,6 +687,18 @@ class CoxPH:
 
         Martingale residuals are one per observation; Schoenfeld residuals are one row per
         event (columns are the covariates), ordered by stratum and then event time.
+
+        Examples
+        --------
+        Martingale residuals are returned as one value per observation (reusing the `cox`
+        fit from the class example above):
+
+        ```{python}
+        cox.residuals("martingale")[:5]
+        ```
+
+        Passing `"schoenfeld"` instead returns a DataFrame with one row per event and one
+        column per covariate.
         """
         if type == "martingale":
             risk = np.exp(self._x @ self.coef_)
@@ -668,6 +772,22 @@ class CoxPH:
         Regresses the scaled Schoenfeld residuals on a transform of time. `transform` is
         `"identity"` (default) or `"log"`, both validated against R's `cox.zph`. (R defaults
         to a Kaplan-Meier transform; `"km"` and `"rank"` are planned.)
+
+        Examples
+        --------
+        The test returns a `ZPHResult`; printing it summarizes the per-term and global
+        p-values (reusing the `cox` fit from the class example above):
+
+        ```{python}
+        cox.cox_zph()
+        ```
+
+        The full statistics are available as a tidy frame, one row per term plus a `GLOBAL`
+        row:
+
+        ```{python}
+        cox.cox_zph().to_dataframe()
+        ```
         """
         residuals, times, covariances = self._event_contributions()
         t = np.array(times)
@@ -752,6 +872,15 @@ class CoxPH:
         having failed before another subject still under observation at `t` (including one
         censored exactly at `t`); pairs tied in event time are excluded. For stratified
         models, only within-stratum pairs are compared.
+
+        Examples
+        --------
+        Harrell's C is returned as a single number, where 0.5 is chance and 1.0 is perfect
+        discrimination (reusing the `cox` fit from the class example above):
+
+        ```{python}
+        cox.concordance()
+        ```
         """
         risk = self._x @ self.coef_
         exit_ = self._exit
@@ -776,7 +905,18 @@ class CoxPH:
     # -- interop --------------------------------------------------------------
 
     def to_dataframe(self, *, exponentiate: bool = False) -> Any:
-        """Return a tidy coefficient table (one row per term)."""
+        """Return a tidy coefficient table (one row per term).
+
+        Examples
+        --------
+        The coefficient table carries the estimate, standard error, Wald z-statistic,
+        p-value, and confidence limits, one row per term (reusing the `cox` fit from the
+        class example above):
+
+        ```{python}
+        cox.to_dataframe()
+        ```
+        """
         import pandas as pd
 
         if exponentiate:
