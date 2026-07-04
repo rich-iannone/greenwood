@@ -133,6 +133,38 @@ aft.predict(newdata, type="survival", times=[180, 365, 730])
 Each column is a subject and each row a requested time, giving the estimated probability of
 surviving past that time.
 
+## Flexible parametric (Royston-Parmar) models
+
+The AFT distributions impose a fixed hazard shape. When none of them fits well but you still
+want the smooth, extrapolatable curves of a parametric model, a Royston-Parmar model is a good
+middle ground. It models the log cumulative hazard as a restricted cubic spline in log time,
+so the baseline shape is estimated from the data rather than assumed. The flexibility is set
+by `df`, the number of spline terms.
+
+```{python}
+rp = gw.RoystonParmar(df=3).fit(y, lung[["age", "sex"]])
+rp.to_dataframe()
+```
+
+The `gamma` terms are the spline coefficients for the baseline log cumulative hazard, and the
+named terms are the covariate effects on that scale. A useful check on the choice of `df` is
+that `df=1` is exactly a Weibull model, which Greenwood reproduces to tolerance against
+`survreg`; increasing `df` relaxes that shape.
+
+Prediction works as for the AFT model, with survival, hazard, or cumulative hazard curves.
+
+```{python}
+rp.predict(newdata, type="survival", times=[180, 365, 730])
+```
+
+::: {.callout-note}
+## Choosing the degrees of freedom
+More spline terms fit the observed hazard more closely but risk overfitting and unstable
+extrapolation. Two or three degrees of freedom are common defaults; compare candidates by AIC
+(from `glance`) or by cross-validated prediction error rather than by log-likelihood alone,
+since a larger `df` can only increase the likelihood.
+:::
+
 ## Next steps
 
 You can now fit, compare, and predict from parametric survival models.
