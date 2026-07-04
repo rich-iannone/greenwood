@@ -64,5 +64,5 @@ def test_invalid_arguments(lung, y) -> None:
 
 
 def test_concordance_requires_cox_or_aft(lung, y) -> None:
-    with pytest.raises(TypeError, match="CoxPH or AFT"):
+    with pytest.raises(TypeError, match="CoxPH, CoxNet, or AFT"):
         cross_validate(gw.KaplanMeier(), y, lung[["age", "sex"]])
