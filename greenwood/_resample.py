@@ -95,6 +95,25 @@ def cross_validate(
     -------
     dict
         `{"metric", "k", "scores" (per fold), "mean", "std"}`.
+
+    Examples
+    --------
+    Fit-and-score on the same data is optimistic; cross-validation gives an honest,
+    out-of-sample estimate. Here five-fold concordance for a Cox model on the bundled `lung`
+    dataset. The returned dict carries the per-fold `scores` alongside their `mean` and `std`.
+
+    ```{python}
+    import greenwood as gw
+    from greenwood import Surv
+
+    lung = gw.data.load_dataset("lung")
+    y = Surv.right(lung["time"], event=(lung["status"] == 2))
+
+    gw.cross_validate(gw.CoxPH(), y, lung[["age", "sex"]], k=5, metric="concordance", seed=1)
+    ```
+
+    Pass `metric="brier"` with a `times=` grid instead to score the integrated
+    inverse-probability-of-censoring-weighted Brier score (lower is better).
     """
     from ._cox import CoxPH, _design_matrix
     from ._metrics import concordance_index, integrated_brier_score
