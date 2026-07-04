@@ -133,6 +133,77 @@ gw.CoxPH(ties="breslow").fit(y, lung[["age", "sex"]]).to_dataframe()[["term", "e
 Unless you have a specific reason to match another tool's Breslow output, the Efron default
 is the right choice.
 
+## Time-varying covariates
+
+Some covariates change during follow-up: a treatment that starts partway through, a lab value
+that is remeasured, or a status that switches once. The Cox model handles these through the
+counting-process form, where each subject contributes one row per interval over which their
+covariates are constant. Each row records the interval `(start, stop]`, whether the event
+happened at its end, and the covariate values that held during it.
+
+We build a small illustrative dataset where a treatment switches on for some subjects. The
+response is a `Surv.counting` object rather than `Surv.right`.
+
+```{python}
+import pandas as pd
+
+intervals = pd.DataFrame(
+    {
+        "subject": [1, 1, 2, 3, 3, 4, 5, 5],
+        "start":   [0, 4, 0, 0, 5, 0, 0, 3],
+        "stop":    [4, 10, 7, 5, 14, 9, 3, 12],
+        "event":   [0, 1, 1, 0, 0, 1, 0, 1],
+        "treated": [0, 1, 0, 0, 1, 0, 0, 1],
+    }
+)
+intervals
+```
+
+Subject 1, for example, is untreated over `(0, 4]` and treated over `(4, 10]`, with the event
+at day 10. We pass the interval endpoints to `Surv.counting` and fit as usual.
+
+```{python}
+from greenwood import Surv
+
+y_tv = Surv.counting(start=intervals["start"], stop=intervals["stop"], event=intervals["event"])
+gw.CoxPH().fit(y_tv, intervals[["treated"]]).to_dataframe()[["term", "estimate", "p_value"]]
+```
+
+The risk set at each event time correctly includes only the intervals that span it, using each
+subject's covariate values as of that moment. This is exactly R's start-stop `coxph`, and
+Greenwood matches it to tolerance.
+
+::: {.callout-note}
+## One row per interval, not per subject
+The only change from an ordinary Cox fit is the data layout: a subject with a covariate that
+changes `k` times contributes `k + 1` rows, and the event indicator is 1 only on the interval
+where the event occurred. Left truncation and delayed entry use the same counting-process
+response.
+:::
+
+## Fitting from a formula
+
+Instead of selecting columns yourself, you can describe the model with a formula, passing the
+right-hand side as a string and the data frame as `data`. This is convenient for categorical
+variables, interactions, and transformations, and it mirrors the notation used in R. The
+formula support uses [formulaic](https://matthewwardrop.github.io/formulaic/), installed with
+the `formula` extra.
+
+```{python}
+gw.CoxPH().fit(y, "age + sex", data=lung).to_dataframe()[["term", "estimate"]]
+```
+
+Categorical columns are expanded into indicator terms automatically, and interactions are
+written with `*` (which expands to the main effects plus their product) or `:` (the product
+alone). A term like `C(ph.ecog)` forces a column to be treated as categorical.
+
+```{python}
+gw.CoxPH().fit(y, "age * sex", data=lung).to_dataframe()[["term", "estimate"]]
+```
+
+Rows with a missing value in any formula term are dropped, the same complete-case rule used
+when you pass columns directly. The formula interface is also available on `AFT`.
+
 ## Next steps
 
 You can now fit a Cox model, read hazard ratios, and assess overall fit.
