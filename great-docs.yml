@@ -7,6 +7,24 @@ site_url: "https://rich-iannone.github.io/greenwood/"
 
 dynamic: true
 
+# Lucide icons prepended to user-guide sidebar entries (keyed by page title).
+nav_icons:
+  sidebar:
+    "Get started": compass
+    "Installation": download
+    "Quick start": rocket
+    "Survival data and the Surv object": database
+    "Data sources and formats": table
+    "Estimating survival with Kaplan-Meier": trending-down
+    "Comparing groups": git-compare
+    "Visualizing survival": chart-spline
+    "Cox regression": sigma
+    "Cox model diagnostics": stethoscope
+    "Parametric survival models": waves
+    "Competing risks": split
+    "Multi-state models": network
+    "Prediction performance": target
+
 authors:
   - name: Richard Iannone
     role: Maintainer
