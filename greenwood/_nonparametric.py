@@ -225,6 +225,28 @@ class KaplanMeier:
     Call `fit` with a `Surv` response. Results are exposed as aligned arrays (`time_`,
     `survival_`, `std_error_`, `conf_low_`, `conf_high_`, `strata_`), as a tidy frame via
     `to_dataframe`, and through `median`, `quantile`, and `predict`.
+
+    Examples
+    --------
+    Build a `Surv` response from the bundled `lung` dataset and fit the estimator. Printing
+    the fitted object reports the median survival and its confidence interval.
+
+    ```{python}
+    import greenwood as gw
+    from greenwood import Surv
+
+    lung = gw.data.load_dataset("lung")
+    y = Surv.right(lung["time"], event=(lung["status"] == 2))
+    km = gw.KaplanMeier().fit(y)
+    km
+    ```
+
+    The full step function, one row per event time, is available with `to_dataframe`. The
+    `km` object fit here is reused by the method examples below.
+
+    ```{python}
+    km.to_dataframe()
+    ```
     """
 
     def __init__(self, *, conf_type: str = "log", conf_level: float = 0.95) -> None:
@@ -272,7 +294,18 @@ class KaplanMeier:
         return "KaplanMeier (Kaplan-Meier survival estimate)\n\n" + table
 
     def fit(self, surv: Surv, *, by: Any = None, weights: Any = None) -> KaplanMeier:
-        """Fit the estimator to a `Surv` response, optionally stratified by `by`."""
+        """Fit the estimator to a `Surv` response, optionally stratified by `by`.
+
+        Examples
+        --------
+        Passing `by=` produces one curve per group. Here we fit a separate survival
+        function for each sex, reusing the `y` response and `lung` data from the class
+        example above:
+
+        ```{python}
+        gw.KaplanMeier().fit(y, by=lung["sex"])
+        ```
+        """
         z = float(norm.ppf(1.0 - (1.0 - self.conf_level) / 2.0))
         self._blocks = _fit_blocks(surv, by, weights, self.conf_type, z)
         self._grouped = by is not None
@@ -323,6 +356,16 @@ class KaplanMeier:
         With `ci=True`, also return confidence limits obtained by inverting the survival
         confidence band (the R `quantile.survfit` convention). For a single stratum a
         scalar (or 3-tuple) is returned; when stratified, a dict keyed by stratum label.
+
+        Examples
+        --------
+        Any quantile of the survival distribution is available. Here is the first-quartile
+        survival time (the time by which a quarter of subjects have had the event), with its
+        confidence limits (reusing the `km` fit above):
+
+        ```{python}
+        km.quantile(0.25, ci=True)
+        ```
         """
         level = 1.0 - p
 
@@ -339,7 +382,17 @@ class KaplanMeier:
         return {b.label: one(b) for b in self._blocks}
 
     def median(self, *, ci: bool = False) -> Any:
-        """Median survival time per stratum (the 0.5-quantile)."""
+        """Median survival time per stratum (the 0.5-quantile).
+
+        Examples
+        --------
+        The median is the time at which the survival curve first drops to 0.5. Pass
+        `ci=True` for its confidence limits (reusing the `km` fit above):
+
+        ```{python}
+        km.median(ci=True)
+        ```
+        """
         return self.quantile(0.5, ci=ci)
 
     def rmst(self, tau: float, *, ci: bool = False) -> Any:
@@ -348,6 +401,16 @@ class KaplanMeier:
         With `ci=True`, return `(rmst, lower, upper)` using a normal approximation
         (`rmst +/- z * se`, lower bounded at 0). For a single stratum a scalar (or
         3-tuple) is returned; when stratified, a dict keyed by stratum label.
+
+        Examples
+        --------
+        The restricted mean survival time is the average survival time over a fixed window,
+        computed as the area under the curve up to `tau`. Here it is over the first 365 days,
+        with its confidence limits (reusing the `km` fit above):
+
+        ```{python}
+        km.rmst(365, ci=True)
+        ```
         """
         z = float(norm.ppf(1.0 - (1.0 - self.conf_level) / 2.0))
 
@@ -372,6 +435,16 @@ class KaplanMeier:
         (`rmrl +/- z * se`, lower bounded at 0). For a single stratum a scalar (or 3-tuple)
         is returned; when stratified, a dict keyed by stratum label. If everyone has failed by
         `s`, the value is `nan`.
+
+        Examples
+        --------
+        Restricted mean residual life is the expected additional survival time for subjects
+        who have already survived to a landmark. Here it is at 180 days, over the window out
+        to 730 days, with confidence limits (reusing the `km` fit above):
+
+        ```{python}
+        km.rmrl(180, 730, ci=True)
+        ```
         """
         if tau <= s:
             raise ValueError(f"tau ({tau}) must be greater than s ({s}).")
@@ -395,6 +468,18 @@ class KaplanMeier:
         """Evaluate the step function at `times` (survival or cumulative hazard).
 
         Returns an array for a single stratum, or a dict of arrays when stratified.
+
+        Examples
+        --------
+        Read the survival probability off the curve at any set of times. Here are the
+        estimated survival probabilities at 180, 365, and 730 days (reusing the `km` fit
+        above):
+
+        ```{python}
+        km.predict([180, 365, 730])
+        ```
+
+        Pass `what="cumhaz"` instead to evaluate the cumulative hazard at those same times.
         """
         if what not in ("survival", "cumhaz"):
             raise ValueError(f"what must be 'survival' or 'cumhaz', got {what!r}.")
@@ -415,7 +500,20 @@ class KaplanMeier:
     # -- interop --------------------------------------------------------------
 
     def to_dataframe(self, backend: str = "pandas") -> Any:
-        """Return the fitted curve(s) as a tidy frame, one row per time point."""
+        """Return the fitted curve(s) as a tidy frame, one row per time point.
+
+        Examples
+        --------
+        The tidy step function has one row per event time, carrying the risk-set counts,
+        the survival `estimate`, its standard error, and confidence limits (reusing the `km`
+        fit above):
+
+        ```{python}
+        km.to_dataframe()
+        ```
+
+        The default backend is pandas; pass `backend="polars"` to get a Polars frame instead.
+        """
         cols: dict[str, Array] = {}
         if self._grouped:
             cols["strata"] = self.strata_  # type: ignore[assignment]
@@ -467,6 +565,23 @@ class NelsonAalen:
     The cumulative hazard is the running sum of `d / n` over event times, with Aalen
     variance `sum(d / n^2)`. Confidence limits use the `conf_type` transform (`"plain"`
     or `"log"`).
+
+    Examples
+    --------
+    Build a `Surv` response from the bundled `lung` dataset and fit the estimator. Printing
+    the fitted object reports the counts and the maximum cumulative hazard reached.
+
+    ```{python}
+    import greenwood as gw
+    from greenwood import Surv
+
+    lung = gw.data.load_dataset("lung")
+    y = Surv.right(lung["time"], event=(lung["status"] == 2))
+    na = gw.NelsonAalen().fit(y)
+    na
+    ```
+
+    The `na` object fit here is reused by the method examples below.
     """
 
     def __init__(self, *, conf_type: str = "log", conf_level: float = 0.95) -> None:
@@ -506,7 +621,18 @@ class NelsonAalen:
         return "NelsonAalen (Nelson-Aalen cumulative hazard estimate)\n\n" + table
 
     def fit(self, surv: Surv, *, by: Any = None, weights: Any = None) -> NelsonAalen:
-        """Fit the estimator to a `Surv` response, optionally stratified by `by`."""
+        """Fit the estimator to a `Surv` response, optionally stratified by `by`.
+
+        Examples
+        --------
+        Passing `by=` produces one cumulative-hazard curve per group. Here we fit a separate
+        curve for each sex, reusing the `y` response and `lung` data from the class example
+        above:
+
+        ```{python}
+        gw.NelsonAalen().fit(y, by=lung["sex"])
+        ```
+        """
         z = float(norm.ppf(1.0 - (1.0 - self.conf_level) / 2.0))
         self._blocks = _fit_blocks(surv, by, weights, "log", z)
         self._grouped = by is not None
@@ -537,7 +663,20 @@ class NelsonAalen:
         )
 
     def to_dataframe(self, backend: str = "pandas") -> Any:
-        """Return the fitted cumulative hazard as a tidy frame."""
+        """Return the fitted cumulative hazard as a tidy frame.
+
+        Examples
+        --------
+        The tidy frame has one row per event time; the `estimate` column is the cumulative
+        hazard, alongside its standard error and confidence limits (reusing the `na` fit
+        above):
+
+        ```{python}
+        na.to_dataframe()
+        ```
+
+        The default backend is pandas; pass `backend="polars"` to get a Polars frame instead.
+        """
         cumhaz = self.cumhaz_
         se = self.std_error_
         with np.errstate(divide="ignore", invalid="ignore"):
