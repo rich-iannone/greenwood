@@ -56,9 +56,16 @@ in a standard complete-case analysis.
 cox = gw.CoxPH().fit(y, lung[["age", "sex", "ph.ecog"]])
 ```
 
-The call returns a fitted `CoxPH` estimator, held in `cox`. The estimator itself has no
-informative printout, so to inspect what it learned you ask it for a derived table. The most
-direct one is the coefficient table from `to_dataframe`.
+The call returns a fitted `CoxPH` estimator, held in `cox`. Printing it gives a compact
+summary modeled on R's `coxph` output: the coefficient table, the sample size and event
+count, and the overall likelihood ratio test.
+
+```{python}
+cox
+```
+
+The printed summary is meant for reading. When you want the numbers as data, to filter, join,
+or plot them, ask for the coefficient table with `to_dataframe`, which returns a tidy frame.
 
 ```{python}
 cox.to_dataframe()
