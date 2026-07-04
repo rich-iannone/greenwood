@@ -1,12 +1,8 @@
 name: CI
 
+# CI is disabled to avoid consuming GitHub Actions minutes.
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
-  release:
-    types: [published]
+  workflow_dispatch:
 
 jobs:
   lint:
