@@ -239,6 +239,44 @@ cox_diag_fixture <- function(ties) {
 write_json_fixture(cox_diag_fixture("breslow"), "cox_diag_breslow")
 write_json_fixture(cox_diag_fixture("efron"), "cox_diag_efron")
 
+# Predicted survival curves with confidence bands (survfit.coxph, conf.type="log").
+cox_survci_fixture <- function() {
+  cm <- coxph(Surv(time, status) ~ age + sex, data = lung, ties = "breslow")
+  nd <- data.frame(age = c(50, 70), sex = c(1, 2))
+  sf <- survfit(cm, newdata = nd)
+  times <- c(180, 365, 540)
+  i <- findInterval(times, sf$time)
+  list(
+    newdata_age = nd$age,
+    newdata_sex = nd$sex,
+    times = times,
+    surv = list(subj1 = sf$surv[i, 1], subj2 = sf$surv[i, 2]),
+    lower = list(subj1 = sf$lower[i, 1], subj2 = sf$lower[i, 2]),
+    upper = list(subj1 = sf$upper[i, 1], subj2 = sf$upper[i, 2]),
+    se_chaz = list(subj1 = sf$std.chaz[i, 1], subj2 = sf$std.chaz[i, 2])
+  )
+}
+write_json_fixture(cox_survci_fixture(), "cox_survci_breslow")
+
+# Time-varying-covariate Cox on counting-process (start, stop] data (the heart transplant
+# study). `transplant` changes within a subject across intervals. The data are stored in the
+# fixture so the Python test reconstructs the exact same design.
+cox_timevarying_fixture <- function() {
+  h <- heart
+  cm <- coxph(Surv(start, stop, event) ~ age + surgery + transplant, data = h, ties = "breslow")
+  list(
+    start = h$start, stop = h$stop, event = h$event,
+    age = h$age, surgery = h$surgery, transplant = as.integer(as.character(h$transplant)),
+    terms = names(coef(cm)),
+    coef = unname(coef(cm)),
+    se = unname(sqrt(diag(cm$var))),
+    loglik = cm$loglik[2],
+    n = cm$n,
+    nevent = cm$nevent
+  )
+}
+write_json_fixture(cox_timevarying_fixture(), "cox_timevarying")
+
 # -- Stratified Cox and robust (sandwich) variance ----------------------------------
 
 cm_strata <- coxph(Surv(time, status) ~ age + ph.ecog + strata(sex), data = lung)
