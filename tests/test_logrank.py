@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from greenwood import Surv, logrank_test
+from greenwood import Surv, logrank_test, pairwise_logrank_test
 
 
 def test_identical_groups_give_near_zero_statistic() -> None:
@@ -59,3 +59,34 @@ def test_repr_is_informative() -> None:
     text = repr(logrank_test(y, ["a", "a", "b", "b"]))
     assert "TestResult" in text
     assert "p_value" in text
+
+
+def test_stratified_reduces_to_unstratified_with_one_stratum() -> None:
+    y = Surv.right([1, 2, 3, 4, 5, 6], [1, 1, 1, 1, 1, 1])
+    group = ["a", "a", "a", "b", "b", "b"]
+    plain = logrank_test(y, group)
+    one_stratum = logrank_test(y, group, strata=["s"] * 6)
+    np.testing.assert_allclose(one_stratum.statistic, plain.statistic)
+    assert one_stratum.method.startswith("Stratified")
+
+
+def test_pairwise_shape_and_correction() -> None:
+    y = Surv.right([1, 2, 3, 4, 5, 6, 7, 8, 9], [1, 1, 1, 1, 1, 1, 1, 1, 1])
+    group = ["a", "a", "a", "b", "b", "b", "c", "c", "c"]
+    pw = pairwise_logrank_test(y, group, correction="none")
+    assert list(pw.columns) == ["group1", "group2", "statistic", "p_value", "p_adjusted"]
+    assert len(pw) == 3  # C(3, 2)
+    np.testing.assert_allclose(pw["p_value"], pw["p_adjusted"])  # 'none' leaves them equal
+
+
+def test_pairwise_bonferroni_scales_raw() -> None:
+    y = Surv.right([1, 2, 3, 4, 5, 6, 7, 8, 9], [1, 1, 1, 1, 1, 1, 1, 1, 1])
+    group = ["a", "a", "a", "b", "b", "b", "c", "c", "c"]
+    pw = pairwise_logrank_test(y, group, correction="bonferroni")
+    np.testing.assert_allclose(pw["p_adjusted"], np.minimum(pw["p_value"] * 3, 1.0))
+
+
+def test_pairwise_invalid_correction_raises() -> None:
+    y = Surv.right([1, 2, 3, 4], [1, 1, 1, 1])
+    with pytest.raises(ValueError, match="correction"):
+        pairwise_logrank_test(y, ["a", "a", "b", "b"], correction="nope")
