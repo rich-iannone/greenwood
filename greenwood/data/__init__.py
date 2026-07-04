@@ -69,11 +69,13 @@ def load_dataset(name: str, *, backend: str | None = None) -> Any:
     name
         One of `available_datasets` (e.g. `"lung"`, `"veteran"`).
     backend
-        `"pandas"` (default) or `"polars"`.
+        `"pandas"` or `"polars"`. When left as `None` (the default), Greenwood picks a
+        backend for you: it prefers Polars if it is installed, otherwise uses pandas, and
+        raises if neither is available.
 
     Returns
     -------
-    A dataframe in the requested backend.
+    A dataframe in the resolved backend.
     """
     if name not in _DATASETS:
         raise ValueError(f"Unknown dataset {name!r}; available: {available_datasets()}.")
