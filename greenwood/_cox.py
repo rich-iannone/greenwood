@@ -512,10 +512,27 @@ class CoxPH:
             if conditional_after is None:
                 surv = np.exp(-np.outer(h0, risk))
             else:
+                if ci:
+                    raise NotImplementedError(
+                        "Confidence intervals are not supported with conditional_after."
+                    )
                 h0_c = self._baseline_cumhaz_at(base_times, base_cumhaz, conditional_after, x)
                 delta = np.clip(h0[:, None] - h0_c[None, :], 0.0, None)  # (n_times, n_subj)
                 surv = np.exp(-delta * risk[None, :])
-            frame = pd.DataFrame({f"subject_{i + 1}": surv[:, i] for i in range(x.shape[0])})
+            columns = {}
+            if ci:
+                se_h = self._cumhaz_se(x, query)  # (n_times, n_subj)
+                z = float(norm.ppf(1.0 - (1.0 - self.conf_level) / 2.0))
+                lower = surv * np.exp(-z * se_h)
+                upper = surv * np.exp(z * se_h)
+                for i in range(x.shape[0]):
+                    columns[f"subject_{i + 1}"] = surv[:, i]
+                    columns[f"subject_{i + 1}_lower"] = lower[:, i]
+                    columns[f"subject_{i + 1}_upper"] = upper[:, i]
+            else:
+                for i in range(x.shape[0]):
+                    columns[f"subject_{i + 1}"] = surv[:, i]
+            frame = pd.DataFrame(columns)
             frame.insert(0, "time", query)
             return frame
         raise ValueError(f"Unknown predict type {type!r}; use 'lp', 'risk', or 'survival'.")
