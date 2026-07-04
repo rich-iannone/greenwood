@@ -126,6 +126,25 @@ cox.predict(newdata, type="survival", times=[180, 365, 730])
 Each column is a subject from `newdata`, and each row is a requested time. The `type="lp"`
 and `type="risk"` options instead return the linear predictor and the relative risk.
 
+### Confidence bands and conditional survival
+
+Pass `ci=True` to add a pointwise confidence band around each predicted curve. Every subject
+then gains `_lower` and `_upper` columns, built from the standard error of the cumulative
+hazard and matching R's `survfit` (which combines baseline-hazard and coefficient
+uncertainty).
+
+```{python}
+cox.predict(newdata, type="survival", times=[180, 365, 730], ci=True)
+```
+
+You can also predict conditional on a subject having already survived some time, which is
+useful for updating a prognosis partway through follow-up. With `conditional_after=180`, the
+returned probabilities are `P(T > t | T > 180) = S(t) / S(180)`.
+
+```{python}
+cox.predict(newdata, type="survival", times=[365, 730], conditional_after=180)
+```
+
 ## Stratification
 
 Sometimes a variable violates the proportional hazards assumption but is not of direct
