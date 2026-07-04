@@ -34,6 +34,19 @@ def test_load_polars_backend() -> None:
     assert df.shape == (228, 10)
 
 
+def test_load_pandas_backend() -> None:
+    pd = pytest.importorskip("pandas")
+    df = data.load_dataset("lung", backend="pandas")
+    assert isinstance(df, pd.DataFrame)
+    assert df.shape == (228, 10)
+
+
+def test_default_backend_prefers_polars() -> None:
+    # With both installed (as in dev), the agnostic default resolves to Polars.
+    pl = pytest.importorskip("polars")
+    assert isinstance(data.load_dataset("lung"), pl.DataFrame)
+
+
 def test_unknown_dataset_raises() -> None:
     with pytest.raises(ValueError, match="Unknown dataset"):
         data.load_dataset("nope")
