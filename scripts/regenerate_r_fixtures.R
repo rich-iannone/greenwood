@@ -286,10 +286,16 @@ write_json_fixture(
 
 # -- Parametric AFT models via survreg ----------------------------------------------
 
+aft_pred_newdata <- data.frame(age = c(50, 70, 60), sex = c(1, 2, 1))
+aft_pred_p <- c(0.1, 0.25, 0.5, 0.75, 0.9)
+
 aft_fixture <- function(dist) {
   m <- survreg(Surv(time, status) ~ age + sex, data = lung, dist = dist)
   se <- sqrt(diag(m$var))
   ncoef <- length(m$coef)
+  # Predicted survival-time quantiles: rows = subjects, cols = probabilities.
+  pred_q <- as.matrix(predict(m, aft_pred_newdata, type = "quantile", p = aft_pred_p))
+  dimnames(pred_q) <- NULL
   list(
     dist = dist,
     terms = names(m$coef),
