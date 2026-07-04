@@ -102,7 +102,25 @@ def _n_at_risk(block: Any, times: Array) -> Array:
 
 
 def risk_table_data(km: KaplanMeier, times: Any = None) -> Any:
-    """Return a tidy frame of the number at risk per stratum at each of `times`."""
+    """Return a tidy frame of the number at risk per stratum at each of `times`.
+
+    Examples
+    --------
+    Fit a stratified Kaplan-Meier estimator on the bundled `lung` dataset, then tabulate the
+    number of subjects still at risk in each group at a chosen set of times. This returns the
+    numbers as a tidy frame (one row per stratum and time).
+
+    ```{python}
+    import greenwood as gw
+    from greenwood import Surv
+
+    lung = gw.data.load_dataset("lung")
+    y = Surv.right(lung["time"], event=(lung["status"] == 2))
+    km = gw.KaplanMeier().fit(y, by=lung["sex"])
+
+    gw.viz.risk_table_data(km, times=[0, 250, 500, 750, 1000])
+    ```
+    """
     import pandas as pd
 
     query = np.asarray(_default_times(km) if times is None else times, dtype=float)
@@ -154,6 +172,27 @@ def plot_survival(
     Returns
     -------
     A plotnine `ggplot` (or a composition when `risk_table=True`).
+
+    Examples
+    --------
+    Fit a stratified Kaplan-Meier estimator on the bundled `lung` dataset and draw one survival
+    curve per group. The result is a composable plotnine object, so you can add layers, scales,
+    or themes to it.
+
+    ```{python}
+    import greenwood as gw
+    from greenwood import Surv
+
+    lung = gw.data.load_dataset("lung")
+    y = Surv.right(lung["time"], event=(lung["status"] == 2))
+    km = gw.KaplanMeier().fit(y, by=lung["sex"])
+
+    gw.plot_survival(km)
+    ```
+
+    Pass `risk_table=True` to stack an aligned numbers-at-risk table beneath the curve,
+    `conf_int=False` to drop the confidence band, and `censor_marks=False` to hide the
+    censoring ticks.
     """
     import pandas as pd
 
@@ -228,5 +267,23 @@ def _risk_table_plot(km: KaplanMeier, *, times: Any = None, xlab: str = "Time") 
 
 
 def risk_table(km: KaplanMeier, times: Any = None) -> Any:
-    """Return the numbers-at-risk table as a standalone plotnine plot."""
+    """Return the numbers-at-risk table as a standalone plotnine plot.
+
+    Examples
+    --------
+    Fit a stratified Kaplan-Meier estimator on the bundled `lung` dataset, then render the
+    numbers at risk at a chosen set of times as its own plotnine plot (whose x-axis lines up
+    with a survival curve drawn over the same range).
+
+    ```{python}
+    import greenwood as gw
+    from greenwood import Surv
+
+    lung = gw.data.load_dataset("lung")
+    y = Surv.right(lung["time"], event=(lung["status"] == 2))
+    km = gw.KaplanMeier().fit(y, by=lung["sex"])
+
+    gw.risk_table(km, times=[0, 250, 500, 750, 1000])
+    ```
+    """
     return _risk_table_plot(km, times=times)
