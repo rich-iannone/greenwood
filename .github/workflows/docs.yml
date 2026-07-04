@@ -1,14 +1,8 @@
 name: CI Docs
 
-# The repo is currently private (rich-iannone/greenwood), so GitHub Pages
-# publishing is deferred. For now this workflow only *builds* the site as a CI
-# check. When the project moves to public, add the publish-docs / preview-docs
-#jobs.
-
+# Disabled to avoid consuming GitHub Actions minutes.
 on:
-  push:
-    branches: [main]
-  pull_request:
+  workflow_dispatch:
 
 jobs:
   build-docs:
