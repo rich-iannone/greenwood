@@ -102,6 +102,30 @@ class AalenJohansen:
     `Surv.multistate`, where `event` codes are 0 for censoring and `1..K` for the competing
     causes). Results are a tidy frame via `to_dataframe` with one row per stratum, cause, and
     time.
+
+    Examples
+    --------
+    The bundled `mgus2` dataset follows monoclonal-gammopathy patients who may progress to
+    plasma-cell malignancy (`"pcm"`) or die first, a competing-risks setup. Build the
+    competing-risks response by combining the progression and death indicators into a single
+    cause code (0 censored, 1 progression, 2 death), then fit the estimator. Printing the
+    fitted object reports the final cumulative incidence for each cause.
+
+    ```{python}
+    import numpy as np
+    import greenwood as gw
+    from greenwood import Surv
+
+    mg = gw.data.load_dataset("mgus2")
+    etime = np.where(mg["pstat"] == 1, mg["ptime"], mg["futime"])
+    cause = np.where(mg["pstat"] == 1, 1, 2 * mg["death"])
+    y = Surv.multistate(etime, event=cause, states=("pcm", "death"))
+    aj = gw.AalenJohansen().fit(y)
+    aj
+    ```
+
+    The `aj` object fit here, along with the `y` response, is reused by the method examples
+    below.
     """
 
     def __init__(self, *, conf_level: float = 0.95) -> None:
@@ -134,7 +158,18 @@ class AalenJohansen:
         return "\n".join(head) + "\n\n" + table
 
     def fit(self, surv: Surv, *, by: Any = None) -> AalenJohansen:
-        """Fit cumulative incidence functions to a competing-risks `Surv` response."""
+        """Fit cumulative incidence functions to a competing-risks `Surv` response.
+
+        Examples
+        --------
+        Passing `by=` stratifies the estimate, producing one set of cumulative incidence
+        functions per group. Here we fit a separate estimate for each sex, reusing the `y`
+        response from the class example above:
+
+        ```{python}
+        gw.AalenJohansen().fit(y, by=mg["sex"])
+        ```
+        """
         if not surv.is_multistate:
             raise ValueError(
                 "AalenJohansen needs a multi-state response; build it with Surv.multistate "
@@ -171,7 +206,21 @@ class AalenJohansen:
         return self
 
     def to_dataframe(self, backend: str = "pandas") -> Any:
-        """Return a tidy frame: [strata,] cause, time, n_risk, estimate, std_error, CI."""
+        """Return a tidy frame: [strata,] cause, time, n_risk, estimate, std_error, CI.
+
+        Examples
+        --------
+        The tidy frame has one row per cause and time point, carrying the `cause` label, the
+        per-cause cumulative incidence `estimate`, its standard error, and confidence limits
+        (`conf_low`, `conf_high`). Rows for each cause are stacked together (reusing the `aj`
+        fit above):
+
+        ```{python}
+        aj.to_dataframe()
+        ```
+
+        The default backend is pandas; pass `backend="polars"` to get a Polars frame instead.
+        """
         cols: dict[str, list[Any]] = {
             k: []
             for k in (
@@ -216,6 +265,34 @@ class FineGray:
     covariate effects on the cumulative incidence of the target cause. Coefficients and both
     the model-based and clustered robust (Lin-Wei) standard errors are validated against R's
     `survival::finegray` plus `coxph`.
+
+    Examples
+    --------
+    Using the same competing-risks setup as `AalenJohansen`, model the cumulative incidence of
+    plasma-cell malignancy (`"pcm"`) as a function of age and sex. The `age` and `sex` columns
+    of the `mgus2` frame form the covariate design. Printing the fitted object reports the
+    subdistribution-hazard coefficient table.
+
+    ```{python}
+    import numpy as np
+    import greenwood as gw
+    from greenwood import Surv
+
+    mg = gw.data.load_dataset("mgus2")
+    etime = np.where(mg["pstat"] == 1, mg["ptime"], mg["futime"])
+    cause = np.where(mg["pstat"] == 1, 1, 2 * mg["death"])
+    y = Surv.multistate(etime, event=cause, states=("pcm", "death"))
+    fg = gw.FineGray("pcm").fit(y, mg[["age", "sex"]])
+    fg
+    ```
+
+    Passing `exponentiate=True` to `tidy` reports the subdistribution hazard ratios (with
+    their confidence limits) instead of the log-scale coefficients. The `fg` object fit here
+    is reused by the method examples below.
+
+    ```{python}
+    gw.tidy.tidy(fg, exponentiate=True)
+    ```
     """
 
     def __init__(self, cause: Any, *, conf_level: float = 0.95) -> None:
@@ -252,7 +329,21 @@ class FineGray:
     def fit(
         self, surv: Surv, covariates: Any, *, max_iter: int = 30, tol: float = 1e-9
     ) -> FineGray:
-        """Fit the model to a competing-risks `Surv` response and a covariate design."""
+        """Fit the model to a competing-risks `Surv` response and a covariate design.
+
+        The model targets the cumulative incidence of the named cause, keeping subjects who
+        experience a competing event in the risk set with time-decreasing weights, and reports
+        clustered robust (Lin-Wei) standard errors.
+
+        Examples
+        --------
+        Refit the model with the same competing-risks response and covariate design used in
+        the class example above:
+
+        ```{python}
+        gw.FineGray("pcm").fit(y, mg[["age", "sex"]])
+        ```
+        """
         from ._cox import _design_matrix
 
         if not surv.is_multistate:
@@ -391,7 +482,18 @@ class FineGray:
         return scores
 
     def to_dataframe(self, *, exponentiate: bool = False) -> Any:
-        """Return a tidy coefficient table (subdistribution hazard ratios if exponentiated)."""
+        """Return a tidy coefficient table (subdistribution hazard ratios if exponentiated).
+
+        Examples
+        --------
+        The tidy coefficient table has one row per term, with the estimate, its standard
+        error, the test statistic, p-value, and confidence limits (reusing the `fg` fit
+        above):
+
+        ```{python}
+        fg.to_dataframe()
+        ```
+        """
         import pandas as pd
 
         estimate = self.hazard_ratio_ if exponentiate else self.coef_
@@ -437,6 +539,38 @@ class MultiState:
     occupancy probabilities over time. Occupancy probabilities are validated to tolerance
     against R's `survfit` multi-state `pstate`. (Competing risks and Kaplan-Meier are special
     cases handled by `AalenJohansen` and `KaplanMeier`.)
+
+    Examples
+    --------
+    The `mgus2` patients occupy three states in turn: `"mgus"` at entry, then possibly
+    `"pcm"` (plasma-cell malignancy), then `"death"`. Reshape the wide dataset into
+    counting-process intervals `(start, stop]`, one interval per state occupied, labelled with
+    the state entered next. A patient who progresses before dying contributes two intervals;
+    everyone else contributes one. Fitting reports the occupancy probability of each state
+    over time.
+
+    ```{python}
+    import greenwood as gw
+
+    mg = gw.data.load_dataset("mgus2")
+    start, stop, state, event = [], [], [], []
+    for i in range(len(mg)):
+        pt, ft = mg["ptime"][i], mg["futime"][i]
+        progressed, died = mg["pstat"][i] == 1, mg["death"][i] == 1
+        if progressed and pt < ft:
+            start += [0, pt]; stop += [pt, ft]; state += ["mgus", "pcm"]
+            event += ["pcm", "death" if died else None]
+        else:
+            start += [0]; stop += [ft]; state += ["mgus"]
+            event += ["death" if died else ("pcm" if progressed else None)]
+    rows = [(a, b, s, e) for a, b, s, e in zip(start, stop, state, event) if b > a]
+    start, stop, state, event = map(list, zip(*rows))
+    ms = gw.MultiState().fit(start, stop, state, event, states=("mgus", "pcm", "death"))
+    ms.to_dataframe()
+    ```
+
+    The `ms` object fit here, along with the interval arrays, is reused by the method examples
+    below.
     """
 
     def __repr__(self) -> str:
@@ -475,6 +609,16 @@ class MultiState:
             no transition.
         states
             Optional ordered list of all state labels (default: sorted unique).
+
+        Examples
+        --------
+        The estimator takes counting-process intervals, each labelled with the state occupied
+        and the state transitioned to at the interval's end. Refit using the interval arrays
+        built in the class example above:
+
+        ```{python}
+        gw.MultiState().fit(start, stop, state, event, states=("mgus", "pcm", "death"))
+        ```
         """
         from ._surv import _to_1d_array
 
@@ -530,7 +674,18 @@ class MultiState:
         return self
 
     def predict(self, times: Any) -> Any:
-        """State occupancy probabilities at `times` (right-continuous step function)."""
+        """State occupancy probabilities at `times` (right-continuous step function).
+
+        Examples
+        --------
+        Read the occupancy probabilities off the fitted model at any set of times. Here are the
+        probabilities of being in each state at 60, 120, and 240 months (reusing the `ms` fit
+        above):
+
+        ```{python}
+        ms.predict([60, 120, 240])
+        ```
+        """
         import pandas as pd
 
         query = np.atleast_1d(np.asarray(times, dtype=float))
@@ -541,7 +696,19 @@ class MultiState:
         return frame
 
     def to_dataframe(self, backend: str = "pandas") -> Any:
-        """Return occupancy probabilities over time (one column per state)."""
+        """Return occupancy probabilities over time (one column per state).
+
+        Examples
+        --------
+        The tidy frame has one row per distinct time and one column per state, giving the
+        occupancy probability of each state at that time (reusing the `ms` fit above):
+
+        ```{python}
+        ms.to_dataframe()
+        ```
+
+        The default backend is pandas; pass `backend="polars"` to get a Polars frame instead.
+        """
         cols: dict[str, Array] = {"time": self.time_}
         for j, state in enumerate(self.states_):
             cols[str(state)] = self.occupancy_[:, j]
