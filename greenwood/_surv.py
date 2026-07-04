@@ -198,6 +198,8 @@ class Surv:
         """
         lower_a = _to_1d_array(lower)
         upper_a = _to_1d_array(upper)
+        if lower_a.shape[0] != upper_a.shape[0]:
+            raise ValueError("`lower` and `upper` must have the same length.")
         # status: 1 = exact event, 0 = right-censored (upper = inf), 2 = interval.
         status = np.where(~np.isfinite(upper_a), 0, np.where(lower_a == upper_a, 1, 2)).astype(
             np.int64
