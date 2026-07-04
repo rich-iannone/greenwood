@@ -36,7 +36,7 @@ step-function estimates in tidy form, one row per stratum and time, with the sur
 probability and its confidence limits. We show the first several rows.
 
 ```{python}
-km.to_dataframe().head()
+km.to_dataframe()
 ```
 
 Each row is a step in one of the curves. The `time` and `estimate` columns give the point at
