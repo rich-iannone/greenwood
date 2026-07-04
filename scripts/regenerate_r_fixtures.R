@@ -148,6 +148,34 @@ write_json_fixture(
   "logrank_veteran_celltype"
 )
 
+# Stratified log-rank: compare sex within levels of ph.ecog (survdiff with strata()).
+logrank_stratified_fixture <- function() {
+  l <- lung[!is.na(lung$ph.ecog), ]
+  sd <- survdiff(Surv(time, status) ~ sex + strata(ph.ecog), data = l)
+  df <- length(sd$n) - 1
+  list(chisq = as.numeric(sd$chisq), df = df,
+       p = pchisq(as.numeric(sd$chisq), df, lower.tail = FALSE))
+}
+write_json_fixture(logrank_stratified_fixture(), "logrank_stratified_lung_sex_ecog")
+
+# Pairwise log-rank across the four veteran cell types, Holm-adjusted (as pairwise_survdiff).
+pairwise_logrank_fixture <- function() {
+  v <- veteran
+  g <- as.character(v$celltype)
+  levels_sorted <- sort(unique(g))
+  pairs <- combn(levels_sorted, 2)
+  raw <- numeric(ncol(pairs))
+  for (k in seq_len(ncol(pairs))) {
+    mask <- g %in% pairs[, k]
+    sdi <- survdiff(Surv(time, status) ~ celltype, data = v[mask, ])
+    raw[k] <- pchisq(as.numeric(sdi$chisq), 1, lower.tail = FALSE)
+  }
+  list(group1 = pairs[1, ], group2 = pairs[2, ], p_value = raw,
+       holm = p.adjust(raw, "holm"), bh = p.adjust(raw, "BH"),
+       bonferroni = p.adjust(raw, "bonferroni"))
+}
+write_json_fixture(pairwise_logrank_fixture(), "pairwise_logrank_veteran")
+
 # -- Numbers at risk at fixed times (for risk tables) -------------------------------
 
 risk_table_fixture <- function(fit, times) {
