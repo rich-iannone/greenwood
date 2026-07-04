@@ -204,6 +204,42 @@ gw.CoxPH().fit(y, "age * sex", data=lung).to_dataframe()[["term", "estimate"]]
 Rows with a missing value in any formula term are dropped, the same complete-case rule used
 when you pass columns directly. The formula interface is also available on `AFT`.
 
+## Penalized regression
+
+When you have many covariates, or they are collinear, an unpenalized fit can overfit or become
+unstable. `CoxNet` fits an elastic-net penalized Cox model: it shrinks the coefficients and,
+for the lasso, sets some of them to exactly zero, which selects variables. The `penalizer`
+argument sets the overall strength, and `l1_ratio` mixes the lasso (`1.0`) and ridge (`0.0`)
+penalties.
+
+```{python}
+cols = ["age", "sex", "ph.ecog", "ph.karno", "wt.loss"]
+lasso = gw.CoxNet(penalizer=0.05, l1_ratio=1.0).fit(y, lung[cols])
+lasso
+```
+
+The printed summary reports how many coefficients survived: the lasso has driven the weakest
+ones to exactly zero, leaving a smaller model. A pure ridge penalty (`l1_ratio=0.0`) instead
+shrinks every coefficient toward zero without removing any. Because penalized estimates are
+biased on purpose, `CoxNet` reports coefficients for prediction and selection but not
+p-values, and with `penalizer=0` it reduces to the ordinary Cox fit.
+
+The penalty strength is usually chosen by cross-validation. `cross_validate` accepts a
+`CoxNet` directly, so you can compare candidate values by held-out concordance.
+
+```{python}
+for lam in [0.02, 0.05, 0.1]:
+    cv = gw.cross_validate(gw.CoxNet(penalizer=lam, l1_ratio=1.0), y, lung[cols], k=5, seed=1)
+    print(f"penalizer={lam}: CV concordance = {cv['mean']:.4f}")
+```
+
+::: {.callout-note}
+## Standardization
+`CoxNet` standardizes covariates to unit variance before applying the penalty, as glmnet
+does, so that the penalty treats variables on comparable scales. Coefficients are returned on
+the original scale, so you read and use them exactly as you would from `CoxPH`.
+:::
+
 ## Next steps
 
 You can now fit a Cox model, read hazard ratios, and assess overall fit.
