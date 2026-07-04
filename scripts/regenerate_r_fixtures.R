@@ -381,6 +381,24 @@ for (d in c("weibull", "exponential", "lognormal", "loglogistic")) {
   write_json_fixture(aft_fixture(d), paste0("aft_", d))
 }
 
+# Weibull anchor for the Royston-Parmar model: with df=1 (no internal knots) the flexible
+# parametric model is a Weibull, so it must reproduce survreg's log-likelihood and predicted
+# survival. Store S(t|x) = 1 - pweibull(t, shape=1/scale, scale=exp(lp)).
+rp_weibull_anchor <- function() {
+  sr <- survreg(Surv(time, status) ~ age + sex, data = lung, dist = "weibull")
+  nd <- data.frame(age = c(50, 70), sex = c(1, 2))
+  lp <- predict(sr, nd, type = "lp")
+  shape <- 1 / sr$scale
+  times <- c(180, 365, 540)
+  surv <- sapply(seq_len(nrow(nd)), function(i) 1 - pweibull(times, shape, scale = exp(lp[i])))
+  list(
+    loglik = sr$loglik[2],
+    newdata_age = nd$age, newdata_sex = nd$sex, times = times,
+    surv = list(subj1 = surv[, 1], subj2 = surv[, 2])
+  )
+}
+write_json_fixture(rp_weibull_anchor(), "rp_weibull_anchor")
+
 # -- Competing risks: Aalen-Johansen CIF and Fine-Gray -------------------------------
 
 data(mgus2, package = "survival")
