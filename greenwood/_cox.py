@@ -537,6 +537,44 @@ class CoxPH:
             return frame
         raise ValueError(f"Unknown predict type {type!r}; use 'lp', 'risk', or 'survival'.")
 
+    def _cumhaz_se(self, x_new: Array, query: Array) -> Array:
+        """Standard error of the cumulative hazard `H(t | x)` at `query` times, per subject.
+
+        Uses the two-part Breslow-form variance (baseline variability plus the delta-method
+        term for coefficient uncertainty), matching R `survfit.coxph`'s `std.chaz` for a
+        Breslow fit (approximate for Efron ties, as with the score-residual variance).
+        """
+        xr, entry, exit_, event, w = self._x, self._entry, self._exit, self._event, self._weight
+        ev = event.astype(bool)
+        rs = np.exp(xr @ self.coef_) * w
+        et = np.unique(exit_[ev])
+        p = xr.shape[1]
+        s0 = np.empty(len(et))
+        xbar = np.empty((len(et), p))
+        d = np.empty(len(et))
+        for k, t in enumerate(et):
+            at_risk = (entry < t) & (exit_ >= t)
+            s0[k] = rs[at_risk].sum()
+            xbar[k] = (xr[at_risk] * rs[at_risk, None]).sum(axis=0) / s0[k]
+            d[k] = w[(exit_ == t) & ev].sum()
+        dl0 = d / s0
+        cum_part1 = np.cumsum(d / s0**2)  # baseline variance, cumulative over event times
+        cum_dl0 = np.cumsum(dl0)
+        cum_xbar_dl0 = np.cumsum(xbar * dl0[:, None], axis=0)
+
+        r0 = np.exp(x_new @ self.coef_)  # (n_subj,)
+        vcov = self.naive_vcov_
+        se = np.zeros((query.shape[0], x_new.shape[0]))
+        qi = np.searchsorted(et, query, side="right") - 1
+        for j, k in enumerate(qi):
+            if k < 0:
+                continue  # before the first event: H = 0, se = 0
+            # q_subject = r0 * cumsum((x0 - xbar) dLambda0) up to k
+            qmat = r0[:, None] * (x_new * cum_dl0[k] - cum_xbar_dl0[k][None, :])  # (n_subj, p)
+            var_h = r0**2 * cum_part1[k] + np.einsum("sp,pq,sq->s", qmat, vcov, qmat)
+            se[j] = np.sqrt(np.clip(var_h, 0.0, None))
+        return se
+
     @staticmethod
     def _baseline_cumhaz_at(
         base_times: Array, base_cumhaz: Array, conditional_after: Any, x: Array
