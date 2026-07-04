@@ -11,7 +11,9 @@ from greenwood import AFT, Surv
 
 @pytest.fixture
 def lung_surv():  # type: ignore[no-untyped-def]
-    df = gw.data.load_dataset("lung")
+    # Pinned to pandas: these tests use pandas idioms (`.iloc`, `to_numpy(dtype=)`).
+    # Backend-agnostic input is covered separately in test_backends.py.
+    df = gw.data.load_dataset("lung", backend="pandas")
     return df, Surv.right(df["time"], event=(df["status"] == 2))
 
 
