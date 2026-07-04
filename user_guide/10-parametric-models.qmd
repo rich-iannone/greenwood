@@ -1,0 +1,118 @@
+---
+title: Parametric survival models
+guide-section: "Regression"
+---
+
+```{python}
+#| echo: false
+#| output: false
+import great_docs as gd
+
+gd.enable_tbl_preview(n_head=8, n_tail=3)
+```
+
+The Cox model deliberately avoids specifying the shape of the baseline hazard. Parametric
+models take the opposite approach: they assume the survival times follow a particular
+distribution, such as Weibull or log-normal. In exchange for that assumption you gain a fully
+specified model that can extrapolate beyond the observed follow-up, produce smooth survival
+and hazard curves, and sometimes fit more efficiently. Greenwood provides these as
+accelerated failure time models, which describe how covariates stretch or compress the time
+scale. This page shows how to fit them and how to read their coefficients.
+
+We work from the `lung` outcomes. The response `y` is a `Surv` object that pairs each
+follow-up time with an event indicator, and it is what every model on this page is fit
+against.
+
+```{python}
+import greenwood as gw
+from greenwood import Surv
+
+lung = gw.data.load_dataset("lung")
+y = Surv.right(lung["time"], event=(lung["status"] == 2))
+y
+```
+
+The printed response shows 165 events among 228 subjects, with a `+` marking each censored
+time.
+
+## The accelerated failure time model
+
+An accelerated failure time model, or AFT model, works on the logarithm of survival time. It
+says that covariates act by multiplying the time scale: a covariate might make time pass
+twice as fast, halving survival, or twice as slowly, doubling it. This is a different and
+often more intuitive framing than the Cox model's multiplication of hazards. The model is
+fit by maximum likelihood, and it includes an intercept because it estimates the actual
+location of the survival distribution, not just relative effects.
+
+You fit one by naming a distribution. The Weibull is the default and the most common choice.
+
+```{python}
+aft = gw.AFT("weibull").fit(y, lung[["age", "sex"]])
+```
+
+As with the other models, you read a fitted `aft` through its tidy table rather than printing
+it directly. Passing it to `gw.tidy.tidy` returns a DataFrame of the estimated coefficients.
+
+```{python}
+gw.tidy.tidy(aft)
+```
+
+The coefficients are on the log-time scale. A positive coefficient lengthens survival time,
+and a negative coefficient shortens it. This is the opposite direction from a Cox hazard
+ratio, where a positive coefficient means higher risk and shorter survival, so take care when
+comparing the two.
+
+## Choosing a distribution
+
+Greenwood supports four error distributions, each giving a different hazard shape.
+Exponential assumes a constant hazard, Weibull allows a monotonically increasing or
+decreasing hazard, and log-normal and log-logistic allow hazards that rise and then fall.
+
+```{python}
+for dist in ("weibull", "exponential", "lognormal", "loglogistic"):
+    model = gw.AFT(dist).fit(y, lung[["age", "sex"]])
+    print(f"{dist:14s} loglik={model.loglik_:10.3f} scale={model.scale_:.4f}")
+```
+
+The scale parameter describes the spread of the distribution; the exponential model fixes it
+at 1, which is what makes its hazard constant. To compare non-nested distributions, use an
+information criterion such as the AIC, available from `glance`, where a lower value indicates
+a better trade-off between fit and complexity.
+
+Each call to `gw.tidy.glance` returns a one-row DataFrame of model-level summaries for a
+single fit. We stack those rows for three distributions into one frame so the criteria line
+up side by side, then reset the index so the rows number from zero.
+
+```{python}
+import pandas as pd
+
+pd.concat(gw.tidy.glance(gw.AFT(d).fit(y, lung[["age", "sex"]])) for d in
+          ("weibull", "lognormal", "loglogistic")).reset_index(drop=True)
+```
+
+Compare the models by reading down the AIC column and preferring the lowest value.
+
+::: {.callout-note}
+## Parametric or Cox?
+Choose a parametric model when you need to extrapolate, want smooth hazard or quantile
+predictions, or have a distributional form suggested by theory. Choose the Cox model when
+you want to avoid distributional assumptions and care mainly about relative effects. Both are
+valid; they answer slightly different questions.
+:::
+
+::: {.callout-tip}
+## Interpreting the acceleration factor
+Exponentiating an AFT coefficient gives a time-acceleration factor. A factor of 1.5 for a
+covariate means subjects with a one-unit-higher value survive 1.5 times as long on average,
+holding other covariates fixed.
+:::
+
+## Next steps
+
+You can now fit and compare parametric survival models.
+
+- [Cox regression](08-cox-regression.qmd) is the semiparametric alternative, useful when you
+  prefer not to assume a distribution.
+- [Prediction performance](13-prediction-performance.qmd) evaluates any fitted model,
+  parametric or not.
+- [Competing risks](11-competing-risks.qmd) handles the case of more than one type of event.
