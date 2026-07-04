@@ -1,0 +1,199 @@
+---
+title: Estimating survival with Kaplan-Meier
+guide-section: "Estimation"
+---
+
+```{python}
+#| echo: false
+#| output: false
+import great_docs as gd
+
+gd.enable_tbl_preview(n_head=8, n_tail=3)
+```
+
+The Kaplan-Meier estimator is the workhorse of survival analysis. It answers the most basic
+question you can ask of time-to-event data: what fraction of subjects are still event-free
+at each point in time? The result is the survival curve, a step function that starts at 1.0
+and drops at each observed event. This page shows how to estimate it, quantify its
+uncertainty, summarize it with medians and restricted means, and compare subgroups.
+
+Every example here uses the bundled `lung` dataset and the `Surv` response introduced in
+[Survival data and the Surv object](03-survival-data.qmd).
+
+```{python}
+import greenwood as gw
+from greenwood import Surv
+
+lung = gw.data.load_dataset("lung")
+y = Surv.right(lung["time"], event=(lung["status"] == 2))
+y
+```
+
+The response `y` is a `Surv` object holding one entry per subject: the follow-up time and
+whether that time ended in an event or a censoring. Displaying it shows a compact summary
+where a trailing `+` marks a censored observation. Everything on this page is estimated from
+this single object.
+
+## Estimating the survival function
+
+You fit the estimator by calling `fit` with a response. The `KaplanMeier` object follows the
+familiar fit-then-inspect pattern, so we fit it first and set it aside.
+
+```{python}
+km = gw.KaplanMeier().fit(y)
+```
+
+The fitted `km` object holds the whole curve internally. The most direct way to read it is
+`to_dataframe`, which lays the estimate out one row per observed time. We show the first
+few rows.
+
+```{python}
+km.to_dataframe().head()
+```
+
+Each row corresponds to a distinct observed time. The columns tell a complete story:
+`n_risk` is the number of subjects still under observation just before that time,
+`n_event` and `n_censor` count the events and censorings that occurred at it, `estimate` is
+the Kaplan-Meier survival probability, and `conf_low` and `conf_high` bound it. The estimate
+only steps down at times where events occur; censorings reduce the risk set but do not move
+the curve.
+
+The survival probability at any set of times is available through `predict`, which
+evaluates the step function. It returns a plain array with one probability per requested
+time, in the same order you asked for them.
+
+```{python}
+km.predict([180, 365, 730])
+```
+
+::: {.callout-note}
+## Reading the survival probability
+A survival probability of 0.53 at 365 days means the estimator predicts that 53 percent of
+subjects remain event-free one year in. Because the curve is a step function, the value
+holds constant between event times.
+:::
+
+## Confidence intervals
+
+The confidence band around the curve comes from Greenwood's variance formula. Greenwood
+supports three transforms for the interval, chosen with `conf_type`. The default is `"log"`,
+which matches the default in R's survival package. The `"log-log"` transform keeps the
+limits inside the valid range from 0 to 1 more reliably at the tails, and `"plain"` gives a
+symmetric interval on the probability scale.
+
+You set the transform when you construct the estimator, so we fit a second `KaplanMeier` with
+`conf_type="log-log"` and keep it separate from the default fit above.
+
+```{python}
+km_loglog = gw.KaplanMeier(conf_type="log-log").fit(y)
+```
+
+Pulling out just the estimate and its interval limits lets you compare this fit against the
+default one. We select those columns and show the first few rows.
+
+```{python}
+km_loglog.to_dataframe()[["time", "estimate", "conf_low", "conf_high"]].head()
+```
+
+The point estimates are identical across transforms; only the interval limits differ. Choose
+the transform before fitting, and report which one you used.
+
+## Median survival and quantiles
+
+The median survival time is the time at which the curve first drops to 0.5. It is often the
+single most useful summary of a survival distribution, and unlike the mean it is estimable
+even when the curve never reaches zero because of censoring.
+
+```{python}
+km.median(ci=True)
+```
+
+The result is the median together with its confidence limits, obtained by inverting the
+confidence band. Other quantiles work the same way through `quantile`.
+
+```{python}
+km.quantile(0.25)
+```
+
+::: {.callout-tip}
+## When the median is not defined
+If the survival curve never falls to 0.5 within the observed follow-up, the median is not
+estimable and Greenwood returns `nan`. This is not an error; it is an honest statement that
+the data do not reach the median.
+:::
+
+## Restricted mean survival time
+
+The mean survival time is usually not estimable from censored data, because the tail of the
+curve is unknown. The restricted mean survival time, or RMST, solves this by measuring the
+area under the survival curve up to a chosen horizon `tau`. It has a direct interpretation
+as the average event-free time over the first `tau` units, and it is a good summary when
+survival curves cross, which makes hazard ratios hard to interpret.
+
+```{python}
+km.rmst(365, ci=True)
+```
+
+This reports the average number of event-free days during the first year, with a confidence
+interval. Choose `tau` based on a clinically or practically meaningful horizon, and use the
+same `tau` when comparing groups.
+
+## Comparing subgroups
+
+Passing a grouping variable to `by` fits a separate curve within each stratum, which is the
+starting point for any subgroup comparison. The tidy output gains a `strata` column.
+
+```{python}
+km_sex = gw.KaplanMeier().fit(y, by=lung["sex"])
+```
+
+The grouped fit `km_sex` holds one curve per level of `sex`. Its tidy output gains a `strata`
+column identifying which curve each row belongs to. We show the first couple of rows within
+each stratum so you can see both curves side by side without printing every time point.
+
+```{python}
+km_sex.to_dataframe().groupby("strata").head(2)
+```
+
+Per-stratum summaries follow naturally. `median` and `rmst` return a dictionary keyed by
+stratum when the fit is grouped.
+
+```{python}
+km_sex.median()
+```
+
+To test whether the difference between groups is statistically significant, rather than just
+describing it, use the log-rank family covered in
+[Comparing groups](06-comparing-groups.qmd).
+
+## Nelson-Aalen cumulative hazard
+
+Closely related to survival is the cumulative hazard, the accumulated risk of the event over
+time. The Nelson-Aalen estimator provides it directly, and it is often preferred for
+diagnostics because it is roughly linear when the hazard is constant.
+
+The estimator follows the same fit-then-inspect pattern as `KaplanMeier`, so we fit it in its
+own step.
+
+```{python}
+na = gw.NelsonAalen().fit(y)
+```
+
+Reading `na` with `to_dataframe` gives the same table layout as before, but now the
+`estimate` column holds the cumulative hazard rather than the survival probability. Unlike
+survival, it starts at 0 and climbs as events accumulate. We show the first few rows.
+
+```{python}
+na.to_dataframe().head()
+```
+
+## Next steps
+
+You can now estimate survival curves, summarize them, and split them by group.
+
+- [Comparing groups](06-comparing-groups.qmd) tests whether survival differs between
+  strata with the log-rank family.
+- [Visualizing survival](07-visualization.qmd) turns these curves into publication-quality
+  figures with plotnine, including numbers-at-risk tables.
+- [Cox regression](08-cox-regression.qmd) moves from describing groups to modeling the
+  effect of continuous and multiple covariates.
