@@ -17,6 +17,7 @@ from . import data, tidy, viz
 from ._competing import AalenJohansen, FineGray, MultiState
 from ._core import EventTable, event_table
 from ._cox import CoxPH, ZPHResult
+from ._flexible import RoystonParmar
 from ._metrics import brier_score, calibration, concordance_index, integrated_brier_score
 from ._nonparametric import KaplanMeier, NelsonAalen
 from ._parametric import AFT
@@ -42,6 +43,7 @@ __all__ = [
     "NelsonAalen",
     "CoxPH",
     "CoxNet",
+    "RoystonParmar",
     "ZPHResult",
     "AFT",
     "AalenJohansen",
