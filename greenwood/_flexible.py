@@ -90,6 +90,24 @@ class RoystonParmar:
     Call `fit(surv, covariates)` with a right-censored `Surv` response and a covariate design
     (a dataframe, a 2-D array, or a formula string with `data`). Results are exposed as arrays
     (`coef_`, `std_error_`, ...), the fitted `knots_`, and a tidy frame via `to_dataframe`.
+
+    Examples
+    --------
+    Build a `Surv` response from the bundled `lung` dataset and fit a flexible model with three
+    spline degrees of freedom and `age` and `sex` as covariates. Printing the fitted object
+    reports the spline and covariate coefficients and the log-likelihood.
+
+    ```{python}
+    import greenwood as gw
+    from greenwood import Surv
+
+    lung = gw.data.load_dataset("lung")
+    y = Surv.right(lung["time"], event=(lung["status"] == 2))
+    rp = gw.RoystonParmar(df=3).fit(y, lung[["age", "sex"]])
+    rp
+    ```
+
+    The `rp` object fit here is reused by the method examples below.
     """
 
     def __init__(self, df: int = 3, *, conf_level: float = 0.95) -> None:
@@ -122,7 +140,18 @@ class RoystonParmar:
         )
 
     def fit(self, surv: Surv, covariates: Any = None, *, data: Any = None) -> RoystonParmar:
-        """Fit the model to a right-censored `Surv` response and an optional covariate design."""
+        """Fit the model to a right-censored `Surv` response and an optional covariate design.
+
+        Examples
+        --------
+        The spline flexibility is set by `df`: `df=1` is a Weibull model, and larger values
+        relax the parametric shape. Here is a more flexible fit with two extra degrees of
+        freedom, using the same `y` response and `lung` data from the class example above:
+
+        ```{python}
+        gw.RoystonParmar(df=5).fit(y, lung[["age", "sex"]])
+        ```
+        """
         from ._nonparametric import NelsonAalen
         from ._surv import CensoringType
 
@@ -210,6 +239,19 @@ class RoystonParmar:
         """Predict `"survival"`, `"hazard"`, or `"cumhaz"` at `times` for each row of `newdata`.
 
         Returns a frame with a `time` column and one column per subject.
+
+        Examples
+        --------
+        Read predicted survival probabilities off the fitted curves at chosen times. Here are
+        the estimates at 180 and 365 days for the first two subjects (reusing the `rp` fit
+        above):
+
+        ```{python}
+        rp.predict(lung[["age", "sex"]][:2], type="survival", times=[180, 365])
+        ```
+
+        Pass `type="hazard"` or `type="cumhaz"` for the hazard or cumulative hazard at those
+        same times instead.
         """
         import pandas as pd
 
@@ -237,7 +279,18 @@ class RoystonParmar:
         return frame
 
     def to_dataframe(self) -> Any:
-        """Return a tidy coefficient table (spline terms and covariates)."""
+        """Return a tidy coefficient table (spline terms and covariates).
+
+        Examples
+        --------
+        The coefficient table gives one row per term with standard errors, test statistics,
+        p-values, and confidence limits; the `gamma` terms are the spline coefficients (reusing
+        the `rp` fit above):
+
+        ```{python}
+        rp.to_dataframe()
+        ```
+        """
         import pandas as pd
 
         return pd.DataFrame(
