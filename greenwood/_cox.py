@@ -111,10 +111,12 @@ def _formula_design(formula: str, data: Any) -> tuple[Array, list[str]]:
 def _design_matrix(covariates: Any, data: Any = None) -> tuple[Array, list[str]]:
     """Build a numeric design matrix and term names from covariates.
 
-    Accepts a 2-D NumPy array or any narwhals-compatible dataframe. Numeric columns pass
-    through; non-numeric columns are treatment-coded (drop-first dummies) with names like
-    `celltypesmallcell`.
+    Accepts a right-hand-side formula string (with `data`), a 2-D NumPy array, or any
+    narwhals-compatible dataframe. Numeric columns pass through; non-numeric columns are
+    treatment-coded (drop-first dummies) with names like `celltypesmallcell`.
     """
+    if isinstance(covariates, str):
+        return _formula_design(covariates, data)
     if isinstance(covariates, np.ndarray):
         x = np.asarray(covariates, dtype=float)
         if x.ndim != 2:
@@ -270,6 +272,7 @@ class CoxPH:
         surv: Surv,
         covariates: Any,
         *,
+        data: Any = None,
         strata: Any = None,
         robust: bool = False,
         cluster: Any = None,
