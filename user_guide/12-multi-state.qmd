@@ -1,0 +1,148 @@
+---
+title: Multi-state models
+guide-section: "Multiple events"
+---
+
+```{python}
+#| echo: false
+#| output: false
+import great_docs as gd
+
+gd.enable_tbl_preview(n_head=8, n_tail=3)
+```
+
+Competing risks describe a single transition from an initial state to one of several
+end states. Multi-state models generalize this to processes where subjects move through
+several states over time, possibly passing through intermediate ones. The classic example is
+the illness-death model: a subject starts healthy, may become ill, and may die either
+directly or after becoming ill. Greenwood estimates the transition and occupancy
+probabilities for such models with the Aalen-Johansen estimator. This page shows how to
+prepare multi-state data and interpret the results.
+
+```{mermaid}
+%%| label: fig-illness-death
+%%| fig-cap: "The illness-death model. Subjects can move from health to illness, and reach death from either state."
+flowchart LR
+    H[Healthy] --> I[Ill]
+    H --> D[Death]
+    I --> D
+```
+
+## Preparing multi-state data
+
+A multi-state analysis needs one row per period a subject spends in a state. Each row records
+the interval `(start, stop]`, the state occupied during it, and the state transitioned to at
+the end, or a censoring marker if none. A subject who becomes ill and then dies contributes
+two rows: one for the healthy period ending in the illness transition, and one for the ill
+period ending in death.
+
+We build this from `mgus2`, treating progression as the intermediate "pcm" state and death
+as the absorbing state.
+
+```{python}
+import greenwood as gw
+
+mg = gw.data.load_dataset("mgus2")
+start, stop, state, event = [], [], [], []
+for i in range(len(mg)):
+    pt, ft = mg["ptime"][i], mg["futime"][i]
+    progressed, died = mg["pstat"][i] == 1, mg["death"][i] == 1
+    if progressed and pt < ft:
+        start += [0, pt]
+        stop += [pt, ft]
+        state += ["mgus", "pcm"]
+        event += ["pcm", "death" if died else None]
+    else:
+        start += [0]
+        stop += [ft]
+        state += ["mgus"]
+        event += ["death" if died else ("pcm" if progressed else None)]
+
+# Keep only positive-length intervals.
+rows = [(a, b, s, e) for a, b, s, e in zip(start, stop, state, event) if b > a]
+start, stop, state, event = map(list, zip(*rows))
+```
+
+The loop appends to four parallel lists, so a single interval is spread across `start[i]`,
+`stop[i]`, `state[i]`, and `event[i]` at the same index. After the loop we drop any zero-length
+intervals and unpack the surviving rows back into the four lists. Counting the entries tells us
+how many intervals we ended up with, which is more than the number of subjects because
+progressing subjects contribute two rows each.
+
+```{python}
+len(start)
+```
+
+Reading the four lists position by position is easier if we zip them back together and look at
+the first several intervals as `(start, stop, state, event)` tuples.
+
+```{python}
+list(zip(start, stop, state, event))[:6]
+```
+
+Each tuple is one interval `(start, stop]`: the subject occupies `state` from just after
+`start` up to and including `stop`, and at `stop` transitions to `event`. A `None` in the
+`event` position marks a censored interval, one that ends without a transition. A subject who
+only ever holds `mgus` produces a single row, while a subject who progresses produces two
+consecutive rows, the second of which has state `pcm`, exactly the illness-death pattern the
+model needs.
+
+## Estimating transition and occupancy probabilities
+
+The `MultiState` estimator forms the Aalen-Johansen product of the per-time transition
+matrices and reports, at each time, the probability of occupying each state. This is the
+multi-state generalization of the survival curve.
+
+```{python}
+ms = gw.MultiState().fit(start, stop, state, event, states=("mgus", "pcm", "death"))
+```
+
+The fitted estimator holds an occupancy curve for each of the three states. We view the head of
+its data frame to see the earliest times, where the columns after `time` give the occupancy
+probability of `mgus`, `pcm`, and `death` respectively.
+
+```{python}
+ms.to_dataframe().head()
+```
+
+Each column after `time` is the probability that a subject is in that state at that time.
+The probabilities sum to one across states, because every subject is always in exactly one
+state. Early on, almost everyone is in the initial `mgus` state; over time, mass flows into
+`pcm` and, predominantly, `death`.
+
+You can read the occupancy probabilities at specific times with `predict`.
+
+```{python}
+ms.predict([60, 120, 240])
+```
+
+The full transition-probability matrices, giving the probability of moving from each state to
+each other state over the interval from time zero, are available as the `transition_`
+attribute for users who need them.
+
+::: {.callout-note}
+## Occupancy versus transition probabilities
+Occupancy probabilities answer "what is the chance a subject is in state k at time t?". The
+transition matrix answers the more detailed "given a subject in state j at the start, what is
+the chance they are in state k at time t?". The occupancy probabilities are the initial-state
+distribution multiplied through the transition matrix.
+:::
+
+::: {.callout-tip}
+## Competing risks is a special case
+A competing-risks model is a multi-state model with one initial state and several absorbing
+states and no intermediate transitions. If that is your situation, use
+[`AalenJohansen`](11-competing-risks.qmd) directly, which also gives standard errors for the
+cumulative incidence.
+:::
+
+## Next steps
+
+You can now estimate occupancy probabilities for general multi-state processes.
+
+- [Competing risks](11-competing-risks.qmd) covers the important special case with standard
+  errors and the Fine-Gray regression model.
+- [Survival data](03-survival-data.qmd) explains the counting-process response that
+  underlies multi-state data.
+- The [Quick start](02-quick-start.qmd) links every topic together if you want a map of the
+  whole package.
