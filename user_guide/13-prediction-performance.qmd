@@ -1,0 +1,132 @@
+---
+title: Prediction performance
+guide-section: "Evaluation"
+---
+
+```{python}
+#| echo: false
+#| output: false
+import great_docs as gd
+
+gd.enable_tbl_preview(n_head=8, n_tail=3)
+```
+
+A model that fits the data in front of it is not necessarily a model that predicts well. To
+judge a survival model as a predictor, or to compare competing models, you need metrics that
+account for censoring. Greenwood provides two complementary ones: the concordance index,
+which measures how well a model ranks subjects by risk, and the Brier score, which measures
+how accurate its probability predictions are. This page explains both and shows how to
+compute them for a fitted model or for any external risk score.
+
+We start from the `lung` outcomes and a Cox model fit to them. This is the model whose
+predictions we will judge.
+
+```{python}
+import greenwood as gw
+from greenwood import Surv
+
+lung = gw.data.load_dataset("lung")
+y = Surv.right(lung["time"], event=(lung["status"] == 2))
+y
+```
+
+The response `y` records 165 events among 228 subjects. We fit a Cox model to it, then set the
+model aside: everything below needs only `y` and the risk scores and survival probabilities
+that `cox` produces.
+
+```{python}
+cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+```
+
+## Discrimination: the concordance index
+
+Discrimination is the ability to rank subjects correctly: to give higher risk scores to
+subjects who go on to have the event sooner. The concordance index, or C-statistic, measures
+exactly this. It is the probability that, for a randomly chosen comparable pair of subjects,
+the one who failed first had the higher risk score. A value of 0.5 is no better than a coin
+flip, and 1.0 is perfect ordering.
+
+You can compute it for any risk score, which makes it useful for evaluating a model on new
+data or for comparing an external score. Here we use the Cox model's linear predictor. Asking
+for `type="lp"` returns one number per subject, where a larger value means higher predicted
+risk.
+
+```{python}
+risk = cox.predict(type="lp")
+risk[:8]
+```
+
+These are the scores the index will rank against the observed event order. Because higher risk
+should correspond to earlier failure, we pass a score where larger means higher risk, such as
+this linear predictor or its exponential.
+
+```{python}
+gw.concordance_index(y, risk)
+```
+
+::: {.callout-note}
+## Discrimination is only part of the story
+A model can rank subjects well yet produce poorly calibrated probabilities, or vice versa.
+The concordance index says nothing about whether predicted probabilities are numerically
+accurate. That is what the Brier score adds.
+:::
+
+## Accuracy: the Brier score
+
+The Brier score is the mean squared error between predicted survival probabilities and actual
+outcomes, evaluated at a fixed time. Lower is better. Because outcomes are censored, the
+score uses inverse-probability-of-censoring weighting so that censored subjects contribute
+correctly rather than being ignored or mishandled.
+
+To compute it you supply predicted survival probabilities for each subject at each evaluation
+time. Start by asking the Cox model for survival curves at three fixed times.
+
+```{python}
+times = [180, 365, 540]
+surv = cox.predict(lung[["age", "sex"]], type="survival", times=times)
+surv.shape
+```
+
+The returned frame has a leading `time` column and one column per subject, so its shape is 3
+rows (the requested times) by 229 columns (228 subjects plus the time column). The Brier score
+wants the transpose of this: an array with one row per subject and one column per time. We
+drop the `time` column and transpose to get there.
+
+```{python}
+probs = surv.iloc[:, 1:].to_numpy().T
+probs.shape
+```
+
+With the probabilities in the expected `(n_subjects, n_times)` shape, we can score them.
+
+```{python}
+gw.brier_score(y, probs, times)
+```
+
+The result is one Brier score per time. As a rule of thumb, a useful model should beat the
+Brier score of a model that ignores covariates, and a score approaching 0.25 at a time where
+about half the subjects have had the event is close to uninformative.
+
+To summarize accuracy across a range of times in a single number, integrate the Brier score
+over time.
+
+```{python}
+gw.integrated_brier_score(y, probs, times)
+```
+
+::: {.callout-tip}
+## Evaluate on data the model did not see
+Computing these metrics on the same data used to fit the model gives optimistic results.
+For an honest assessment, evaluate on a held-out test set or use cross-validation, fitting on
+one part of the data and scoring predictions on another.
+:::
+
+## Next steps
+
+You can now quantify how well a survival model discriminates and predicts.
+
+- [Cox model diagnostics](09-cox-diagnostics.qmd) covers the assumption checks and residuals
+  that complement these performance metrics.
+- [Parametric survival models](10-parametric-models.qmd) and
+  [Cox regression](08-cox-regression.qmd) produce the predictions these metrics evaluate.
+- The [Quick start](02-quick-start.qmd) ties the whole workflow together.
