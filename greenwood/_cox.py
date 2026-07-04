@@ -281,9 +281,11 @@ class CoxPH:
     ) -> CoxPH:
         """Fit the model to a `Surv` response and a covariate design.
 
-        `strata` gives per-stratum baseline hazards with shared coefficients. `robust=True`
-        (or providing `cluster` ids) reports the Lin-Wei sandwich variance; `cluster` sums
-        the score residuals within groups before forming the sandwich.
+        `covariates` is a dataframe or 2-D array, or a right-hand-side formula string (for
+        example `"age + sex + C(ph.ecog)"`) evaluated against `data`. `strata` gives
+        per-stratum baseline hazards with shared coefficients. `robust=True` (or providing
+        `cluster` ids) reports the Lin-Wei sandwich variance; `cluster` sums the score
+        residuals within groups before forming the sandwich.
         """
         from ._surv import CensoringType
 
@@ -293,7 +295,7 @@ class CoxPH:
                 f"not {surv.type.value!r}."
             )
 
-        x, names = _design_matrix(covariates)
+        x, names = _design_matrix(covariates, data)
         if x.shape[0] != surv.n:
             raise ValueError("Covariates and response must have the same number of rows.")
 
@@ -469,6 +471,7 @@ class CoxPH:
         type: str = "lp",
         times: Any = None,
         conditional_after: Any = None,
+        ci: bool = False,
     ) -> Any:
         """Predict from the fitted model.
 
@@ -480,6 +483,10 @@ class CoxPH:
         `conditional_after` (a scalar or one value per subject) predicts survival conditional
         on having already survived to that time: the returned value at time `t` is
         `P(T > t | T > c) = S(t) / S(c)`, and is 1 for `t <= c`.
+
+        With `ci=True` (survival only), the frame also carries `_lower` and `_upper` columns
+        per subject: a pointwise confidence band from the cumulative-hazard standard error
+        (the log transform used by R's `survfit`), at the model's `conf_level`.
         """
         if newdata is None:
             x = self._x
