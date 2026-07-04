@@ -470,11 +470,29 @@ class CoxPH:
             idx = np.searchsorted(base_times, query, side="right") - 1
             h0 = np.where(idx >= 0, base_cumhaz[idx.clip(min=0)], 0.0)
             risk = np.exp(x @ self.coef_)  # uncentered: S(t|x) = exp(-H0(t) exp(x.beta))
-            surv = np.exp(-np.outer(h0, risk))
+            if conditional_after is None:
+                surv = np.exp(-np.outer(h0, risk))
+            else:
+                h0_c = self._baseline_cumhaz_at(base_times, base_cumhaz, conditional_after, x)
+                delta = np.clip(h0[:, None] - h0_c[None, :], 0.0, None)  # (n_times, n_subj)
+                surv = np.exp(-delta * risk[None, :])
             frame = pd.DataFrame({f"subject_{i + 1}": surv[:, i] for i in range(x.shape[0])})
             frame.insert(0, "time", query)
             return frame
         raise ValueError(f"Unknown predict type {type!r}; use 'lp', 'risk', or 'survival'.")
+
+    @staticmethod
+    def _baseline_cumhaz_at(
+        base_times: Array, base_cumhaz: Array, conditional_after: Any, x: Array
+    ) -> Array:
+        """Baseline cumulative hazard at `conditional_after`, broadcast to one value per subject."""
+        c = np.asarray(conditional_after, dtype=float)
+        if c.ndim == 0:
+            c = np.full(x.shape[0], float(c))
+        if c.shape[0] != x.shape[0]:
+            raise ValueError("conditional_after must be a scalar or one value per subject.")
+        idx_c = np.searchsorted(base_times, c, side="right") - 1
+        return np.where(idx_c >= 0, base_cumhaz[idx_c.clip(min=0)], 0.0)
 
     # -- residuals & diagnostics ---------------------------------------------
 
