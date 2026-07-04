@@ -62,6 +62,8 @@ reference:
         members: true
       - name: AFT
         members: true
+      - name: RoystonParmar
+        members: true
 
   - title: Competing risks & multi-state
     desc: Cumulative incidence, the Fine-Gray model, and multi-state transition probabilities.
