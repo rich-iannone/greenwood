@@ -139,7 +139,7 @@ from the North Central Cancer Treatment Group, is a good example.
 
 ```{python}
 lung = gw.data.load_dataset("lung")
-lung.head()
+lung
 ```
 
 There is a subtlety here that trips up almost everyone at least once. In this dataset, and
