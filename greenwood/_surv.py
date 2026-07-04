@@ -39,7 +39,19 @@ Array = npt.NDArray[Any]
 
 
 class CensoringType(str, Enum):
-    """The censoring flavor of a `Surv` response."""
+    """The censoring flavor of a `Surv` response.
+
+    Examples
+    --------
+    The members correspond to the `Surv` constructors. A constructed response reports its
+    flavor through `Surv(...).type`, which is one of these values.
+
+    ```{python}
+    from greenwood import CensoringType
+
+    list(CensoringType)
+    ```
+    """
 
     RIGHT = "right"
     LEFT = "left"
@@ -110,6 +122,19 @@ class Surv:
         single-event case.
     weights
         Optional case weights (strictly positive).
+
+    Examples
+    --------
+    Build a right-censored response from parallel `time` and `event` sequences. Printing it
+    reports the censoring flavor and the event/observation counts. The `y` response built
+    here is reused by the interop method examples below.
+
+    ```{python}
+    from greenwood import Surv
+
+    y = Surv.right(time=[5, 6, 4, 9], event=[1, 0, 1, 0])
+    y
+    ```
     """
 
     type: CensoringType
@@ -164,7 +189,17 @@ class Surv:
 
     @classmethod
     def right(cls, time: Any, event: Any = None, *, weights: Any = None) -> Self:
-        """Right-censored response `(time, event)`. `event=None` means all events."""
+        """Right-censored response `(time, event)`. `event=None` means all events.
+
+        Examples
+        --------
+        The common case: each subject has an exit `time` and an `event` indicator (1 if the
+        event was observed, 0 if censored).
+
+        ```{python}
+        Surv.right(time=[5, 6, 4, 9], event=[1, 0, 1, 0])
+        ```
+        """
         stop = _to_1d_array(time)
         status = _coerce_event(event, stop.shape[0])
         w = _to_1d_array(weights) if weights is not None else None
@@ -172,7 +207,17 @@ class Surv:
 
     @classmethod
     def left(cls, time: Any, event: Any = None, *, weights: Any = None) -> Self:
-        """Left-censored response `(time, event)`."""
+        """Left-censored response `(time, event)`.
+
+        Examples
+        --------
+        Left censoring marks subjects known to have had the event before the recorded
+        `time` rather than after it.
+
+        ```{python}
+        Surv.left(time=[5, 6, 4], event=[1, 0, 1])
+        ```
+        """
         stop = _to_1d_array(time)
         status = _coerce_event(event, stop.shape[0])
         w = _to_1d_array(weights) if weights is not None else None
@@ -180,7 +225,17 @@ class Surv:
 
     @classmethod
     def counting(cls, start: Any, stop: Any, event: Any = None, *, weights: Any = None) -> Self:
-        """Counting-process response `(start, stop, event]` (left truncation / time-varying)."""
+        """Counting-process response `(start, stop, event]` (left truncation / time-varying).
+
+        Examples
+        --------
+        Each subject enters the risk set at `start` and exits at `stop`. This form expresses
+        left truncation / late entry and time-varying covariates.
+
+        ```{python}
+        Surv.counting(start=[0, 2, 1], stop=[5, 6, 4], event=[1, 0, 1])
+        ```
+        """
         start_a = _to_1d_array(start)
         stop_a = _to_1d_array(stop)
         status = _coerce_event(event, stop_a.shape[0])
@@ -195,6 +250,17 @@ class Surv:
 
         Use `numpy.inf` for `upper` to mark right-censoring and `0` for `lower` to mark
         left-censoring. `lower == upper` denotes an exact observation.
+
+        Examples
+        --------
+        Each event is known only to lie in `(lower, upper]`. Here the second subject is
+        right-censored (`upper` is infinite).
+
+        ```{python}
+        import numpy as np
+
+        Surv.interval(lower=[1, 2, 3], upper=[2, np.inf, 5])
+        ```
         """
         lower_a = _to_1d_array(lower)
         upper_a = _to_1d_array(upper)
@@ -227,6 +293,15 @@ class Surv:
         """Multi-state / competing-risks response.
 
         `event` holds integer codes (0 = censored, `k` = transition to `states[k-1]`).
+
+        Examples
+        --------
+        The `states` labels name the transitions; `event` codes index into them (1 =
+        `states[0]`, 2 = `states[1]`, and so on), with 0 for censored.
+
+        ```{python}
+        Surv.multistate(time=[5, 6, 7, 8], event=[1, 2, 0, 1], states=("relapse", "death"))
+        ```
         """
         stop = _to_1d_array(time)
         status = _to_1d_array(event, dtype=int).astype(np.int64)
@@ -290,7 +365,18 @@ class Surv:
     # -- interop --------------------------------------------------------------
 
     def as_dataframe(self, backend: str = "pandas") -> Any:
-        """Return the response as a tidy dataframe (one row per observation)."""
+        """Return the response as a tidy dataframe (one row per observation).
+
+        Examples
+        --------
+        One row per observation, with the exit `stop` time and integer `status`. Pass
+        `backend="polars"` for a Polars frame instead. This reuses the `y` response from
+        the class example above.
+
+        ```{python}
+        y.as_dataframe()
+        ```
+        """
         cols: dict[str, Array] = {}
         if self.start is not None:
             cols["start"] = self.start
@@ -311,7 +397,17 @@ class Surv:
         raise ValueError(f"Unknown backend {backend!r}; use 'pandas' or 'polars'.")
 
     def to_dict(self) -> dict[str, Any]:
-        """Return a JSON-ready mapping fully describing the response."""
+        """Return a JSON-ready mapping fully describing the response.
+
+        Examples
+        --------
+        The mapping carries the censoring `type` and every array, with `None` for the
+        fields a given flavor does not use. Reusing `y` from the class example:
+
+        ```{python}
+        y.to_dict()
+        ```
+        """
 
         def _list(a: Array | None) -> list[Any] | None:
             return None if a is None else a.tolist()
@@ -328,7 +424,17 @@ class Surv:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Self:
-        """Rebuild a response from `to_dict` output."""
+        """Rebuild a response from `to_dict` output.
+
+        Examples
+        --------
+        The inverse of `to_dict`: rebuild an equivalent response from its mapping. Reusing
+        `y` from the class example:
+
+        ```{python}
+        Surv.from_dict(y.to_dict())
+        ```
+        """
 
         def _arr(key: str, dtype: Any = float) -> Array | None:
             value = data.get(key)
@@ -345,10 +451,30 @@ class Surv:
         )
 
     def to_json(self, *, indent: int | None = 2) -> str:
-        """Serialize to a deterministic JSON string."""
+        """Serialize to a deterministic JSON string.
+
+        Examples
+        --------
+        A stable JSON string, indented by default; pass `indent=None` for a compact form.
+        Here we show the leading characters of the compact serialization of `y`:
+
+        ```{python}
+        y.to_json(indent=None)[:120]
+        ```
+        """
         return json.dumps(self.to_dict(), indent=indent)
 
     @classmethod
     def from_json(cls, text: str) -> Self:
-        """Deserialize from `to_json` output."""
+        """Deserialize from `to_json` output.
+
+        Examples
+        --------
+        Round-trip through JSON: serializing `y` and reading it back reconstructs an
+        equivalent response.
+
+        ```{python}
+        Surv.from_json(y.to_json())
+        ```
+        """
         return cls.from_dict(json.loads(text))
