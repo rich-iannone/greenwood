@@ -20,6 +20,7 @@ from ._cox import CoxPH, ZPHResult
 from ._metrics import brier_score, calibration, concordance_index, integrated_brier_score
 from ._nonparametric import KaplanMeier, NelsonAalen
 from ._parametric import AFT
+from ._penalized import CoxNet
 from ._resample import cross_validate
 from ._surv import CensoringType, Surv
 from ._tests import TestResult, logrank_test, pairwise_logrank_test
@@ -39,6 +40,7 @@ __all__ = [
     "KaplanMeier",
     "NelsonAalen",
     "CoxPH",
+    "CoxNet",
     "ZPHResult",
     "AFT",
     "AalenJohansen",
