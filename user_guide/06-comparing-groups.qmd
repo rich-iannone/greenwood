@@ -103,6 +103,45 @@ positive rate. Decide on the test, and its `rho`, based on subject-matter reason
 you see the data.
 :::
 
+## Comparing more than two groups
+
+The log-rank test extends to any number of groups, giving one overall test. We switch to the
+`veteran` dataset, which records a cell type with four levels.
+
+```{python}
+vet = gw.data.load_dataset("veteran")
+y_vet = Surv.right(vet["time"], event=vet["status"])
+gw.logrank_test(y_vet, group=vet["celltype"])
+```
+
+A small p-value here says the four cell types do not all share the same survival, but it does
+not say which ones differ. For that, test each pair and correct for the fact that you are
+running several tests at once. `pairwise_logrank_test` does both.
+
+```{python}
+gw.pairwise_logrank_test(y_vet, group=vet["celltype"])
+```
+
+Each row is one pair, with its own statistic, the raw `p_value`, and a `p_adjusted` value
+that accounts for the multiple comparisons. The default correction is Holm's; pass
+`correction="bh"` for Benjamini-Hochberg, `"bonferroni"`, or `"none"`. Read significance from
+the adjusted column, not the raw one.
+
+## Stratified tests
+
+Sometimes you want to compare groups while controlling for a nuisance variable, so that the
+comparison is made within each level of that variable and then combined. A stratified
+log-rank does this. Here we compare the two treatments while stratifying by cell type, which
+removes any cell-type imbalance from the comparison.
+
+```{python}
+gw.logrank_test(y_vet, group=vet["trt"], strata=vet["celltype"])
+```
+
+The statistic is pooled across the strata, matching R's `survdiff` with a `strata()` term.
+Stratification is the test-level counterpart to a stratified Cox model, where each stratum
+has its own baseline hazard.
+
 ## From tests to models
 
 A group comparison test is the right tool when you have one categorical grouping and want a
