@@ -43,13 +43,17 @@ type-check: ## Run pyright in strict mode
 .PHONY: check
 check: lint type-check test ## Run all checks (the pre-push gate)
 
+# The user-guide pages contain executable code, so Quarto needs the project venv's
+# Jupyter kernel (which has greenwood and its dependencies installed).
+JUPYTER_PATH := $(CURDIR)/.venv/share/jupyter
+
 .PHONY: docs
 docs: ## Build the documentation site
-	@.venv/bin/great-docs build
+	@JUPYTER_PATH="$(JUPYTER_PATH)" .venv/bin/great-docs build
 
 .PHONY: docs-preview
 docs-preview: ## Preview the documentation site locally
-	@.venv/bin/great-docs preview
+	@JUPYTER_PATH="$(JUPYTER_PATH)" .venv/bin/great-docs preview
 
 .PHONY: clean
 clean: clean-build clean-pyc clean-test ## Remove all build, test, coverage and Python artifacts
