@@ -1,5 +1,6 @@
 ---
 title: Quick start
+guide-section: "Getting started"
 ---
 
 This walks through building a response, tabulating the risk set, and fitting the
