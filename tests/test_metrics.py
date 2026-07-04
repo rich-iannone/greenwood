@@ -47,7 +47,7 @@ def test_brier_perfect_prediction_is_zero() -> None:
 
 
 def test_brier_in_unit_range() -> None:
-    df = gw.data.load_dataset("lung")
+    df = gw.data.load_dataset("lung", backend="pandas")
     y = Surv.right(df["time"], event=(df["status"] == 2))
     cox = gw.CoxPH().fit(y, df[["age", "sex"]])
     times = np.array([180.0, 365.0])
@@ -64,7 +64,7 @@ def test_integrated_brier_needs_two_times() -> None:
 
 
 def test_integrated_brier_between_pointwise() -> None:
-    df = gw.data.load_dataset("lung")
+    df = gw.data.load_dataset("lung", backend="pandas")
     y = Surv.right(df["time"], event=(df["status"] == 2))
     cox = gw.CoxPH().fit(y, df[["age", "sex"]])
     times = np.array([180.0, 365.0, 540.0])
