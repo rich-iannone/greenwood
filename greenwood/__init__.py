@@ -21,6 +21,7 @@ from ._metrics import brier_score, calibration, concordance_index, integrated_br
 from ._nonparametric import KaplanMeier, NelsonAalen
 from ._parametric import AFT
 from ._penalized import CoxNet
+from ._power import logrank_n_events, logrank_power, logrank_sample_size
 from ._resample import cross_validate
 from ._surv import CensoringType, Surv
 from ._tests import TestResult, logrank_test, pairwise_logrank_test
@@ -49,6 +50,9 @@ __all__ = [
     "calibration",
     "concordance_index",
     "cross_validate",
+    "logrank_n_events",
+    "logrank_power",
+    "logrank_sample_size",
     "brier_score",
     "integrated_brier_score",
     "logrank_test",
