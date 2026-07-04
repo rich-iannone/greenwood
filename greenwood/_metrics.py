@@ -29,6 +29,23 @@ def concordance_index(surv: Surv, risk: Any) -> float:
     is treated as failing before another still under observation at `t` (including one
     censored exactly at `t`); pairs tied in event time are excluded. Matches R's
     `survival::concordance`.
+
+    Examples
+    --------
+    Fit a Cox model on the bundled `lung` dataset, then score its linear predictor. A higher
+    linear predictor (`type="lp"`) means higher risk, which should correspond to earlier
+    events, so a well-discriminating model scores above 0.5.
+
+    ```{python}
+    import greenwood as gw
+    from greenwood import Surv
+
+    lung = gw.data.load_dataset("lung")
+    y = Surv.right(lung["time"], event=(lung["status"] == 2))
+    cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+
+    gw.concordance_index(y, cox.predict(type="lp"))
+    ```
     """
     from ._surv import _to_1d_array
 
@@ -74,6 +91,26 @@ def brier_score(surv: Surv, survival_prob: Any, times: Any) -> Array:
     Returns
     -------
     The Brier score at each time (lower is better).
+
+    Examples
+    --------
+    Fit a Cox model on the bundled `lung` dataset, read predicted survival probabilities at a
+    few horizons, and score them. Lower is better; the score uses inverse-probability-of-censoring
+    weighting so that censored subjects contribute honestly.
+
+    ```{python}
+    import greenwood as gw
+    from greenwood import Surv
+
+    lung = gw.data.load_dataset("lung")
+    y = Surv.right(lung["time"], event=(lung["status"] == 2))
+    cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+
+    times = [180, 365, 540]
+    surv = cox.predict(lung[["age", "sex"]], type="survival", times=times)
+    probs = surv.iloc[:, 1:].to_numpy().T   # shape (n_subjects, n_times)
+    gw.brier_score(y, probs, times)
+    ```
     """
     query = np.atleast_1d(np.asarray(times, dtype=float))
     probs = np.asarray(survival_prob, dtype=float)
@@ -111,7 +148,27 @@ def brier_score(surv: Surv, survival_prob: Any, times: Any) -> Array:
 
 
 def integrated_brier_score(surv: Surv, survival_prob: Any, times: Any) -> float:
-    """Integrated Brier score: the time-average of `brier_score` over `times` (trapezoidal)."""
+    """Integrated Brier score: the time-average of `brier_score` over `times` (trapezoidal).
+
+    Examples
+    --------
+    Fit a Cox model on the bundled `lung` dataset and reduce the Brier scores across several
+    horizons to a single time-averaged number (lower is better).
+
+    ```{python}
+    import greenwood as gw
+    from greenwood import Surv
+
+    lung = gw.data.load_dataset("lung")
+    y = Surv.right(lung["time"], event=(lung["status"] == 2))
+    cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+
+    times = [180, 365, 540]
+    surv = cox.predict(lung[["age", "sex"]], type="survival", times=times)
+    probs = surv.iloc[:, 1:].to_numpy().T   # shape (n_subjects, n_times)
+    gw.integrated_brier_score(y, probs, times)
+    ```
+    """
     query = np.atleast_1d(np.asarray(times, dtype=float))
     if query.shape[0] < 2:
         raise ValueError("integrated_brier_score needs at least two times.")
@@ -160,6 +217,26 @@ def calibration(
     -------
     A pandas DataFrame with one row per bin: `bin`, `n`, `predicted` (mean), `observed`,
     `observed_lower`, `observed_upper`.
+
+    Examples
+    --------
+    Fit a Cox model on the bundled `lung` dataset and read the predicted survival at a single
+    horizon (one value per subject). Subjects are grouped into bins by their predicted survival,
+    and each bin's mean `predicted` value is compared against the observed Kaplan-Meier survival
+    for that bin's subjects.
+
+    ```{python}
+    import greenwood as gw
+    from greenwood import Surv
+
+    lung = gw.data.load_dataset("lung")
+    y = Surv.right(lung["time"], event=(lung["status"] == 2))
+    cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+
+    surv = cox.predict(lung[["age", "sex"]], type="survival", times=[365.0])
+    predicted = surv.iloc[0, 1:].to_numpy()
+    gw.calibration(y, predicted, 365.0, n_bins=5)
+    ```
     """
     import pandas as pd
 
