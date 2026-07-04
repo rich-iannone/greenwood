@@ -39,7 +39,29 @@ def available_datasets() -> list[str]:
     return sorted(_DATASETS)
 
 
-def load_dataset(name: str, *, backend: str = "pandas") -> Any:
+def _resolve_backend(backend: str | None) -> str:
+    """Pick a data frame backend, matching Greenwood's dataframe-agnostic stance.
+
+    When `backend` is `None`, prefer Polars if it is installed, otherwise fall back to
+    pandas. If neither is installed, raise a clear error. An explicit `"pandas"` or
+    `"polars"` is honored as given.
+    """
+    if backend is None:
+        if importlib.util.find_spec("polars") is not None:
+            return "polars"
+        if importlib.util.find_spec("pandas") is not None:
+            return "pandas"
+        raise ImportError(
+            "load_dataset needs either polars or pandas installed. Install one "
+            "(for example `pip install greenwood[pl]` or `greenwood[pd]`), or pass "
+            "an explicit backend."
+        )
+    if backend not in ("pandas", "polars"):
+        raise ValueError(f"Unknown backend {backend!r}; use 'pandas' or 'polars'.")
+    return backend
+
+
+def load_dataset(name: str, *, backend: str | None = None) -> Any:
     """Load a bundled dataset by name.
 
     Parameters
