@@ -20,6 +20,35 @@ def test_invalid_ties() -> None:
         CoxPH(ties="exact")
 
 
+def test_predict_conditional_after_identity(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    # S(t | T > c) * S(c) == S(t) for t >= c, and conditioning on c=0 is a no-op.
+    df, y = lung_surv
+    cox = CoxPH().fit(y, df[["age", "sex"]])
+    nd = df[["age", "sex"]].iloc[:2]
+    times = [200, 400, 600]
+    c = 150.0
+    s_t = cox.predict(nd, type="survival", times=times)
+    s_c = cox.predict(nd, type="survival", times=[c])
+    s_cond = cox.predict(nd, type="survival", times=times, conditional_after=c)
+    for col in ("subject_1", "subject_2"):
+        np.testing.assert_allclose(
+            s_cond[col].to_numpy() * float(s_c[col].iloc[0]), s_t[col].to_numpy(), atol=1e-12
+        )
+    s0 = cox.predict(nd, type="survival", times=times, conditional_after=0.0)
+    np.testing.assert_allclose(
+        s0[["subject_1", "subject_2"]].to_numpy(), s_t[["subject_1", "subject_2"]].to_numpy()
+    )
+
+
+def test_predict_conditional_after_per_subject(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    cox = CoxPH().fit(y, df[["age", "sex"]])
+    nd = df[["age", "sex"]].iloc[:2]
+    out = cox.predict(nd, type="survival", times=[300, 600], conditional_after=[100.0, 250.0])
+    assert out.shape == (2, 3)
+    assert ((out.iloc[:, 1:] >= 0) & (out.iloc[:, 1:] <= 1)).all().all()
+
+
 def test_invalid_conf_level() -> None:
     with pytest.raises(ValueError, match="conf_level"):
         CoxPH(conf_level=0.0)
