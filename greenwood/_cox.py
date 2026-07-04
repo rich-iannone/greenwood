@@ -444,6 +444,10 @@ class CoxPH:
         `"survival"`. For `"survival"`, returns a frame of survival probabilities at `times`
         (defaulting to the event times), one column per row of `newdata`. Survival prediction
         for stratified models is not yet supported.
+
+        `conditional_after` (a scalar or one value per subject) predicts survival conditional
+        on having already survived to that time: the returned value at time `t` is
+        `P(T > t | T > c) = S(t) / S(c)`, and is 1 for `t <= c`.
         """
         if newdata is None:
             x = self._x
