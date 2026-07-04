@@ -114,6 +114,47 @@ def test_km_rmst_grouped_and_ci() -> None:
     assert lower <= value <= upper
 
 
+def test_rmrl_at_zero_equals_rmst() -> None:
+    # RMRL(0; tau) is exactly the restricted mean survival time (value and CI).
+    km = KaplanMeier().fit(Surv.right([5, 6, 4, 9, 3, 7, 2, 8], [1, 0, 1, 0, 1, 1, 1, 0]))
+    for tau in (4.0, 7.0, 9.0):
+        assert km.rmrl(0.0, tau) == pytest.approx(km.rmst(tau))
+        np.testing.assert_allclose(km.rmrl(0.0, tau, ci=True), km.rmst(tau, ci=True))
+
+
+def test_rmrl_matches_conditional_area() -> None:
+    # RMRL(s; tau) = integral_s^tau S(u) du / S(s). Check against a fine numerical integral.
+    km = KaplanMeier().fit(Surv.right([5, 6, 4, 9, 3, 7, 2, 8, 10], [1, 0, 1, 0, 1, 1, 1, 0, 1]))
+    s, tau = 3.0, 9.0
+    grid = np.linspace(s, tau, 200001)
+    expected = float(np.trapezoid(km.predict(grid), grid)) / float(km.predict([s])[0])
+    assert km.rmrl(s, tau) == pytest.approx(expected, abs=1e-3)
+
+
+def test_rmrl_grouped_and_ci() -> None:
+    km = KaplanMeier().fit(
+        Surv.right([2, 4, 6, 3, 5, 7], [1, 1, 1, 1, 1, 1]), by=["a", "a", "a", "b", "b", "b"]
+    )
+    out = km.rmrl(1.0, 6.0, ci=True)
+    assert set(out) == {"a", "b"}
+    value, lower, upper = out["a"]
+    assert lower <= value <= upper
+    assert value <= 6.0 - 1.0  # bounded by the window width
+
+
+def test_rmrl_undefined_when_all_failed_before_s() -> None:
+    km = KaplanMeier().fit(Surv.right([1, 2, 3], [1, 1, 1]))  # S drops to 0 at t=3
+    assert np.isnan(km.rmrl(5.0, 10.0))
+
+
+def test_rmrl_argument_validation() -> None:
+    km = KaplanMeier().fit(Surv.right([1, 2, 3], [1, 1, 1]))
+    with pytest.raises(ValueError, match="tau"):
+        km.rmrl(5.0, 3.0)
+    with pytest.raises(ValueError, match="non-negative"):
+        km.rmrl(-1.0, 3.0)
+
+
 def test_km_tidy_and_glance_via_registry() -> None:
     km = KaplanMeier().fit(Surv.right([1, 2, 3, 4], [1, 1, 1, 1]))
     tidy_df = gw.tidy.tidy(km)
