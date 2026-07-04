@@ -94,6 +94,24 @@ class AFT:
     (a 2-D array or a dataframe). An intercept is added automatically; rows with missing
     covariates are dropped. Results are exposed as arrays (`coef_`, `scale_`, `std_error_`,
     …) and a tidy frame via `to_dataframe`, and feed `greenwood.tidy`.
+
+    Examples
+    --------
+    Build a `Surv` response from the bundled `lung` dataset and fit a Weibull AFT model with
+    `age` and `sex` as covariates. Printing the fitted object reports the coefficients (on the
+    log-time scale), the scale, and the log-likelihood.
+
+    ```{python}
+    import greenwood as gw
+    from greenwood import Surv
+
+    lung = gw.data.load_dataset("lung")
+    y = Surv.right(lung["time"], event=(lung["status"] == 2))
+    aft = gw.AFT("weibull").fit(y, lung[["age", "sex"]])
+    aft
+    ```
+
+    The `aft` object fit here is reused by the method examples below.
     """
 
     def __init__(self, dist: str = "weibull", *, conf_level: float = 0.95) -> None:
@@ -131,6 +149,16 @@ class AFT:
 
         `covariates` is a dataframe or 2-D array, or a right-hand-side formula string (for
         example `"age + sex"`) evaluated against `data`. An intercept is added automatically.
+
+        Examples
+        --------
+        The error distribution is chosen with `dist=`, one of `"weibull"`, `"exponential"`,
+        `"lognormal"`, or `"loglogistic"`. Here is a log-normal fit to the same `y` response and
+        `lung` data from the class example above:
+
+        ```{python}
+        gw.AFT(dist="lognormal").fit(y, lung[["age", "sex"]])
+        ```
         """
         from ._surv import CensoringType
 
@@ -216,6 +244,22 @@ class AFT:
         For `type="survival"`, `conditional_after` (a scalar or one value per subject)
         predicts conditional on having already survived to that time: the value at time `t` is
         `P(T > t | T > c) = S(t) / S(c)`, and is 1 for `t <= c`.
+
+        Examples
+        --------
+        Predicted survival-time quantiles for the first two subjects, at the lower quartile,
+        median, and upper quartile (reusing the `aft` fit above):
+
+        ```{python}
+        aft.predict(lung[["age", "sex"]][:2], type="quantile", p=[0.25, 0.5, 0.75])
+        ```
+
+        With `type="survival"`, read survival probabilities off the fitted curves at chosen
+        times. Here are the estimates at 180 and 365 days for those same two subjects:
+
+        ```{python}
+        aft.predict(lung[["age", "sex"]][:2], type="survival", times=[180, 365])
+        ```
         """
         x = self._design(newdata)
         mu = x @ self.coef_
@@ -263,7 +307,17 @@ class AFT:
         raise ValueError(f"Unknown predict type {type!r}; use 'lp', 'quantile', or 'survival'.")
 
     def to_dataframe(self) -> Any:
-        """Return a tidy coefficient table (one row per term, including the intercept)."""
+        """Return a tidy coefficient table (one row per term, including the intercept).
+
+        Examples
+        --------
+        The coefficient table gives one row per term, including the intercept, with standard
+        errors, test statistics, p-values, and confidence limits (reusing the `aft` fit above):
+
+        ```{python}
+        aft.to_dataframe()
+        ```
+        """
         import pandas as pd
 
         return pd.DataFrame(
