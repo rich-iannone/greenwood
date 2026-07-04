@@ -1,0 +1,139 @@
+---
+title: Cox regression
+guide-section: "Regression"
+---
+
+```{python}
+#| echo: false
+#| output: false
+import great_docs as gd
+
+gd.enable_tbl_preview(n_head=8, n_tail=3)
+```
+
+The Kaplan-Meier estimator and the log-rank test describe and compare whole groups. To
+measure the effect of a continuous predictor, or to adjust for several variables at once, you
+need a regression model. The Cox proportional hazards model is the most widely used tool for
+this. It models the hazard, the instantaneous risk of the event among those still at risk,
+and expresses how covariates multiply that risk without requiring you to specify the shape of
+the baseline hazard. This page covers fitting the model, reading hazard ratios, and the
+tests it reports.
+
+```{python}
+import greenwood as gw
+from greenwood import Surv
+
+lung = gw.data.load_dataset("lung")
+y = Surv.right(lung["time"], event=(lung["status"] == 2))
+y
+```
+
+The response `y` is a `Surv` object that pairs each subject's follow-up time with an event
+indicator, marking censored times with a `+`. It records 165 events among 228 subjects, and it
+is the outcome the Cox model below regresses on the covariates.
+
+## The proportional hazards idea
+
+The Cox model assumes that each covariate multiplies the hazard by a constant factor that
+does not change over time. If being in a treatment group halves the hazard at one month, the
+model assumes it halves the hazard at every month. That multiplicative factor is the hazard
+ratio, and estimating it is the point of the model. The word "proportional" refers to this
+constant-factor assumption, which you should check after fitting; see
+[Cox model diagnostics](09-cox-diagnostics.qmd).
+
+The great convenience of the Cox model is that it estimates these hazard ratios without
+assuming any particular form for how the baseline risk changes over time. This is why it is
+called semiparametric, and why it is the default choice for most analyses.
+
+## Fitting a model
+
+You fit the model with a `Surv` response and a set of covariates. Covariates can be a pandas
+or Polars data frame; numeric columns are used directly and non-numeric columns are turned
+into indicator variables automatically. Rows with missing covariate values are dropped, as
+in a standard complete-case analysis.
+
+```{python}
+cox = gw.CoxPH().fit(y, lung[["age", "sex", "ph.ecog"]])
+```
+
+The call returns a fitted `CoxPH` estimator, held in `cox`. The estimator itself has no
+informative printout, so to inspect what it learned you ask it for a derived table. The most
+direct one is the coefficient table from `to_dataframe`.
+
+```{python}
+cox.to_dataframe()
+```
+
+The coefficient table reports, for each covariate, the estimated log hazard ratio
+(`estimate`), its standard error, a Wald z-statistic and p-value, and a confidence interval.
+The coefficients are on the log scale, which is convenient for the arithmetic of the model
+but not for interpretation.
+
+## Hazard ratios and their interpretation
+
+To interpret the model you exponentiate the coefficients, which turns log hazard ratios into
+hazard ratios. Greenwood does this for you through the tidy layer.
+
+```{python}
+gw.tidy.tidy(cox, exponentiate=True)
+```
+
+A hazard ratio above 1 means the covariate increases the hazard, and a value below 1 means
+it decreases it. For a continuous covariate such as `age`, the hazard ratio is the
+multiplicative change in hazard per one-unit increase; a hazard ratio of 1.02 for age means
+roughly a 2 percent higher hazard for each additional year. For the `sex` indicator, coded 1
+and 2 in this dataset, a hazard ratio below 1 means the higher-coded group has lower risk.
+
+::: {.callout-note}
+## Hazard ratio, not risk ratio
+A hazard ratio compares instantaneous rates among those still at risk, not the probability of
+the event over the whole study. The two are related but not identical, and the difference
+matters when events are common. Report hazard ratios as such, and consider an absolute
+measure like a survival difference or a restricted mean difference alongside them.
+:::
+
+## Model-fit statistics
+
+The `glance` view gives one-row summary statistics for the whole model, including the
+log-likelihood, the AIC, and the likelihood-ratio test of the null hypothesis that all
+coefficients are zero.
+
+```{python}
+gw.tidy.glance(cox)
+```
+
+The model reports three classical global tests, all of which assess whether the covariates
+jointly improve the fit: the likelihood-ratio test, the Wald test, and the score test. They
+usually agree closely, and the likelihood-ratio test is generally preferred.
+
+```{python}
+print("likelihood ratio:", round(cox.lr_stat_, 3))
+print("Wald:", round(cox.wald_stat_, 3))
+print("score:", round(cox.score_stat_, 3))
+```
+
+## Handling tied event times
+
+When two or more events occur at exactly the same recorded time, the partial likelihood must
+account for the tie. Greenwood defaults to the Efron approximation, which is accurate and is
+also the default in R. The Breslow approximation is available and is faster but slightly less
+accurate when ties are common.
+
+```{python}
+gw.CoxPH(ties="breslow").fit(y, lung[["age", "sex"]]).to_dataframe()[["term", "estimate"]]
+```
+
+Unless you have a specific reason to match another tool's Breslow output, the Efron default
+is the right choice.
+
+## Next steps
+
+You can now fit a Cox model, read hazard ratios, and assess overall fit.
+
+- [Cox model diagnostics](09-cox-diagnostics.qmd) checks the proportional hazards
+  assumption, computes residuals, predicts survival curves, and adds robust variance and
+  stratification.
+- [Parametric survival models](10-parametric-models.qmd) offers an alternative modeling
+  approach when you are willing to specify the shape of the survival distribution.
+- [Prediction performance](13-prediction-performance.qmd) evaluates how well a fitted model
+  discriminates and calibrates.
