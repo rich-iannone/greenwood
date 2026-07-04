@@ -49,6 +49,66 @@ def test_predict_conditional_after_per_subject(lung_surv) -> None:  # type: igno
     assert ((out.iloc[:, 1:] >= 0) & (out.iloc[:, 1:] <= 1)).all().all()
 
 
+def test_predict_survival_ci_columns_and_ordering(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    cox = CoxPH().fit(y, df[["age", "sex"]])
+    nd = df[["age", "sex"]].iloc[:2]
+    pred = cox.predict(nd, type="survival", times=[180, 365], ci=True)
+    assert list(pred.columns) == [
+        "time",
+        "subject_1", "subject_1_lower", "subject_1_upper",
+        "subject_2", "subject_2_lower", "subject_2_upper",
+    ]
+    # The band brackets the point estimate at every time.
+    for j in (1, 2):
+        assert (pred[f"subject_{j}_lower"] <= pred[f"subject_{j}"]).all()
+        assert (pred[f"subject_{j}"] <= pred[f"subject_{j}_upper"]).all()
+
+
+def test_predict_ci_with_conditional_after_raises(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    cox = CoxPH().fit(y, df[["age", "sex"]])
+    with pytest.raises(NotImplementedError, match="conditional_after"):
+        cox.predict(df[["age", "sex"]].iloc[:1], type="survival", times=[180], ci=True,
+                    conditional_after=50.0)
+
+
+def test_formula_matches_explicit(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    # A right-hand-side formula gives the same fit as passing the columns directly.
+    df, y = lung_surv
+    explicit = CoxPH().fit(y, df[["age", "sex"]])
+    formula = CoxPH().fit(y, "age + sex", data=df)
+    assert formula.term_names_ == ["age", "sex"]
+    np.testing.assert_allclose(formula.coef_, explicit.coef_)
+    np.testing.assert_allclose(formula.std_error_, explicit.std_error_)
+
+
+def test_formula_interaction_and_categorical(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    inter = CoxPH().fit(y, "age * sex", data=df)
+    assert inter.term_names_ == ["age", "sex", "age:sex"]
+    vet = gw.data.load_dataset("veteran", backend="pandas")
+    yv = Surv.right(vet["time"], event=vet["status"])
+    # Categorical: same model as explicit dummy coding, up to the reference level, so the
+    # log-likelihood (reference-invariant) agrees exactly.
+    by_formula = CoxPH(ties="breslow").fit(yv, "celltype", data=vet)
+    explicit = CoxPH(ties="breslow").fit(yv, vet[["celltype"]])
+    assert len(by_formula.term_names_) == 3
+    np.testing.assert_allclose(by_formula.loglik_, explicit.loglik_)
+
+
+def test_formula_complete_case_alignment(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    # ph.ecog has one missing value; the formula path drops that row like the response.
+    df, y = lung_surv
+    assert CoxPH().fit(y, "age + ph.ecog", data=df).n_ == 227
+
+
+def test_formula_requires_data(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    with pytest.raises(ValueError, match="data"):
+        CoxPH().fit(y, "age + sex")
+
+
 def test_invalid_conf_level() -> None:
     with pytest.raises(ValueError, match="conf_level"):
         CoxPH(conf_level=0.0)
