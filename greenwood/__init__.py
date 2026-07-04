@@ -17,11 +17,12 @@ from . import data, tidy, viz
 from ._competing import AalenJohansen, FineGray, MultiState
 from ._core import EventTable, event_table
 from ._cox import CoxPH, ZPHResult
-from ._metrics import brier_score, concordance_index, integrated_brier_score
+from ._metrics import brier_score, calibration, concordance_index, integrated_brier_score
 from ._nonparametric import KaplanMeier, NelsonAalen
 from ._parametric import AFT
+from ._resample import cross_validate
 from ._surv import CensoringType, Surv
-from ._tests import TestResult, logrank_test
+from ._tests import TestResult, logrank_test, pairwise_logrank_test
 from .viz import plot_survival, risk_table
 
 try:
@@ -43,10 +44,13 @@ __all__ = [
     "AalenJohansen",
     "FineGray",
     "MultiState",
+    "calibration",
     "concordance_index",
+    "cross_validate",
     "brier_score",
     "integrated_brier_score",
     "logrank_test",
+    "pairwise_logrank_test",
     "TestResult",
     "plot_survival",
     "risk_table",
