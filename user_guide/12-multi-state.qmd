@@ -97,9 +97,9 @@ multi-state generalization of the survival curve.
 ms = gw.MultiState().fit(start, stop, state, event, states=("mgus", "pcm", "death"))
 ```
 
-The fitted estimator holds an occupancy curve for each of the three states. We view the head of
-its data frame to see the earliest times, where the columns after `time` give the occupancy
-probability of `mgus`, `pcm`, and `death` respectively.
+The fitted estimator holds an occupancy curve for each of the three states. In its data frame
+the columns after `time` give the occupancy probability of `mgus`, `pcm`, and `death`
+respectively, and the preview reports the full number of time points.
 
 ```{python}
 ms.to_dataframe()
