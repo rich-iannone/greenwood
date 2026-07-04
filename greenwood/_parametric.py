@@ -182,6 +182,13 @@ class AFT:
         self.conf_high_ = self.coef_ + z * self.std_error_
         return self
 
+    def _design(self, newdata: Any) -> Array:
+        """Build the intercept-prepended design matrix for `newdata` (or the training data)."""
+        if newdata is None:
+            return self._x
+        design, _ = _design_matrix(newdata)
+        return np.column_stack([np.ones(design.shape[0]), design])
+
     def to_dataframe(self) -> Any:
         """Return a tidy coefficient table (one row per term, including the intercept)."""
         import pandas as pd
