@@ -2,103 +2,119 @@
 
 **Modern survival analysis for Python: narwhals-native, R-validated, plotnine-visualized.**
 
-Greenwood is a time-to-event modeling library built for 2026: it works on pandas, Polars,
-PyArrow, and anything else [narwhals](https://narwhals-dev.github.io/narwhals/) supports;
-it is validated to tolerance against R's `survival` package; it visualizes with
-[plotnine](https://plotnine.org/); and it plugs into the Great Tables ecosystem for
-publication-quality tables. Named after Greenwood's formula, the classic variance
-estimator for the Kaplan-Meier curve.
+## What is Greenwood?
 
-## Status
+Greenwood is a Python library for survival analysis, the statistical study of time-to-event outcomes. Greenwood gives you lots of powerful features for extracting insights from incomplete data where some observations are censored (i.e., we don't know if the event happened yet).
 
-This release ships:
+### Why Greenwood?
 
-- the **`Surv` response object** (right / left / interval censoring, counting-process form,
-  left truncation, weights, multi-state endpoints) with eager validation;
-- the narwhals-native **risk-set and event-table kernel** shared by Kaplan-Meier, the
-  log-rank test, and Cox;
-- the **`KaplanMeier`** estimator (survival function, Greenwood confidence intervals with
-  `plain`/`log`/`log-log` transforms, median and quantiles, **restricted mean survival
-  time**, step-function prediction) and the **`NelsonAalen`** cumulative-hazard estimator;
-- the **`logrank_test`**, covering the standard log-rank test and the G-rho
-  (Fleming-Harrington) family for two or more groups;
-- **`CoxPH`** proportional hazards regression (Efron and Breslow ties, hazard ratios,
-  model-based standard errors, Wald z-tests, and the likelihood-ratio / Wald / score global
-  tests), with **stratification**, the **robust (Lin-Wei) sandwich variance** and clustering,
-  **baseline hazard and survival prediction**, martingale and Schoenfeld residuals, the
-  **Grambsch-Therneau proportional-hazards test** (`cox_zph`), and the concordance index;
-- **`AFT`** parametric accelerated failure time models (Weibull, exponential, log-normal,
-  log-logistic), validated against R's `survreg`;
-- **`AalenJohansen`** cumulative incidence functions for competing risks (per-cause CIFs
-  with delta-method standard errors), the **`FineGray`** subdistribution hazard model
-  (with clustered robust standard errors), and **`MultiState`** transition/occupancy
-  probabilities (the general Aalen-Johansen estimator), validated against R's `survfit` and
-  `finegray`;
-- **prediction-performance metrics**: Harrell's `concordance_index`, and the IPCW
-  `brier_score` / `integrated_brier_score`, validated against R's `survival::concordance`
-  and `survival::brier`;
-- **plotnine visualization** (`plot_survival`) with confidence ribbons, censoring marks, and
-  an aligned numbers-at-risk table;
-- bundled datasets (`lung`, `veteran`, `ovarian`, `pbc`, `colon`) and an **R-parity test
-  harness**: every statistic above is validated to tolerance against R (`survfit`,
-  `survdiff`, `coxph`, and the `survival` restricted mean);
-- the **tidy layer** (`greenwood.tidy`), broom-compatible and aligned with Great Summaries.
+- it works with your dataframe library: Pandas, Polars, PyArrow, or anything supported by [narwhals](https://narwhals-dev.github.io/narwhals/)
+- it is rigorously validated, where every statistic is tested to tolerance against R's gold-standard `survival` package
+- you get beautiful visualizations that are built on [plotnine](https://plotnine.org/) (for publication-quality survival curves)
+- you also get publication-ready tables through integration with the [Great Tables](https://posit-co.github.io/great-tables/) library
+- batteries are included: from simple Kaplan-Meier curves to Cox proportional hazards, competing risks, and beyond
 
-Gray's test, flexible-parametric (spline) models, prediction-performance metrics, and
-further Cox extensions arrive in subsequent releases. See [`ROADMAP.md`](ROADMAP.md).
+## What's included
 
-## Quick look
+Descriptive statistics:
+
+- **`Surv` response object**: Handle right-, left-, and interval-censored data; counting-process form; left truncation; weights; and multi-state endpoints with built-in validation.
+- **Kaplan-Meier estimation** (`KaplanMeier`): Survival curves with Greenwood confidence intervals, median/quantile survival, restricted mean survival time, and step-function predictions.
+- **Nelson-Aalen estimator** (`NelsonAalen`): Cumulative hazard curves.
+- **Visualization** (`plot_survival`): Publication-ready curves with confidence ribbons, censoring marks, and aligned at-risk tables.
+
+Hypothesis testing:
+
+- **Log-rank tests** (`logrank_test`): Standard log-rank test and the G-rho (Fleming-Harrington) family for 2+ groups.
+
+Regression models:
+
+- **Cox proportional hazards** (`CoxPH`): Model covariates as hazard ratios with stratification, robust sandwich variance, clustering, baseline hazard prediction, and model diagnostics (residuals, proportional-hazards test, concordance).
+- **Accelerated failure time** (`AFT`): Parametric models (Weibull, exponential, log-normal, log-logistic) validated against R's `survreg`.
+- **Competing risks**: Cumulative incidence functions (`AalenJohansen`), subdistribution hazards (`FineGray`), and multi-state transition probabilities.
+
+Model performance:
+
+- **Prediction metrics**: Concordance index (Harrell's C) and inverse-probability censoring weighted (IPCW) Brier score / integrated Brier score.
+
+Tidy & reproducible:
+
+- **Tidy layer** (`greenwood.tidy`): Broom-compatible summaries aligned with Great Summaries for consistent reporting.
+- **Built-in datasets** (`lung`, `veteran`, `ovarian`, `pbc`, `colon`) and **R-parity test harness**: Every statistic is validated to tolerance against R's `survival` package.
+
+## Get started
+
+Here's a simple example that loads survival data, estimates a survival curve, and visualizes it.
 
 ```python
 import greenwood as gw
 from greenwood import Surv
 
-df = gw.data.load_dataset("lung")                    # survival::lung (1 = censored, 2 = dead)
+# Load the data and represent it as a survival object
+lung = gw.data.load_dataset("lung")
+y = Surv.right(lung["time"], event=(lung["status"] == 2))
+
+# Estimate the Kaplan-Meier survival curve
+km = gw.KaplanMeier().fit(y)
+
+# Visualize it
+gw.plot_survival(km)
+
+# Fit a Cox proportional hazards model
+cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+```
+
+That's it! See the [user guide](user_guide/02-quick-start.qmd) for more details on each step, and scroll down for a comprehensive example covering more of Greenwood's capabilities.
+
+## See more
+
+Here's a comprehensive example showcasing more of Greenwood's capabilities:
+
+```python
+import greenwood as gw
+from greenwood import Surv
+
+df = gw.data.load_dataset("lung")
 y = Surv.right(df["time"], event=(df["status"] == 2))
 
+# Kaplan-Meier with stratification and detailed summaries
 km = gw.KaplanMeier(conf_type="log-log").fit(y, by=df["sex"])
 km.to_dataframe()          # tidy: strata, time, n_risk, n_event, estimate, conf_low, conf_high
 km.median(ci=True)         # median survival with confidence limits, per stratum
 km.rmst(365, ci=True)      # restricted mean survival time up to 365 days
 km.predict([180, 365])     # survival probability at specific times
 
+# Statistical tests
 gw.logrank_test(y, group=df["sex"])          # standard log-rank test
 gw.logrank_test(y, group=df["sex"], rho=1)   # Peto-Peto (G-rho) test
 
-gw.plot_survival(km, risk_table=True)        # plotnine curves + aligned risk table
+# Visualization with risk tables
+gw.plot_survival(km, risk_table=True)
 
-cox = gw.CoxPH().fit(y, df[["age", "sex"]])  # Cox proportional hazards
+# Cox proportional hazards regression
+cox = gw.CoxPH().fit(y, df[["age", "sex"]])
 gw.tidy.tidy(cox, exponentiate=True)         # hazard ratios with confidence intervals
 cox.cox_zph()                                # proportional-hazards test
 cox.concordance()                            # C-statistic
 cox.predict(df[["age", "sex"]].head(), type="survival", times=[180, 365])
 
-aft = gw.AFT("weibull").fit(y, df[["age", "sex"]])   # parametric AFT model
-gw.tidy.tidy(aft)                                     # coefficients on the log-time scale
+# Parametric accelerated failure time models
+aft = gw.AFT("weibull").fit(y, df[["age", "sex"]])
+gw.tidy.tidy(aft)                            # coefficients on the log-time scale
 
-# Competing risks: cumulative incidence per cause.
+# Competing risks: cumulative incidence per cause
 mg = gw.data.load_dataset("mgus2")
 etime = mg["ptime"].where(mg["pstat"] == 1, mg["futime"])
-cause = mg["pstat"].where(mg["pstat"] == 1, 2 * mg["death"])   # 0 censor, 1 pcm, 2 death
+cause = mg["pstat"].where(mg["pstat"] == 1, 2 * mg["death"])
 cr = Surv.multistate(etime, event=cause, states=("pcm", "death"))
 gw.AalenJohansen().fit(cr).to_dataframe()
-gw.FineGray("pcm").fit(cr, mg[["age", "sex"]]).to_dataframe()   # subdistribution model
+gw.FineGray("pcm").fit(cr, mg[["age", "sex"]]).to_dataframe()
 
-# Prediction performance.
+# Model performance and prediction
 gw.concordance_index(y, cox.predict(type="lp"))
 S = cox.predict(df[["age", "sex"]], type="survival", times=[180, 365]).iloc[:, 1:].to_numpy().T
 gw.brier_score(y, S, times=[180, 365])
 ```
-
-## Development
-
-```bash
-make install   # pip install -e ".[dev]"
-make check     # ruff + pyright + pytest
-make docs      # build the Great Docs site locally
-```
-
-The version is derived from git tags by `setuptools_scm`; no version string is committed.
 
 ## License
 
