@@ -11,7 +11,7 @@ from greenwood import CoxPH, Surv
 
 @pytest.fixture
 def lung_surv():  # type: ignore[no-untyped-def]
-    df = gw.data.load_dataset("lung")
+    df = gw.data.load_dataset("lung", backend="pandas")
     return df, Surv.right(df["time"], event=(df["status"] == 2))
 
 
@@ -50,7 +50,7 @@ def test_array_covariates_default_names() -> None:
 
 def test_categorical_covariate_dummy_encoding(lung_surv) -> None:  # type: ignore[no-untyped-def]
     df, _ = lung_surv
-    vt = gw.data.load_dataset("veteran")
+    vt = gw.data.load_dataset("veteran", backend="pandas")
     y = Surv.right(vt["time"], event=vt["status"])
     cox = CoxPH().fit(y, vt[["celltype"]])
     # celltype has 4 levels; drop-first leaves 3 dummy terms, all prefixed "celltype".
