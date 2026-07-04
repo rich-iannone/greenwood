@@ -43,6 +43,19 @@ def _log_density_survival(dist: str, z: Array) -> tuple[Array, Array]:
     return logistic.logpdf(z), logistic.logsf(z)
 
 
+def _error_quantile(dist: str, p: Array) -> Array:
+    """Standardized quantile of the error term `W` at probabilities `p`.
+
+    `p` is the cumulative probability of failure, so the returned `w` satisfies
+    `F_W(w) = p`; the corresponding time quantile is `exp(mu + sigma * w)`.
+    """
+    if dist in ("weibull", "exponential"):  # minimum extreme value
+        return np.log(-np.log1p(-p))
+    if dist == "lognormal":
+        return norm.ppf(p)
+    return logistic.ppf(p)  # loglogistic
+
+
 def _num_hessian(fn: Any, x: Array, rel_step: float = 1e-5) -> Array:
     """Central-difference Hessian of a scalar function at `x`."""
     n = x.shape[0]
