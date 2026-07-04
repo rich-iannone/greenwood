@@ -1,0 +1,163 @@
+---
+title: Competing risks
+guide-section: "Multiple events"
+---
+
+```{python}
+#| echo: false
+#| output: false
+import great_docs as gd
+
+gd.enable_tbl_preview(n_head=8, n_tail=3)
+```
+
+So far every method has assumed a single kind of event. Often that is not realistic. A
+patient with a precancerous condition might progress to cancer, but they might also die of
+something else first, and death from another cause prevents the progression from ever being
+observed. These are competing risks: mutually exclusive event types where the occurrence of
+one removes the possibility of the others. Analyzing them with ordinary survival methods, one
+event type at a time, gives biased and even nonsensical results. This page explains why, and
+shows the two standard tools Greenwood provides.
+
+```{mermaid}
+%%| label: fig-competing
+%%| fig-cap: "A competing-risks model: from an initial state, a subject can move to exactly one of several absorbing event states."
+flowchart LR
+    A[Event-free] --> B[Progression]
+    A --> C[Death]
+```
+
+We use the bundled `mgus2` dataset, which follows patients with monoclonal gammopathy. The
+competing events are progression to a plasma-cell malignancy and death without progression.
+We first build the competing-risks endpoint from two intermediate arrays: a single event time
+and a cause code that is 0 for censored, 1 for progression, and 2 for death.
+
+```{python}
+import numpy as np
+import greenwood as gw
+from greenwood import Surv
+
+mg = gw.data.load_dataset("mgus2")
+etime = np.where(mg["pstat"] == 1, mg["ptime"], mg["futime"])
+cause = np.where(mg["pstat"] == 1, 1, 2 * mg["death"])   # 0 censor, 1 pcm, 2 death
+```
+
+The `etime` array picks each subject's event time: the progression time `ptime` when the
+subject progressed (`pstat == 1`), and otherwise the follow-up time `futime`. Because a
+subject can experience only the first of the competing events, one time per subject is all we
+need. Here are the first several values, in months.
+
+```{python}
+etime[:8]
+```
+
+The `cause` array records which event that time refers to, using the coding noted in the
+comment above. Where a subject progressed it is 1 (`pcm`); otherwise it is `2 * death`, which
+is 2 when the subject died without progressing and 0 when the subject was censored. Reading
+`etime` and `cause` position by position gives each subject's (time, cause) pair.
+
+```{python}
+cause[:8]
+```
+
+We pass both arrays to `Surv.multistate`, mapping cause code 1 to `pcm` and code 2 to `death`,
+with code 0 left as censoring. The resulting response object shows the event times alongside
+their decoded states.
+
+```{python}
+y = Surv.multistate(etime, event=cause, states=("pcm", "death"))
+y
+```
+
+## Cumulative incidence, not one-minus-survival
+
+The intuitive but wrong approach is to treat one cause as the event, censor the other, run
+Kaplan-Meier, and report one minus the survival curve as the probability of that cause. This
+overestimates the probability, sometimes badly, because it treats subjects who died of the
+other cause as if they could still progress. The correct quantity is the cumulative incidence
+function, which gives the probability of experiencing a specific cause by a given time while
+accounting for the competing cause.
+
+The Aalen-Johansen estimator computes it. You fit it to the multi-state response, and it
+returns a curve for every cause.
+
+```{python}
+aj = gw.AalenJohansen().fit(y)
+```
+
+The fitted estimator holds a cumulative incidence curve for each cause. To inspect it we call
+`to_dataframe` and take the first couple of rows within each cause, so both curves are
+visible side by side.
+
+```{python}
+aj.to_dataframe().groupby("cause").head(2)
+```
+
+Each cause has its own cumulative incidence estimate, standard error, and confidence
+interval at every event time. Because the causes are competing, their cumulative incidences
+plus the event-free probability sum to one at every time, which is exactly the accounting
+that one-minus-Kaplan-Meier gets wrong.
+
+::: {.callout-warning}
+## Do not use one-minus-Kaplan-Meier for a competing cause
+Censoring the competing event and applying Kaplan-Meier treats those subjects as if they
+remained at risk for the cause of interest, which they do not. Always use the cumulative
+incidence function for competing-risks probabilities.
+:::
+
+You can stratify by a grouping variable, just as with Kaplan-Meier, to compare cumulative
+incidence across groups.
+
+```{python}
+aj_sex = gw.AalenJohansen().fit(y, by=mg["sex"])
+```
+
+The stratified fit carries a separate set of curves for each level of `sex`. Here we pull the
+`pcm` cause and keep the last row within each stratum, which is the cumulative incidence of
+progression at the final event time in that group.
+
+```{python}
+aj_sex.to_dataframe().query("cause == 'pcm'").groupby("strata").tail(1)
+```
+
+## Modeling with the Fine-Gray model
+
+The cumulative incidence function describes groups. To model how covariates affect the
+incidence of a specific cause, use the Fine-Gray model. It is a regression on the
+subdistribution hazard, constructed so that its coefficients describe the effect of
+covariates on the cumulative incidence itself, which is usually what you want to report.
+
+```{python}
+fg = gw.FineGray("pcm").fit(y, mg[["age", "sex"]])
+```
+
+We name `pcm` as the target cause and fit against age and sex. To read the fitted model we
+tidy it into a coefficient table, asking for exponentiated estimates so the numbers are on the
+hazard-ratio scale rather than the log scale.
+
+```{python}
+gw.tidy.tidy(fg, exponentiate=True)
+```
+
+The exponentiated coefficients are subdistribution hazard ratios. A value above 1 means the
+covariate increases the cumulative incidence of the target cause, `pcm` here, over time. The
+model reports clustered robust standard errors by default, which are appropriate given the
+inverse-probability weighting it uses internally.
+
+::: {.callout-note}
+## Two kinds of hazard, two kinds of question
+A cause-specific Cox model answers "what drives the rate of this event among those still at
+risk?", while the Fine-Gray model answers "what drives the cumulative probability of this
+event?". They can point in different directions for the same covariate, and both can be
+correct. Decide which question you are asking before choosing the model.
+:::
+
+## Next steps
+
+You can now estimate and model competing-risks data correctly.
+
+- [Multi-state models](12-multi-state.qmd) generalize competing risks to settings where
+  subjects move between several states over time.
+- [Visualizing survival](07-visualization.qmd) shows the grammar-of-graphics approach you
+  can reuse to plot cumulative incidence curves.
+- Revisit [Survival data](03-survival-data.qmd) for the details of the multi-state response.
