@@ -291,7 +291,7 @@ class FineGray:
     is reused by the method examples below.
 
     ```{python}
-    gw.tidy.tidy(fg, exponentiate=True)
+    gw.tidy(fg, exponentiate=True)
     ```
     """
 

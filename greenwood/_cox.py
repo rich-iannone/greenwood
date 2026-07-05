@@ -276,7 +276,7 @@ class CoxPH:
     below.
 
     ```{python}
-    gw.tidy.tidy(cox, exponentiate=True)
+    gw.tidy(cox, exponentiate=True)
     ```
     """
 
