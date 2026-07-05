@@ -91,14 +91,14 @@ gw.plot_survival(km, risk_table=True)
 
 # Cox proportional hazards regression
 cox = gw.CoxPH().fit(y, df[["age", "sex"]])
-gw.tidy.tidy(cox, exponentiate=True)         # hazard ratios with confidence intervals
+gw.tidy(cox, exponentiate=True)         # hazard ratios with confidence intervals
 cox.cox_zph()                                # proportional-hazards test
 cox.concordance()                            # C-statistic
 cox.predict(df[["age", "sex"]].head(), type="survival", times=[180, 365])
 
 # Parametric accelerated failure time models
 aft = gw.AFT("weibull").fit(y, df[["age", "sex"]])
-gw.tidy.tidy(aft)                            # coefficients on the log-time scale
+gw.tidy(aft)                            # coefficients on the log-time scale
 
 # Competing risks: cumulative incidence per cause
 mg = gw.load_dataset("mgus2")
