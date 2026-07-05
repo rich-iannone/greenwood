@@ -544,6 +544,13 @@ class Surv:
     def to_pandas(self) -> Any:
         """Return the response as a pandas DataFrame (one row per observation).
 
+        This method exports the Surv object to a tidy pandas DataFrame format, where
+        each row represents one observation. The DataFrame includes the `stop` and
+        `status` columns, plus optional columns for `start` (entry time in counting
+        process), `lower` (lower bound for interval censoring), and `weight` (case
+        weights). This format is convenient for inspection, export to CSV or other
+        file formats, or integration with other pandas workflows.
+
         Returns
         -------
         pandas.DataFrame
@@ -557,11 +564,15 @@ class Surv:
 
         Examples
         --------
-        One row per observation, with the exit `stop` time and integer `status`.
+        Export to pandas DataFrame. Each row represents one observation with its
+        event time and status:
 
         ```{python}
         y.to_pandas()
         ```
+
+        The resulting DataFrame can be saved to CSV, used with pandas functions, or
+        integrated into standard data science workflows.
         """
         try:
             import pandas as pd
@@ -584,6 +595,14 @@ class Surv:
     def to_polars(self) -> Any:
         """Return the response as a Polars DataFrame (one row per observation).
 
+        This method exports the Surv object to a tidy Polars DataFrame format, where
+        each row represents one observation. Polars provides superior performance and
+        memory efficiency compared to pandas for larger datasets. The DataFrame includes
+        the `stop` and `status` columns, plus optional columns for `start` (entry time
+        in counting process), `lower` (lower bound for interval censoring), and `weight`
+        (case weights). This format is ideal for efficient data manipulation and
+        integration with Polars-based workflows.
+
         Returns
         -------
         polars.DataFrame
@@ -597,11 +616,14 @@ class Surv:
 
         Examples
         --------
-        One row per observation, with the exit `stop` time and integer `status`.
+        Export to Polars DataFrame for high-performance data processing:
 
         ```{python}
         y.to_polars()
         ```
+
+        Polars DataFrames are efficient and support lazy evaluation, making them ideal
+        for larger datasets and complex transformations.
         """
         try:
             import polars as pl
@@ -624,6 +646,14 @@ class Surv:
     def to_arrow(self) -> Any:
         """Return the response as a PyArrow Table (one row per observation).
 
+        This method exports the Surv object to a PyArrow Table, a columnar data structure
+        designed for efficient data interchange and analytics. PyArrow Tables are ideal
+        for integration with tools that work with the Apache Arrow memory format, including
+        Polars, DuckDB, and many other data processing libraries. The table includes the
+        `stop` and `status` columns, plus optional columns for `start` (entry time in
+        counting process), `lower` (lower bound for interval censoring), and `weight`
+        (case weights).
+
         Returns
         -------
         pyarrow.Table
@@ -637,11 +667,14 @@ class Surv:
 
         Examples
         --------
-        One row per observation, with the exit `stop` time and integer `status`.
+        Export to PyArrow Table for interoperability with Arrow-based tools:
 
         ```{python}
         y.to_arrow()
         ```
+
+        PyArrow Tables are the standard format for efficient data interchange between
+        different tools and libraries in the modern data stack.
         """
         try:
             import pyarrow as pa
@@ -664,14 +697,30 @@ class Surv:
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-ready mapping fully describing the response.
 
+        This method serializes the entire Surv object into a plain Python dictionary,
+        making it suitable for JSON serialization, storage, or transmission. All array
+        data is converted to plain Python lists. The dictionary captures the censoring
+        type and every array (time, status, optional fields), with `None` for fields
+        that a given censoring flavor does not use.
+
+        Returns
+        -------
+        dict[str, Any]
+            A dictionary with keys: `type` (CensoringType as string), `stop`, `status`,
+            and optional keys `start`, `lower`, `states`, `weights` (as lists or None).
+
         Examples
         --------
-        The mapping carries the censoring `type` and every array, with `None` for the
-        fields a given flavor does not use. Reusing `y` from the class example:
+        The mapping structure varies by censoring type, but always includes `type`,
+        `stop`, and `status`. Unused fields are `None`. Here we convert `y` to a
+        dictionary:
 
         ```{python}
         y.to_dict()
         ```
+
+        This is the serialized form that underpins `to_json()` and enables
+        round-tripping via `from_dict()`.
         """
 
         def _list(a: Array | None) -> list[Any] | None:
@@ -691,14 +740,32 @@ class Surv:
     def from_dict(cls, data: dict[str, Any]) -> Self:
         """Rebuild a response from `to_dict` output.
 
+        This is the inverse of `to_dict()`: it reconstructs an equivalent Surv object
+        from a dictionary previously created by `to_dict()`. Useful for deserializing
+        stored or transmitted data, or for round-tripping through storage formats.
+
+        Parameters
+        ----------
+        data : dict[str, Any]
+            A dictionary produced by `to_dict()` containing keys `type`, `stop`, `status`,
+            and optional keys for `start`, `lower`, `states`, `weights`.
+
+        Returns
+        -------
+        Surv
+            A new Surv object with the same data and structure as the input dictionary.
+
         Examples
         --------
-        The inverse of `to_dict`: rebuild an equivalent response from its mapping. Reusing
-        `y` from the class example:
+        Rebuild an equivalent response from its dictionary representation. Here we
+        serialize `y` and immediately deserialize it:
 
         ```{python}
-        Surv.from_dict(y.to_dict())
+        reconstructed = gw.Surv.from_dict(y.to_dict())
+        print("Objects equal:", y.to_dict() == reconstructed.to_dict())
         ```
+
+        The reconstructed object is equivalent to the original in every way.
         """
 
         def _arr(key: str, dtype: Any = float) -> Array | None:
@@ -718,14 +785,36 @@ class Surv:
     def to_json(self, *, indent: int | None = 2) -> str:
         """Serialize to a deterministic JSON string.
 
+        This method converts the entire Surv object to a compact, JSON-formatted string
+        suitable for storage in files, databases, or transmission over APIs. By default,
+        the output is human-readable with indentation; pass `indent=None` for a compact
+        form. The serialization is deterministic: the same Surv object always produces
+        the identical JSON string.
+
+        Parameters
+        ----------
+        indent : int | None, optional
+            Number of spaces to use for indentation. If `None`, produces compact JSON
+            without whitespace. Default is 2 (human-readable).
+
+        Returns
+        -------
+        str
+            A JSON string representing the Surv object, including censoring type and
+            all arrays.
+
         Examples
         --------
-        A stable JSON string, indented by default; pass `indent=None` for a compact form.
-        Here we show the leading characters of the compact serialization of `y`:
+        Serialize to JSON. By default, output is indented for readability. Here we show
+        just the first 120 characters of compact JSON:
 
         ```{python}
-        y.to_json(indent=None)[:120]
+        json_compact = y.to_json(indent=None)
+        print(json_compact[:120])
         ```
+
+        The full JSON includes all data in a structured format that can be parsed back
+        with `from_json()`.
         """
         return json.dumps(self.to_dict(), indent=indent)
 
@@ -733,13 +822,31 @@ class Surv:
     def from_json(cls, text: str) -> Self:
         """Deserialize from `to_json` output.
 
+        This is the inverse of `to_json()`: it reconstructs a Surv object from a JSON
+        string previously created by `to_json()`. Useful for loading data from stored
+        files, API responses, or any other JSON source. The reconstructed object is
+        guaranteed to be equivalent to the original.
+
+        Parameters
+        ----------
+        text : str
+            A JSON string produced by `to_json()` containing the serialized Surv data.
+
+        Returns
+        -------
+        Surv
+            A new Surv object restored from the JSON representation.
+
         Examples
         --------
-        Round-trip through JSON: serializing `y` and reading it back reconstructs an
-        equivalent response.
+        Deserialize from JSON. Round-trip through `to_json()` and back:
 
         ```{python}
-        Surv.from_json(y.to_json())
+        json_text = y.to_json()
+        restored = gw.Surv.from_json(json_text)
+        print("Round-trip successful:", y.to_json() == restored.to_json())
         ```
+
+        The restored object is an exact copy of the original Surv object.
         """
         return cls.from_dict(json.loads(text))
