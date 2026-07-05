@@ -14,6 +14,11 @@ logo:
   light: assets/logo-light.png
   dark: assets/logo-dark.png
 
+hero:
+  name: false
+  logo_height: 120px
+  badges: false
+
 # Lucide icons prepended to user-guide sidebar entries (keyed by page title).
 nav_icons:
   sidebar:
