@@ -116,4 +116,4 @@ gw.brier_score(y, S, times=[180, 365])
 
 ## License
 
-MIT (c) Richard Iannone. See [`LICENSE`](LICENSE).
+MIT (c) Richard Iannone. See the [`LICENSE`](LICENSE) file.
