@@ -55,7 +55,7 @@ table, the scale parameter, the sample size, and the log-likelihood. For the coe
 data, pass the model to `gw.tidy.tidy`, which returns a DataFrame.
 
 ```{python}
-gw.tidy.tidy(aft)
+gw.tidy(aft)
 ```
 
 The coefficients are on the log-time scale. A positive coefficient lengthens survival time,
@@ -87,7 +87,7 @@ up side by side, then reset the index so the rows number from zero.
 ```{python}
 import pandas as pd
 
-pd.concat(gw.tidy.glance(gw.AFT(d).fit(y, lung[["age", "sex"]])) for d in
+pd.concat(gw.glance(gw.AFT(d).fit(y, lung[["age", "sex"]])) for d in
           ("weibull", "lognormal", "loglogistic")).reset_index(drop=True)
 ```
 

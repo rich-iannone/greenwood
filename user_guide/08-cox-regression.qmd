@@ -81,7 +81,7 @@ To interpret the model you exponentiate the coefficients, which turns log hazard
 hazard ratios. Greenwood does this for you through the tidy layer.
 
 ```{python}
-gw.tidy.tidy(cox, exponentiate=True)
+gw.tidy(cox, exponentiate=True)
 ```
 
 A hazard ratio above 1 means the covariate increases the hazard, and a value below 1 means
@@ -105,7 +105,7 @@ log-likelihood, the AIC, and the likelihood-ratio test of the null hypothesis th
 coefficients are zero.
 
 ```{python}
-gw.tidy.glance(cox)
+gw.glance(cox)
 ```
 
 The model reports three classical global tests, all of which assess whether the covariates

@@ -135,7 +135,7 @@ tidy it into a coefficient table, asking for exponentiated estimates so the numb
 hazard-ratio scale rather than the log scale.
 
 ```{python}
-gw.tidy.tidy(fg, exponentiate=True)
+gw.tidy(fg, exponentiate=True)
 ```
 
 The exponentiated coefficients are subdistribution hazard ratios. A value above 1 means the
