@@ -275,6 +275,9 @@ class Surv:
         ```{python}
         Surv.right(time=[5, 6, 4, 9], event=[1, 0, 1, 0])
         ```
+
+        The output shows 4 observations with 2 events and 2 censored. The `+` mark denotes
+        censored observations (where the event was not observed within follow-up).
         """
         stop = _to_1d_array(time)
         status = _coerce_event(event, stop.shape[0])
@@ -309,6 +312,10 @@ class Surv:
         ```{python}
         Surv.left(time=[5, 6, 4], event=[1, 0, 1])
         ```
+
+        The output shows 3 observations with 2 events and 1 censored. For the 2 subjects
+        with events (event=1), the event occurred before their recorded time. The `+` mark
+        indicates the censored subject (event=0).
         """
         stop = _to_1d_array(time)
         status = _coerce_event(event, stop.shape[0])
@@ -347,6 +354,11 @@ class Surv:
         ```{python}
         Surv.counting(start=[0, 2, 1], stop=[5, 6, 4], event=[1, 0, 1])
         ```
+
+        The output shows 3 observations with 2 events and 1 censored, represented in the
+        counting-process form. Subject 1 entered at time 0 and exited at time 5 with an event;
+        subject 2 entered at time 2, exited at time 6, and was censored; subject 3 entered at
+        time 1 and experienced an event at time 4.
         """
         start_a = _to_1d_array(start)
         stop_a = _to_1d_array(stop)
@@ -390,6 +402,10 @@ class Surv:
 
         Surv.interval(lower=[1, 2, 3], upper=[2, np.inf, 5])
         ```
+
+        The output shows 3 observations: subject 1 had an exact event at time 2 (lower=upper);
+        subject 2 was right-censored at time 2 (upper=infinity means the event happened after
+        time 2); subject 3 had an interval-censored event between times 3 and 5.
         """
         lower_a = _to_1d_array(lower)
         upper_a = _to_1d_array(upper)
@@ -457,6 +473,12 @@ class Surv:
         ```{python}
         Surv.multistate(time=[5, 6, 7, 8], event=[1, 2, 0, 1], states=("relapse", "death"))
         ```
+
+        The output shows 4 observations with 3 events and 1 censored. Subject 1 transitioned
+        to "relapse" (event code 1) at time 5; subject 2 transitioned to "death" (event code 2)
+        at time 6; subject 3 was censored (event code 0); subject 4 transitioned to "relapse"
+        at time 8. The two competing event types are mutually exclusive—each subject can only
+        experience one.
         """
         stop = _to_1d_array(time)
         status = _to_1d_array(event, dtype=int).astype(np.int64)
