@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from importlib.metadata import PackageNotFoundError, version
 
-from . import data, tidy, viz
+from . import data, summaries, viz
 from ._competing import AalenJohansen, FineGray, MultiState
 from ._core import EventTable, event_table
 from ._cox import CoxPH, ZPHResult
@@ -27,6 +27,7 @@ from ._resample import cross_validate
 from ._surv import CensoringType, Surv
 from ._tests import TestResult, logrank_test, pairwise_logrank_test
 from .data import available_datasets, load_dataset
+from .summaries import augment, glance, tidy
 from .viz import plot_survival, risk_table
 
 try:
@@ -65,7 +66,10 @@ __all__ = [
     "risk_table",
     "load_dataset",
     "available_datasets",
-    "data",
     "tidy",
+    "glance",
+    "augment",
+    "data",
+    "summaries",
     "viz",
 ]
