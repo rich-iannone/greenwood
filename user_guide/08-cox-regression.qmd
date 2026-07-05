@@ -75,6 +75,32 @@ The coefficient table reports, for each covariate, the estimated log hazard rati
 The coefficients are on the log scale, which is convenient for the arithmetic of the model
 but not for interpretation.
 
+### Handling ties in event times
+
+When multiple subjects experience events at the same time, the Cox model needs a method to
+handle these "ties". Greenwood supports two tie-handling methods, controlled by the `ties`
+parameter in the constructor:
+
+- **"efron"** (default): Efron's method. Recommended; matches R's survival package default.
+- **"breslow"**: Breslow's method. Computationally simpler but less accurate when ties are common.
+
+The choice usually has minimal impact on results unless ties are very common. When in doubt,
+stick with the default (Efron).
+
+```{python}
+import pandas as pd
+
+# Compare methods
+cox_efron = gw.CoxPH(ties="efron").fit(y, lung[["age", "sex"]])
+cox_breslow = gw.CoxPH(ties="breslow").fit(y, lung[["age", "sex"]])
+
+# Coefficients are nearly identical unless ties are very common
+pd.DataFrame({
+    "Efron": cox_efron.to_dataframe()["estimate"],
+    "Breslow": cox_breslow.to_dataframe()["estimate"],
+})
+```
+
 ## Hazard ratios and their interpretation
 
 To interpret the model you exponentiate the coefficients, which turns log hazard ratios into
@@ -164,6 +190,7 @@ at day 10. We pass the interval endpoints to `gw.Surv.counting` and fit as usual
 ```{python}
 
 y_tv = gw.Surv.counting(start=intervals["start"], stop=intervals["stop"], event=intervals["event"])
+
 gw.CoxPH().fit(y_tv, intervals[["treated"]]).to_dataframe()[["term", "estimate", "p_value"]]
 ```
 
@@ -179,7 +206,36 @@ where the event occurred. Left truncation and delayed entry use the same countin
 response.
 :::
 
-## Fitting from a formula
+## Robust and clustered standard errors
+
+By default, the Cox model uses the model-based (Fisher information) standard errors. When the
+model may be misspecified, or when observations are not independent (e.g., repeated measures,
+family data), use the sandwich (robust) variance estimator by setting `robust=True`:
+
+```{python}
+cox_robust = gw.CoxPH().fit(y, lung[["age", "sex"]], robust=True)
+gw.tidy(cox_robust)
+```
+
+The standard errors adjust upward (more conservative) if there is overdispersion, or
+downward if there is underdispersion. For clustered data (e.g., family members, multiple
+measurements per subject), pass the cluster variable to ensure standard errors account for
+within-cluster dependence:
+
+```{python}
+# Simulated example: suppose subjects cluster by family
+import polars as pl
+lung_with_cluster = lung.with_columns(
+    family=((pl.int_range(len(lung)) % 10) + 1)
+)
+
+cox_cluster = gw.CoxPH().fit(y, lung_with_cluster[["age", "sex"]], 
+                              robust=True, cluster=lung_with_cluster["family"])
+gw.tidy(cox_cluster)
+```
+
+Clustered sandwich standard errors are wider than model-based ones, reflecting the loss of
+information from within-cluster correlation.
 
 Instead of selecting columns yourself, you can describe the model with a formula, passing the
 right-hand side as a string and the data frame as `data`. This is convenient for categorical
