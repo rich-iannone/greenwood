@@ -2,7 +2,7 @@
 title: "Roadmap"
 ---
 
-# Greenwood — Roadmap
+# Greenwood Roadmap
 
 Greenwood is built in dependency-ordered, individually shippable steps. This is the
 public capability roadmap.
