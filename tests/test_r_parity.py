@@ -215,7 +215,7 @@ def _check_cox(cox: gw.CoxPH, fixture: dict[str, Any], label: str) -> None:
     assert_allclose_to_r(cox.loglik_null_, fixture["loglik_null"], atol=1e-6, what=f"{label} ll0")
     assert_allclose_to_r(cox.loglik_, fixture["loglik"], atol=1e-6, what=f"{label} ll")
     # HR confidence limits (exponentiated scale).
-    tidy_exp = cox.to_dataframe(exponentiate=True)
+    tidy_exp = cox.to_pandas(exponentiate=True)
     assert_allclose_to_r(tidy_exp["conf_low"].to_numpy(), fixture["conf_low"], what=f"{label} lo")
     assert_allclose_to_r(tidy_exp["conf_high"].to_numpy(), fixture["conf_high"], what=f"{label} hi")
     # Global tests: LR and score are exact; R stores the Wald test rounded to 2 decimals.
@@ -424,7 +424,7 @@ def test_aalen_johansen_cif_matches_r() -> None:
     y = Surv.multistate(etime, event=event, states=("pcm", "death"))
     fixture = load_fixture("cif_mgus2")
 
-    table = gw.AalenJohansen().fit(y).to_dataframe()
+    table = gw.AalenJohansen().fit(y).to_pandas()
     pcm = table[table["cause"] == "pcm"].sort_values("time")
     death = table[table["cause"] == "death"].sort_values("time")
 
@@ -479,7 +479,7 @@ def test_multistate_occupancy_matches_r() -> None:
     t0, t1, frm, evt = _mgus2_illness_death()
     fixture = load_fixture("multistate_mgus2")
     ms = gw.MultiState().fit(t0, t1, frm, evt, states=("mgus", "pcm", "death"))
-    table = ms.to_dataframe()
+    table = ms.to_pandas()
     assert_allclose_to_r(table["time"].to_numpy(), fixture["time"], what="ms time")
     for state in ("mgus", "pcm", "death"):
         assert_allclose_to_r(table[state].to_numpy(), fixture[state], what=f"occupancy {state}")

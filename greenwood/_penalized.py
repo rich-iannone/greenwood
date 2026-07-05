@@ -247,25 +247,122 @@ class CoxNet:
             return frame
         raise ValueError(f"Unknown predict type {type!r}; use 'lp', 'risk', or 'survival'.")
 
-    def to_dataframe(self) -> Any:
-        """Return the (penalized) coefficient table: one row per term.
+    def _coefficient_columns(self) -> dict[str, Any]:
+        return {
+            "term": self.term_names_,
+            "estimate": self.coef_,
+            "hazard_ratio": self.hazard_ratio_,
+        }
+
+    def to_pandas(self) -> Any:
+        """Return the penalized coefficient table as a pandas DataFrame.
+
+        This method exports one row per term with the penalized coefficient estimate and
+        its hazard ratio. Terms set to zero by the lasso remain in the table with zero
+        estimates.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        pandas.DataFrame
+            A tidy DataFrame with columns `term`, `estimate`, and `hazard_ratio`.
+
+        Raises
+        ------
+        ImportError
+            If pandas is not installed.
 
         Examples
         --------
-        The coefficient table gives one row per term, with the penalized estimate and its
-        hazard ratio; terms shrunk to zero by the lasso appear as zero coefficients (reusing the
-        `coxnet` fit above):
+        Export the fitted CoxNet coefficients to pandas:
 
         ```{python}
-        coxnet.to_dataframe()
+        coxnet.to_pandas()
         ```
         """
-        import pandas as pd
+        try:
+            import pandas as pd
+        except ImportError as e:
+            raise ImportError(
+                "pandas is required for to_pandas(). Install it with: pip install pandas"
+            ) from e
 
-        return pd.DataFrame(
-            {
-                "term": self.term_names_,
-                "estimate": self.coef_,
-                "hazard_ratio": self.hazard_ratio_,
-            }
-        )
+        return pd.DataFrame(self._coefficient_columns())
+
+    def to_polars(self) -> Any:
+        """Return the penalized coefficient table as a Polars DataFrame.
+
+        This method exports one row per term with the penalized coefficient estimate and
+        its hazard ratio. Terms set to zero by the lasso remain in the table with zero
+        estimates.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        polars.DataFrame
+            A tidy DataFrame with columns `term`, `estimate`, and `hazard_ratio`.
+
+        Raises
+        ------
+        ImportError
+            If polars is not installed.
+
+        Examples
+        --------
+        Export the fitted CoxNet coefficients to Polars:
+
+        ```{python}
+        coxnet.to_polars()
+        ```
+        """
+        try:
+            import polars as pl
+        except ImportError as e:
+            raise ImportError(
+                "polars is required for to_polars(). Install it with: pip install polars"
+            ) from e
+
+        return pl.DataFrame(self._coefficient_columns())
+
+    def to_arrow(self) -> Any:
+        """Return the penalized coefficient table as a PyArrow Table.
+
+        This method exports one row per term with the penalized coefficient estimate and
+        its hazard ratio for Arrow-based interoperability.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        pyarrow.Table
+            A table with columns `term`, `estimate`, and `hazard_ratio`.
+
+        Raises
+        ------
+        ImportError
+            If pyarrow is not installed.
+
+        Examples
+        --------
+        Export the fitted CoxNet coefficients to Arrow:
+
+        ```{python}
+        coxnet.to_arrow()
+        ```
+        """
+        try:
+            import pyarrow as pa
+        except ImportError as e:
+            raise ImportError(
+                "pyarrow is required for to_arrow(). Install it with: pip install pyarrow"
+            ) from e
+
+        return pa.table(self._coefficient_columns())

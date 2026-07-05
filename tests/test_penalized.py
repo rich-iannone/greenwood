@@ -88,10 +88,10 @@ def test_predict_shapes_and_survival_range(data) -> None:  # type: ignore[no-unt
     assert ((surv.iloc[:, 1:] >= 0) & (surv.iloc[:, 1:] <= 1)).all().all()
 
 
-def test_to_dataframe_and_repr(data) -> None:  # type: ignore[no-untyped-def]
+def test_to_pandas_and_repr(data) -> None:  # type: ignore[no-untyped-def]
     y, x = data
     model = CoxNet(penalizer=0.1, l1_ratio=1.0).fit(y, x)
-    df = model.to_dataframe()
+    df = model.to_pandas()
     assert list(df.columns) == ["term", "estimate", "hazard_ratio"]
     text = repr(model)
     assert "elastic-net Cox" in text

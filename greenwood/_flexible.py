@@ -199,7 +199,7 @@ class RoystonParmar:
             return -float(ll.sum())
 
         # Initialize the spline from a least-squares fit of log(Nelson-Aalen) on the basis.
-        na = NelsonAalen().fit(surv).to_dataframe()
+        na = NelsonAalen().fit(surv).to_pandas()
         pos = na["estimate"].to_numpy() > 0
         b_init, _ = _rcs_basis(np.log(na["time"].to_numpy()[pos]), knots)
         gamma0, *_ = np.linalg.lstsq(b_init, np.log(na["estimate"].to_numpy()[pos]), rcond=None)
@@ -278,29 +278,127 @@ class RoystonParmar:
         frame.insert(0, "time", query)
         return frame
 
-    def to_dataframe(self) -> Any:
-        """Return a tidy coefficient table (spline terms and covariates).
+    def _coefficient_columns(self) -> dict[str, Any]:
+        return {
+            "term": self.term_names_,
+            "estimate": self.coef_,
+            "std_error": self.std_error_,
+            "statistic": self.z_,
+            "p_value": self.p_value_,
+            "conf_low": self.conf_low_,
+            "conf_high": self.conf_high_,
+        }
+
+    def to_pandas(self) -> Any:
+        """Return the coefficient table as a pandas DataFrame.
+
+        This method exports one row per spline or covariate term with coefficient
+        estimates, standard errors, Wald statistics, p-values, and confidence limits.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        pandas.DataFrame
+            A tidy DataFrame with columns `term`, `estimate`, `std_error`, `statistic`,
+            `p_value`, `conf_low`, and `conf_high`.
+
+        Raises
+        ------
+        ImportError
+            If pandas is not installed.
 
         Examples
         --------
-        The coefficient table gives one row per term with standard errors, test statistics,
-        p-values, and confidence limits; the `gamma` terms are the spline coefficients (reusing
-        the `rp` fit above):
+        Export the fitted Royston-Parmar coefficients to pandas:
 
         ```{python}
-        rp.to_dataframe()
+        rp.to_pandas()
         ```
         """
-        import pandas as pd
+        try:
+            import pandas as pd
+        except ImportError as e:
+            raise ImportError(
+                "pandas is required for to_pandas(). Install it with: pip install pandas"
+            ) from e
 
-        return pd.DataFrame(
-            {
-                "term": self.term_names_,
-                "estimate": self.coef_,
-                "std_error": self.std_error_,
-                "statistic": self.z_,
-                "p_value": self.p_value_,
-                "conf_low": self.conf_low_,
-                "conf_high": self.conf_high_,
-            }
-        )
+        return pd.DataFrame(self._coefficient_columns())
+
+    def to_polars(self) -> Any:
+        """Return the coefficient table as a Polars DataFrame.
+
+        This method exports one row per spline or covariate term with coefficient
+        estimates, standard errors, Wald statistics, p-values, and confidence limits.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        polars.DataFrame
+            A tidy DataFrame with columns `term`, `estimate`, `std_error`, `statistic`,
+            `p_value`, `conf_low`, and `conf_high`.
+
+        Raises
+        ------
+        ImportError
+            If polars is not installed.
+
+        Examples
+        --------
+        Export the fitted Royston-Parmar coefficients to Polars:
+
+        ```{python}
+        rp.to_polars()
+        ```
+        """
+        try:
+            import polars as pl
+        except ImportError as e:
+            raise ImportError(
+                "polars is required for to_polars(). Install it with: pip install polars"
+            ) from e
+
+        return pl.DataFrame(self._coefficient_columns())
+
+    def to_arrow(self) -> Any:
+        """Return the coefficient table as a PyArrow Table.
+
+        This method exports one row per spline or covariate term with coefficient
+        estimates, standard errors, Wald statistics, p-values, and confidence limits.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        pyarrow.Table
+            A table with columns `term`, `estimate`, `std_error`, `statistic`, `p_value`,
+            `conf_low`, and `conf_high`.
+
+        Raises
+        ------
+        ImportError
+            If pyarrow is not installed.
+
+        Examples
+        --------
+        Export the fitted Royston-Parmar coefficients to Arrow:
+
+        ```{python}
+        rp.to_arrow()
+        ```
+        """
+        try:
+            import pyarrow as pa
+        except ImportError as e:
+            raise ImportError(
+                "pyarrow is required for to_arrow(). Install it with: pip install pyarrow"
+            ) from e
+
+        return pa.table(self._coefficient_columns())

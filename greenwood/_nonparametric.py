@@ -241,11 +241,11 @@ class KaplanMeier:
     km
     ```
 
-    The full step function, one row per event time, is available with `to_dataframe`. The
+    The full step function, one row per event time, is available with `to_pandas`. The
     `km` object fit here is reused by the method examples below.
 
     ```{python}
-    km.to_dataframe()
+    km.to_pandas()
     ```
     """
 
@@ -262,7 +262,7 @@ class KaplanMeier:
             return f"KaplanMeier(conf_type={self.conf_type!r}) <unfitted>"
         from ._repr import align_table, whole
 
-        df = self.to_dataframe()
+        df = self.to_pandas()
         lcl, ucl = f"{self.conf_level}LCL", f"{self.conf_level}UCL"
         headers = ["n", "events", "median", lcl, ucl]
         if self._grouped:
@@ -499,21 +499,7 @@ class KaplanMeier:
 
     # -- interop --------------------------------------------------------------
 
-    def to_dataframe(self, backend: str = "pandas") -> Any:
-        """Return the fitted curve(s) as a tidy frame, one row per time point.
-
-        Examples
-        --------
-        The tidy step function has one row per event time, carrying the risk-set counts,
-        the survival `estimate`, its standard error, and confidence limits (reusing the `km`
-        fit above):
-
-        ```{python}
-        km.to_dataframe()
-        ```
-
-        The default backend is pandas; pass `backend="polars"` to get a Polars frame instead.
-        """
+    def _table_columns(self) -> dict[str, Array]:
         cols: dict[str, Array] = {}
         if self._grouped:
             cols["strata"] = self.strata_  # type: ignore[assignment]
@@ -525,20 +511,128 @@ class KaplanMeier:
         cols["std_error"] = self.std_error_
         cols["conf_low"] = self.conf_low_
         cols["conf_high"] = self.conf_high_
-        if backend == "pandas":
+        return cols
+
+    def to_pandas(self) -> Any:
+        """Return the fitted survival curve(s) as a pandas DataFrame.
+
+        This method exports the Kaplan-Meier step function with one row per time point,
+        including risk-set counts, the survival estimate, its standard error, confidence
+        limits, and optional strata labels.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        pandas.DataFrame
+            A tidy DataFrame with columns `time`, `n_risk`, `n_event`, `n_censor`,
+            `estimate`, `std_error`, `conf_low`, `conf_high`, and optionally `strata`.
+
+        Raises
+        ------
+        ImportError
+            If pandas is not installed.
+
+        Examples
+        --------
+        Export the fitted Kaplan-Meier curve to pandas:
+
+        ```{python}
+        km.to_pandas()
+        ```
+        """
+        try:
             import pandas as pd
+        except ImportError as e:
+            raise ImportError(
+                "pandas is required for to_pandas(). Install it with: pip install pandas"
+            ) from e
 
-            return pd.DataFrame(cols)
-        if backend == "polars":
+        return pd.DataFrame(self._table_columns())
+
+    def to_polars(self) -> Any:
+        """Return the fitted survival curve(s) as a Polars DataFrame.
+
+        This method exports the Kaplan-Meier step function with one row per time point,
+        including risk-set counts, the survival estimate, its standard error, confidence
+        limits, and optional strata labels.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        polars.DataFrame
+            A tidy DataFrame with columns `time`, `n_risk`, `n_event`, `n_censor`,
+            `estimate`, `std_error`, `conf_low`, `conf_high`, and optionally `strata`.
+
+        Raises
+        ------
+        ImportError
+            If polars is not installed.
+
+        Examples
+        --------
+        Export the fitted Kaplan-Meier curve to Polars:
+
+        ```{python}
+        km.to_polars()
+        ```
+        """
+        try:
             import polars as pl
+        except ImportError as e:
+            raise ImportError(
+                "polars is required for to_polars(). Install it with: pip install polars"
+            ) from e
 
-            return pl.DataFrame(cols)
-        raise ValueError(f"Unknown backend {backend!r}; use 'pandas' or 'polars'.")
+        return pl.DataFrame(self._table_columns())
+
+    def to_arrow(self) -> Any:
+        """Return the fitted survival curve(s) as a PyArrow Table.
+
+        This method exports the Kaplan-Meier step function to Arrow, preserving the same
+        columns as the pandas and Polars exports for efficient interchange.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        pyarrow.Table
+            A table with columns `time`, `n_risk`, `n_event`, `n_censor`, `estimate`,
+            `std_error`, `conf_low`, `conf_high`, and optionally `strata`.
+
+        Raises
+        ------
+        ImportError
+            If pyarrow is not installed.
+
+        Examples
+        --------
+        Export the fitted Kaplan-Meier curve to Arrow:
+
+        ```{python}
+        km.to_arrow()
+        ```
+        """
+        try:
+            import pyarrow as pa
+        except ImportError as e:
+            raise ImportError(
+                "pyarrow is required for to_arrow(). Install it with: pip install pyarrow"
+            ) from e
+
+        return pa.table(self._table_columns())
 
 
 def _tidy_kaplan_meier(km: KaplanMeier, **_: Any) -> Any:
     """broom-style `tidy`: one row per time point (`estimate` is survival)."""
-    return km.to_dataframe()
+    return km.to_pandas()
 
 
 def _glance_kaplan_meier(km: KaplanMeier, **_: Any) -> Any:
@@ -597,7 +691,7 @@ class NelsonAalen:
             return f"NelsonAalen(conf_type={self.conf_type!r}) <unfitted>"
         from ._repr import align_table, num, whole
 
-        df = self.to_dataframe()
+        df = self.to_pandas()
         headers = ["n", "events", "max cumhaz"]
         if self._grouped:
             labels, rows = [], []
@@ -662,21 +756,7 @@ class NelsonAalen:
             [np.full(b.time.shape[0], b.label, dtype=object) for b in self._blocks]
         )
 
-    def to_dataframe(self, backend: str = "pandas") -> Any:
-        """Return the fitted cumulative hazard as a tidy frame.
-
-        Examples
-        --------
-        The tidy frame has one row per event time; the `estimate` column is the cumulative
-        hazard, alongside its standard error and confidence limits (reusing the `na` fit
-        above):
-
-        ```{python}
-        na.to_dataframe()
-        ```
-
-        The default backend is pandas; pass `backend="polars"` to get a Polars frame instead.
-        """
+    def _table_columns(self) -> dict[str, Array]:
         cumhaz = self.cumhaz_
         se = self.std_error_
         with np.errstate(divide="ignore", invalid="ignore"):
@@ -699,15 +779,123 @@ class NelsonAalen:
         cols["std_error"] = se
         cols["conf_low"] = lower
         cols["conf_high"] = upper
-        if backend == "pandas":
+        return cols
+
+    def to_pandas(self) -> Any:
+        """Return the fitted cumulative hazard as a pandas DataFrame.
+
+        This method exports the Nelson-Aalen estimate with one row per event time,
+        including risk-set counts, the cumulative hazard estimate, its standard error,
+        confidence limits, and optional strata labels.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        pandas.DataFrame
+            A tidy DataFrame with columns `time`, `n_risk`, `n_event`, `estimate`,
+            `std_error`, `conf_low`, `conf_high`, and optionally `strata`.
+
+        Raises
+        ------
+        ImportError
+            If pandas is not installed.
+
+        Examples
+        --------
+        Export the fitted Nelson-Aalen curve to pandas:
+
+        ```{python}
+        na.to_pandas()
+        ```
+        """
+        try:
             import pandas as pd
+        except ImportError as e:
+            raise ImportError(
+                "pandas is required for to_pandas(). Install it with: pip install pandas"
+            ) from e
 
-            return pd.DataFrame(cols)
-        if backend == "polars":
+        return pd.DataFrame(self._table_columns())
+
+    def to_polars(self) -> Any:
+        """Return the fitted cumulative hazard as a Polars DataFrame.
+
+        This method exports the Nelson-Aalen estimate with one row per event time,
+        including risk-set counts, the cumulative hazard estimate, its standard error,
+        confidence limits, and optional strata labels.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        polars.DataFrame
+            A tidy DataFrame with columns `time`, `n_risk`, `n_event`, `estimate`,
+            `std_error`, `conf_low`, `conf_high`, and optionally `strata`.
+
+        Raises
+        ------
+        ImportError
+            If polars is not installed.
+
+        Examples
+        --------
+        Export the fitted Nelson-Aalen curve to Polars:
+
+        ```{python}
+        na.to_polars()
+        ```
+        """
+        try:
             import polars as pl
+        except ImportError as e:
+            raise ImportError(
+                "polars is required for to_polars(). Install it with: pip install polars"
+            ) from e
 
-            return pl.DataFrame(cols)
-        raise ValueError(f"Unknown backend {backend!r}; use 'pandas' or 'polars'.")
+        return pl.DataFrame(self._table_columns())
+
+    def to_arrow(self) -> Any:
+        """Return the fitted cumulative hazard as a PyArrow Table.
+
+        This method exports the Nelson-Aalen estimate to Arrow, preserving the same
+        columns as the pandas and Polars exports for efficient interchange.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        pyarrow.Table
+            A table with columns `time`, `n_risk`, `n_event`, `estimate`, `std_error`,
+            `conf_low`, `conf_high`, and optionally `strata`.
+
+        Raises
+        ------
+        ImportError
+            If pyarrow is not installed.
+
+        Examples
+        --------
+        Export the fitted Nelson-Aalen curve to Arrow:
+
+        ```{python}
+        na.to_arrow()
+        ```
+        """
+        try:
+            import pyarrow as pa
+        except ImportError as e:
+            raise ImportError(
+                "pyarrow is required for to_arrow(). Install it with: pip install pyarrow"
+            ) from e
+
+        return pa.table(self._table_columns())
 
 
 # Register the tidy/glance adapters so `greenwood.tidy()` and

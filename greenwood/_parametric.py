@@ -306,35 +306,134 @@ class AFT:
             return frame
         raise ValueError(f"Unknown predict type {type!r}; use 'lp', 'quantile', or 'survival'.")
 
-    def to_dataframe(self) -> Any:
-        """Return a tidy coefficient table (one row per term, including the intercept).
+    def _coefficient_columns(self) -> dict[str, Any]:
+        return {
+            "term": self.term_names_,
+            "estimate": self.coef_,
+            "std_error": self.std_error_,
+            "statistic": self.z_,
+            "p_value": self.p_value_,
+            "conf_low": self.conf_low_,
+            "conf_high": self.conf_high_,
+        }
+
+    def to_pandas(self) -> Any:
+        """Return the coefficient table as a pandas DataFrame.
+
+        This method exports one row per term, including the intercept, with coefficient
+        estimates, standard errors, Wald statistics, p-values, and confidence limits.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        pandas.DataFrame
+            A tidy DataFrame with columns `term`, `estimate`, `std_error`, `statistic`,
+            `p_value`, `conf_low`, and `conf_high`.
+
+        Raises
+        ------
+        ImportError
+            If pandas is not installed.
 
         Examples
         --------
-        The coefficient table gives one row per term, including the intercept, with standard
-        errors, test statistics, p-values, and confidence limits (reusing the `aft` fit above):
+        Export the fitted AFT coefficients to pandas:
 
         ```{python}
-        aft.to_dataframe()
+        aft.to_pandas()
         ```
         """
-        import pandas as pd
+        try:
+            import pandas as pd
+        except ImportError as e:
+            raise ImportError(
+                "pandas is required for to_pandas(). Install it with: pip install pandas"
+            ) from e
 
-        return pd.DataFrame(
-            {
-                "term": self.term_names_,
-                "estimate": self.coef_,
-                "std_error": self.std_error_,
-                "statistic": self.z_,
-                "p_value": self.p_value_,
-                "conf_low": self.conf_low_,
-                "conf_high": self.conf_high_,
-            }
-        )
+        return pd.DataFrame(self._coefficient_columns())
+
+    def to_polars(self) -> Any:
+        """Return the coefficient table as a Polars DataFrame.
+
+        This method exports one row per term, including the intercept, with coefficient
+        estimates, standard errors, Wald statistics, p-values, and confidence limits.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        polars.DataFrame
+            A tidy DataFrame with columns `term`, `estimate`, `std_error`, `statistic`,
+            `p_value`, `conf_low`, and `conf_high`.
+
+        Raises
+        ------
+        ImportError
+            If polars is not installed.
+
+        Examples
+        --------
+        Export the fitted AFT coefficients to Polars:
+
+        ```{python}
+        aft.to_polars()
+        ```
+        """
+        try:
+            import polars as pl
+        except ImportError as e:
+            raise ImportError(
+                "polars is required for to_polars(). Install it with: pip install polars"
+            ) from e
+
+        return pl.DataFrame(self._coefficient_columns())
+
+    def to_arrow(self) -> Any:
+        """Return the coefficient table as a PyArrow Table.
+
+        This method exports one row per term, including the intercept, with coefficient
+        estimates, standard errors, Wald statistics, p-values, and confidence limits.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        pyarrow.Table
+            A table with columns `term`, `estimate`, `std_error`, `statistic`, `p_value`,
+            `conf_low`, and `conf_high`.
+
+        Raises
+        ------
+        ImportError
+            If pyarrow is not installed.
+
+        Examples
+        --------
+        Export the fitted AFT coefficients to Arrow:
+
+        ```{python}
+        aft.to_arrow()
+        ```
+        """
+        try:
+            import pyarrow as pa
+        except ImportError as e:
+            raise ImportError(
+                "pyarrow is required for to_arrow(). Install it with: pip install pyarrow"
+            ) from e
+
+        return pa.table(self._coefficient_columns())
 
 
 def _tidy_aft(model: AFT, **_: Any) -> Any:
-    return model.to_dataframe()
+    return model.to_pandas()
 
 
 def _glance_aft(model: AFT, **_: Any) -> Any:

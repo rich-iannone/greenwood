@@ -39,8 +39,8 @@ class EventTable:
     Examples
     --------
     An `EventTable` is produced by `event_table`. Build one from the bundled `lung`
-    dataset and view it as a frame with `to_dataframe`. The table built here is reused by
-    the `to_dataframe` method example below.
+    dataset and view it as a frame with `to_pandas`. The table built here is reused by
+    the export-method examples below.
 
     ```{python}
     import greenwood as gw
@@ -49,7 +49,7 @@ class EventTable:
     lung = gw.load_dataset("lung")
     y = Surv.right(lung["time"], event=(lung["status"] == 2))
     et = gw.event_table(y)
-    et.to_dataframe()
+    et.to_pandas()
     ```
     """
 
@@ -62,18 +62,7 @@ class EventTable:
     def __len__(self) -> int:
         return int(self.time.shape[0])
 
-    def to_dataframe(self, backend: str = "pandas") -> Any:
-        """Return the tabulation as a tidy dataframe.
-
-        Examples
-        --------
-        One row per unique exit time. Pass `backend="polars"` for a Polars frame instead.
-        This reuses the `et` table from the class example above.
-
-        ```{python}
-        et.to_dataframe()
-        ```
-        """
+    def _table_columns(self) -> dict[str, Array]:
         cols: dict[str, Array] = {}
         if self.strata is not None:
             cols["strata"] = self.strata
@@ -81,15 +70,121 @@ class EventTable:
         cols["n_risk"] = self.n_risk
         cols["n_event"] = self.n_event
         cols["n_censor"] = self.n_censor
-        if backend == "pandas":
+        return cols
+
+    def to_pandas(self) -> Any:
+        """Return the tabulation as a pandas DataFrame.
+
+        This method exports the event-table rows to pandas with one row per unique exit
+        time and columns for the risk set, events, censorings, and optional strata labels.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        pandas.DataFrame
+            A tidy DataFrame containing `time`, `n_risk`, `n_event`, `n_censor`, and
+            optionally `strata`.
+
+        Raises
+        ------
+        ImportError
+            If pandas is not installed.
+
+        Examples
+        --------
+        Convert the event table to pandas for inspection or downstream analysis:
+
+        ```{python}
+        et.to_pandas()
+        ```
+        """
+        try:
             import pandas as pd
+        except ImportError as e:
+            raise ImportError(
+                "pandas is required for to_pandas(). Install it with: pip install pandas"
+            ) from e
 
-            return pd.DataFrame(cols)
-        if backend == "polars":
+        return pd.DataFrame(self._table_columns())
+
+    def to_polars(self) -> Any:
+        """Return the tabulation as a Polars DataFrame.
+
+        This method exports the event-table rows to Polars with one row per unique exit
+        time and columns for the risk set, events, censorings, and optional strata labels.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        polars.DataFrame
+            A tidy DataFrame containing `time`, `n_risk`, `n_event`, `n_censor`, and
+            optionally `strata`.
+
+        Raises
+        ------
+        ImportError
+            If polars is not installed.
+
+        Examples
+        --------
+        Convert the event table to Polars for fast columnar processing:
+
+        ```{python}
+        et.to_polars()
+        ```
+        """
+        try:
             import polars as pl
+        except ImportError as e:
+            raise ImportError(
+                "polars is required for to_polars(). Install it with: pip install polars"
+            ) from e
 
-            return pl.DataFrame(cols)
-        raise ValueError(f"Unknown backend {backend!r}; use 'pandas' or 'polars'.")
+        return pl.DataFrame(self._table_columns())
+
+    def to_arrow(self) -> Any:
+        """Return the tabulation as a PyArrow Table.
+
+        This method exports the event-table rows to an Arrow table, preserving the same
+        columns used in the pandas and Polars exports for efficient interoperability.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        pyarrow.Table
+            A table containing `time`, `n_risk`, `n_event`, `n_censor`, and optionally
+            `strata`.
+
+        Raises
+        ------
+        ImportError
+            If pyarrow is not installed.
+
+        Examples
+        --------
+        Convert the event table to Arrow for interchange with Arrow-based tools:
+
+        ```{python}
+        et.to_arrow()
+        ```
+        """
+        try:
+            import pyarrow as pa
+        except ImportError as e:
+            raise ImportError(
+                "pyarrow is required for to_arrow(). Install it with: pip install pyarrow"
+            ) from e
+
+        return pa.table(self._table_columns())
 
 
 def _tabulate_block(
@@ -153,14 +248,14 @@ def event_table(surv: Surv, *, group: Any = None, weights: Any = None) -> EventT
 
     lung = gw.load_dataset("lung")
     y = Surv.right(lung["time"], event=(lung["status"] == 2))
-    gw.event_table(y).to_dataframe()
+    gw.event_table(y).to_pandas()
     ```
 
     Passing `group=` stratifies the table, adding a `strata` column with one block of rows
     per group.
 
     ```{python}
-    gw.event_table(y, group=lung["sex"]).to_dataframe()
+    gw.event_table(y, group=lung["sex"]).to_pandas()
     ```
     """
     from ._surv import CensoringType, _to_1d_array

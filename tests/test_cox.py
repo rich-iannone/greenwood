@@ -169,7 +169,7 @@ def test_glance_fields(lung_surv) -> None:  # type: ignore[no-untyped-def]
 def test_to_dataframe_columns(lung_surv) -> None:  # type: ignore[no-untyped-def]
     df, y = lung_surv
     cox = CoxPH().fit(y, df[["age", "sex"]])
-    assert list(cox.to_dataframe().columns) == [
+    assert list(cox.to_pandas().columns) == [
         "term",
         "estimate",
         "std_error",
@@ -226,7 +226,7 @@ def test_cox_zph_transform_validation(lung_surv) -> None:  # type: ignore[no-unt
 def test_cox_zph_result_to_dataframe(lung_surv) -> None:  # type: ignore[no-untyped-def]
     df, y = lung_surv
     z = CoxPH().fit(y, df[["age", "sex"]]).cox_zph()
-    table = z.to_dataframe()
+    table = z.to_pandas()
     assert list(table["term"]) == ["age", "sex", "GLOBAL"]
     assert "chisq" in table.columns
 

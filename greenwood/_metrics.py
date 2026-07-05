@@ -179,7 +179,7 @@ def integrated_brier_score(surv: Surv, survival_prob: Any, times: Any) -> float:
 
 def _survival_at(km: Any, time: float) -> tuple[float, float, float]:
     """Read a Kaplan-Meier estimate and its confidence limits at a single time."""
-    frame = km.to_dataframe()
+    frame = km.to_pandas()
     grid = frame["time"].to_numpy()
     idx = int(np.searchsorted(grid, time, side="right")) - 1
     if idx < 0:

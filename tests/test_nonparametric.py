@@ -20,7 +20,7 @@ def test_km_censoring_holds_survival_flat() -> None:
     # A censor at t=2 does not drop survival, but reduces the risk set afterward.
     km = KaplanMeier().fit(Surv.right([1, 2, 3], [1, 0, 1]))
     # events only at t=1 and t=3; at t=1 S=1-1/3=2/3, at t=3 n=1 so S=0.
-    df = km.to_dataframe()
+    df = km.to_pandas()
     assert list(df["n_event"]) == [1, 0, 1]
     np.testing.assert_allclose(km.survival_, [2 / 3, 2 / 3, 0.0])
 
@@ -67,9 +67,9 @@ def test_km_invalid_conf_level() -> None:
         KaplanMeier(conf_level=1.5)
 
 
-def test_km_to_dataframe_columns() -> None:
+def test_km_to_pandas_columns() -> None:
     km = KaplanMeier().fit(Surv.right([1, 2], [1, 1]))
-    df = km.to_dataframe()
+    df = km.to_pandas()
     assert list(df.columns) == [
         "time",
         "n_risk",
@@ -82,9 +82,9 @@ def test_km_to_dataframe_columns() -> None:
     ]
 
 
-def test_km_to_dataframe_grouped_has_strata() -> None:
+def test_km_to_pandas_grouped_has_strata() -> None:
     km = KaplanMeier().fit(Surv.right([1, 2, 1, 2], [1, 1, 1, 1]), by=["a", "a", "b", "b"])
-    assert "strata" in km.to_dataframe().columns
+    assert "strata" in km.to_pandas().columns
 
 
 def test_nelson_aalen_cumhaz() -> None:

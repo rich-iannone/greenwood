@@ -16,7 +16,7 @@ def _simple_multistate() -> Surv:
 
 def test_cif_bounded_and_monotone() -> None:
     aj = AalenJohansen().fit(_simple_multistate())
-    table = aj.to_dataframe()
+    table = aj.to_pandas()
     for cause in ("pcm", "death"):
         cif = table[table["cause"] == cause].sort_values("time")["estimate"].to_numpy()
         assert np.all(np.diff(cif) >= -1e-12)  # non-decreasing
@@ -26,7 +26,7 @@ def test_cif_bounded_and_monotone() -> None:
 def test_cifs_sum_to_complement_of_survival() -> None:
     # At the last time, sum of CIFs across causes = 1 - overall survival.
     y = _simple_multistate()
-    table = AalenJohansen().fit(y).to_dataframe()
+    table = AalenJohansen().fit(y).to_pandas()
     last = table[table["time"] == table["time"].max()]
     total_cif = last["estimate"].sum()
     km = gw.KaplanMeier().fit(Surv.right(y.stop, event=y.event))
@@ -43,8 +43,8 @@ def test_invalid_conf_level() -> None:
         AalenJohansen(conf_level=2.0)
 
 
-def test_to_dataframe_columns() -> None:
-    table = AalenJohansen().fit(_simple_multistate()).to_dataframe()
+def test_to_pandas_columns() -> None:
+    table = AalenJohansen().fit(_simple_multistate()).to_pandas()
     assert list(table.columns) == [
         "cause",
         "time",
@@ -58,7 +58,7 @@ def test_to_dataframe_columns() -> None:
 
 def test_grouped_has_strata_column() -> None:
     y = Surv.multistate([1, 2, 3, 4], event=[1, 2, 1, 2], states=("pcm", "death"))
-    table = AalenJohansen().fit(y, by=["a", "a", "b", "b"]).to_dataframe()
+    table = AalenJohansen().fit(y, by=["a", "a", "b", "b"]).to_pandas()
     assert "strata" in table.columns
     assert set(table["strata"]) == {"a", "b"}
 
@@ -134,7 +134,7 @@ def test_multistate_illness_death_occupancy() -> None:
         event=["pcm", "death", "death"],
         states=("mgus", "pcm", "death"),
     )
-    table = ms.to_dataframe()
+    table = ms.to_pandas()
     # Occupancy probabilities sum to 1 at every time.
     row_sums = table[["mgus", "pcm", "death"]].sum(axis=1).to_numpy()
     np.testing.assert_allclose(row_sums, 1.0)
@@ -165,4 +165,4 @@ def test_multistate_infers_states() -> None:
 
     ms = MultiState().fit(start=[0, 0], stop=[1, 2], state=["a", "a"], event=["b", None])
     assert ms.states_ == ("a", "b")
-    assert list(ms.to_dataframe().columns) == ["time", "a", "b"]
+    assert list(ms.to_pandas().columns) == ["time", "a", "b"]

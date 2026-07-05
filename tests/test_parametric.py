@@ -71,10 +71,10 @@ def test_tidy_and_glance_via_registry(lung_surv) -> None:  # type: ignore[no-unt
     assert row["aic"] == pytest.approx(-2 * model.loglik_ + 2 * 4)  # 3 coef + log(scale)
 
 
-def test_to_dataframe_columns(lung_surv) -> None:  # type: ignore[no-untyped-def]
+def test_to_pandas_columns(lung_surv) -> None:  # type: ignore[no-untyped-def]
     df, y = lung_surv
     model = AFT().fit(y, df[["age", "sex"]])
-    assert list(model.to_dataframe().columns) == [
+    assert list(model.to_pandas().columns) == [
         "term",
         "estimate",
         "std_error",

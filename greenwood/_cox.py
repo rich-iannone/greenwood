@@ -68,23 +68,117 @@ class ZPHResult:
             f"GLOBAL p={self.global_test['p_value']:.4g})"
         )
 
-    def to_dataframe(self) -> Any:
-        """Return the test table (one row per term plus GLOBAL).
+    def to_pandas(self) -> Any:
+        """Return the test table as a pandas DataFrame (one row per term plus GLOBAL).
+
+        The table contains proportional hazards test statistics for each covariate plus 
+        a global test across all terms. One row represents one term in the model.
+
+        Returns
+        -------
+        pandas.DataFrame
+            A DataFrame with columns for term, test statistic, p-value, and other 
+            diagnostics. Includes a GLOBAL row.
+
+        Raises
+        ------
+        ImportError
+            If pandas is not installed.
 
         Examples
         --------
-        The test statistics are available as a tidy frame, one row per term plus a
-        `GLOBAL` row (reusing the `zph` result from the class example above):
-
         ```{python}
-        zph.to_dataframe()
+        df = zph.to_pandas()
+        df
         ```
+
+        The table shows the proportional hazards assumption test results for each term,
+        with the GLOBAL row testing the overall assumption.
         """
-        import pandas as pd
+        try:
+            import pandas as pd
+        except ImportError as e:
+            raise ImportError(
+                "pandas is required for to_pandas(). Install it with: pip install pandas"
+            ) from e
 
         rows = [{"term": k, **v} for k, v in self.per_term.items()]
         rows.append({"term": "GLOBAL", **self.global_test})
         return pd.DataFrame(rows)
+
+    def to_polars(self) -> Any:
+        """Return the test table as a Polars DataFrame (one row per term plus GLOBAL).
+
+        The table contains proportional hazards test statistics for each covariate plus 
+        a global test across all terms. One row represents one term in the model.
+
+        Returns
+        -------
+        polars.DataFrame
+            A DataFrame with columns for term, test statistic, p-value, and other 
+            diagnostics. Includes a GLOBAL row.
+
+        Raises
+        ------
+        ImportError
+            If polars is not installed.
+
+        Examples
+        --------
+        ```{python}
+        df = zph.to_polars()
+        df
+        ```
+
+        Polars provides better performance and memory efficiency for larger datasets.
+        """
+        try:
+            import polars as pl
+        except ImportError as e:
+            raise ImportError(
+                "polars is required for to_polars(). Install it with: pip install polars"
+            ) from e
+
+        rows = [{"term": k, **v} for k, v in self.per_term.items()]
+        rows.append({"term": "GLOBAL", **self.global_test})
+        return pl.DataFrame(rows)
+
+    def to_arrow(self) -> Any:
+        """Return the test table as a PyArrow Table (one row per term plus GLOBAL).
+
+        The table contains proportional hazards test statistics for each covariate plus 
+        a global test across all terms. One row represents one term in the model.
+
+        Returns
+        -------
+        pyarrow.Table
+            A Table with columns for term, test statistic, p-value, and other 
+            diagnostics. Includes a GLOBAL row.
+
+        Raises
+        ------
+        ImportError
+            If pyarrow is not installed.
+
+        Examples
+        --------
+        ```{python}
+        tbl = zph.to_arrow()
+        tbl
+        ```
+
+        PyArrow Tables are useful for interoperability with other Arrow-based tools.
+        """
+        try:
+            import pyarrow as pa
+        except ImportError as e:
+            raise ImportError(
+                "pyarrow is required for to_arrow(). Install it with: pip install pyarrow"
+            ) from e
+
+        rows = [{"term": k, **v} for k, v in self.per_term.items()]
+        rows.append({"term": "GLOBAL", **self.global_test})
+        return pa.table(rows)
 
 
 _TIES = frozenset({"efron", "breslow"})
@@ -344,7 +438,7 @@ class CoxPH:
         response and `lung` data from the class example above:
 
         ```{python}
-        gw.CoxPH().fit(y, lung[["age", "ph.ecog"]], strata=lung["sex"]).to_dataframe()
+        gw.CoxPH().fit(y, lung[["age", "ph.ecog"]], strata=lung["sex"]).to_pandas()
         ```
 
         The `covariates` argument also accepts a right-hand-side formula string (for example
@@ -786,7 +880,7 @@ class CoxPH:
         row:
 
         ```{python}
-        cox.cox_zph().to_dataframe()
+        cox.cox_zph().to_pandas()
         ```
         """
         residuals, times, covariances = self._event_contributions()
@@ -904,20 +998,49 @@ class CoxPH:
 
     # -- interop --------------------------------------------------------------
 
-    def to_dataframe(self, *, exponentiate: bool = False) -> Any:
-        """Return a tidy coefficient table (one row per term).
+    def to_pandas(self, *, exponentiate: bool = False) -> Any:
+        """Return a tidy coefficient table as pandas DataFrame (one row per term).
+
+        The table contains coefficient estimates, standard errors, test statistics, 
+        p-values, and confidence limits. If `exponentiate=True`, returns hazard ratios 
+        instead of log-hazards.
+
+        Parameters
+        ----------
+        exponentiate : bool, optional
+            If True, return hazard ratios (exp of coefficients). Default is False.
+
+        Returns
+        -------
+        pandas.DataFrame
+            One row per term with columns: term, estimate, std_error, statistic, 
+            p_value, conf_low, conf_high.
+
+        Raises
+        ------
+        ImportError
+            If pandas is not installed.
 
         Examples
         --------
-        The coefficient table carries the estimate, standard error, Wald z-statistic,
-        p-value, and confidence limits, one row per term (reusing the `cox` fit from the
-        class example above):
+        ```{python}
+        df = cox.to_pandas()
+        df
+        ```
+
+        With `exponentiate=True`, estimates become hazard ratios:
 
         ```{python}
-        cox.to_dataframe()
+        df_hr = cox.to_pandas(exponentiate=True)
+        df_hr
         ```
         """
-        import pandas as pd
+        try:
+            import pandas as pd
+        except ImportError as e:
+            raise ImportError(
+                "pandas is required for to_pandas(). Install it with: pip install pandas"
+            ) from e
 
         if exponentiate:
             estimate = self.hazard_ratio_
@@ -939,10 +1062,128 @@ class CoxPH:
             }
         )
 
+    def to_polars(self, *, exponentiate: bool = False) -> Any:
+        """Return a tidy coefficient table as Polars DataFrame (one row per term).
+
+        The table contains coefficient estimates, standard errors, test statistics, 
+        p-values, and confidence limits. If `exponentiate=True`, returns hazard ratios 
+        instead of log-hazards.
+
+        Parameters
+        ----------
+        exponentiate : bool, optional
+            If True, return hazard ratios (exp of coefficients). Default is False.
+
+        Returns
+        -------
+        polars.DataFrame
+            One row per term with columns: term, estimate, std_error, statistic, 
+            p_value, conf_low, conf_high.
+
+        Raises
+        ------
+        ImportError
+            If polars is not installed.
+
+        Examples
+        --------
+        ```{python}
+        df = cox.to_polars()
+        df
+        ```
+
+        Polars is efficient for larger coefficient tables or further processing.
+        """
+        try:
+            import polars as pl
+        except ImportError as e:
+            raise ImportError(
+                "polars is required for to_polars(). Install it with: pip install polars"
+            ) from e
+
+        if exponentiate:
+            estimate = self.hazard_ratio_
+            conf_low = np.exp(self.conf_low_)
+            conf_high = np.exp(self.conf_high_)
+        else:
+            estimate = self.coef_
+            conf_low = self.conf_low_
+            conf_high = self.conf_high_
+        return pl.DataFrame(
+            {
+                "term": self.term_names_,
+                "estimate": estimate,
+                "std_error": self.std_error_,
+                "statistic": self.z_,
+                "p_value": self.p_value_,
+                "conf_low": conf_low,
+                "conf_high": conf_high,
+            }
+        )
+
+    def to_arrow(self, *, exponentiate: bool = False) -> Any:
+        """Return a tidy coefficient table as PyArrow Table (one row per term).
+
+        The table contains coefficient estimates, standard errors, test statistics, 
+        p-values, and confidence limits. If `exponentiate=True`, returns hazard ratios 
+        instead of log-hazards.
+
+        Parameters
+        ----------
+        exponentiate : bool, optional
+            If True, return hazard ratios (exp of coefficients). Default is False.
+
+        Returns
+        -------
+        pyarrow.Table
+            One row per term with columns: term, estimate, std_error, statistic, 
+            p_value, conf_low, conf_high.
+
+        Raises
+        ------
+        ImportError
+            If pyarrow is not installed.
+
+        Examples
+        --------
+        ```{python}
+        tbl = cox.to_arrow()
+        tbl
+        ```
+
+        PyArrow is useful for interoperability with other Arrow-based tools.
+        """
+        try:
+            import pyarrow as pa
+        except ImportError as e:
+            raise ImportError(
+                "pyarrow is required for to_arrow(). Install it with: pip install pyarrow"
+            ) from e
+
+        if exponentiate:
+            estimate = self.hazard_ratio_
+            conf_low = np.exp(self.conf_low_)
+            conf_high = np.exp(self.conf_high_)
+        else:
+            estimate = self.coef_
+            conf_low = self.conf_low_
+            conf_high = self.conf_high_
+        return pa.table(
+            {
+                "term": self.term_names_,
+                "estimate": estimate,
+                "std_error": self.std_error_,
+                "statistic": self.z_,
+                "p_value": self.p_value_,
+                "conf_low": conf_low,
+                "conf_high": conf_high,
+            }
+        )
+
 
 def _tidy_cox(model: CoxPH, *, exponentiate: bool = False, **_: Any) -> Any:
     """broom-style `tidy`: one row per term; `exponentiate` gives hazard ratios."""
-    return model.to_dataframe(exponentiate=exponentiate)
+    return model.to_pandas(exponentiate=exponentiate)
 
 
 def _glance_cox(model: CoxPH, **_: Any) -> Any:
