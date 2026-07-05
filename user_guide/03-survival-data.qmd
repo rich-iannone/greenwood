@@ -224,7 +224,7 @@ table is what Kaplan-Meier, the log-rank test, and Cox all build on, and you can
 directly with `event_table`. It matches R's `survfit` tabulation.
 
 ```{python}
-gw.event_table(y).to_dataframe()
+gw.event_table(y).to_pandas()
 ```
 
 Each row is a distinct time. The `n_risk` column counts the subjects under observation just
@@ -232,7 +232,7 @@ before that time, `n_event` the events at it, and `n_censor` the censorings. Pas
 tabulate within strata, which adds a `strata` column.
 
 ```{python}
-gw.event_table(y, group=lung["sex"]).to_dataframe()
+gw.event_table(y, group=lung["sex"]).to_pandas()
 ```
 
 You rarely need this table directly, but it is the shared foundation the estimators are built

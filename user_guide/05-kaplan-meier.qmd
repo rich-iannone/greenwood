@@ -48,7 +48,7 @@ The fitted `km` object holds the whole curve internally. The most direct way to 
 few rows.
 
 ```{python}
-km.to_dataframe()
+km.to_pandas()
 ```
 
 Each row corresponds to a distinct observed time. The columns tell a complete story:
@@ -93,7 +93,7 @@ Pulling out just the estimate and its interval limits lets you compare this fit 
 default one. We select those columns to keep the table narrow.
 
 ```{python}
-km_loglog.to_dataframe()[["time", "estimate", "conf_low", "conf_high"]]
+km_loglog.to_pandas()[["time", "estimate", "conf_low", "conf_high"]]
 ```
 
 The point estimates are identical across transforms; only the interval limits differ. Choose
@@ -110,7 +110,7 @@ km_90 = gw.KaplanMeier(conf_level=0.90).fit(y)
 km_99 = gw.KaplanMeier(conf_level=0.99).fit(y)
 
 # Compare intervals at a few time points
-km_90.to_dataframe()[["time", "estimate", "conf_low", "conf_high"]].head(3)
+km_90.to_pandas()[["time", "estimate", "conf_low", "conf_high"]].head(3)
 ```
 
 Note that narrower confidence levels (0.90) produce tighter bands, while wider levels (0.99)
@@ -133,7 +133,7 @@ km_loglog = gw.KaplanMeier(conf_type="log-log").fit(y)
 # Compare interval widths at selected quantile times
 results = []
 for km, name in [(km_plain, "plain"), (km_log, "log"), (km_loglog, "log-log")]:
-    df = km.to_dataframe()
+    df = km.to_pandas()
     # Select every 30th row to show interval differences across follow-up
     df_subset = df.iloc[::30][["time", "estimate", "conf_low", "conf_high"]]
     df_subset["transform"] = name
@@ -217,7 +217,7 @@ column identifying which curve each row belongs to. We show the first couple of 
 each stratum so you can see both curves side by side without printing every time point.
 
 ```{python}
-km_sex.to_dataframe().groupby("strata").head(2)
+km_sex.to_pandas().groupby("strata").head(2)
 ```
 
 Per-stratum summaries follow naturally. `median` and `rmst` return a dictionary keyed by
@@ -267,7 +267,7 @@ Reading `na` with `to_dataframe` gives the same table layout as before, but now 
 survival, it starts at 0 and climbs as events accumulate.
 
 ```{python}
-na.to_dataframe()
+na.to_pandas()
 ```
 
 ## Next steps

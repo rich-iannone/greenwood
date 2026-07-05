@@ -110,7 +110,7 @@ Fitting a Cox model on the Polars-backed response and covariates, then viewing t
 `to_dataframe`, gives the same coefficient table you would get from the pandas frame.
 
 ```{python}
-gw.CoxPH().fit(y_pl, lung_pl[["age", "sex"]]).to_dataframe()
+gw.CoxPH().fit(y_pl, lung_pl[["age", "sex"]]).to_pandas()
 ```
 
 ::: {.callout-tip}

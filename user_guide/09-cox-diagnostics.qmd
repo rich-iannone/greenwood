@@ -57,7 +57,7 @@ For the full per-covariate breakdown, call `to_dataframe` on that result. This i
 you will read most often.
 
 ```{python}
-zph.to_dataframe()
+zph.to_pandas()
 ```
 
 The table has one row per covariate plus a `GLOBAL` row that tests all covariates jointly.
@@ -160,7 +160,7 @@ As with any fitted model, we can print `stratified` for a summary, or read its c
 table as data with `to_dataframe`.
 
 ```{python}
-stratified.to_dataframe()
+stratified.to_pandas()
 ```
 
 Notice that the stratifying variable, `sex`, does not appear as a coefficient. Its effect is
@@ -175,7 +175,7 @@ Lin-Wei sandwich estimator, and pass `cluster` to group correlated observations.
 
 ```{python}
 robust = gw.CoxPH().fit(y, lung[["age", "sex"]], robust=True)
-robust.to_dataframe()[["term", "std_error"]]
+robust.to_pandas()[["term", "std_error"]]
 ```
 
 The coefficients are unchanged; only the standard errors, and therefore the p-values and

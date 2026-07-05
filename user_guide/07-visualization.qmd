@@ -44,7 +44,7 @@ probability and its confidence limits. The preview shows the first and last rows
 the full dimensions of the table.
 
 ```{python}
-km.to_dataframe()
+km.to_pandas()
 ```
 
 Each row is a step in one of the curves. The `time` and `estimate` columns give the point at

@@ -102,7 +102,7 @@ the columns after `time` give the occupancy probability of `mgus`, `pcm`, and `d
 respectively, and the preview reports the full number of time points.
 
 ```{python}
-ms.to_dataframe()
+ms.to_pandas()
 ```
 
 Each column after `time` is the probability that a subject is in that state at that time.
