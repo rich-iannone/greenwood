@@ -169,7 +169,7 @@ def test_glance_fields(lung_surv) -> None:  # type: ignore[no-untyped-def]
 def test_to_dataframe_columns(lung_surv) -> None:  # type: ignore[no-untyped-def]
     df, y = lung_surv
     cox = CoxPH().fit(y, df[["age", "sex"]])
-    assert list(cox.to_pandas().columns) == [
+    expected_columns = [
         "term",
         "estimate",
         "std_error",
@@ -178,6 +178,14 @@ def test_to_dataframe_columns(lung_surv) -> None:  # type: ignore[no-untyped-def
         "conf_low",
         "conf_high",
     ]
+    # Test to_pandas
+    assert list(cox.to_pandas().columns) == expected_columns
+    # Test to_polars
+    pytest.importorskip("polars")
+    assert list(cox.to_polars().columns) == expected_columns
+    # Test to_arrow
+    pytest.importorskip("pyarrow")
+    assert list(cox.to_arrow().column_names) == expected_columns
 
 
 def test_baseline_hazard_is_monotone(lung_surv) -> None:  # type: ignore[no-untyped-def]
@@ -226,9 +234,25 @@ def test_cox_zph_transform_validation(lung_surv) -> None:  # type: ignore[no-unt
 def test_cox_zph_result_to_dataframe(lung_surv) -> None:  # type: ignore[no-untyped-def]
     df, y = lung_surv
     z = CoxPH().fit(y, df[["age", "sex"]]).cox_zph()
+    
+    # Test to_pandas
     table = z.to_pandas()
     assert list(table["term"]) == ["age", "sex", "GLOBAL"]
     assert "chisq" in table.columns
+    
+    # Test to_polars
+    pytest.importorskip("polars")
+    table_pl = z.to_polars()
+    assert list(table_pl["term"]) == ["age", "sex", "GLOBAL"]
+    assert "chisq" in table_pl.columns
+    
+    # Test to_arrow
+    pytest.importorskip("pyarrow")
+    table_pa = z.to_arrow()
+    # PyArrow returns scalar objects, convert to Python objects
+    terms = [str(t) for t in table_pa["term"].to_pylist()]
+    assert terms == ["age", "sex", "GLOBAL"]
+    assert "chisq" in table_pa.column_names
 
 
 def test_concordance_in_unit_interval(lung_surv) -> None:  # type: ignore[no-untyped-def]
