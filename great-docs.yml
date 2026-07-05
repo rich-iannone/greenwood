@@ -7,6 +7,13 @@ site_url: "https://rich-iannone.github.io/greenwood/"
 
 dynamic: true
 
+# Logo & Favicon
+# ---------------
+# Point to a single logo file (replaces the text title in the navbar):
+logo:
+  light: assets/logo-light.png
+  dark: assets/logo-dark.png
+
 # Lucide icons prepended to user-guide sidebar entries (keyed by page title).
 nav_icons:
   sidebar:
