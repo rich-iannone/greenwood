@@ -25,7 +25,7 @@ Plotnine is an optional dependency. If you installed Greenwood with the `viz` ex
 import greenwood as gw
 from greenwood import Surv
 
-lung = gw.data.load_dataset("lung")
+lung = gw.load_dataset("lung")
 y = Surv.right(lung["time"], event=(lung["status"] == 2))
 y
 ```

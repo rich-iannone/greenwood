@@ -26,7 +26,7 @@ patients with advanced lung cancer.
 import greenwood as gw
 from greenwood import Surv
 
-lung = gw.data.load_dataset("lung")
+lung = gw.load_dataset("lung")
 y = Surv.right(lung["time"], event=(lung["status"] == 2))
 y
 ```

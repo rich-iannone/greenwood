@@ -31,7 +31,7 @@ import greenwood as gw
 from greenwood import Surv
 
 # Load a bundled dataset and build a response (lung codes 1 = censored, 2 = dead).
-df = gw.data.load_dataset("lung")
+df = gw.load_dataset("lung")
 y = Surv.right(df["time"], event=(df["status"] == 2))
 
 # Kaplan-Meier survival, stratified, with log-log confidence intervals.

@@ -101,7 +101,7 @@ class RoystonParmar:
     import greenwood as gw
     from greenwood import Surv
 
-    lung = gw.data.load_dataset("lung")
+    lung = gw.load_dataset("lung")
     y = Surv.right(lung["time"], event=(lung["status"] == 2))
     rp = gw.RoystonParmar(df=3).fit(y, lung[["age", "sex"]])
     rp

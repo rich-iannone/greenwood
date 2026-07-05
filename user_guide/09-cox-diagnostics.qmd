@@ -25,7 +25,7 @@ time with an event indicator, and it is the target every model on this page is f
 import greenwood as gw
 from greenwood import Surv
 
-lung = gw.data.load_dataset("lung")
+lung = gw.load_dataset("lung")
 y = Surv.right(lung["time"], event=(lung["status"] == 2))
 y
 ```

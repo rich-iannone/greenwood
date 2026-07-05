@@ -40,7 +40,7 @@ def concordance_index(surv: Surv, risk: Any) -> float:
     import greenwood as gw
     from greenwood import Surv
 
-    lung = gw.data.load_dataset("lung")
+    lung = gw.load_dataset("lung")
     y = Surv.right(lung["time"], event=(lung["status"] == 2))
     cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
 
@@ -102,7 +102,7 @@ def brier_score(surv: Surv, survival_prob: Any, times: Any) -> Array:
     import greenwood as gw
     from greenwood import Surv
 
-    lung = gw.data.load_dataset("lung")
+    lung = gw.load_dataset("lung")
     y = Surv.right(lung["time"], event=(lung["status"] == 2))
     cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
 
@@ -159,7 +159,7 @@ def integrated_brier_score(surv: Surv, survival_prob: Any, times: Any) -> float:
     import greenwood as gw
     from greenwood import Surv
 
-    lung = gw.data.load_dataset("lung")
+    lung = gw.load_dataset("lung")
     y = Surv.right(lung["time"], event=(lung["status"] == 2))
     cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
 
@@ -229,7 +229,7 @@ def calibration(
     import greenwood as gw
     from greenwood import Surv
 
-    lung = gw.data.load_dataset("lung")
+    lung = gw.load_dataset("lung")
     y = Surv.right(lung["time"], event=(lung["status"] == 2))
     cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
 

@@ -146,7 +146,7 @@ narwhals, so you can pass pandas or Polars columns directly. The bundled `lung` 
 from the North Central Cancer Treatment Group, is a good example.
 
 ```{python}
-lung = gw.data.load_dataset("lung")
+lung = gw.load_dataset("lung")
 lung
 ```
 

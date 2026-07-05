@@ -116,7 +116,7 @@ class AalenJohansen:
     import greenwood as gw
     from greenwood import Surv
 
-    mg = gw.data.load_dataset("mgus2")
+    mg = gw.load_dataset("mgus2")
     etime = np.where(mg["pstat"] == 1, mg["ptime"], mg["futime"])
     cause = np.where(mg["pstat"] == 1, 1, 2 * mg["death"])
     y = Surv.multistate(etime, event=cause, states=("pcm", "death"))
@@ -278,7 +278,7 @@ class FineGray:
     import greenwood as gw
     from greenwood import Surv
 
-    mg = gw.data.load_dataset("mgus2")
+    mg = gw.load_dataset("mgus2")
     etime = np.where(mg["pstat"] == 1, mg["ptime"], mg["futime"])
     cause = np.where(mg["pstat"] == 1, 1, 2 * mg["death"])
     y = Surv.multistate(etime, event=cause, states=("pcm", "death"))
@@ -552,7 +552,7 @@ class MultiState:
     ```{python}
     import greenwood as gw
 
-    mg = gw.data.load_dataset("mgus2")
+    mg = gw.load_dataset("mgus2")
     start, stop, state, event = [], [], [], []
     for i in range(len(mg)):
         pt, ft = mg["ptime"][i], mg["futime"][i]

@@ -51,7 +51,7 @@ import greenwood as gw
 from greenwood import Surv
 
 # Load the data and represent it as a survival object
-lung = gw.data.load_dataset("lung")
+lung = gw.load_dataset("lung")
 y = Surv.right(lung["time"], event=(lung["status"] == 2))
 
 # Estimate the Kaplan-Meier survival curve
@@ -74,7 +74,7 @@ Here's a comprehensive example showcasing more of Greenwood's capabilities:
 import greenwood as gw
 from greenwood import Surv
 
-df = gw.data.load_dataset("lung")
+df = gw.load_dataset("lung")
 y = Surv.right(df["time"], event=(df["status"] == 2))
 
 # Kaplan-Meier with stratification and detailed summaries
@@ -103,7 +103,7 @@ aft = gw.AFT("weibull").fit(y, df[["age", "sex"]])
 gw.tidy.tidy(aft)                            # coefficients on the log-time scale
 
 # Competing risks: cumulative incidence per cause
-mg = gw.data.load_dataset("mgus2")
+mg = gw.load_dataset("mgus2")
 etime = mg["ptime"].where(mg["pstat"] == 1, mg["futime"])
 cause = mg["pstat"].where(mg["pstat"] == 1, 2 * mg["death"])
 cr = Surv.multistate(etime, event=cause, states=("pcm", "death"))

@@ -49,7 +49,7 @@ class ZPHResult:
     import greenwood as gw
     from greenwood import Surv
 
-    lung = gw.data.load_dataset("lung")
+    lung = gw.load_dataset("lung")
     y = Surv.right(lung["time"], event=(lung["status"] == 2))
     cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
     zph = cox.cox_zph()
@@ -265,7 +265,7 @@ class CoxPH:
     import greenwood as gw
     from greenwood import Surv
 
-    lung = gw.data.load_dataset("lung")
+    lung = gw.load_dataset("lung")
     y = Surv.right(lung["time"], event=(lung["status"] == 2))
     cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
     cox

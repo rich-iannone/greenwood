@@ -51,7 +51,7 @@ class TestResult:
     import greenwood as gw
     from greenwood import Surv
 
-    lung = gw.data.load_dataset("lung")
+    lung = gw.load_dataset("lung")
     y = Surv.right(lung["time"], event=(lung["status"] == 2))
     result = gw.logrank_test(y, group=lung["sex"])
 
@@ -228,7 +228,7 @@ def logrank_test(
     import greenwood as gw
     from greenwood import Surv
 
-    lung = gw.data.load_dataset("lung")
+    lung = gw.load_dataset("lung")
     y = Surv.right(lung["time"], event=(lung["status"] == 2))
     gw.logrank_test(y, group=lung["sex"])
     ```
@@ -351,7 +351,7 @@ def pairwise_logrank_test(
     import greenwood as gw
     from greenwood import Surv
 
-    vet = gw.data.load_dataset("veteran")
+    vet = gw.load_dataset("veteran")
     y = Surv.right(vet["time"], event=vet["status"])
     gw.pairwise_logrank_test(y, group=vet["celltype"])
     ```

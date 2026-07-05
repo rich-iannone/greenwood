@@ -61,7 +61,7 @@ Python list. Greenwood treats them all the same.
 import greenwood as gw
 from greenwood import Surv
 
-lung = gw.data.load_dataset("lung")
+lung = gw.load_dataset("lung")
 y = Surv.right(lung["time"], event=(lung["status"] == 2))
 y
 ```
@@ -91,8 +91,8 @@ raises a clear error if neither is. When you want a specific type, name it with 
 argument.
 
 ```{python}
-lung_pd = gw.data.load_dataset("lung", backend="pandas")
-lung_pl = gw.data.load_dataset("lung", backend="polars")
+lung_pd = gw.load_dataset("lung", backend="pandas")
+lung_pl = gw.load_dataset("lung", backend="polars")
 type(lung_pd).__module__.split(".")[0], type(lung_pl).__module__.split(".")[0]
 ```
 
@@ -141,10 +141,10 @@ the seam that lets Greenwood feed publication tables in Great Summaries and Grea
 
 For learning, testing, and reproducible examples, Greenwood ships several classic survival
 datasets drawn from R's `survival` package. Load any of them by name with
-`gw.data.load_dataset`, and list them with `gw.data.available_datasets()`.
+`gw.load_dataset`, and list them with `gw.available_datasets()`.
 
 ```{python}
-gw.data.available_datasets()
+gw.available_datasets()
 ```
 
 Each one targets a different situation. The `lung` dataset (228 subjects), from the North

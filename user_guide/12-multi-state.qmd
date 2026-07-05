@@ -42,7 +42,7 @@ as the absorbing state.
 ```{python}
 import greenwood as gw
 
-mg = gw.data.load_dataset("mgus2")
+mg = gw.load_dataset("mgus2")
 start, stop, state, event = [], [], [], []
 for i in range(len(mg)):
     pt, ft = mg["ptime"][i], mg["futime"][i]

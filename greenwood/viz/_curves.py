@@ -114,7 +114,7 @@ def risk_table_data(km: KaplanMeier, times: Any = None) -> Any:
     import greenwood as gw
     from greenwood import Surv
 
-    lung = gw.data.load_dataset("lung")
+    lung = gw.load_dataset("lung")
     y = Surv.right(lung["time"], event=(lung["status"] == 2))
     km = gw.KaplanMeier().fit(y, by=lung["sex"])
 
@@ -183,7 +183,7 @@ def plot_survival(
     import greenwood as gw
     from greenwood import Surv
 
-    lung = gw.data.load_dataset("lung")
+    lung = gw.load_dataset("lung")
     y = Surv.right(lung["time"], event=(lung["status"] == 2))
     km = gw.KaplanMeier().fit(y, by=lung["sex"])
 
@@ -279,7 +279,7 @@ def risk_table(km: KaplanMeier, times: Any = None) -> Any:
     import greenwood as gw
     from greenwood import Surv
 
-    lung = gw.data.load_dataset("lung")
+    lung = gw.load_dataset("lung")
     y = Surv.right(lung["time"], event=(lung["status"] == 2))
     km = gw.KaplanMeier().fit(y, by=lung["sex"])
 

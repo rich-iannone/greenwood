@@ -46,7 +46,7 @@ class EventTable:
     import greenwood as gw
     from greenwood import Surv
 
-    lung = gw.data.load_dataset("lung")
+    lung = gw.load_dataset("lung")
     y = Surv.right(lung["time"], event=(lung["status"] == 2))
     et = gw.event_table(y)
     et.to_dataframe()
@@ -151,7 +151,7 @@ def event_table(surv: Surv, *, group: Any = None, weights: Any = None) -> EventT
     import greenwood as gw
     from greenwood import Surv
 
-    lung = gw.data.load_dataset("lung")
+    lung = gw.load_dataset("lung")
     y = Surv.right(lung["time"], event=(lung["status"] == 2))
     gw.event_table(y).to_dataframe()
     ```
