@@ -1,6 +1,6 @@
 """Backend-agnostic input tests.
 
-Greenwood reads data through narwhals, so a `Surv` response built from any supported
+Greenwood reads data through Narwhals, so a `Surv` response built from any supported
 data frame backend, and a model fit on any supported covariate frame, must give
 identical numerical results. These tests exercise pandas, Polars, and PyArrow against a
 pandas reference on the same data. They back the claim made in the user guide's

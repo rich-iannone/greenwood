@@ -4,7 +4,7 @@ guide-section: "Getting started"
 ---
 
 Greenwood turns time-to-event data into estimates, tests, models, and figures. It is built
-on [narwhals](https://narwhals-dev.github.io/narwhals/) for backend-agnostic compute,
+on [Narwhals](https://narwhals-dev.github.io/narwhals/) for backend-agnostic compute,
 validated against R's `survival` package, and visualized with
 [plotnine](https://plotnine.org/).
 

@@ -96,7 +96,7 @@ def _missing_mask(labels: Array) -> Array:
 
 
 def _to_labels(values: Any, n: int, name: str) -> Array:
-    """Coerce group labels (narwhals series, array, or sequence) to a length-`n` array."""
+    """Coerce group labels (Narwhals series, array, or sequence) to a length-`n` array."""
     from ._surv import _to_1d_array
 
     labels = _to_1d_array(values, dtype=object)
@@ -138,7 +138,7 @@ def _design_matrix(covariates: Any, data: Any = None) -> tuple[Array, list[str]]
     """Build a numeric design matrix and term names from covariates.
 
     Accepts a right-hand-side formula string (with `data`), a 2-D NumPy array, or any
-    narwhals-compatible dataframe. Numeric columns pass through; non-numeric columns are
+    Narwhals-compatible dataframe. Numeric columns pass through; non-numeric columns are
     treatment-coded (drop-first dummies) with names like `celltypesmallcell`.
     """
     if isinstance(covariates, str):

@@ -11,7 +11,7 @@ pip install greenwood
 
 ## Optional extras
 
-The core depends only on narwhals, NumPy, and SciPy. Backend- and feature-specific pieces
+The core depends only on Narwhals, NumPy, and SciPy. Backend- and feature-specific pieces
 are optional extras:
 
 | Extra | Adds |

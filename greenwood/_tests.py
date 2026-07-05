@@ -203,7 +203,7 @@ def logrank_test(
     surv
         A `Surv` response (right-censored or counting-process).
     group
-        Group labels, one per observation (any narwhals series, array, or sequence).
+        Group labels, one per observation (any Narwhals series, array, or sequence).
     rho, gamma
         Fleming-Harrington weight exponents on the pooled survival `S(t-)`. Defaults
         `(0, 0)` give the standard log-rank test; `(1, 0)` gives Peto-Peto.

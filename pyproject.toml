@@ -12,7 +12,7 @@ greenwood = ["py.typed", "data/*.csv.gz"]
 
 [project]
 name = "greenwood"
-description = "Modern survival analysis for Python: narwhals-native, R-validated, plotnine-visualized."
+description = "Modern survival analysis for Python: Narwhals-native, R-validated, plotnine-visualized."
 readme = "README.md"
 keywords = [
     "survival analysis",

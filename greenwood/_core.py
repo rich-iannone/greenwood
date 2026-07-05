@@ -131,7 +131,7 @@ def event_table(surv: Surv, *, group: Any = None, weights: Any = None) -> EventT
         A `Surv` response (right-censored or counting-process; interval and multi-state
         endpoints are tabulated later, once their estimators land).
     group
-        Optional group labels (any narwhals series / array / sequence, length `n`). When
+        Optional group labels (any Narwhals series / array / sequence, length `n`). When
         given, the table is stratified and carries a `strata` column.
     weights
         Optional case weights. Defaults to the response's weights, or 1.

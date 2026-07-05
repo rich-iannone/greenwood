@@ -17,7 +17,7 @@ Multi-state and competing-risks endpoints are expressed by an integer `status` w
 than one event code plus a `states` label tuple (`Surv.multistate`); the estimators that
 consume them arrive in later phases, but construction and validation live here now.
 
-Inputs may be any narwhals-compatible series (pandas, Polars, ...), a NumPy array, or a
+Inputs may be any Narwhals-compatible series (pandas, Polars, ...), a NumPy array, or a
 plain sequence; everything is coerced to NumPy internally.
 """
 
@@ -60,13 +60,13 @@ class CensoringType(str, Enum):
 
 
 def _to_1d_array(x: Any, *, dtype: Any = float) -> Array:
-    """Coerce a narwhals series, NumPy array, or sequence to a 1-D NumPy array."""
+    """Coerce a Narwhals series, NumPy array, or sequence to a 1-D NumPy array."""
     if x is None:
         raise ValueError("Expected an array-like, got None.")
     if isinstance(x, (np.ndarray, list, tuple)):
         arr = np.asarray(x)
     else:
-        # A narwhals-native series (pandas, Polars, ...) or anything else array-like.
+        # A Narwhals-native series (pandas, Polars, ...) or anything else array-like.
         try:
             arr = nw.from_native(x, series_only=True).to_numpy()
         except TypeError:

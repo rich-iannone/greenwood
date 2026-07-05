@@ -1,6 +1,6 @@
 # Greenwood
 
-**Modern survival analysis for Python: narwhals-native, R-validated, plotnine-visualized.**
+**Modern survival analysis for Python: Narwhals-native, R-validated, plotnine-visualized.**
 
 ## What is Greenwood?
 
@@ -8,7 +8,7 @@ Greenwood is a Python library for survival analysis, the statistical study of ti
 
 ### Why Greenwood?
 
-- it works with your dataframe library: Pandas, Polars, PyArrow, or anything supported by [narwhals](https://narwhals-dev.github.io/narwhals/)
+- it works with your dataframe library: Pandas, Polars, PyArrow, or anything supported by [Narwhals](https://narwhals-dev.github.io/narwhals/)
 - it is rigorously validated, where every statistic is tested to tolerance against R's gold-standard `survival` package
 - you get beautiful visualizations that are built on [plotnine](https://plotnine.org/) (for publication-quality survival curves)
 - you also get publication-ready tables through integration with the [Great Tables](https://posit-co.github.io/great-tables/) library

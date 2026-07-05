@@ -134,7 +134,7 @@ Discrimination and calibration assessment beyond point-in-time.
 Performance and ecosystem integration toward 1.0.
 
 - Full backend matrix algebra with accelerated kernels (JAX/Numba) for large datasets
-- Finalized extension protocols and narwhals dataframe backend completeness
+- Finalized extension protocols and Narwhals dataframe backend completeness
 - Full interoperability with Great Summaries (`tbl_survfit`, `tbl_regression`)
 - Migration guides for users transitioning from R's `survival` package
 

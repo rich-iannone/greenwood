@@ -21,13 +21,13 @@ datasets that ship with the package.
 ## Backend-agnostic by design
 
 Greenwood does not have its own data frame type and does not force you to convert your data
-into one. Instead it is built on [narwhals](https://narwhals-dev.github.io/narwhals/), a
+into one. Instead it is built on [Narwhals](https://narwhals-dev.github.io/narwhals/), a
 lightweight compatibility layer that lets a library speak to many data frame backends through
 one interface. When you hand Greenwood a data frame or a column, it reads the values through
-narwhals and runs its numerical work on the underlying arrays. Your original object is never
+Narwhals and runs its numerical work on the underlying arrays. Your original object is never
 mutated and never copied into a foreign format.
 
-In practice this means you can pass data from any of the backends narwhals supports. Three of
+In practice this means you can pass data from any of the backends Narwhals supports. Three of
 these are covered directly by the Greenwood test suite, which checks that they all produce
 identical estimates on the same data.
 
@@ -37,7 +37,7 @@ identical estimates on the same data.
   datasets.
 - **PyArrow** tables, the in-memory Arrow format that many file readers and databases produce.
 
-Other backends that narwhals supports, such as Modin, cuDF, and DuckDB, use the same interface
+Other backends that Narwhals supports, such as Modin, cuDF, and DuckDB, use the same interface
 and are expected to work the same way, though the test suite pins parity on the three above.
 
 ::: {.callout-note}
@@ -99,7 +99,7 @@ The backend makes no difference to any result. The same model fit on the pandas 
 the Polars frame returns the same coefficients, a property the test suite checks on every
 release. To show this, we first build a response from the Polars columns. The resulting `Surv`
 object looks the same as one built from pandas: it records the same times and events, because
-Greenwood read both through narwhals.
+Greenwood read both through Narwhals.
 
 ```{python}
 y_pl = gw.Surv.right(lung_pl["time"], event=(lung_pl["status"] == 2))

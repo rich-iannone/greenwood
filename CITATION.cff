@@ -4,7 +4,7 @@ type: software
 license: MIT
 title: "Greenwood: Modern survival analysis for Python"
 abstract: >-
-  Greenwood is a survival analysis library for Python. It is narwhals-native so it works
+  Greenwood is a survival analysis library for Python. It is Narwhals-native so it works
   across pandas, Polars, and more, is rigorously validated against R's survival package,
   is visualized with plotnine, and is integrated with the Great Tables ecosystem. It
   covers non-parametric estimation, group comparisons, Cox and parametric regression,

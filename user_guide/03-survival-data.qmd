@@ -141,7 +141,7 @@ gw.Surv.multistate(time=[5, 6, 7, 8], event=[1, 2, 0, 1], states=("relapse", "de
 ## Building a response from a data frame
 
 In practice your data lives in a data frame. Greenwood is dataframe-agnostic through
-narwhals, so you can pass pandas or Polars columns directly. The bundled `lung` dataset,
+Narwhals, so you can pass pandas or Polars columns directly. The bundled `lung` dataset,
 from the North Central Cancer Treatment Group, is a good example.
 
 ```{python}

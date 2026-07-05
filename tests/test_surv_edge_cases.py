@@ -17,7 +17,7 @@ def test_to_1d_array_none_and_shape() -> None:
 
 
 def test_to_1d_array_non_series_fallback() -> None:
-    # A range is not an ndarray/list/tuple and not a narwhals series: the TypeError
+    # A range is not an ndarray/list/tuple and not a Narwhals series: the TypeError
     # fallback coerces it with np.asarray.
     out = _to_1d_array(range(3))
     np.testing.assert_array_equal(out, [0.0, 1.0, 2.0])
