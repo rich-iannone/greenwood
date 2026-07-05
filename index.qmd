@@ -49,5 +49,5 @@ gw.plot_survival(km, risk_table=True)
 
 # Cox proportional hazards, with broom-style hazard ratios.
 cox = gw.CoxPH().fit(y, df[["age", "sex"]])
-gw.tidy.tidy(cox, exponentiate=True)
+gw.tidy(cox, exponentiate=True)
 ```
