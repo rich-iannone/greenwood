@@ -251,6 +251,22 @@ class Surv:
     def right(cls, time: Any, event: Any = None, *, weights: Any = None) -> Self:
         """Right-censored response `(time, event)`. `event=None` means all events.
 
+        Parameters
+        ----------
+        time
+            Array-like of exit times (one per subject). Must be finite and non-negative.
+        event
+            Array-like of event indicators (1 = event observed, 0 = censored). If `None`,
+            all subjects are treated as having experienced the event.
+        weights
+            Optional array-like of case weights (strictly positive). One weight per subject;
+            used in weighted survival analysis. Default is `None` (all weights = 1).
+
+        Returns
+        -------
+        Surv
+            A right-censored Surv response object.
+
         Examples
         --------
         The common case: each subject has an exit `time` and an `event` indicator (1 if the
@@ -269,6 +285,22 @@ class Surv:
     def left(cls, time: Any, event: Any = None, *, weights: Any = None) -> Self:
         """Left-censored response `(time, event)`.
 
+        Parameters
+        ----------
+        time
+            Array-like of observation times. Must be finite and non-negative.
+        event
+            Array-like of event indicators (1 = event occurred before `time`, 0 = censored).
+            If `None`, all subjects are treated as having experienced the event.
+        weights
+            Optional array-like of case weights (strictly positive). One weight per subject;
+            used in weighted survival analysis. Default is `None` (all weights = 1).
+
+        Returns
+        -------
+        Surv
+            A left-censored Surv response object.
+
         Examples
         --------
         Left censoring marks subjects known to have had the event before the recorded
@@ -286,6 +318,26 @@ class Surv:
     @classmethod
     def counting(cls, start: Any, stop: Any, event: Any = None, *, weights: Any = None) -> Self:
         """Counting-process response `(start, stop, event]` (left truncation / time-varying).
+
+        Parameters
+        ----------
+        start
+            Array-like of entry times (one per subject). Must be finite and non-negative.
+            Represents when the subject enters the risk set (late entry / left truncation).
+        stop
+            Array-like of exit times (one per subject). Must be finite, non-negative, and
+            strictly greater than the corresponding `start`.
+        event
+            Array-like of event indicators (1 = event observed, 0 = censored). If `None`,
+            all subjects are treated as having experienced the event.
+        weights
+            Optional array-like of case weights (strictly positive). One weight per subject;
+            used in weighted survival analysis. Default is `None` (all weights = 1).
+
+        Returns
+        -------
+        Surv
+            A counting-process Surv response object (with left truncation if applicable).
 
         Examples
         --------
@@ -310,6 +362,23 @@ class Surv:
 
         Use `numpy.inf` for `upper` to mark right-censoring and `0` for `lower` to mark
         left-censoring. `lower == upper` denotes an exact observation.
+
+        Parameters
+        ----------
+        lower
+            Array-like of interval lower bounds (one per subject). Must be finite and
+            non-negative. Set to 0 to mark left-censored subjects.
+        upper
+            Array-like of interval upper bounds (one per subject). Must be finite,
+            non-negative, and >= `lower`. Set to `numpy.inf` to mark right-censored subjects.
+        weights
+            Optional array-like of case weights (strictly positive). One weight per subject;
+            used in weighted survival analysis. Default is `None` (all weights = 1).
+
+        Returns
+        -------
+        Surv
+            An interval-censored Surv response object.
 
         Examples
         --------
@@ -353,6 +422,32 @@ class Surv:
         """Multi-state / competing-risks response.
 
         `event` holds integer codes (0 = censored, `k` = transition to `states[k-1]`).
+
+        Parameters
+        ----------
+        time
+            Array-like of event/censoring times (one per subject). Must be finite and
+            non-negative.
+        event
+            Array-like of event codes (integer, one per subject): 0 = censored, 1 = transition
+            to `states[0]`, 2 = transition to `states[1]`, etc. Must be in the range
+            [0, len(states)].
+        states
+            Tuple of state labels (strings). Event codes in `event` index into this tuple.
+            For example, `states=("relapse", "death")` means event code 1 → relapse,
+            event code 2 → death.
+        start
+            Optional array-like of entry times (for late entry / left truncation).
+            If `None` (default), all subjects enter at time 0. Must be non-negative and
+            strictly less than `time`.
+        weights
+            Optional array-like of case weights (strictly positive). One weight per subject;
+            used in weighted survival analysis. Default is `None` (all weights = 1).
+
+        Returns
+        -------
+        Surv
+            A multi-state / competing-risks Surv response object.
 
         Examples
         --------
