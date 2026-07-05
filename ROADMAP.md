@@ -1,79 +1,147 @@
-# Roadmap
+---
+title: "Roadmap"
+---
+
+# Greenwood — Roadmap
 
 Greenwood is built in dependency-ordered, individually shippable steps. This is the
 public capability roadmap.
 
-## Now
+## Planned — Near Term
 
-- The `Surv` response object (right/left/interval/counting censoring, left truncation,
-  weights, multi-state endpoints) and the narwhals risk-set/event-table kernel, validated
-  against R's `survival`, plus the tidy protocol.
-- **Kaplan-Meier & Nelson-Aalen**: survival and cumulative-hazard estimators with Greenwood
-  variance, `plain`/`log`/`log-log` confidence intervals, median and quantiles, restricted
-  mean survival time (RMST), step-function prediction, and stratification. R-validated.
-- **Group comparisons**: the log-rank test and the G-rho (Fleming-Harrington) family for
-  two or more groups. R-validated against `survdiff`.
-- **Visualization (plotnine)**: `plot_survival` with confidence ribbons, censoring marks,
-  and an aligned numbers-at-risk table.
-- **Cox proportional hazards** (`CoxPH`): Efron/Breslow ties, hazard ratios, model-based
-  standard errors, Wald z-tests, and the likelihood-ratio / Wald / score global tests;
-  stratification and the robust (Lin-Wei) sandwich variance with clustering; baseline hazard
-  and survival prediction, martingale and Schoenfeld residuals, the Grambsch-Therneau
-  proportional-hazards test (`cox_zph`), and the concordance index. R-validated against
-  `coxph`, `basehaz`, `residuals`, `cox.zph`, and `concordance`.
-- **Parametric AFT models** (`AFT`): Weibull, exponential, log-normal, and log-logistic
-  accelerated failure time models, R-validated against `survreg`.
-- **Competing risks & multi-state** (`AalenJohansen`, `FineGray`, `MultiState`): per-cause
-  cumulative incidence functions with delta-method standard errors, the Fine-Gray
-  subdistribution hazard model with clustered robust standard errors, and Aalen-Johansen
-  multi-state transition/occupancy probabilities. R-validated against `survfit` and
-  `finegray`.
-- **Prediction-performance metrics**: Harrell's concordance index and the IPCW (Graf)
-  Brier score with its time integral. R-validated against `survival::concordance` and
-  `survival::brier`.
+Descriptive and exploratory features building on the core estimators.
 
-## Descriptive
+### Stratified and Trend Tests
 
-- **Stratified and trend tests**, pairwise comparisons with multiplicity control, and RMST
-  differences.
-- **More plots**: cumulative-incidence curves and forest plots as those estimators land.
+Hypothesis tests for grouped and ordered survival data.
 
-## Regression
+- Stratified log-rank tests across multiple strata
+- Trend tests for ordered groups (linear contrast)
+- Pairwise log-rank comparisons with multiplicity control
+- G-rho (Fleming-Harrington) family extensions for stratified data
 
-- **Cox extensions**: time-varying covariates, deviance/dfbeta residuals, Efron-consistent
-  robust variance, and further `cox_zph` time transforms (Kaplan-Meier, rank).
-- **Flexible-parametric**: Royston-Parmar spline models and piecewise exponential, plus
-  parametric prediction (survival, hazard, quantiles) and generalized gamma.
+### RMST Comparisons
 
-## Advanced
+Restricted mean survival time analysis between groups.
 
-- **Competing risks & multi-state**: Gray's test, multi-state standard errors, and
-  pseudo-observations (building on the Aalen-Johansen CIF, Fine-Gray model, and multi-state
-  occupancy probabilities already shipped).
-- **Frailty, penalized, additive, cure, and further metrics**: shared frailty, elastic-net
-  Cox, additive hazards, cure models, time-dependent AUC, and calibration.
+- RMST differences with confidence intervals
+- Hypothesis tests for RMST equality
+- Ratio and percentage difference estimands
+- Stratified RMST comparisons
 
-## Toward 1.0
+### Exploratory Plots
 
-- Full backend matrix, accelerated kernels, finalized extension protocols, and migration
-  guides R's `survival` package.
+Visualization for grouped survival analyses.
 
-## Release train
+- Cumulative incidence function curves (competing risks by group)
+- Forest plots for stratified hazard ratios and RMST differences
+- Aligned at-risk tables for grouped curves
 
-| Release | Contents |
-|---|---|
-| `0.1` | Kaplan-Meier / Nelson-Aalen and core inference |
-| `0.2` | Group comparisons |
-| `0.3` | plotnine visualization |
-| `0.4` | Cox proportional hazards |
-| `0.6` | Parametric & flexible-parametric models |
-| `0.8` | Competing risks & multi-state |
-| `0.9` | Advanced estimators & prediction metrics |
-| `1.0` | Interop, performance, docs, and API-stability guarantees |
+### Univariate Parametric Models
 
-## Ecosystem
+Standalone parametric distributions for data exploration and model selection.
 
-Greenwood is the survival **engine**. [Great Summaries](https://github.com/rich-iannone/great-summaries)
-is the table layer that calls it: greenwood ships broom-compatible `tidy`/`glance`/`augment`
-so `gs.tbl_survfit(km)` and `gs.tbl_regression(cox)` work. Tables render through Great
-Tables; figures are [plotnine](https://plotnine.org/) objects.
+- Weibull, exponential, log-normal, and log-logistic distributional models
+- Goodness-of-fit assessment and model comparison
+- Maximum likelihood parameter estimation with standard errors
+- Survival, hazard, and quantile predictions from fitted models
+
+---
+
+## Planned — Medium Term
+
+Regression model extensions and flexible semi-parametric approaches.
+
+### Time-Varying Covariates
+
+Cox regression with covariates that evolve over follow-up time.
+
+- Counting-process form integration for covariate changes
+- Episode-splitting and data reshaping utilities
+- Risk-set calculations with time-varying exposure
+- Predictions at specified covariate trajectories
+
+### Cox Residual Diagnostics
+
+Outlier detection and case-level assessment for Cox models.
+
+- Deviance and dfbeta residuals for influence assessment
+- Scaled Schoenfeld residuals for proportional-hazards diagnosis
+- Leverage and hat-matrix diagnostics
+- Visualizations for outlier and influential point detection
+
+### Advanced Proportional-Hazards Tests
+
+Extended testing of the Cox model assumptions.
+
+- `cox_zph` with Kaplan-Meier and rank-based time transforms
+- Time-stratified tests for non-proportional hazards
+- Robust sandwich variance for model misspecification
+
+### Flexible Parametric Models
+
+Semi-parametric and parametric spline-based hazard regression.
+
+- Royston-Parmar restricted cubic spline models for hazard and survival
+- Piecewise exponential models with optimal knot selection
+- Generalized gamma regression (encompasses Weibull, log-normal, exponential)
+- Parametric predictions: survival, hazard, and quantiles at arbitrary times
+
+---
+
+## Planned — Long Term
+
+Advanced estimators for complex survival problems and specialized applications.
+
+### Additive Hazards & Cure Models
+
+Alternative hazard structures and zero-inflated survival models.
+
+- Aalen additive model for additive (vs. proportional) hazard regression
+- Mixture cure models for populations with long-term survivors
+- Non-parametric maximum likelihood estimation (NPMLE) for cure fractions
+- Goodness-of-fit tests and model comparison for cure models
+
+### Advanced Competing Risks & Multi-State
+
+Extended methods for cause-specific and multi-state analyses.
+
+- Gray's test for differences in cumulative incidence across groups
+- Variance estimation for multi-state transition probabilities
+- Pseudo-observation approach for CIF and multi-state occupancy regression
+- Custom estimands via pseudo-observations framework
+
+### Frailty and Penalized Regression
+
+Random-effects and regularized Cox models.
+
+- Shared frailty models (random intercept) for clustered or familial data
+- Frailty variance estimation and inference
+- Elastic-net Cox regression (ridge, lasso, elastic-net) for high-dimensional covariates
+- Regularization parameter selection via cross-validation
+
+### Advanced Performance Metrics
+
+Discrimination and calibration assessment beyond point-in-time.
+
+- Time-dependent AUC (area under cumulative/dynamic ROC curve)
+- Integrated discrimination improvement (IDI) and net reclassification improvement (NRI)
+- Calibration curves and calibration-in-the-large over follow-up time
+- Time-dependent Brier score refinements and sensitivity analyses
+
+### Platform & Interop
+
+Performance and ecosystem integration toward 1.0.
+
+- Full backend matrix algebra with accelerated kernels (JAX/Numba) for large datasets
+- Finalized extension protocols and narwhals dataframe backend completeness
+- Full interoperability with Great Summaries (`tbl_survfit`, `tbl_regression`)
+- Migration guides for users transitioning from R's `survival` package
+
+---
+
+## Feedback & Contributions
+
+Have ideas for features not listed here? Open an issue with the `enhancement` label. Contributions to any planned item are welcome so check existing issues first to avoid duplication.
+
+_This roadmap is a living document. It is updated as features ship and new priorities emerge._
