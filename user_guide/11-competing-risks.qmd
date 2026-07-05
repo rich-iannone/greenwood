@@ -86,7 +86,7 @@ aj
 ```
 
 The fitted estimator holds a cumulative incidence curve for each cause. To inspect it we call
-`to_dataframe` and take the first couple of rows within each cause, so both curves are
+`to_pandas()` and take the first couple of rows within each cause, so both curves are
 visible side by side.
 
 ```{python}

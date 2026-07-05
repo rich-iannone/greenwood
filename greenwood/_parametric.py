@@ -93,7 +93,7 @@ class AFT:
     Call `fit(surv, covariates)` with a right-censored `Surv` response and a covariate design
     (a 2-D array or a dataframe). An intercept is added automatically; rows with missing
     covariates are dropped. Results are exposed as arrays (`coef_`, `scale_`, `std_error_`,
-    …) and a tidy frame via `to_dataframe`, and feed `greenwood.tidy`.
+    …) and as tidy frames via `to_pandas()`, `to_polars()`, `to_arrow()`, and `greenwood.tidy`.
 
     Examples
     --------

@@ -64,7 +64,7 @@ cox
 ```
 
 The printed summary is meant for reading. When you want the numbers as data, to filter, join,
-or plot them, ask for the coefficient table with `to_dataframe`, which returns a tidy frame.
+or plot them, ask for the coefficient table with `to_pandas()`, which returns a tidy frame.
 
 ```{python}
 cox.to_pandas()

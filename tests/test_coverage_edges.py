@@ -1,7 +1,7 @@
 """Edge-case, error-path, and alternate-backend coverage across the package.
 
-These exercise the branches that the feature tests do not: validation errors, the Polars
-`to_dataframe` paths, unfitted reprs, grouped/ungrouped returns, and default-argument paths.
+These exercise the branches that the feature tests do not: validation errors, unfitted reprs,
+grouped/ungrouped returns, and default-argument paths.
 """
 
 from __future__ import annotations

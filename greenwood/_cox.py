@@ -178,7 +178,12 @@ class ZPHResult:
 
         rows = [{"term": k, **v} for k, v in self.per_term.items()]
         rows.append({"term": "GLOBAL", **self.global_test})
-        return pa.table(rows)
+        # Convert list of dicts to proper PyArrow table with column names
+        if rows:
+            column_names = list(rows[0].keys())
+            columns = {name: [row[name] for row in rows] for name in column_names}
+            return pa.table(columns)
+        return pa.table({})
 
 
 _TIES = frozenset({"efron", "breslow"})
@@ -347,7 +352,7 @@ class CoxPH:
     Call `fit(surv, covariates)` with a `Surv` response and a design (a 2-D array or a
     dataframe of covariates). Rows with missing values are dropped (complete-case, as in R's
     default `na.omit`). Results are exposed as arrays (`coef_`, `std_error_`, `hazard_ratio_`,
-    …) and as a tidy frame via `to_dataframe`, and feed `greenwood.tidy`.
+    …) and as tidy frames via `to_pandas()`, `to_polars()`, `to_arrow()`, and `greenwood.tidy`.
 
     Examples
     --------

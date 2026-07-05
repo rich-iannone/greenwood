@@ -100,7 +100,7 @@ class AalenJohansen:
     -----
     Call `fit(surv, by=...)` with a multi-state `Surv` response (built with
     `Surv.multistate`, where `event` codes are 0 for censoring and `1..K` for the competing
-    causes). Results are a tidy frame via `to_dataframe` with one row per stratum, cause, and
+    causes). Results are tidy frames via `to_pandas()`, `to_polars()`, `to_arrow()` with one row per stratum, cause, and
     time.
 
     Examples

@@ -53,7 +53,7 @@ zph = cox.cox_zph()
 zph
 ```
 
-For the full per-covariate breakdown, call `to_dataframe` on that result. This is the table
+For the full per-covariate breakdown, call `to_pandas()` on that result. This is the table
 you will read most often.
 
 ```{python}
@@ -157,7 +157,7 @@ stratified = gw.CoxPH().fit(y, lung[["age", "ph.ecog"]], strata=lung["sex"])
 ```
 
 As with any fitted model, we can print `stratified` for a summary, or read its coefficient
-table as data with `to_dataframe`.
+table as data with `to_pandas()`.
 
 ```{python}
 stratified.to_pandas()

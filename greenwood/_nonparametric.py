@@ -223,8 +223,8 @@ class KaplanMeier:
     Notes
     -----
     Call `fit` with a `Surv` response. Results are exposed as aligned arrays (`time_`,
-    `survival_`, `std_error_`, `conf_low_`, `conf_high_`, `strata_`), as a tidy frame via
-    `to_dataframe`, and through `median`, `quantile`, and `predict`.
+    `survival_`, `std_error_`, `conf_low_`, `conf_high_`, `strata_`), as tidy frames via
+    `to_pandas()`, `to_polars()`, `to_arrow()`, and through `median`, `quantile`, and `predict`.
 
     Examples
     --------

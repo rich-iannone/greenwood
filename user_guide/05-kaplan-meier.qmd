@@ -44,7 +44,7 @@ km
 ```
 
 The fitted `km` object holds the whole curve internally. The most direct way to read it is
-`to_dataframe`, which lays the estimate out one row per observed time. We show the first
+`to_pandas()`, which lays the estimate out one row per observed time. We show the first
 few rows.
 
 ```{python}
@@ -262,7 +262,7 @@ na = gw.NelsonAalen().fit(y)
 na
 ```
 
-Reading `na` with `to_dataframe` gives the same table layout as before, but now the
+Reading `na` with `to_pandas()` gives the same table layout as before, but now the
 `estimate` column holds the cumulative hazard rather than the survival probability. Unlike
 survival, it starts at 0 and climbs as events accumulate.
 
