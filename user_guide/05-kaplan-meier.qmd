@@ -40,6 +40,7 @@ familiar fit-then-inspect pattern, so we fit it first and set it aside.
 
 ```{python}
 km = gw.KaplanMeier().fit(y)
+km
 ```
 
 The fitted `km` object holds the whole curve internally. The most direct way to read it is
@@ -85,6 +86,7 @@ You set the transform when you construct the estimator, so we fit a second `Kapl
 
 ```{python}
 km_loglog = gw.KaplanMeier(conf_type="log-log").fit(y)
+km_loglog
 ```
 
 Pulling out just the estimate and its interval limits lets you compare this fit against the
@@ -97,11 +99,57 @@ km_loglog.to_dataframe()[["time", "estimate", "conf_low", "conf_high"]]
 The point estimates are identical across transforms; only the interval limits differ. Choose
 the transform before fitting, and report which one you used.
 
-## Median survival and quantiles
+### Customizing the confidence level
 
-The median survival time is the time at which the curve first drops to 0.5. It is often the
-single most useful summary of a survival distribution, and unlike the mean it is estimable
-even when the curve never reaches zero because of censoring.
+By default, Greenwood computes 95% confidence intervals. You can adjust this with the
+`conf_level` parameter, useful for regulatory submissions or sensitivity analyses that require
+different coverage levels (e.g., 90% or 99%).
+
+```{python}
+km_90 = gw.KaplanMeier(conf_level=0.90).fit(y)
+km_99 = gw.KaplanMeier(conf_level=0.99).fit(y)
+
+# Compare intervals at a few time points
+km_90.to_dataframe()[["time", "estimate", "conf_low", "conf_high"]].head(3)
+```
+
+Note that narrower confidence levels (0.90) produce tighter bands, while wider levels (0.99)
+give more conservative coverage. The confidence level affects the median and quantile intervals
+as well.
+
+### Comparing confidence interval transforms
+
+The three confidence interval transforms give the same point estimates; they differ only in how
+they construct the interval. Here is a comparison to help you choose:
+
+```{python}
+import pandas as pd
+
+# Fit KM with each transform
+km_plain = gw.KaplanMeier(conf_type="plain").fit(y)
+km_log = gw.KaplanMeier(conf_type="log").fit(y)
+km_loglog = gw.KaplanMeier(conf_type="log-log").fit(y)
+
+# Compare interval widths at selected quantile times
+results = []
+for km, name in [(km_plain, "plain"), (km_log, "log"), (km_loglog, "log-log")]:
+    df = km.to_dataframe()
+    # Select every 30th row to show interval differences across follow-up
+    df_subset = df.iloc[::30][["time", "estimate", "conf_low", "conf_high"]]
+    df_subset["transform"] = name
+    results.append(df_subset)
+
+pd.concat(results).reset_index(drop=True)
+```
+
+**Transform summary:**
+- **log** (default): Symmetric on the log scale; matches R's survival package. Good all-purpose choice.
+- **log-log**: Bounds intervals more reliably at the tails; best when survival is near 0 or 1.
+- **plain**: Symmetric on probability scale; intuitive but can exceed [0,1] at extreme tails.
+
+Choose the transform before fitting and report which you used.
+
+## Median survival and quantiles
 
 ```{python}
 km.median(ci=True)
@@ -161,6 +209,7 @@ starting point for any subgroup comparison. The tidy output gains a `strata` col
 
 ```{python}
 km_sex = gw.KaplanMeier().fit(y, by=lung["sex"])
+km_sex
 ```
 
 The grouped fit `km_sex` holds one curve per level of `sex`. Its tidy output gains a `strata`
@@ -182,6 +231,23 @@ To test whether the difference between groups is statistically significant, rath
 describing it, use the log-rank family covered in
 [Comparing groups](06-comparing-groups.qmd).
 
+### Handling case weights
+
+When your data contains frequency weights (e.g., summarized counts rather than individual
+records), or case weights for design-based analysis, pass them via the `weights` parameter.
+
+```{python}
+# Example with case weights: create sample weights for demonstration
+import numpy as np
+weights = np.random.uniform(0.5, 2.0, len(y))
+
+km_weighted = gw.KaplanMeier().fit(y, weights=weights)
+km_weighted
+```
+
+The estimates adjust for the weights using the weighted Kaplan-Meier formula. Confidence
+intervals and other summaries (median, RMST) also account for the weights automatically.
+
 ## Nelson-Aalen cumulative hazard
 
 Closely related to survival is the cumulative hazard, the accumulated risk of the event over
@@ -193,6 +259,7 @@ own step.
 
 ```{python}
 na = gw.NelsonAalen().fit(y)
+na
 ```
 
 Reading `na` with `to_dataframe` gives the same table layout as before, but now the
