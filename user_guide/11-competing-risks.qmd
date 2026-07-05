@@ -82,6 +82,7 @@ returns a curve for every cause.
 
 ```{python}
 aj = gw.AalenJohansen().fit(y)
+aj
 ```
 
 The fitted estimator holds a cumulative incidence curve for each cause. To inspect it we call
@@ -109,6 +110,7 @@ incidence across groups.
 
 ```{python}
 aj_sex = gw.AalenJohansen().fit(y, by=mg["sex"])
+aj_sex
 ```
 
 The stratified fit carries a separate set of curves for each level of `sex`. Here we pull the
@@ -128,6 +130,7 @@ covariates on the cumulative incidence itself, which is usually what you want to
 
 ```{python}
 fg = gw.FineGray("pcm").fit(y, mg[["age", "sex"]])
+fg
 ```
 
 We name `pcm` as the target cause and fit against age and sex. To read the fitted model we
@@ -142,6 +145,32 @@ The exponentiated coefficients are subdistribution hazard ratios. A value above 
 covariate increases the cumulative incidence of the target cause, `pcm` here, over time. The
 model reports clustered robust standard errors by default, which are appropriate given the
 inverse-probability weighting it uses internally.
+
+### Modeling multiple competing causes
+
+In a competing-risks study with more than one cause of interest, you can fit separate
+Fine-Gray models, one for each cause, to compare the covariate effects across causes.
+
+```{python}
+import pandas as pd
+
+# Fit FineGray models for both competing causes
+fg_pcm = gw.FineGray("pcm").fit(y, mg[["age", "sex"]])
+fg_death = gw.FineGray("death").fit(y, mg[["age", "sex"]])
+
+# Compare the hazard ratios side-by-side
+pcm_tidy = gw.tidy(fg_pcm, exponentiate=True)
+death_tidy = gw.tidy(fg_death, exponentiate=True)
+
+pcm_tidy["cause"] = "PCM"
+death_tidy["cause"] = "Death"
+
+pd.concat([pcm_tidy, death_tidy])
+```
+
+This comparison reveals how covariates affect each cause differently. A covariate might
+increase the incidence of progression to PCM while decreasing the incidence of death from
+other causes—or vice versa—which both tell important clinical stories.
 
 ::: {.callout-note}
 ## Two kinds of hazard, two kinds of question
