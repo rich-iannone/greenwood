@@ -11,7 +11,7 @@ from greenwood import Surv, cross_validate
 
 @pytest.fixture(scope="module")
 def lung():
-    return gw.data.load_dataset("lung", backend="pandas")
+    return gw.load_dataset("lung", backend="pandas")
 
 
 @pytest.fixture(scope="module")

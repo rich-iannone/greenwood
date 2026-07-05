@@ -72,7 +72,7 @@ def test_group_length_checked() -> None:
 
 
 def _mgus2_cr():  # type: ignore[no-untyped-def]
-    df = gw.data.load_dataset("mgus2", backend="pandas")
+    df = gw.load_dataset("mgus2", backend="pandas")
     etime = np.where(df["pstat"] == 1, df["ptime"], df["futime"])
     cause = np.where(df["pstat"] == 1, 1, 2 * df["death"])
     return df, gw.Surv.multistate(etime, event=cause, states=("pcm", "death"))

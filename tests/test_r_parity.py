@@ -28,7 +28,7 @@ def _check_block(et: gw.EventTable, expected: dict[str, list[float]], label: str
 
 
 def test_lung_km_overall_matches_r() -> None:
-    df = gw.data.load_dataset("lung", backend="pandas")
+    df = gw.load_dataset("lung", backend="pandas")
     # survival::lung codes status 1 = censored, 2 = dead.
     y = Surv.right(df["time"], event=(df["status"] == 2))
     et = event_table(y)
@@ -36,7 +36,7 @@ def test_lung_km_overall_matches_r() -> None:
 
 
 def test_lung_km_by_sex_matches_r() -> None:
-    df = gw.data.load_dataset("lung", backend="pandas")
+    df = gw.load_dataset("lung", backend="pandas")
     y = Surv.right(df["time"], event=(df["status"] == 2))
     et = event_table(y, group=df["sex"])
     fixture = load_fixture("lung_km_by_sex")
@@ -54,7 +54,7 @@ def test_lung_km_by_sex_matches_r() -> None:
 
 
 def test_veteran_km_overall_matches_r() -> None:
-    df = gw.data.load_dataset("veteran", backend="pandas")
+    df = gw.load_dataset("veteran", backend="pandas")
     y = Surv.right(df["time"], event=df["status"])
     et = event_table(y)
     _check_block(et, load_fixture("veteran_km_overall")["overall"], "veteran overall")
@@ -80,7 +80,7 @@ def _check_km(km: gw.KaplanMeier, expected: dict[str, Any], label: str) -> None:
 
 
 def test_km_lung_overall_matches_r() -> None:
-    df = gw.data.load_dataset("lung", backend="pandas")
+    df = gw.load_dataset("lung", backend="pandas")
     y = Surv.right(df["time"], event=(df["status"] == 2))
     expected = load_fixture("km_lung_overall")["overall"]
 
@@ -94,7 +94,7 @@ def test_km_lung_overall_matches_r() -> None:
 
 
 def test_km_median_matches_r() -> None:
-    df = gw.data.load_dataset("lung", backend="pandas")
+    df = gw.load_dataset("lung", backend="pandas")
     y = Surv.right(df["time"], event=(df["status"] == 2))
     expected = load_fixture("km_lung_overall")["overall"]
     point, lower, upper = gw.KaplanMeier(conf_type="log").fit(y).median(ci=True)
@@ -104,7 +104,7 @@ def test_km_median_matches_r() -> None:
 
 
 def test_km_by_sex_matches_r() -> None:
-    df = gw.data.load_dataset("lung", backend="pandas")
+    df = gw.load_dataset("lung", backend="pandas")
     y = Surv.right(df["time"], event=(df["status"] == 2))
     fixture = load_fixture("km_lung_by_sex")
     km = gw.KaplanMeier(conf_type="log-log").fit(y, by=df["sex"])
@@ -116,14 +116,14 @@ def test_km_by_sex_matches_r() -> None:
 
 
 def test_km_veteran_overall_matches_r() -> None:
-    df = gw.data.load_dataset("veteran", backend="pandas")
+    df = gw.load_dataset("veteran", backend="pandas")
     y = Surv.right(df["time"], event=df["status"])
     km = gw.KaplanMeier(conf_type="log").fit(y)
     _check_km(km, load_fixture("km_veteran_overall")["overall"], "veteran")
 
 
 def test_nelson_aalen_matches_r() -> None:
-    df = gw.data.load_dataset("lung", backend="pandas")
+    df = gw.load_dataset("lung", backend="pandas")
     y = Surv.right(df["time"], event=(df["status"] == 2))
     expected = load_fixture("km_lung_overall")["overall"]
     na = gw.NelsonAalen().fit(y)
@@ -134,7 +134,7 @@ def test_nelson_aalen_matches_r() -> None:
 def test_rmst_matches_r() -> None:
     fixture = load_fixture("rmst")
     for name, event_is_2 in [("lung", True), ("veteran", False)]:
-        df = gw.data.load_dataset(name, backend="pandas")
+        df = gw.load_dataset(name, backend="pandas")
         event = (df["status"] == 2) if event_is_2 else df["status"]
         y = Surv.right(df["time"], event=event)
         expected = fixture[name]
@@ -158,28 +158,28 @@ def _check_logrank(result: gw.TestResult, fixture: dict[str, Any], label: str) -
 
 
 def test_logrank_lung_sex_matches_r() -> None:
-    df = gw.data.load_dataset("lung", backend="pandas")
+    df = gw.load_dataset("lung", backend="pandas")
     y = Surv.right(df["time"], event=(df["status"] == 2))
     result = gw.logrank_test(y, group=df["sex"].astype(str))
     _check_logrank(result, load_fixture("logrank_lung_sex"), "log-rank lung/sex")
 
 
 def test_grho_lung_sex_rho1_matches_r() -> None:
-    df = gw.data.load_dataset("lung", backend="pandas")
+    df = gw.load_dataset("lung", backend="pandas")
     y = Surv.right(df["time"], event=(df["status"] == 2))
     result = gw.logrank_test(y, group=df["sex"].astype(str), rho=1)
     _check_logrank(result, load_fixture("grho_lung_sex_rho1"), "G-rho lung/sex")
 
 
 def test_logrank_veteran_celltype_matches_r() -> None:
-    df = gw.data.load_dataset("veteran", backend="pandas")
+    df = gw.load_dataset("veteran", backend="pandas")
     y = Surv.right(df["time"], event=df["status"])
     result = gw.logrank_test(y, group=df["celltype"])
     _check_logrank(result, load_fixture("logrank_veteran_celltype"), "log-rank veteran/celltype")
 
 
 def test_stratified_logrank_matches_r() -> None:
-    df = gw.data.load_dataset("lung", backend="pandas")
+    df = gw.load_dataset("lung", backend="pandas")
     df = df[df["ph.ecog"].notna()]
     y = Surv.right(df["time"], event=(df["status"] == 2))
     result = gw.logrank_test(y, group=df["sex"], strata=df["ph.ecog"])
@@ -190,7 +190,7 @@ def test_stratified_logrank_matches_r() -> None:
 
 
 def test_pairwise_logrank_matches_r() -> None:
-    df = gw.data.load_dataset("veteran", backend="pandas")
+    df = gw.load_dataset("veteran", backend="pandas")
     y = Surv.right(df["time"], event=df["status"])
     fixture = load_fixture("pairwise_logrank_veteran")
     for correction, key in [("holm", "holm"), ("bh", "bh"), ("bonferroni", "bonferroni")]:
@@ -227,21 +227,21 @@ def _check_cox(cox: gw.CoxPH, fixture: dict[str, Any], label: str) -> None:
 
 
 def test_cox_lung_age_sex_efron_matches_r() -> None:
-    df = gw.data.load_dataset("lung", backend="pandas")
+    df = gw.load_dataset("lung", backend="pandas")
     y = Surv.right(df["time"], event=(df["status"] == 2))
     cox = gw.CoxPH(ties="efron").fit(y, df[["age", "sex"]])
     _check_cox(cox, load_fixture("cox_lung_age_sex_efron"), "cox efron")
 
 
 def test_cox_lung_age_sex_breslow_matches_r() -> None:
-    df = gw.data.load_dataset("lung", backend="pandas")
+    df = gw.load_dataset("lung", backend="pandas")
     y = Surv.right(df["time"], event=(df["status"] == 2))
     cox = gw.CoxPH(ties="breslow").fit(y, df[["age", "sex"]])
     _check_cox(cox, load_fixture("cox_lung_age_sex_breslow"), "cox breslow")
 
 
 def test_cox_lung_three_covariates_matches_r() -> None:
-    df = gw.data.load_dataset("lung", backend="pandas")
+    df = gw.load_dataset("lung", backend="pandas")
     y = Surv.right(df["time"], event=(df["status"] == 2))
     cox = gw.CoxPH(ties="efron").fit(y, df[["age", "sex", "ph.ecog"]])
     _check_cox(cox, load_fixture("cox_lung_three_efron"), "cox three")
@@ -251,7 +251,7 @@ def test_cox_lung_three_covariates_matches_r() -> None:
 def test_cox_baseline_and_prediction_match_r(ties: str) -> None:
     import pandas as pd
 
-    df = gw.data.load_dataset("lung", backend="pandas")
+    df = gw.load_dataset("lung", backend="pandas")
     y = Surv.right(df["time"], event=(df["status"] == 2))
     fixture = load_fixture(f"cox_diag_{ties}")
     cox = gw.CoxPH(ties=ties).fit(y, df[["age", "sex"]])
@@ -269,7 +269,7 @@ def test_cox_baseline_and_prediction_match_r(ties: str) -> None:
 
 @pytest.mark.parametrize("ties", ["breslow", "efron"])
 def test_cox_schoenfeld_matches_r(ties: str) -> None:
-    df = gw.data.load_dataset("lung", backend="pandas")
+    df = gw.load_dataset("lung", backend="pandas")
     y = Surv.right(df["time"], event=(df["status"] == 2))
     fixture = load_fixture(f"cox_diag_{ties}")
     sch = gw.CoxPH(ties=ties).fit(y, df[["age", "sex"]]).residuals("schoenfeld")
@@ -283,7 +283,7 @@ def test_cox_schoenfeld_matches_r(ties: str) -> None:
 
 
 def test_cox_martingale_matches_r_breslow() -> None:
-    df = gw.data.load_dataset("lung", backend="pandas")
+    df = gw.load_dataset("lung", backend="pandas")
     y = Surv.right(df["time"], event=(df["status"] == 2))
     fixture = load_fixture("cox_diag_breslow")
     resid = gw.CoxPH(ties="breslow").fit(y, df[["age", "sex"]]).residuals("martingale")
@@ -293,7 +293,7 @@ def test_cox_martingale_matches_r_breslow() -> None:
 @pytest.mark.parametrize("ties", ["breslow", "efron"])
 @pytest.mark.parametrize("transform", ["identity", "log"])
 def test_cox_zph_matches_r(ties: str, transform: str) -> None:
-    df = gw.data.load_dataset("lung", backend="pandas")
+    df = gw.load_dataset("lung", backend="pandas")
     y = Surv.right(df["time"], event=(df["status"] == 2))
     fixture = load_fixture(f"cox_diag_{ties}")[f"zph_{transform}"]
     z = gw.CoxPH(ties=ties).fit(y, df[["age", "sex"]]).cox_zph(transform=transform)
@@ -305,7 +305,7 @@ def test_cox_zph_matches_r(ties: str, transform: str) -> None:
 
 @pytest.mark.parametrize("ties", ["breslow", "efron"])
 def test_cox_concordance_matches_r(ties: str) -> None:
-    df = gw.data.load_dataset("lung", backend="pandas")
+    df = gw.load_dataset("lung", backend="pandas")
     y = Surv.right(df["time"], event=(df["status"] == 2))
     fixture = load_fixture(f"cox_diag_{ties}")
     cox = gw.CoxPH(ties=ties).fit(y, df[["age", "sex"]])
@@ -313,7 +313,7 @@ def test_cox_concordance_matches_r(ties: str) -> None:
 
 
 def test_cox_stratified_matches_r() -> None:
-    df = gw.data.load_dataset("lung", backend="pandas")
+    df = gw.load_dataset("lung", backend="pandas")
     y = Surv.right(df["time"], event=(df["status"] == 2))
     fixture = load_fixture("cox_strata")
     cox = gw.CoxPH().fit(y, df[["age", "ph.ecog"]], strata=df["sex"])
@@ -328,7 +328,7 @@ def test_cox_stratified_matches_r() -> None:
 
 
 def test_cox_robust_variance_matches_r() -> None:
-    df = gw.data.load_dataset("lung", backend="pandas")
+    df = gw.load_dataset("lung", backend="pandas")
     y = Surv.right(df["time"], event=(df["status"] == 2))
     fixture = load_fixture("cox_robust")
     cox = gw.CoxPH(ties="breslow").fit(y, df[["age", "sex"]], robust=True)
@@ -338,7 +338,7 @@ def test_cox_robust_variance_matches_r() -> None:
 
 
 def test_cox_cluster_robust_variance_matches_r() -> None:
-    df = gw.data.load_dataset("lung", backend="pandas")
+    df = gw.load_dataset("lung", backend="pandas")
     y = Surv.right(df["time"], event=(df["status"] == 2))
     fixture = load_fixture("cox_cluster")
     cox = gw.CoxPH(ties="breslow").fit(y, df[["age", "sex"]], cluster=df["inst"])
@@ -366,7 +366,7 @@ def test_cox_time_varying_matches_r() -> None:
 def test_cox_survival_ci_matches_r() -> None:
     import pandas as pd
 
-    df = gw.data.load_dataset("lung", backend="pandas")
+    df = gw.load_dataset("lung", backend="pandas")
     y = Surv.right(df["time"], event=(df["status"] == 2))
     fixture = load_fixture("cox_survci_breslow")
     cox = gw.CoxPH(ties="breslow").fit(y, df[["age", "sex"]])
@@ -386,7 +386,7 @@ def test_cox_survival_ci_matches_r() -> None:
 
 @pytest.mark.parametrize("dist", ["weibull", "exponential", "lognormal", "loglogistic"])
 def test_aft_matches_r_survreg(dist: str) -> None:
-    df = gw.data.load_dataset("lung", backend="pandas")
+    df = gw.load_dataset("lung", backend="pandas")
     y = Surv.right(df["time"], event=(df["status"] == 2))
     fixture = load_fixture(f"aft_{dist}")
     model = gw.AFT(dist).fit(y, df[["age", "sex"]])
@@ -418,7 +418,7 @@ def test_aft_matches_r_survreg(dist: str) -> None:
 
 
 def test_aalen_johansen_cif_matches_r() -> None:
-    df = gw.data.load_dataset("mgus2", backend="pandas")
+    df = gw.load_dataset("mgus2", backend="pandas")
     etime = np.where(df["pstat"] == 1, df["ptime"], df["futime"])
     event = np.where(df["pstat"] == 1, 1, 2 * df["death"])  # 0 censor, 1 pcm, 2 death
     y = Surv.multistate(etime, event=event, states=("pcm", "death"))
@@ -438,7 +438,7 @@ def test_aalen_johansen_cif_matches_r() -> None:
 
 
 def test_finegray_matches_r() -> None:
-    df = gw.data.load_dataset("mgus2", backend="pandas")
+    df = gw.load_dataset("mgus2", backend="pandas")
     etime = np.where(df["pstat"] == 1, df["ptime"], df["futime"])
     cause = np.where(df["pstat"] == 1, 1, 2 * df["death"])
     y = Surv.multistate(etime, event=cause, states=("pcm", "death"))
@@ -452,7 +452,7 @@ def test_finegray_matches_r() -> None:
 
 def _mgus2_illness_death():  # type: ignore[no-untyped-def]
     """Build the mgus -> pcm -> death counting-process intervals from mgus2."""
-    df = gw.data.load_dataset("mgus2", backend="pandas")
+    df = gw.load_dataset("mgus2", backend="pandas")
     t0: list[float] = []
     t1: list[float] = []
     frm: list[str] = []
@@ -486,7 +486,7 @@ def test_multistate_occupancy_matches_r() -> None:
 
 
 def test_brier_score_matches_r() -> None:
-    df = gw.data.load_dataset("lung", backend="pandas")
+    df = gw.load_dataset("lung", backend="pandas")
     y = Surv.right(df["time"], event=(df["status"] == 2))
     fixture = load_fixture("brier_lung")
     times = np.asarray(fixture["times"], dtype=float)
@@ -498,7 +498,7 @@ def test_brier_score_matches_r() -> None:
 
 def test_concordance_index_matches_r() -> None:
     # concordance_index of the Cox linear predictor equals the model's concordance.
-    df = gw.data.load_dataset("lung", backend="pandas")
+    df = gw.load_dataset("lung", backend="pandas")
     y = Surv.right(df["time"], event=(df["status"] == 2))
     fixture = load_fixture("cox_diag_efron")
     cox = gw.CoxPH(ties="efron").fit(y, df[["age", "sex"]])
@@ -509,7 +509,7 @@ def test_concordance_index_matches_r() -> None:
 def test_risk_table_numbers_match_r() -> None:
     # risk_table_data needs only numpy/pandas (no plotnine), so it runs here.
     fixture = load_fixture("risk_table_lung_sex")
-    df = gw.data.load_dataset("lung", backend="pandas")
+    df = gw.load_dataset("lung", backend="pandas")
     y = Surv.right(df["time"], event=(df["status"] == 2))
     km = gw.KaplanMeier().fit(y, by=df["sex"])
     rtd = gw.viz.risk_table_data(km, times=fixture["times"])

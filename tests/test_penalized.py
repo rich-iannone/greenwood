@@ -17,7 +17,7 @@ from greenwood._cox import _cox_terms
 
 @pytest.fixture(scope="module")
 def data():
-    lung = gw.data.load_dataset("lung", backend="pandas")
+    lung = gw.load_dataset("lung", backend="pandas")
     y = Surv.right(lung["time"], event=(lung["status"] == 2))
     cols = ["age", "sex", "ph.ecog", "ph.karno", "wt.loss"]
     x = lung[cols].fillna(lung[cols].mean())

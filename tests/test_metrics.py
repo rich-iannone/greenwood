@@ -47,7 +47,7 @@ def test_brier_perfect_prediction_is_zero() -> None:
 
 
 def test_brier_in_unit_range() -> None:
-    df = gw.data.load_dataset("lung", backend="pandas")
+    df = gw.load_dataset("lung", backend="pandas")
     y = Surv.right(df["time"], event=(df["status"] == 2))
     cox = gw.CoxPH().fit(y, df[["age", "sex"]])
     times = np.array([180.0, 365.0])
@@ -64,7 +64,7 @@ def test_integrated_brier_needs_two_times() -> None:
 
 
 def test_integrated_brier_between_pointwise() -> None:
-    df = gw.data.load_dataset("lung", backend="pandas")
+    df = gw.load_dataset("lung", backend="pandas")
     y = Surv.right(df["time"], event=(df["status"] == 2))
     cox = gw.CoxPH().fit(y, df[["age", "sex"]])
     times = np.array([180.0, 365.0, 540.0])
@@ -76,7 +76,7 @@ def test_integrated_brier_between_pointwise() -> None:
 
 
 def test_calibration_structure_and_coverage() -> None:
-    df = gw.data.load_dataset("lung", backend="pandas")
+    df = gw.load_dataset("lung", backend="pandas")
     y = Surv.right(df["time"], event=(df["status"] == 2))
     cox = gw.CoxPH().fit(y, df[["age", "sex"]])
     pred = cox.predict(df[["age", "sex"]], type="survival", times=[365.0]).iloc[0, 1:].to_numpy()
@@ -91,7 +91,7 @@ def test_calibration_structure_and_coverage() -> None:
 
 def test_calibration_single_bin_is_overall_km() -> None:
     # A constant prediction collapses to one bin; the observed is the overall KM at the time.
-    df = gw.data.load_dataset("lung", backend="pandas")
+    df = gw.load_dataset("lung", backend="pandas")
     y = Surv.right(df["time"], event=(df["status"] == 2))
     cal = gw.calibration(y, np.full(len(df), 0.5), 365.0, n_bins=3)
     assert len(cal) == 1

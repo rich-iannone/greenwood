@@ -15,7 +15,7 @@ from greenwood import Surv
 
 @pytest.fixture(scope="module")
 def lung():
-    return gw.data.load_dataset("lung", backend="pandas")
+    return gw.load_dataset("lung", backend="pandas")
 
 
 @pytest.fixture(scope="module")
@@ -25,7 +25,7 @@ def y(lung):
 
 @pytest.fixture(scope="module")
 def mgus_cr():
-    mg = gw.data.load_dataset("mgus2", backend="pandas")
+    mg = gw.load_dataset("mgus2", backend="pandas")
     etime = np.where(mg["pstat"] == 1, mg["ptime"], mg["futime"])
     cause = np.where(mg["pstat"] == 1, 1, 2 * mg["death"])
     return mg, Surv.multistate(etime, event=cause, states=("pcm", "death"))

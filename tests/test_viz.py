@@ -27,14 +27,14 @@ def _close_figures():
 
 @pytest.fixture
 def km_grouped() -> gw.KaplanMeier:
-    df = gw.data.load_dataset("lung", backend="pandas")
+    df = gw.load_dataset("lung", backend="pandas")
     y = Surv.right(df["time"], event=(df["status"] == 2))
     return gw.KaplanMeier(conf_type="log-log").fit(y, by=df["sex"])
 
 
 @pytest.fixture
 def km_overall() -> gw.KaplanMeier:
-    df = gw.data.load_dataset("lung", backend="pandas")
+    df = gw.load_dataset("lung", backend="pandas")
     y = Surv.right(df["time"], event=(df["status"] == 2))
     return gw.KaplanMeier().fit(y)
 

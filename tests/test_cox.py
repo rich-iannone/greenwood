@@ -11,7 +11,7 @@ from greenwood import CoxPH, Surv
 
 @pytest.fixture
 def lung_surv():  # type: ignore[no-untyped-def]
-    df = gw.data.load_dataset("lung", backend="pandas")
+    df = gw.load_dataset("lung", backend="pandas")
     return df, Surv.right(df["time"], event=(df["status"] == 2))
 
 
@@ -87,7 +87,7 @@ def test_formula_interaction_and_categorical(lung_surv) -> None:  # type: ignore
     df, y = lung_surv
     inter = CoxPH().fit(y, "age * sex", data=df)
     assert inter.term_names_ == ["age", "sex", "age:sex"]
-    vet = gw.data.load_dataset("veteran", backend="pandas")
+    vet = gw.load_dataset("veteran", backend="pandas")
     yv = Surv.right(vet["time"], event=vet["status"])
     # Categorical: same model as explicit dummy coding, up to the reference level, so the
     # log-likelihood (reference-invariant) agrees exactly.
@@ -139,7 +139,7 @@ def test_array_covariates_default_names() -> None:
 
 def test_categorical_covariate_dummy_encoding(lung_surv) -> None:  # type: ignore[no-untyped-def]
     df, _ = lung_surv
-    vt = gw.data.load_dataset("veteran", backend="pandas")
+    vt = gw.load_dataset("veteran", backend="pandas")
     y = Surv.right(vt["time"], event=vt["status"])
     cox = CoxPH().fit(y, vt[["celltype"]])
     # celltype has 4 levels; drop-first leaves 3 dummy terms, all prefixed "celltype".

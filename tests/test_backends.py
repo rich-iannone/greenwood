@@ -24,7 +24,7 @@ Reference = tuple[Any, Any]
 
 @pytest.fixture(scope="module")
 def lung_pd() -> Any:
-    return gw.data.load_dataset("lung", backend="pandas")
+    return gw.load_dataset("lung", backend="pandas")
 
 
 @pytest.fixture(scope="module")
@@ -47,7 +47,7 @@ def test_pandas_columns_and_frame(lung_pd: Any, reference: Reference) -> None:
 def test_polars_columns_and_frame(lung_pd: Any, reference: Reference) -> None:
     pytest.importorskip("polars")
     ref_km, ref_cox = reference
-    lp = gw.data.load_dataset("lung", backend="polars")
+    lp = gw.load_dataset("lung", backend="polars")
     y = Surv.right(lp["time"], event=(lp["status"] == 2))
     np.testing.assert_allclose(KaplanMeier().fit(y).predict(TIMES), ref_km)
     cox = CoxPH().fit(y, lp[["age", "sex"]]).to_dataframe()["estimate"].to_numpy()

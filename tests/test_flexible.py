@@ -20,7 +20,7 @@ from tests._r_parity import assert_allclose_to_r, load_fixture
 
 @pytest.fixture(scope="module")
 def lung():
-    return gw.data.load_dataset("lung", backend="pandas")
+    return gw.load_dataset("lung", backend="pandas")
 
 
 @pytest.fixture(scope="module")
