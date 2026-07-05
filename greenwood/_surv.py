@@ -117,8 +117,8 @@ class Surv:
       Use `Surv.multistate(time, event, states)`.
 
     **Use the class methods** (`right`, `left`, `counting`, `interval`, `multistate`)
-    **to construct Surv objects.** They validate your input and set the censoring type
-    appropriately. Direct instantiation is not recommended.
+    to construct `Surv` objects. They validate your input and set the censoring type
+    appropriately. As such, direct instantiation is not recommended.
 
     Attributes
     ----------
@@ -641,39 +641,239 @@ class Surv:
 
     @property
     def n(self) -> int:
-        """Number of observations."""
+        """Number of observations in the response.
+
+        Returns the total count of subjects/observations, regardless of event status.
+        Equivalent to `len(surv_object)`.
+
+        Returns
+        -------
+        int
+            Number of observations.
+
+        Examples
+        --------
+        ```{python}
+        y = gw.Surv.right(time=[5, 6, 4, 9], event=[1, 0, 1, 0])
+        y.n
+        ```
+
+        This is useful for loops, validation, or allocating arrays. Often used to determine
+        sample size or for sanity checks on data shape.
+        """
         return int(self.stop.shape[0])
 
     @property
     def entry(self) -> Array:
-        """Entry times; `-inf` where there is no left truncation."""
+        """Entry times for each observation (or -∞ if no left truncation).
+
+        For counting-process data (late entry), this returns the `start` time when each 
+        subject became at risk. For standard right-censored data with no left truncation, 
+        all values are -∞, indicating subjects entered at the beginning of follow-up.
+
+        Returns
+        -------
+        Array
+            Entry times with shape (n,). Contains start times for counting-process form
+            or -∞ where there is no left truncation.
+
+        Examples
+        --------
+        Right-censored data (no left truncation) has all -∞ entry times:
+
+        ```{python}
+        y_right = gw.Surv.right(time=[5, 6, 4], event=[1, 0, 1])
+        y_right.entry
+        ```
+
+        Counting-process data shows each subject's entry time:
+
+        ```{python}
+        y_counting = gw.Surv.counting(start=[0, 2, 1], stop=[5, 6, 4], event=[1, 0, 1])
+        y_counting.entry
+        ```
+
+        The `entry` property is primarily used internally by survival estimators to correctly
+        compute risk sets. You rarely need it directly, but it's available for custom analyses.
+        """
         if self.start is not None:
             return self.start
         return np.full(self.n, -np.inf)
 
     @property
     def event(self) -> Array:
-        """Boolean "any event occurred" indicator (`status >= 1`)."""
+        """Boolean event indicator: True if any event occurred, False if censored.
+
+        Converts the integer `status` codes to a simple boolean: 1 or more → True (event),
+        0 → False (censored). This is a convenient summary when you only care about 
+        event occurrence, not which specific state occurred in multi-state data.
+
+        Returns
+        -------
+        Array (bool)
+            Boolean array with shape (n,). `True` where status >= 1, `False` otherwise.
+
+        Examples
+        --------
+        ```{python}
+        y = gw.Surv.right(time=[5, 6, 4, 9], event=[1, 0, 1, 0])
+        y.event
+        ```
+
+        The `True`/`False` values indicate which subjects experienced any event. This is useful
+        for filtering, counting events, or checking data quality. For multi-state data, 
+        this collapses all states into a single "any event" indicator:
+
+        ```{python}
+        y_multi = gw.Surv.multistate(
+            time=[5, 6, 7, 8],
+            event=[1, 2, 0, 1],
+            states=("relapse", "death")
+        )
+        y_multi.event
+        ```
+        """
         return self.status >= 1
 
     @property
     def is_truncated(self) -> bool:
-        """Whether the response carries left-truncation entry times."""
+        """Whether the response has left truncation (late entry).
+
+        Left truncation occurs in counting-process data when subjects enter the risk set
+        at different times (late entry). This is common in studies with age-based entry
+        or complex follow-up patterns. When True, the `entry()` property contains the
+        actual start times; when False, all subjects implicitly start at time 0.
+
+        Returns
+        -------
+        bool
+            `True` if the response has left-truncation entry times, `False` otherwise.
+
+        Examples
+        --------
+        Right-censored data has no left truncation:
+
+        ```{python}
+        y_right = gw.Surv.right(time=[5, 6, 4], event=[1, 0, 1])
+        y_right.is_truncated
+        ```
+
+        Counting-process data with late entry is truncated:
+
+        ```{python}
+        y_counting = gw.Surv.counting(start=[0, 2, 1], stop=[5, 6, 4], event=[1, 0, 1])
+        y_counting.is_truncated
+        ```
+
+        This property is useful for understanding data structure and for conditional logic
+        that handles truncated vs. non-truncated data differently.
+        """
         return self.start is not None
 
     @property
     def is_multistate(self) -> bool:
-        """Whether the response has more than one event state."""
+        """Whether the response has multiple competing event states.
+
+        Multi-state responses track which of several competing outcomes occurred 
+        (e.g., "relapse" vs. "death"). When False, there is only one event type 
+        (censored or not). When True, the `states` property contains the outcome labels.
+
+        Returns
+        -------
+        bool
+            `True` if the response has multiple event states, `False` for single-event data.
+
+        Examples
+        --------
+        Right-censored data has a single outcome:
+
+        ```{python}
+        y_right = gw.Surv.right(time=[5, 6, 4], event=[1, 0, 1])
+        y_right.is_multistate
+        ```
+
+        Multi-state data with competing risks:
+
+        ```{python}
+        y_multi = gw.Surv.multistate(
+            time=[5, 6, 7, 8],
+            event=[1, 2, 0, 1],
+            states=("relapse", "death")
+        )
+        y_multi.is_multistate
+        ```
+
+        This property is useful for determining how to interpret the event codes and
+        what kind of survival estimation is needed.
+        """
         return self.states is not None
 
     @property
     def n_events(self) -> int:
-        """Count of observations with an event (any state)."""
+        """Count of observations where an event occurred (any state in multi-state data).
+
+        Counts all observations with `status >= 1`. For multi-state responses, this counts
+        all events regardless of which specific state occurred. For single-event data, this
+        is the count of subjects who experienced the event.
+
+        Returns
+        -------
+        int
+            Number of observations with an event. Equals `n - n_censored`.
+
+        Examples
+        --------
+        ```{python}
+        y = gw.Surv.right(time=[5, 6, 4, 9], event=[1, 0, 1, 0])
+        y.n_events
+        ```
+
+        This is useful for descriptive statistics, event rate calculations, or validating
+        data: `assert y.n_events + y.n_censored == y.n`.
+
+        For multi-state data, this gives the total event count across all states:
+
+        ```{python}
+        y_multi = gw.Surv.multistate(
+            time=[5, 6, 7, 8],
+            event=[1, 2, 0, 1],
+            states=("relapse", "death")
+        )
+        y_multi.n_events
+        ```
+        """
         return int(np.count_nonzero(self.event))
 
     @property
     def n_censored(self) -> int:
-        """Count of censored observations."""
+        """Count of censored observations.
+
+        Counts all observations where the event was not observed (status == 0).
+        These are subjects whose true event time is unknown but exceeds their 
+        observation time.
+
+        Returns
+        -------
+        int
+            Number of censored observations. Equals `n - n_events`.
+
+        Examples
+        --------
+        ```{python}
+        y = gw.Surv.right(time=[5, 6, 4, 9], event=[1, 0, 1, 0])
+        y.n_censored
+        ```
+
+        Often used for descriptive summary: "We observed 2 events and 2 censored subjects
+        out of 4 total." Can validate data quality:
+
+        ```{python}
+        assert y.n_events + y.n_censored == y.n
+        ```
+
+        Higher censoring rates reduce the information available for estimation and may
+        require larger sample sizes for stable inference.
+        """
         return self.n - self.n_events
 
     def __len__(self) -> int:
@@ -692,7 +892,7 @@ class Surv:
     def to_pandas(self) -> Any:
         """Return the response as a Pandas DataFrame (one row per observation).
 
-        This method exports the Surv object to a tidy Pandas DataFrame format, where
+        This method exports the `Surv` object to a tidy Pandas DataFrame format, where
         each row represents one observation. The DataFrame includes the `stop` and
         `status` columns, plus optional columns for `start` (entry time in counting
         process), `lower` (lower bound for interval censoring), and `weight` (case
@@ -794,7 +994,7 @@ class Surv:
     def to_arrow(self) -> Any:
         """Return the response as a PyArrow Table (one row per observation).
 
-        This method exports the Surv object to a PyArrow Table, a columnar data structure
+        This method exports the `Surv` object to a PyArrow Table, a columnar data structure
         designed for efficient data interchange and analytics. PyArrow Tables are ideal
         for integration with tools that work with the Apache Arrow memory format, including
         Polars, DuckDB, and many other data processing libraries. The table includes the
@@ -811,7 +1011,7 @@ class Surv:
         Raises
         ------
         ImportError
-            If pyarrow is not installed.
+            If PyArrow is not installed.
 
         Examples
         --------
@@ -845,7 +1045,7 @@ class Surv:
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-ready mapping fully describing the response.
 
-        This method serializes the entire Surv object into a plain Python dictionary,
+        This method serializes the entire `Surv` object into a plain Python dictionary,
         making it suitable for JSON serialization, storage, or transmission. All array
         data is converted to plain Python lists. The dictionary captures the censoring
         type and every array (time, status, optional fields), with `None` for fields
@@ -888,7 +1088,7 @@ class Surv:
     def from_dict(cls, data: dict[str, Any]) -> Self:
         """Rebuild a response from `to_dict` output.
 
-        This is the inverse of `to_dict()`: it reconstructs an equivalent Surv object
+        This is the inverse of `to_dict()`: it reconstructs an equivalent `Surv` object
         from a dictionary previously created by `to_dict()`. Useful for deserializing
         stored or transmitted data, or for round-tripping through storage formats.
 
