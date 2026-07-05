@@ -26,6 +26,7 @@ from ._power import logrank_n_events, logrank_power, logrank_sample_size
 from ._resample import cross_validate
 from ._surv import CensoringType, Surv
 from ._tests import TestResult, logrank_test, pairwise_logrank_test
+from .data import available_datasets, load_dataset
 from .viz import plot_survival, risk_table
 
 try:
@@ -62,6 +63,8 @@ __all__ = [
     "TestResult",
     "plot_survival",
     "risk_table",
+    "load_dataset",
+    "available_datasets",
     "data",
     "tidy",
     "viz",
