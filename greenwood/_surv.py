@@ -541,19 +541,35 @@ class Surv:
 
     # -- interop --------------------------------------------------------------
 
-    def as_dataframe(self, backend: str = "pandas") -> Any:
-        """Return the response as a tidy dataframe (one row per observation).
+    def to_pandas(self) -> Any:
+        """Return the response as a pandas DataFrame (one row per observation).
+
+        Returns
+        -------
+        pandas.DataFrame
+            A tidy DataFrame with one row per observation, including columns for `stop`,
+            `status`, and optional `start`, `lower`, `weight` columns.
+
+        Raises
+        ------
+        ImportError
+            If pandas is not installed.
 
         Examples
         --------
-        One row per observation, with the exit `stop` time and integer `status`. Pass
-        `backend="polars"` for a Polars frame instead. This reuses the `y` response from
-        the class example above.
+        One row per observation, with the exit `stop` time and integer `status`.
 
         ```{python}
-        y.as_dataframe()
+        y.to_pandas()
         ```
         """
+        try:
+            import pandas as pd
+        except ImportError as e:
+            raise ImportError(
+                "pandas is required for to_pandas(). Install it with: pip install pandas"
+            ) from e
+
         cols: dict[str, Array] = {}
         if self.start is not None:
             cols["start"] = self.start
@@ -563,15 +579,87 @@ class Surv:
         cols["status"] = self.status
         if self.weights is not None:
             cols["weight"] = self.weights
-        if backend == "pandas":
-            import pandas as pd
+        return pd.DataFrame(cols)
 
-            return pd.DataFrame(cols)
-        if backend == "polars":
+    def to_polars(self) -> Any:
+        """Return the response as a Polars DataFrame (one row per observation).
+
+        Returns
+        -------
+        polars.DataFrame
+            A tidy DataFrame with one row per observation, including columns for `stop`,
+            `status`, and optional `start`, `lower`, `weight` columns.
+
+        Raises
+        ------
+        ImportError
+            If polars is not installed.
+
+        Examples
+        --------
+        One row per observation, with the exit `stop` time and integer `status`.
+
+        ```{python}
+        y.to_polars()
+        ```
+        """
+        try:
             import polars as pl
+        except ImportError as e:
+            raise ImportError(
+                "polars is required for to_polars(). Install it with: pip install polars"
+            ) from e
 
-            return pl.DataFrame(cols)
-        raise ValueError(f"Unknown backend {backend!r}; use 'pandas' or 'polars'.")
+        cols: dict[str, Array] = {}
+        if self.start is not None:
+            cols["start"] = self.start
+        if self.lower is not None:
+            cols["lower"] = self.lower
+        cols["stop"] = self.stop
+        cols["status"] = self.status
+        if self.weights is not None:
+            cols["weight"] = self.weights
+        return pl.DataFrame(cols)
+
+    def to_arrow(self) -> Any:
+        """Return the response as a PyArrow Table (one row per observation).
+
+        Returns
+        -------
+        pyarrow.Table
+            A table with one row per observation, including columns for `stop`,
+            `status`, and optional `start`, `lower`, `weight` columns.
+
+        Raises
+        ------
+        ImportError
+            If pyarrow is not installed.
+
+        Examples
+        --------
+        One row per observation, with the exit `stop` time and integer `status`.
+
+        ```{python}
+        y.to_arrow()
+        ```
+        """
+        try:
+            import pyarrow as pa
+        except ImportError as e:
+            raise ImportError(
+                "pyarrow is required for to_arrow(). Install it with: pip install pyarrow"
+            ) from e
+
+        cols: dict[str, Any] = {}
+        if self.start is not None:
+            cols["start"] = self.start
+        if self.lower is not None:
+            cols["lower"] = self.lower
+        cols["stop"] = self.stop
+        cols["status"] = self.status
+        if self.weights is not None:
+            cols["weight"] = self.weights
+        return pa.table(cols)
 
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-ready mapping fully describing the response.

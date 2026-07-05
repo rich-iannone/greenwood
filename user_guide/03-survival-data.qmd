@@ -202,11 +202,11 @@ print("round-trips exactly:", restored.to_json() == y.to_json())
 ```
 
 For working in memory rather than as text, `to_dict` and `from_dict` perform the same
-round-trip with a plain Python dictionary, and `as_dataframe` gives a tidy, one-row-per-subject
-view that is convenient for inspection or export.
+round-trip with a plain Python dictionary, and `to_pandas()`, `to_polars()`, or `to_arrow()`
+give a tidy, one-row-per-subject view that is convenient for inspection or export.
 
 ```{python}
-y.as_dataframe()
+y.to_pandas()
 ```
 
 The dictionary form is the same structure `to_json` serializes, so `gw.Surv.from_dict` rebuilds

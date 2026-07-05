@@ -86,13 +86,60 @@ def test_len_and_repr_variants() -> None:
     assert "states=" in ms
 
 
-def test_as_dataframe_backends() -> None:
+def test_to_backends() -> None:
     pd = pytest.importorskip("pandas")
     pl = pytest.importorskip("polars")
+    pa = pytest.importorskip("pyarrow")
     y = Surv.counting(start=[0, 1], stop=[5, 6], event=[1, 0], weights=[1.0, 2.0])
-    pandas_df = y.as_dataframe("pandas")
+    
+    pandas_df = y.to_pandas()
     assert isinstance(pandas_df, pd.DataFrame)
     assert {"start", "stop", "status", "weight"} <= set(pandas_df.columns)
-    assert isinstance(y.as_dataframe("polars"), pl.DataFrame)
-    with pytest.raises(ValueError, match="Unknown backend"):
-        y.as_dataframe("numpy")
+    
+    polars_df = y.to_polars()
+    assert isinstance(polars_df, pl.DataFrame)
+    
+    arrow_table = y.to_arrow()
+    assert isinstance(arrow_table, pa.Table)
+
+
+def test_to_pandas_missing_import(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test that to_pandas raises ImportError when pandas is not available."""
+    y = Surv.counting(start=[0, 1], stop=[5, 6], event=[1, 0])
+    
+    def mock_import(name: str, *args: object, **kwargs: object) -> object:
+        if name == "pandas":
+            raise ImportError("No module named 'pandas'")
+        return __import__(name, *args, **kwargs)
+    
+    monkeypatch.setattr("builtins.__import__", mock_import)
+    with pytest.raises(ImportError, match="pandas is required"):
+        y.to_pandas()
+
+
+def test_to_polars_missing_import(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test that to_polars raises ImportError when polars is not available."""
+    y = Surv.counting(start=[0, 1], stop=[5, 6], event=[1, 0])
+    
+    def mock_import(name: str, *args: object, **kwargs: object) -> object:
+        if name == "polars":
+            raise ImportError("No module named 'polars'")
+        return __import__(name, *args, **kwargs)
+    
+    monkeypatch.setattr("builtins.__import__", mock_import)
+    with pytest.raises(ImportError, match="polars is required"):
+        y.to_polars()
+
+
+def test_to_arrow_missing_import(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test that to_arrow raises ImportError when pyarrow is not available."""
+    y = Surv.counting(start=[0, 1], stop=[5, 6], event=[1, 0])
+    
+    def mock_import(name: str, *args: object, **kwargs: object) -> object:
+        if name == "pyarrow":
+            raise ImportError("No module named 'pyarrow'")
+        return __import__(name, *args, **kwargs)
+    
+    monkeypatch.setattr("builtins.__import__", mock_import)
+    with pytest.raises(ImportError, match="pyarrow is required"):
+        y.to_arrow()

@@ -243,7 +243,8 @@ def test_surv_left_and_interval_dataframe() -> None:
     left = Surv.left([3, 5, 7], event=[1, 0, 1])
     assert left.type.value == "left" and len(left) == 3
     iv = Surv.interval(lower=[1, 2, 3], upper=[2, 4, 6])
-    assert "lower" in iv.as_dataframe("pandas").columns
+    assert "lower" in iv.to_pandas().columns
+
 
 
 def test_calibration_before_first_event(y, lung) -> None:

@@ -117,7 +117,19 @@ def test_accepts_polars_series() -> None:
     assert y.n == 3
 
 
-def test_as_dataframe() -> None:
+def test_to_pandas() -> None:
     y = Surv.counting(start=[0, 1], stop=[5, 6], event=[1, 0])
-    df = y.as_dataframe()
+    df = y.to_pandas()
     assert list(df.columns) == ["start", "stop", "status"]
+
+
+def test_to_polars() -> None:
+    y = Surv.counting(start=[0, 1], stop=[5, 6], event=[1, 0])
+    df = y.to_polars()
+    assert set(df.columns) == {"start", "stop", "status"}
+
+
+def test_to_arrow() -> None:
+    y = Surv.counting(start=[0, 1], stop=[5, 6], event=[1, 0])
+    table = y.to_arrow()
+    assert set(table.column_names) == {"start", "stop", "status"}
