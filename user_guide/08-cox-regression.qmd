@@ -21,10 +21,9 @@ tests it reports.
 
 ```{python}
 import greenwood as gw
-from greenwood import Surv
 
 lung = gw.load_dataset("lung")
-y = Surv.right(lung["time"], event=(lung["status"] == 2))
+y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 y
 ```
 
@@ -142,7 +141,7 @@ covariates are constant. Each row records the interval `(start, stop]`, whether 
 happened at its end, and the covariate values that held during it.
 
 We build a small illustrative dataset where a treatment switches on for some subjects. The
-response is a `Surv.counting` object rather than `Surv.right`.
+response is a `gw.Surv.counting` object rather than `gw.Surv.right`.
 
 ```{python}
 import pandas as pd
@@ -160,12 +159,11 @@ intervals
 ```
 
 Subject 1, for example, is untreated over `(0, 4]` and treated over `(4, 10]`, with the event
-at day 10. We pass the interval endpoints to `Surv.counting` and fit as usual.
+at day 10. We pass the interval endpoints to `gw.Surv.counting` and fit as usual.
 
 ```{python}
-from greenwood import Surv
 
-y_tv = Surv.counting(start=intervals["start"], stop=intervals["stop"], event=intervals["event"])
+y_tv = gw.Surv.counting(start=intervals["start"], stop=intervals["stop"], event=intervals["event"])
 gw.CoxPH().fit(y_tv, intervals[["treated"]]).to_dataframe()[["term", "estimate", "p_value"]]
 ```
 

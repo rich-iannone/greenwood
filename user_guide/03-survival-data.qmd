@@ -81,16 +81,15 @@ Greenwood does this for you with the `Surv` object.
 status codes and validates them, so that downstream code can rely on a clean, consistent
 representation. You build one with a constructor that names the censoring type.
 
-The most common constructor is `Surv.right`, for right-censored data. It takes the observed
+The most common constructor is `gw.Surv.right`, for right-censored data. It takes the observed
 times and an event indicator, where a truthy value (or `1`) means the event occurred and a
 falsy value (or `0`) means the observation was censored.
 
 ```{python}
 import greenwood as gw
-from greenwood import Surv
 
 # Four subjects: events at 5 and 4, censored at 6 and 9.
-y = Surv.right(time=[5, 6, 4, 9], event=[1, 0, 1, 0])
+y = gw.Surv.right(time=[5, 6, 4, 9], event=[1, 0, 1, 0])
 y
 ```
 
@@ -111,32 +110,32 @@ stop]` with an event indicator at the stop time. This is also how left truncatio
 expressed.
 
 ```{python}
-Surv.counting(start=[0, 2, 1], stop=[5, 6, 4], event=[1, 0, 1])
+gw.Surv.counting(start=[0, 2, 1], stop=[5, 6, 4], event=[1, 0, 1])
 ```
 
 Left censoring, where all you know is that the event had already happened by the time of
-observation, uses `Surv.left`. It takes the same `(time, event)` arguments as `Surv.right`,
+observation, uses `gw.Surv.left`. It takes the same `(time, event)` arguments as `gw.Surv.right`,
 but the time is an upper bound on the unknown event time rather than a lower one.
 
 ```{python}
-Surv.left(time=[5, 6, 4], event=[1, 0, 1])
+gw.Surv.left(time=[5, 6, 4], event=[1, 0, 1])
 ```
 
 Interval censoring, where the event is known only to fall between two times, uses
-`Surv.interval`. Use `numpy.inf` for the upper bound to mark right censoring.
+`gw.Surv.interval`. Use `numpy.inf` for the upper bound to mark right censoring.
 
 ```{python}
 import numpy as np
 
-Surv.interval(lower=[1, 2, 3], upper=[2, np.inf, 5])
+gw.Surv.interval(lower=[1, 2, 3], upper=[2, np.inf, 5])
 ```
 
 Competing risks and multi-state endpoints, where more than one kind of event can occur, use
-`Surv.multistate`. The event codes are `0` for censoring and `1, 2, ...` for the competing
+`gw.Surv.multistate`. The event codes are `0` for censoring and `1, 2, ...` for the competing
 causes, and you name the states.
 
 ```{python}
-Surv.multistate(time=[5, 6, 7, 8], event=[1, 2, 0, 1], states=("relapse", "death"))
+gw.Surv.multistate(time=[5, 6, 7, 8], event=[1, 2, 0, 1], states=("relapse", "death"))
 ```
 
 ## Building a response from a data frame
@@ -157,7 +156,7 @@ it will raise an error if you pass `1`/`2` values directly. You convert the colu
 explicitly instead.
 
 ```{python}
-y = Surv.right(lung["time"], event=(lung["status"] == 2))
+y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 y
 ```
 
@@ -178,7 +177,7 @@ construction time rather than a confusing failure deep inside an estimator.
 
 ```{python}
 try:
-    Surv.right([5, -1, 3], [1, 1, 1])
+    gw.Surv.right([5, -1, 3], [1, 1, 1])
 except ValueError as error:
     print(error)
 ```
@@ -198,7 +197,7 @@ object holds. Reading it back with `from_json` reconstructs an equivalent respon
 confirm nothing was lost by comparing the JSON of the original and the restored object.
 
 ```{python}
-restored = Surv.from_json(text)
+restored = gw.Surv.from_json(text)
 print("round-trips exactly:", restored.to_json() == y.to_json())
 ```
 
@@ -210,11 +209,11 @@ view that is convenient for inspection or export.
 y.as_dataframe()
 ```
 
-The dictionary form is the same structure `to_json` serializes, so `Surv.from_dict` rebuilds
+The dictionary form is the same structure `to_json` serializes, so `gw.Surv.from_dict` rebuilds
 an equivalent response from it.
 
 ```{python}
-Surv.from_dict(Surv.right([5, 6, 4], event=[1, 0, 1]).to_dict())
+gw.Surv.from_dict(gw.Surv.right([5, 6, 4], event=[1, 0, 1]).to_dict())
 ```
 
 ## The risk-set table

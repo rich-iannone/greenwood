@@ -59,10 +59,9 @@ Python list. Greenwood treats them all the same.
 
 ```{python}
 import greenwood as gw
-from greenwood import Surv
 
 lung = gw.load_dataset("lung")
-y = Surv.right(lung["time"], event=(lung["status"] == 2))
+y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 y
 ```
 
@@ -103,7 +102,7 @@ object looks the same as one built from pandas: it records the same times and ev
 Greenwood read both through narwhals.
 
 ```{python}
-y_pl = Surv.right(lung_pl["time"], event=(lung_pl["status"] == 2))
+y_pl = gw.Surv.right(lung_pl["time"], event=(lung_pl["status"] == 2))
 y_pl
 ```
 

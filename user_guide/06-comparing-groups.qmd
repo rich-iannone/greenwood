@@ -21,10 +21,9 @@ We continue with the `lung` dataset, comparing survival between the two sexes.
 
 ```{python}
 import greenwood as gw
-from greenwood import Surv
 
 lung = gw.load_dataset("lung")
-y = Surv.right(lung["time"], event=(lung["status"] == 2))
+y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 y
 ```
 
@@ -110,7 +109,7 @@ The log-rank test extends to any number of groups, giving one overall test. We s
 
 ```{python}
 vet = gw.load_dataset("veteran")
-y_vet = Surv.right(vet["time"], event=vet["status"])
+y_vet = gw.Surv.right(vet["time"], event=vet["status"])
 gw.logrank_test(y_vet, group=vet["celltype"])
 ```
 

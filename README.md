@@ -48,11 +48,10 @@ Here's a simple example that loads survival data, estimates a survival curve, an
 
 ```python
 import greenwood as gw
-from greenwood import Surv
 
 # Load the data and represent it as a survival object
 lung = gw.load_dataset("lung")
-y = Surv.right(lung["time"], event=(lung["status"] == 2))
+y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 
 # Estimate the Kaplan-Meier survival curve
 km = gw.KaplanMeier().fit(y)
@@ -72,10 +71,9 @@ Here's a comprehensive example showcasing more of Greenwood's capabilities:
 
 ```python
 import greenwood as gw
-from greenwood import Surv
 
 df = gw.load_dataset("lung")
-y = Surv.right(df["time"], event=(df["status"] == 2))
+y = gw.Surv.right(df["time"], event=(df["status"] == 2))
 
 # Kaplan-Meier with stratification and detailed summaries
 km = gw.KaplanMeier(conf_type="log-log").fit(y, by=df["sex"])

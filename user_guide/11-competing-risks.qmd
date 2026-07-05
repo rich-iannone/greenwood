@@ -35,7 +35,6 @@ and a cause code that is 0 for censored, 1 for progression, and 2 for death.
 ```{python}
 import numpy as np
 import greenwood as gw
-from greenwood import Surv
 
 mg = gw.load_dataset("mgus2")
 etime = np.where(mg["pstat"] == 1, mg["ptime"], mg["futime"])
@@ -60,12 +59,12 @@ is 2 when the subject died without progressing and 0 when the subject was censor
 cause[:8]
 ```
 
-We pass both arrays to `Surv.multistate`, mapping cause code 1 to `pcm` and code 2 to `death`,
+We pass both arrays to `gw.Surv.multistate`, mapping cause code 1 to `pcm` and code 2 to `death`,
 with code 0 left as censoring. The resulting response object shows the event times alongside
 their decoded states.
 
 ```{python}
-y = Surv.multistate(etime, event=cause, states=("pcm", "death"))
+y = gw.Surv.multistate(etime, event=cause, states=("pcm", "death"))
 y
 ```
 
