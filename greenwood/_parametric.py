@@ -356,7 +356,7 @@ def _glance_aft(model: AFT, **_: Any) -> Any:
 
 
 def _register_adapters() -> None:
-    from .tidy import register_glance, register_tidier
+    from .summaries import register_glance, register_tidier
 
     register_tidier("greenwood._parametric.AFT", _tidy_aft)
     register_glance("greenwood._parametric.AFT", _glance_aft)

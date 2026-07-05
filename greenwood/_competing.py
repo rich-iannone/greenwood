@@ -513,7 +513,7 @@ class FineGray:
 
 
 def _register_finegray() -> None:
-    from .tidy import register_glance, register_tidier
+    from .summaries import register_glance, register_tidier
 
     def _tidy(model: FineGray, *, exponentiate: bool = False, **_: Any) -> Any:
         return model.to_dataframe(exponentiate=exponentiate)

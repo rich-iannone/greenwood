@@ -710,10 +710,10 @@ class NelsonAalen:
         raise ValueError(f"Unknown backend {backend!r}; use 'pandas' or 'polars'.")
 
 
-# Register the tidy/glance adapters so `greenwood.tidy.tidy(km)` and
+# Register the tidy/glance adapters so `greenwood.tidy()` and
 # `great_summaries.tidy` can consume a fitted Kaplan-Meier curve.
 def _register_adapters() -> None:
-    from .tidy import register_glance, register_tidier
+    from .summaries import register_glance, register_tidier
 
     register_tidier("greenwood._nonparametric.KaplanMeier", _tidy_kaplan_meier)
     register_glance("greenwood._nonparametric.KaplanMeier", _glance_kaplan_meier)

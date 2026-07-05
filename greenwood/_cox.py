@@ -965,7 +965,7 @@ def _glance_cox(model: CoxPH, **_: Any) -> Any:
 
 
 def _register_adapters() -> None:
-    from .tidy import register_glance, register_tidier
+    from .summaries import register_glance, register_tidier
 
     register_tidier("greenwood._cox.CoxPH", _tidy_cox)
     register_glance("greenwood._cox.CoxPH", _glance_cox)
