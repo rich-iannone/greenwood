@@ -65,33 +65,64 @@ comparing the two.
 
 ## Choosing a distribution
 
-Greenwood supports four error distributions, each giving a different hazard shape.
-Exponential assumes a constant hazard, Weibull allows a monotonically increasing or
-decreasing hazard, and log-normal and log-logistic allow hazards that rise and then fall.
+Greenwood supports four parametric distributions, each giving a different hazard shape.
+
+- **Exponential**: Constant hazard (h(t) = λ). Simplest; often too restrictive.
+- **Weibull**: Monotonic hazard (increasing or decreasing). Default; most flexible while remaining parsimonious.
+- **Log-normal**: Hazard rises then falls; many peak early. Good for disease incidence.
+- **Log-logistic**: Similar to log-normal but with heavier tails.
 
 ```{python}
-for dist in ("weibull", "exponential", "lognormal", "loglogistic"):
+for dist in ("exponential", "weibull", "lognormal", "loglogistic"):
     model = gw.AFT(dist).fit(y, lung[["age", "sex"]])
-    print(f"{dist:14s} loglik={model.loglik_:10.3f} scale={model.scale_:.4f}")
+    print(f"{dist:20s} loglik={model.loglik_:10.3f} scale={model.scale_:.4f}")
 ```
 
-The scale parameter describes the spread of the distribution; the exponential model fixes it
-at 1, which is what makes its hazard constant. To compare non-nested distributions, use an
-information criterion such as the AIC, available from `glance`, where a lower value indicates
-a better trade-off between fit and complexity.
+To compare and choose among distributions, use the AIC (available from `glance`), where a
+lower value indicates a better fit:
 
-Each call to `gw.tidy.glance` returns a one-row DataFrame of model-level summaries for a
-single fit. We stack those rows for three distributions into one frame so the criteria line
-up side by side, then reset the index so the rows number from zero.
+```{python}
+results = []
+for dist in ("exponential", "weibull", "lognormal", "loglogistic"):
+    model = gw.AFT(dist).fit(y, lung[["age", "sex"]])
+    glance_result = gw.glance(model)
+    glance_result["distribution"] = dist
+    results.append(glance_result)
+
+import pandas as pd
+comparison = pd.concat(results)[["distribution", "loglik", "aic"]]
+print(comparison.sort_values("aic"))
+```
+
+The scale parameter describes the spread of the distribution. For the exponential, it is fixed at 1 (constant hazard). For Weibull, values > 1 indicate increasing hazard, < 1 indicate decreasing. Other distributions use scale differently; see the model's docstring for details.
+
+## Model comparison and selection
+
+Each call to `gw.glance` returns a one-row DataFrame of model-level summaries for a
+single fit. We can compare all four distributions systematically:
 
 ```{python}
 import pandas as pd
 
-pd.concat(gw.glance(gw.AFT(d).fit(y, lung[["age", "sex"]])) for d in
-          ("weibull", "lognormal", "loglogistic")).reset_index(drop=True)
+comparisons = []
+for dist in ("exponential", "weibull", "lognormal", "loglogistic"):
+    model = gw.AFT(dist).fit(y, lung[["age", "sex"]])
+    result = gw.glance(model)
+    result["distribution"] = dist
+    comparisons.append(result)
+
+comparison = pd.concat(comparisons)[["distribution", "loglik", "aic"]]
+print(comparison.sort_values("aic"))
 ```
 
-Compare the models by reading down the AIC column and preferring the lowest value.
+Compare the models by reading the AIC column and preferring the lowest value. A difference of
+10 in AIC is substantial; differences of 2-3 are subtle and don't warrant changing models.
+
+**When to use each distribution:**
+- **Exponential**: Only if you're confident hazard is constant (rare).
+- **Weibull**: Safe default; fits many data types well.
+- **Log-normal/Log-logistic**: When you expect a hazard peak early in follow-up.
+- **Gompertz**: For aging-related or mortality data where hazard accelerates exponentially.
 
 ::: {.callout-note}
 ## Parametric or Cox?
@@ -138,7 +169,7 @@ The AFT distributions impose a fixed hazard shape. When none of them fits well b
 want the smooth, extrapolatable curves of a parametric model, a Royston-Parmar model is a good
 middle ground. It models the log cumulative hazard as a restricted cubic spline in log time,
 so the baseline shape is estimated from the data rather than assumed. The flexibility is set
-by `df`, the number of spline terms.
+by `df`, the number of spline degrees of freedom.
 
 ```{python}
 rp = gw.RoystonParmar(df=3).fit(y, lung[["age", "sex"]])
@@ -146,23 +177,39 @@ rp.to_dataframe()
 ```
 
 The `gamma` terms are the spline coefficients for the baseline log cumulative hazard, and the
-named terms are the covariate effects on that scale. A useful check on the choice of `df` is
-that `df=1` is exactly a Weibull model, which Greenwood reproduces to tolerance against
-`survreg`; increasing `df` relaxes that shape.
+named terms are the covariate effects on that scale.
+
+### Choosing the degrees of freedom
+
+The `df` parameter controls spline flexibility. `df=1` is exactly a Weibull model (no spline);
+higher values let the hazard adapt to the data shape. More flexibility fits the observed data
+better but risks overfitting and unstable extrapolation.
+
+```{python}
+# Compare different df values using loglik
+results = []
+for df in (1, 2, 3, 4, 5):
+    rp_df = gw.RoystonParmar(df=df).fit(y, lung[["age", "sex"]])
+    results.append({"df": df, "loglik": rp_df.loglik_})
+
+import pandas as pd
+comparison = pd.DataFrame(results)
+print(comparison)
+```
+
+Notice that loglik generally improves up to `df=3`, after which gains diminish, suggesting that
+additional flexibility is not justified by the data. Two or three degrees of freedom are typical
+defaults. Choose based on the trade-off between fit and complexity:
+
+- **df=1**: Equivalent to Weibull; simplest.
+- **df=2-3**: Common choices; balance parsimony and fit.
+- **df=4+**: Use only if AIC clearly favors it and validation shows good extrapolation.
 
 Prediction works as for the AFT model, with survival, hazard, or cumulative hazard curves.
 
 ```{python}
 rp.predict(newdata, type="survival", times=[180, 365, 730])
 ```
-
-::: {.callout-note}
-## Choosing the degrees of freedom
-More spline terms fit the observed hazard more closely but risk overfitting and unstable
-extrapolation. Two or three degrees of freedom are common defaults; compare candidates by AIC
-(from `glance`) or by cross-validated prediction error rather than by log-likelihood alone,
-since a larger `df` can only increase the likelihood.
-:::
 
 ## Next steps
 
