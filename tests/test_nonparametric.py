@@ -157,9 +157,9 @@ def test_rmrl_argument_validation() -> None:
 
 def test_km_tidy_and_glance_via_registry() -> None:
     km = KaplanMeier().fit(Surv.right([1, 2, 3, 4], [1, 1, 1, 1]))
-    tidy_df = gw.tidy.tidy(km)
+    tidy_df = gw.tidy(km)
     assert "estimate" in tidy_df.columns
-    glance_df = gw.tidy.glance(km)
+    glance_df = gw.glance(km)
     assert float(glance_df["events"].iloc[0]) == 4.0
     assert float(glance_df["median"].iloc[0]) == 2.0
 

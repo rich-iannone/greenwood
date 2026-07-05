@@ -229,7 +229,7 @@ class _DummyModel:
 
 
 def test_register_and_dispatch_augment() -> None:
-    from greenwood.tidy import augment, register_augment
+    from greenwood.summaries import augment, register_augment
 
     key = f"{_DummyModel.__module__}.{_DummyModel.__qualname__}"
     register_augment(key, lambda m, data, **k: {"ok": True})
@@ -314,8 +314,8 @@ def test_competing_backends_and_validation() -> None:
 
 def test_km_tidy_grouped_has_strata(y, lung) -> None:
     km = KaplanMeier().fit(y, by=lung["sex"])
-    assert "strata" in gw.tidy.tidy(km).columns
-    assert "strata" in gw.tidy.glance(km).columns  # grouped glance carries the stratum label
+    assert "strata" in gw.tidy(km).columns
+    assert "strata" in gw.glance(km).columns  # grouped glance carries the stratum label
 
 
 def test_grouped_nelson_aalen_repr(y, lung) -> None:

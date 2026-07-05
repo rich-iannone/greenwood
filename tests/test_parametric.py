@@ -62,9 +62,9 @@ def test_interval_censoring_not_supported() -> None:
 def test_tidy_and_glance_via_registry(lung_surv) -> None:  # type: ignore[no-untyped-def]
     df, y = lung_surv
     model = AFT("weibull").fit(y, df[["age", "sex"]])
-    tidy = gw.tidy.tidy(model)
+    tidy = gw.tidy(model)
     assert list(tidy["term"]) == ["(Intercept)", "age", "sex"]
-    glance = gw.tidy.glance(model)
+    glance = gw.glance(model)
     row = glance.iloc[0]
     assert row["dist"] == "weibull"
     assert row["nevent"] == 165

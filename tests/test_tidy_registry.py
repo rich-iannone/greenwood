@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from greenwood import tidy
+from greenwood import summaries as tidy
 
 
 class _FakeFit:
@@ -26,7 +26,7 @@ def test_register_and_dispatch() -> None:
     try:
         assert tidy.tidy(_FakeFit(), conf_level=0.9) == {"ok": True, "kwargs": {"conf_level": 0.9}}
     finally:
-        from greenwood.tidy._registry import _TIDIERS
+        from greenwood.summaries._registry import _TIDIERS
 
         _TIDIERS.pop(path, None)
 
@@ -37,7 +37,7 @@ def test_dispatch_walks_mro() -> None:
     try:
         assert tidy.glance(_FakeSubFit()) == "glanced"
     finally:
-        from greenwood.tidy._registry import _GLANCERS
+        from greenwood.summaries._registry import _GLANCERS
 
         _GLANCERS.pop(path, None)
 

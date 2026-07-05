@@ -79,7 +79,7 @@ results through tidy output frames. The `tidy` function returns one row per mode
 passing `exponentiate=True` reports hazard ratios rather than raw coefficients.
 
 ```{python}
-gw.tidy.tidy(cox, exponentiate=True)
+gw.tidy(cox, exponentiate=True)
 ```
 
 ## Choosing a backend
@@ -129,7 +129,7 @@ default, which makes them easy to inspect, filter, join, or pass on to a plottin
 library.
 
 ```{python}
-gw.tidy.glance(cox)
+gw.glance(cox)
 ```
 
 The tidy and glance functions follow the same conventions as R's broom package, so a fitted

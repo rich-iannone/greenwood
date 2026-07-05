@@ -107,9 +107,9 @@ def test_finegray_tidy_and_glance() -> None:
 
     df, y = _mgus2_cr()
     fg = FineGray("pcm").fit(y, df[["age", "sex"]])
-    tidy = gw.tidy.tidy(fg, exponentiate=True)
+    tidy = gw.tidy(fg, exponentiate=True)
     np.testing.assert_allclose(tidy["estimate"].to_numpy(), fg.hazard_ratio_)
-    assert gw.tidy.glance(fg).iloc[0]["nevent"] > 0
+    assert gw.glance(fg).iloc[0]["nevent"] > 0
 
 
 def test_finegray_length_mismatch() -> None:

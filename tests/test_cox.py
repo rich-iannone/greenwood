@@ -150,7 +150,7 @@ def test_categorical_covariate_dummy_encoding(lung_surv) -> None:  # type: ignor
 def test_tidy_exponentiate(lung_surv) -> None:  # type: ignore[no-untyped-def]
     df, y = lung_surv
     cox = CoxPH().fit(y, df[["age", "sex"]])
-    tidy = gw.tidy.tidy(cox, exponentiate=True)
+    tidy = gw.tidy(cox, exponentiate=True)
     # Exponentiated estimate equals the hazard ratio.
     np.testing.assert_allclose(tidy["estimate"].to_numpy(), cox.hazard_ratio_)
 
@@ -158,7 +158,7 @@ def test_tidy_exponentiate(lung_surv) -> None:  # type: ignore[no-untyped-def]
 def test_glance_fields(lung_surv) -> None:  # type: ignore[no-untyped-def]
     df, y = lung_surv
     cox = CoxPH().fit(y, df[["age", "sex"]])
-    glance = gw.tidy.glance(cox)
+    glance = gw.glance(cox)
     row = glance.iloc[0]
     assert row["nevent"] == 165
     assert row["df"] == 2
