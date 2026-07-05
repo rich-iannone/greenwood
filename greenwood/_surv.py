@@ -99,19 +99,35 @@ def _coerce_event(event: Any, n: int) -> Array:
 
 @dataclass(frozen=True)
 class Surv:
-    """A validated time-to-event response.
+    """A validated time-to-event response for survival analysis.
 
-    Prefer the constructors (`Surv.right`, `Surv.counting`, `Surv.interval`,
-    `Surv.left`, `Surv.multistate`) over building this directly.
+    `Surv` represents the outcome in survival models: a time at which each subject either
+    experienced an event (observed) or was censored (did not experience the event during
+    follow-up). `Surv` supports multiple censoring types:
+
+    - **Right-censored** (most common): The event time is at or after the recorded time.
+      Use `Surv.right(time, event)`.
+    - **Left-censored**: The event time is before the recorded time.
+      Use `Surv.left(time, event)`.
+    - **Counting-process** (left truncation, time-varying): Each subject enters the risk set
+      at `start` and exits at `stop`. Use `Surv.counting(start, stop, event)`.
+    - **Interval-censored**: The event occurred within a time interval `[lower, upper)`.
+      Use `Surv.interval(lower, upper)`.
+    - **Multi-state / competing risks**: Multiple mutually exclusive events.
+      Use `Surv.multistate(time, event, states)`.
+
+    **Use the class methods** (`right`, `left`, `counting`, `interval`, `multistate`)
+    **to construct Surv objects.** They validate your input and set the censoring type
+    appropriately. Direct instantiation is not recommended.
 
     Attributes
     ----------
     type
-        The `CensoringType`.
+        The `CensoringType` enum indicating the censoring mechanism.
     stop
         Exit time (for interval censoring, the upper bound).
     status
-        Integer event code per observation: 0 = censored, 1 = event (for multi-state,
+        Integer event code per observation: 0 = censored, 1+ = event code (for multi-state,
         codes >= 1 index into `states`).
     start
         Entry time for the counting-process form (left truncation); `None` otherwise.
@@ -121,20 +137,64 @@ class Surv:
         Event-state labels for multi-state/competing-risks endpoints; `None` for the
         single-event case.
     weights
-        Optional case weights (strictly positive).
+        Optional case weights (strictly positive); `None` if no weights provided.
 
     Examples
     --------
-    Build a right-censored response from parallel `time` and `event` sequences. Printing it
-    reports the censoring flavor and the event/observation counts. The `y` response built
-    here is reused by the interop method examples below.
+    Here's an example of direct instantiation of `Surv`:
 
     ```{python}
-    from greenwood import Surv
+    from greenwood import Surv, CensoringType
+    import numpy as np
 
+    y = Surv(
+        type=CensoringType.RIGHT,
+        stop=np.array([5, 6, 4, 9]),
+        status=np.array([1, 0, 1, 0])
+    )
+    y
+    ```
+
+    While this is fine, the preferred approach is to use the class method constructors for each
+    censoring type. They handle validation and conversion automatically.
+
+    Right-censored (the most common case): each subject has an exit time and an event
+    indicator.
+
+    ```{python}
     y = Surv.right(time=[5, 6, 4, 9], event=[1, 0, 1, 0])
     y
     ```
+
+    Counting-process form with left truncation (late entry):
+
+    ```{python}
+    y = Surv.counting(start=[0, 2, 1], stop=[5, 6, 4], event=[1, 0, 1])
+    y
+    ```
+
+    Interval-censored (event known to occur in a time window):
+
+    ```{python}
+    y = Surv.interval(lower=[1, 3], upper=[3, 8])
+    y
+    ```
+
+    Multi-state (competing risks, multiple mutually exclusive events):
+
+    ```{python}
+    y = Surv.multistate(time=[5, 6, 4], event=[1, 0, 2], states=("pcm", "death"))
+    y
+    ```
+
+    See Also
+    --------
+    Surv.right : Right-censored response constructor
+    Surv.left : Left-censored response constructor
+    Surv.counting : Counting-process response constructor (with left truncation)
+    Surv.interval : Interval-censored response constructor
+    Surv.multistate : Multi-state / competing-risks response constructor
+    CensoringType : Enumeration of censoring types
     """
 
     type: CensoringType
