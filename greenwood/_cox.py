@@ -47,10 +47,9 @@ class ZPHResult:
 
     ```{python}
     import greenwood as gw
-    from greenwood import Surv
 
     lung = gw.load_dataset("lung")
-    y = Surv.right(lung["time"], event=(lung["status"] == 2))
+    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
     cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
     zph = cox.cox_zph()
     zph
@@ -362,10 +361,9 @@ class CoxPH:
 
     ```{python}
     import greenwood as gw
-    from greenwood import Surv
 
     lung = gw.load_dataset("lung")
-    y = Surv.right(lung["time"], event=(lung["status"] == 2))
+    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
     cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
     cox
     ```
@@ -375,7 +373,6 @@ class CoxPH:
     below.
 
     ```{python}
-import greenwood as gw
     gw.tidy(cox, exponentiate=True)
     ```
     """
@@ -444,7 +441,8 @@ import greenwood as gw
         response and `lung` data from the class example above:
 
         ```{python}
-import greenwood as gw
+        import greenwood as gw
+        
         gw.CoxPH().fit(y, lung[["age", "ph.ecog"]], strata=lung["sex"]).to_pandas()
         ```
 

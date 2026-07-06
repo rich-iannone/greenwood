@@ -66,10 +66,9 @@ class CoxNet:
 
     ```{python}
     import greenwood as gw
-    from greenwood import Surv
 
     lung = gw.load_dataset("lung")
-    y = Surv.right(lung["time"], event=(lung["status"] == 2))
+    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
     cols = ["age", "sex", "ph.ecog", "ph.karno", "wt.loss"]
     coxnet = gw.CoxNet(penalizer=0.05, l1_ratio=1.0).fit(y, lung[cols])
     coxnet

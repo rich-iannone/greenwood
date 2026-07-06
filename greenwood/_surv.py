@@ -776,9 +776,7 @@ class Surv:
 
         Counting-process data with late entry is truncated:
 
-        ```{python}
-        import greenwood as gw
-        
+        ```{python}        
         y_counting = gw.Surv.counting(start=[0, 2, 1], stop=[5, 6, 4], event=[1, 0, 1])
         y_counting.is_truncated
         ```
@@ -814,9 +812,7 @@ class Surv:
 
         Multi-state data with competing risks:
 
-        ```{python}
-        import greenwood as gw
-        
+        ```{python}        
         y_multi = gw.Surv.multistate(
             time=[5, 6, 7, 8],
             event=[1, 2, 0, 1],
@@ -858,9 +854,7 @@ class Surv:
 
         For multi-state data, this gives the total event count across all states:
 
-        ```{python}
-        import greenwood as gw
-        
+        ```{python}        
         y_multi = gw.Surv.multistate(
             time=[5, 6, 7, 8],
             event=[1, 2, 0, 1],

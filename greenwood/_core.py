@@ -44,10 +44,9 @@ class EventTable:
 
     ```{python}
     import greenwood as gw
-    from greenwood import Surv
 
     lung = gw.load_dataset("lung")
-    y = Surv.right(lung["time"], event=(lung["status"] == 2))
+    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
     et = gw.event_table(y)
     et.to_pandas()
     ```
@@ -232,10 +231,9 @@ def event_table(surv: Surv, *, group: Any = None, weights: Any = None) -> EventT
 
     ```{python}
     import greenwood as gw
-    from greenwood import Surv
 
     lung = gw.load_dataset("lung")
-    y = Surv.right(lung["time"], event=(lung["status"] == 2))
+    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
     gw.event_table(y).to_pandas()
     ```
 
@@ -243,7 +241,8 @@ def event_table(surv: Surv, *, group: Any = None, weights: Any = None) -> EventT
     per group.
 
     ```{python}
-import greenwood as gw
+    import greenwood as gw
+    
     gw.event_table(y, group=lung["sex"]).to_pandas()
     ```
     """

@@ -104,10 +104,9 @@ def cross_validate(
 
     ```{python}
     import greenwood as gw
-    from greenwood import Surv
 
     lung = gw.load_dataset("lung")
-    y = Surv.right(lung["time"], event=(lung["status"] == 2))
+    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 
     gw.cross_validate(gw.CoxPH(), y, lung[["age", "sex"]], k=5, metric="concordance", seed=1)
     ```

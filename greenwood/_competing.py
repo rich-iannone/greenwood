@@ -114,12 +114,11 @@ class AalenJohansen:
     ```{python}
     import numpy as np
     import greenwood as gw
-    from greenwood import Surv
 
     mg = gw.load_dataset("mgus2")
     etime = np.where(mg["pstat"] == 1, mg["ptime"], mg["futime"])
     cause = np.where(mg["pstat"] == 1, 1, 2 * mg["death"])
-    y = Surv.multistate(etime, event=cause, states=("pcm", "death"))
+    y = gw.Surv.multistate(etime, event=cause, states=("pcm", "death"))
     aj = gw.AalenJohansen().fit(y)
     aj
     ```
@@ -167,7 +166,8 @@ class AalenJohansen:
         response from the class example above:
 
         ```{python}
-import greenwood as gw
+        import greenwood as gw
+        
         gw.AalenJohansen().fit(y, by=mg["sex"])
         ```
         """
@@ -357,12 +357,11 @@ class FineGray:
     ```{python}
     import numpy as np
     import greenwood as gw
-    from greenwood import Surv
 
     mg = gw.load_dataset("mgus2")
     etime = np.where(mg["pstat"] == 1, mg["ptime"], mg["futime"])
     cause = np.where(mg["pstat"] == 1, 1, 2 * mg["death"])
-    y = Surv.multistate(etime, event=cause, states=("pcm", "death"))
+    y = gw.Surv.multistate(etime, event=cause, states=("pcm", "death"))
     fg = gw.FineGray("pcm").fit(y, mg[["age", "sex"]])
     fg
     ```
@@ -372,7 +371,8 @@ class FineGray:
     is reused by the method examples below.
 
     ```{python}
-import greenwood as gw
+    import greenwood as gw
+    
     gw.tidy(fg, exponentiate=True)
     ```
     """
@@ -423,7 +423,8 @@ import greenwood as gw
         the class example above:
 
         ```{python}
-import greenwood as gw
+        import greenwood as gw
+        
         gw.FineGray("pcm").fit(y, mg[["age", "sex"]])
         ```
         """
@@ -816,7 +817,8 @@ class MultiState:
         built in the class example above:
 
         ```{python}
-import greenwood as gw
+        import greenwood as gw
+        
         gw.MultiState().fit(start, stop, state, event, states=("mgus", "pcm", "death"))
         ```
         """
