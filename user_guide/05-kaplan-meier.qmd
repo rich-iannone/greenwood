@@ -123,7 +123,7 @@ The three confidence interval transforms give the same point estimates; they dif
 they construct the interval. Here is a comparison to help you choose:
 
 ```{python}
-import pandas as pd
+import polars as pl
 
 # Fit KM with each transform
 km_plain = gw.KaplanMeier(conf_type="plain").fit(y)
@@ -135,11 +135,11 @@ results = []
 for km, name in [(km_plain, "plain"), (km_log, "log"), (km_loglog, "log-log")]:
     df = km.to_polars()
     # Select every 30th row to show interval differences across follow-up
-    df_subset = df.iloc[::30][["time", "estimate", "conf_low", "conf_high"]]
-    df_subset["transform"] = name
+    df_subset = df[::30].select(["time", "estimate", "conf_low", "conf_high"])
+    df_subset = df_subset.with_columns(pl.lit(name).alias("transform"))
     results.append(df_subset)
 
-pd.concat(results).reset_index(drop=True)
+pl.concat(results)
 ```
 
 **Transform summary:**
