@@ -262,10 +262,6 @@ import greenwood as gw
         its hazard ratio. Terms set to zero by the lasso remain in the table with zero
         estimates.
 
-        Parameters
-        ----------
-        None
-
         Returns
         -------
         pandas.DataFrame
@@ -300,10 +296,6 @@ import greenwood as gw
         its hazard ratio. Terms set to zero by the lasso remain in the table with zero
         estimates.
 
-        Parameters
-        ----------
-        None
-
         Returns
         -------
         polars.DataFrame
@@ -336,10 +328,6 @@ import greenwood as gw
 
         This method exports one row per term with the penalized coefficient estimate and
         its hazard ratio for Arrow-based interoperability.
-
-        Parameters
-        ----------
-        None
 
         Returns
         -------

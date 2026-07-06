@@ -78,10 +78,6 @@ class EventTable:
         This method exports the event-table rows to pandas with one row per unique exit
         time and columns for the risk set, events, censorings, and optional strata labels.
 
-        Parameters
-        ----------
-        None
-
         Returns
         -------
         pandas.DataFrame
@@ -116,10 +112,6 @@ class EventTable:
         This method exports the event-table rows to Polars with one row per unique exit
         time and columns for the risk set, events, censorings, and optional strata labels.
 
-        Parameters
-        ----------
-        None
-
         Returns
         -------
         polars.DataFrame
@@ -153,10 +145,6 @@ class EventTable:
 
         This method exports the event-table rows to an Arrow table, preserving the same
         columns used in the pandas and Polars exports for efficient interoperability.
-
-        Parameters
-        ----------
-        None
 
         Returns
         -------

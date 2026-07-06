@@ -324,10 +324,6 @@ import greenwood as gw
         This method exports one row per term, including the intercept, with coefficient
         estimates, standard errors, Wald statistics, p-values, and confidence limits.
 
-        Parameters
-        ----------
-        None
-
         Returns
         -------
         pandas.DataFrame
@@ -362,10 +358,6 @@ import greenwood as gw
         This method exports one row per term, including the intercept, with coefficient
         estimates, standard errors, Wald statistics, p-values, and confidence limits.
 
-        Parameters
-        ----------
-        None
-
         Returns
         -------
         polars.DataFrame
@@ -399,10 +391,6 @@ import greenwood as gw
 
         This method exports one row per term, including the intercept, with coefficient
         estimates, standard errors, Wald statistics, p-values, and confidence limits.
-
-        Parameters
-        ----------
-        None
 
         Returns
         -------

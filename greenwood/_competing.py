@@ -239,10 +239,6 @@ import greenwood as gw
         including the risk set, cumulative-incidence estimate, standard error, confidence
         limits, and optional strata labels.
 
-        Parameters
-        ----------
-        None
-
         Returns
         -------
         pandas.DataFrame
@@ -278,10 +274,6 @@ import greenwood as gw
         including the risk set, cumulative-incidence estimate, standard error, confidence
         limits, and optional strata labels.
 
-        Parameters
-        ----------
-        None
-
         Returns
         -------
         polars.DataFrame
@@ -315,10 +307,6 @@ import greenwood as gw
 
         This method exports the Aalen-Johansen fit to Arrow, preserving the same columns
         as the pandas and Polars exports for efficient interchange.
-
-        Parameters
-        ----------
-        None
 
         Returns
         -------
@@ -919,10 +907,6 @@ import greenwood as gw
         This method exports one row per distinct time and one column per state, where each
         state column contains its occupancy probability at that time.
 
-        Parameters
-        ----------
-        None
-
         Returns
         -------
         pandas.DataFrame
@@ -956,10 +940,6 @@ import greenwood as gw
         This method exports one row per distinct time and one column per state, where each
         state column contains its occupancy probability at that time.
 
-        Parameters
-        ----------
-        None
-
         Returns
         -------
         polars.DataFrame
@@ -992,10 +972,6 @@ import greenwood as gw
 
         This method exports one row per distinct time and one column per state to Arrow
         for efficient interchange with Arrow-based tools.
-
-        Parameters
-        ----------
-        None
 
         Returns
         -------

@@ -521,10 +521,6 @@ import greenwood as gw
         including risk-set counts, the survival estimate, its standard error, confidence
         limits, and optional strata labels.
 
-        Parameters
-        ----------
-        None
-
         Returns
         -------
         pandas.DataFrame
@@ -560,10 +556,6 @@ import greenwood as gw
         including risk-set counts, the survival estimate, its standard error, confidence
         limits, and optional strata labels.
 
-        Parameters
-        ----------
-        None
-
         Returns
         -------
         polars.DataFrame
@@ -597,10 +589,6 @@ import greenwood as gw
 
         This method exports the Kaplan-Meier step function to Arrow, preserving the same
         columns as the pandas and Polars exports for efficient interchange.
-
-        Parameters
-        ----------
-        None
 
         Returns
         -------
@@ -790,10 +778,6 @@ import greenwood as gw
         including risk-set counts, the cumulative hazard estimate, its standard error,
         confidence limits, and optional strata labels.
 
-        Parameters
-        ----------
-        None
-
         Returns
         -------
         pandas.DataFrame
@@ -829,10 +813,6 @@ import greenwood as gw
         including risk-set counts, the cumulative hazard estimate, its standard error,
         confidence limits, and optional strata labels.
 
-        Parameters
-        ----------
-        None
-
         Returns
         -------
         polars.DataFrame
@@ -866,10 +846,6 @@ import greenwood as gw
 
         This method exports the Nelson-Aalen estimate to Arrow, preserving the same
         columns as the pandas and Polars exports for efficient interchange.
-
-        Parameters
-        ----------
-        None
 
         Returns
         -------
