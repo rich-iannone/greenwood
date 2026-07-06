@@ -29,14 +29,14 @@ def test_predict_conditional_after_identity(lung_surv) -> None:  # type: ignore[
     nd = df[["age", "sex"]].iloc[:2]
     times = [200, 400, 600]
     c = 150.0
-    s_t = cox.predict(nd, type="survival", times=times)
-    s_c = cox.predict(nd, type="survival", times=[c])
-    s_cond = cox.predict(nd, type="survival", times=times, conditional_after=c)
+    s_t = cox.predict(nd, type="survival", times=times, format="pandas")
+    s_c = cox.predict(nd, type="survival", times=[c], format="pandas")
+    s_cond = cox.predict(nd, type="survival", times=times, conditional_after=c, format="pandas")
     for col in ("subject_1", "subject_2"):
         np.testing.assert_allclose(
             s_cond[col].to_numpy() * float(s_c[col].iloc[0]), s_t[col].to_numpy(), atol=1e-12
         )
-    s0 = cox.predict(nd, type="survival", times=times, conditional_after=0.0)
+    s0 = cox.predict(nd, type="survival", times=times, conditional_after=0.0, format="pandas")
     np.testing.assert_allclose(
         s0[["subject_1", "subject_2"]].to_numpy(), s_t[["subject_1", "subject_2"]].to_numpy()
     )
@@ -46,7 +46,7 @@ def test_predict_conditional_after_per_subject(lung_surv) -> None:  # type: igno
     df, y = lung_surv
     cox = CoxPH().fit(y, df[["age", "sex"]])
     nd = df[["age", "sex"]].iloc[:2]
-    out = cox.predict(nd, type="survival", times=[300, 600], conditional_after=[100.0, 250.0])
+    out = cox.predict(nd, type="survival", times=[300, 600], conditional_after=[100.0, 250.0], format="pandas")
     assert out.shape == (2, 3)
     assert ((out.iloc[:, 1:] >= 0) & (out.iloc[:, 1:] <= 1)).all().all()
 
@@ -223,7 +223,7 @@ def test_predict_unknown_type(lung_surv) -> None:  # type: ignore[no-untyped-def
 def test_predict_survival_in_unit_interval(lung_surv) -> None:  # type: ignore[no-untyped-def]
     df, y = lung_surv
     cox = CoxPH().fit(y, df[["age", "sex"]])
-    surv = cox.predict(df[["age", "sex"]].head(3), type="survival", times=[100, 500])
+    surv = cox.predict(df[["age", "sex"]].head(3), type="survival", times=[100, 500], format="pandas")
     values = surv.drop(columns="time").to_numpy()
     assert np.all((values >= 0) & (values <= 1))
 
