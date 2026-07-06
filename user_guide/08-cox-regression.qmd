@@ -206,6 +206,78 @@ where the event occurred. Left truncation and delayed entry use the same countin
 response.
 :::
 
+::: {.callout-important}
+## Subject timelines must start at 0
+Each subject needs their own timeline starting at 0 (subject-relative time), not calendar time.
+
+**Correct** (subject-relative): Each subject's earliest interval starts at 0
+- Subject 1: (0, 4], (4, 10] — personal follow-up time
+- Subject 2: (0, 7] — personal follow-up time
+
+**Incorrect** (calendar time): Subjects enter the study at different dates
+- Subject 1: (2024-01-01, 2024-01-04], (2024-01-04, 2024-01-10]
+- Subject 2: (2024-06-15, 2024-06-22] — different calendar dates
+
+If your data uses calendar time (e.g., from a wide dataset where subjects enroll on different dates),
+subtract each subject's entry date from their start/stop times.
+
+**Pandas**:
+
+```{python}
+import pandas as pd
+
+# Example data in calendar time (subjects enroll at different dates)
+df = pd.DataFrame({
+    'subject': [1, 1, 2, 2, 3, 3],
+    'start': [0, 10, 365, 375, 730, 740],      # Different enrollment dates
+    'stop': [10, 25, 375, 390, 740, 755],
+    'event': [0, 1, 0, 1, 0, 1]
+})
+
+# Convert calendar time to subject-relative time (pandas)
+df['entry_date'] = df.groupby('subject')['start'].transform('min')
+df['start_relative'] = df['start'] - df['entry_date']
+df['stop_relative'] = df['stop'] - df['entry_date']
+
+# Drop helper column
+df = df.drop(columns=['entry_date'])
+df
+```
+
+**Polars**:
+
+```{python}
+import polars as pl
+
+# Example data in calendar time (subjects enroll at different dates)
+df = pl.DataFrame({
+    'subject': [1, 1, 2, 2, 3, 3],
+    'start': [0, 10, 365, 375, 730, 740],      # Different enrollment dates
+    'stop': [10, 25, 375, 390, 740, 755],
+    'event': [0, 1, 0, 1, 0, 1]
+})
+
+# Convert calendar time to subject-relative time (polars)
+df = df.with_columns([
+    pl.col('start').min().over('subject').alias('entry_date')
+]).with_columns([
+    (pl.col('start') - pl.col('entry_date')).alias('start_relative'),
+    (pl.col('stop') - pl.col('entry_date')).alias('stop_relative')
+]).drop('entry_date')
+
+df
+```
+
+Now you can use `start_relative` and `stop_relative` in `Surv.counting()`.
+
+**Note**: Greenwood will warn if it detects counting-process data where subjects don't start at 0,
+as this usually indicates an error in data preparation.
+
+This matters because risk sets are formed by subjects at risk at each event time. Using calendar
+time instead of subject-relative time creates an imbalance where early times have many subjects
+at risk and late times have few, distorting the baseline hazard and model coefficients.
+:::
+
 ## Robust and clustered standard errors
 
 By default, the Cox model uses the model-based (Fisher information) standard errors. When the
