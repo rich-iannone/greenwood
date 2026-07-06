@@ -268,6 +268,77 @@ def _design_matrix(covariates: Any, data: Any = None) -> tuple[Array, list[str]]
     return np.column_stack(columns), names
 
 
+def _to_dataframe(data: dict[str, Any], format: str | None = None) -> Any:
+    """Convert a dict to a DataFrame in the requested format.
+
+    Parameters
+    ----------
+    data
+       Dictionary of column names to arrays/lists.
+    format
+       Output format: `None` (default), `"pandas"`, `"polars"`, or `"pyarrow"`.
+
+       - `None` (default): Auto-detects and tries Polars first, falls back to Pandas,
+         then Pyarrow. Raises error if no DataFrame library is available.
+       - `"pandas"`: returns pandas.DataFrame.
+       - `"polars"`: returns polars.DataFrame.
+       - `"pyarrow"`: returns pyarrow.Table.
+
+    Returns
+    -------
+    pandas.DataFrame, polars.DataFrame, or pyarrow.Table
+       The data in the requested format.
+    """
+    if format is None:
+       # Try Polars first (most efficient), then pandas, then pyarrow
+       try:
+           import polars as pl  # pyright: ignore[reportMissingImports]
+           return pl.DataFrame(data)
+       except ImportError:
+           try:
+               import pandas as pd
+               return pd.DataFrame(data)
+           except ImportError:
+               try:
+                   import pyarrow as pa
+                   return pa.table(data)
+               except ImportError as e:
+                   raise ImportError(
+                       "No DataFrame library found. Install one of: pandas, polars, or pyarrow"
+                   ) from e
+
+    if format == "pandas":
+       try:
+           import pandas as pd
+       except ImportError as e:
+           raise ImportError(
+               "pandas is required for format='pandas'. Install it with: pip install pandas"
+           ) from e
+       return pd.DataFrame(data)
+
+    if format == "polars":
+       try:
+           import polars as pl  # pyright: ignore[reportMissingImports]
+       except ImportError as e:
+           raise ImportError(
+               "polars is required for format='polars'. Install it with: pip install polars"
+           ) from e
+       return pl.DataFrame(data)
+
+    if format == "pyarrow":
+       try:
+           import pyarrow as pa
+       except ImportError as e:
+           raise ImportError(
+               "pyarrow is required for format='pyarrow'. Install it with: pip install pyarrow"
+           ) from e
+       return pa.table(data)
+
+    raise ValueError(
+       f"Unknown format {format!r}; use 'pandas', 'polars', 'pyarrow', or None for auto-detect"
+    )
+
+
 def _cox_terms(
     beta: Array,
     x: Array,
