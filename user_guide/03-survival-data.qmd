@@ -202,11 +202,11 @@ print("round-trips exactly:", restored.to_json() == y.to_json())
 ```
 
 For working in memory rather than as text, `to_dict` and `from_dict` perform the same
-round-trip with a plain Python dictionary, and `to_pandas()`, `to_polars()`, or `to_arrow()`
+round-trip with a plain Python dictionary, and `to_polars()`, `to_arrow()`, or `to_pandas()`
 give a tidy, one-row-per-subject view that is convenient for inspection or export.
 
 ```{python}
-y.to_pandas()
+y.to_polars()
 ```
 
 The dictionary form is the same structure `to_json` serializes, so `gw.Surv.from_dict` rebuilds
@@ -224,7 +224,7 @@ table is what Kaplan-Meier, the log-rank test, and Cox all build on, and you can
 directly with `event_table`. It matches R's `survfit` tabulation.
 
 ```{python}
-gw.event_table(y).to_pandas()
+gw.event_table(y).to_polars()
 ```
 
 Each row is a distinct time. The `n_risk` column counts the subjects under observation just
@@ -232,7 +232,7 @@ before that time, `n_event` the events at it, and `n_censor` the censorings. Pas
 tabulate within strata, which adds a `strata` column.
 
 ```{python}
-gw.event_table(y, group=lung["sex"]).to_pandas()
+gw.event_table(y, group=lung["sex"]).to_polars()
 ```
 
 You rarely need this table directly, but it is the shared foundation the estimators are built

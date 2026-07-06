@@ -53,7 +53,7 @@ zph = cox.cox_zph()
 zph
 ```
 
-For the full per-covariate breakdown, call `to_pandas()` on that result. This is the table
+For the full per-covariate breakdown, call `to_polars()` on that result. This is the table
 you will read most often.
 
 ```{python}
@@ -157,10 +157,10 @@ stratified = gw.CoxPH().fit(y, lung[["age", "ph.ecog"]], strata=lung["sex"])
 ```
 
 As with any fitted model, we can print `stratified` for a summary, or read its coefficient
-table as data with `to_pandas()`.
+table as data with `to_polars()`.
 
 ```{python}
-stratified.to_pandas()
+stratified.to_arrow()
 ```
 
 Notice that the stratifying variable, `sex`, does not appear as a coefficient. Its effect is
@@ -175,7 +175,7 @@ Lin-Wei sandwich estimator, and pass `cluster` to group correlated observations.
 
 ```{python}
 robust = gw.CoxPH().fit(y, lung[["age", "sex"]], robust=True)
-robust.to_pandas()[["term", "std_error"]]
+robust.to_polars()[["term", "std_error"]]
 ```
 
 The coefficients are unchanged; only the standard errors, and therefore the p-values and

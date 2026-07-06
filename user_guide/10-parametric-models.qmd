@@ -173,7 +173,7 @@ by `df`, the number of spline degrees of freedom.
 
 ```{python}
 rp = gw.RoystonParmar(df=3).fit(y, lung[["age", "sex"]])
-rp.to_pandas()
+rp.to_polars()
 ```
 
 The `gamma` terms are the spline coefficients for the baseline log cumulative hazard, and the

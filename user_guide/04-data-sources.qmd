@@ -107,10 +107,10 @@ y_pl
 ```
 
 Fitting a Cox model on the Polars-backed response and covariates, then viewing the result with
-`to_pandas()`, gives the same coefficient table you would get from the pandas frame.
+`to_polars()`, gives the same coefficient table you would get from the Polars frame.
 
 ```{python}
-gw.CoxPH().fit(y_pl, lung_pl[["age", "sex"]]).to_pandas()
+gw.CoxPH().fit(y_pl, lung_pl[["age", "sex"]]).to_polars()
 ```
 
 ::: {.callout-tip}
@@ -123,7 +123,7 @@ frame is a valid source.
 
 ## Tidy output frames
 
-Every estimator and model returns its results as tidy data frames, through the `to_pandas()`,
+Every estimator and model returns its results as tidy data frames, through the `to_polars()`,
 `to_polars()`, `to_arrow()` methods and through the `tidy` and `glance` functions. These come back as pandas data frames by
 default, which makes them easy to inspect, filter, join, or pass on to a plotting or table
 library.

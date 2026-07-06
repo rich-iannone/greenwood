@@ -64,10 +64,10 @@ cox
 ```
 
 The printed summary is meant for reading. When you want the numbers as data, to filter, join,
-or plot them, ask for the coefficient table with `to_pandas()`, which returns a tidy frame.
+or plot them, ask for the coefficient table with `to_polars()`, which returns a tidy frame.
 
 ```{python}
-cox.to_pandas()
+cox.to_polars()
 ```
 
 The coefficient table reports, for each covariate, the estimated log hazard ratio
@@ -96,8 +96,8 @@ cox_breslow = gw.CoxPH(ties="breslow").fit(y, lung[["age", "sex"]])
 
 # Coefficients are nearly identical unless ties are very common
 pd.DataFrame({
-    "Efron": cox_efron.to_pandas()["estimate"],
-    "Breslow": cox_breslow.to_pandas()["estimate"],
+    "Efron": cox_efron.to_polars()["estimate"],
+    "Breslow": cox_breslow.to_polars()["estimate"],
 })
 ```
 
@@ -152,7 +152,7 @@ also the default in R. The Breslow approximation is available and is faster but 
 accurate when ties are common.
 
 ```{python}
-gw.CoxPH(ties="breslow").fit(y, lung[["age", "sex"]]).to_pandas()[["term", "estimate"]]
+gw.CoxPH(ties="breslow").fit(y, lung[["age", "sex"]]).to_polars()[["term", "estimate"]]
 ```
 
 Unless you have a specific reason to match another tool's Breslow output, the Efron default
@@ -191,7 +191,7 @@ at day 10. We pass the interval endpoints to `gw.Surv.counting` and fit as usual
 
 y_tv = gw.Surv.counting(start=intervals["start"], stop=intervals["stop"], event=intervals["event"])
 
-gw.CoxPH().fit(y_tv, intervals[["treated"]]).to_pandas()[["term", "estimate", "p_value"]]
+gw.CoxPH().fit(y_tv, intervals[["treated"]]).to_polars()[["term", "estimate", "p_value"]]
 ```
 
 The risk set at each event time correctly includes only the intervals that span it, using each
@@ -244,7 +244,7 @@ formula support uses [formulaic](https://matthewwardrop.github.io/formulaic/), i
 the `formula` extra.
 
 ```{python}
-gw.CoxPH().fit(y, "age + sex", data=lung).to_pandas()[["term", "estimate"]]
+gw.CoxPH().fit(y, "age + sex", data=lung).to_polars()[["term", "estimate"]]
 ```
 
 Categorical columns are expanded into indicator terms automatically, and interactions are
@@ -252,7 +252,7 @@ written with `*` (which expands to the main effects plus their product) or `:` (
 alone). A term like `C(ph.ecog)` forces a column to be treated as categorical.
 
 ```{python}
-gw.CoxPH().fit(y, "age * sex", data=lung).to_pandas()[["term", "estimate"]]
+gw.CoxPH().fit(y, "age * sex", data=lung).to_polars()[["term", "estimate"]]
 ```
 
 Rows with a missing value in any formula term are dropped, the same complete-case rule used
