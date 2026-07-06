@@ -157,7 +157,7 @@ def cross_validate(
         if metric == "concordance":
             scores.append(float(concordance_index(surv_test, _risk_score(fold_model, x_test))))
         else:
-            frame = fold_model.predict(x_test, type="survival", times=brier_times)
+            frame = fold_model.predict(x_test, type="survival", times=brier_times, format="pandas")
             probs = frame.iloc[:, 1:].to_numpy().T  # (n_test, n_times)
             scores.append(float(integrated_brier_score(surv_test, probs, brier_times)))
 

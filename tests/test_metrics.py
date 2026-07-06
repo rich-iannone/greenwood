@@ -51,7 +51,7 @@ def test_brier_in_unit_range() -> None:
     y = Surv.right(df["time"], event=(df["status"] == 2))
     cox = gw.CoxPH().fit(y, df[["age", "sex"]])
     times = np.array([180.0, 365.0])
-    pred = cox.predict(df[["age", "sex"]], type="survival", times=times)
+    pred = cox.predict(df[["age", "sex"]], type="survival", times=times, format="pandas")
     probs = pred[[f"subject_{i + 1}" for i in range(len(df))]].to_numpy().T
     bs = gw.brier_score(y, probs, times)
     assert np.all((bs >= 0) & (bs <= 1))
@@ -68,7 +68,7 @@ def test_integrated_brier_between_pointwise() -> None:
     y = Surv.right(df["time"], event=(df["status"] == 2))
     cox = gw.CoxPH().fit(y, df[["age", "sex"]])
     times = np.array([180.0, 365.0, 540.0])
-    pred = cox.predict(df[["age", "sex"]], type="survival", times=times)
+    pred = cox.predict(df[["age", "sex"]], type="survival", times=times, format="pandas")
     probs = pred[[f"subject_{i + 1}" for i in range(len(df))]].to_numpy().T
     bs = gw.brier_score(y, probs, times)
     ibs = gw.integrated_brier_score(y, probs, times)
@@ -79,7 +79,7 @@ def test_calibration_structure_and_coverage() -> None:
     df = gw.load_dataset("lung", backend="pandas")
     y = Surv.right(df["time"], event=(df["status"] == 2))
     cox = gw.CoxPH().fit(y, df[["age", "sex"]])
-    pred = cox.predict(df[["age", "sex"]], type="survival", times=[365.0]).iloc[0, 1:].to_numpy()
+    pred = cox.predict(df[["age", "sex"]], type="survival", times=[365.0], format="pandas").iloc[0, 1:].to_numpy()
     cal = gw.calibration(y, pred, 365.0, n_bins=5)
     assert list(cal.columns) == [
         "bin",
@@ -117,7 +117,7 @@ def test_calibration_diagonal_on_well_specified_model() -> None:
     y = Surv.right(time, event=event)
     cox = gw.CoxPH().fit(y, x.reshape(-1, 1))
     horizon = float(np.quantile(time, 0.4))
-    pred = cox.predict(x.reshape(-1, 1), type="survival", times=[horizon]).iloc[0, 1:].to_numpy()
+    pred = cox.predict(x.reshape(-1, 1), type="survival", times=[horizon], format="pandas").iloc[0, 1:].to_numpy()
     cal = gw.calibration(y, pred, horizon, n_bins=10)
     # A correctly specified model is close to the diagonal on average.
     assert np.mean(np.abs(cal["predicted"] - cal["observed"])) < 0.05
