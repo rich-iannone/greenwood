@@ -846,6 +846,7 @@ class CoxPH:
         times: Any = None,
         conditional_after: Any = None,
         ci: bool = False,
+        format: str | None = None,
     ) -> Any:
         """Predict from the fitted model.
 
@@ -879,12 +880,21 @@ class CoxPH:
         ci
             If `True` (survival only), include confidence intervals (`_lower` and `_upper`
             columns). Default is `False`.
+        format
+            Output format (for `type="survival"` only): `None` (default), `"pandas"`,
+            `"polars"`, or `"pyarrow"`.
+
+            - `None` (default): Auto-detects and tries Polars first, falls back to Pandas,
+              then Pyarrow. Raises an error if no DataFrame library is installed.
+            - `"pandas"`: returns pandas.DataFrame.
+            - `"polars"`: returns polars.DataFrame.
+            - `"pyarrow"`: returns pyarrow.Table.
 
         Returns
         -------
-        ndarray or pd.DataFrame
+        ndarray or DataFrame
             For `type="lp"` or `"risk"`, returns a 1-D array with one prediction per row.
-            For `type="survival"`, returns a pandas DataFrame with rows for each time point
+            For `type="survival"`, returns a DataFrame with rows for each time point
             and columns for each subject (named `subject_1`, `subject_2`, etc.), optionally
             with `_lower` and `_upper` columns for confidence intervals.
 
@@ -918,8 +928,6 @@ class CoxPH:
         if type == "risk":
             return np.exp(self._linear_predictor(x))
         if type == "survival":
-            import pandas as pd
-
             if self._strata_labels is not None:
                 raise NotImplementedError(
                     "Survival prediction for stratified models is not yet supported."
@@ -939,7 +947,7 @@ class CoxPH:
                 h0_c = self._baseline_cumhaz_at(base_times, base_cumhaz, conditional_after, x)
                 delta = np.clip(h0[:, None] - h0_c[None, :], 0.0, None)  # (n_times, n_subj)
                 surv = np.exp(-delta * risk[None, :])
-            columns = {}
+            columns = {"time": query}
             if ci:
                 se_h = self._cumhaz_se(x, query)  # (n_times, n_subj)
                 z = float(norm.ppf(1.0 - (1.0 - self.conf_level) / 2.0))
@@ -952,9 +960,7 @@ class CoxPH:
             else:
                 for i in range(x.shape[0]):
                     columns[f"subject_{i + 1}"] = surv[:, i]
-            frame = pd.DataFrame(columns)
-            frame.insert(0, "time", query)
-            return frame
+            return _to_dataframe(columns, format=format)
         raise ValueError(f"Unknown predict type {type!r}; use 'lp', 'risk', or 'survival'.")
 
     def _cumhaz_se(self, x_new: Array, query: Array) -> Array:
