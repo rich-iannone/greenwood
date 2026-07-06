@@ -115,7 +115,7 @@ Advanced estimators for complex survival problems and specialized applications.
 
 Alternative hazard structures and zero-inflated survival models.
 
-- Aalen additive model for additive (vs. proportional) hazard regression
+- Aalen additive model for additive (vs. proportional) hazard regression with constrained optimization to ensure non-negative hazards and proper survival functions
 - Mixture cure models for populations with long-term survivors
 - Non-parametric maximum likelihood estimation (NPMLE) for cure fractions
 - Goodness-of-fit tests and model comparison for cure models
