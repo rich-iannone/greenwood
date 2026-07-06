@@ -157,8 +157,21 @@ def cross_validate(
         if metric == "concordance":
             scores.append(float(concordance_index(surv_test, _risk_score(fold_model, x_test))))
         else:
-            frame = fold_model.predict(x_test, type="survival", times=brier_times, format="pandas")
-            probs = frame.iloc[:, 1:].to_numpy().T  # (n_test, n_times)
+            frame = fold_model.predict(x_test, type="survival", times=brier_times)
+            # Extract subject columns (skip first column which is "time")
+            # Works with pandas, polars, or pyarrow without requiring pandas
+            try:
+                import polars as pl
+                if isinstance(frame, pl.DataFrame):
+                    # Polars: drop the first column and convert to numpy
+                    probs = frame[:, 1:].to_numpy().T  # (n_test, n_times)
+                else:
+                    # Assume pandas or pyarrow, try pandas first
+                    probs = frame.iloc[:, 1:].to_numpy().T  # (n_test, n_times)
+            except (ImportError, AttributeError):
+                # Fallback: use column names to get all but the first
+                cols = list(frame.columns)
+                probs = frame[cols[1:]].to_numpy().T  # (n_test, n_times)
             scores.append(float(integrated_brier_score(surv_test, probs, brier_times)))
 
     arr = np.asarray(scores)
