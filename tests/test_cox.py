@@ -296,3 +296,99 @@ def test_strata_length_checked(lung_surv) -> None:  # type: ignore[no-untyped-de
     df, y = lung_surv
     with pytest.raises(ValueError, match="strata"):
         CoxPH().fit(y, df[["age"]], strata=df["sex"].iloc[:-1])
+
+
+def test_counting_process_proper_data_no_warning() -> None:
+    """Counting-process data with subjects starting at 0 should not warn."""
+    import pandas as pd
+    import warnings
+    
+    df = pd.DataFrame({
+        "start": [0, 3, 0, 4, 0, 2],
+        "stop": [3, 10, 4, 12, 2, 8],
+        "event": [0, 1, 0, 1, 0, 1],
+        "x": [1.0, 1.0, 2.0, 2.0, 3.0, 3.0],
+    })
+    
+    surv = Surv.counting(start=df["start"], stop=df["stop"], event=df["event"])
+    
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        CoxPH().fit(surv, df[["x"]])
+        our_warnings = [x for x in w if "start time" in str(x.message).lower()]
+        assert len(our_warnings) == 0, "Should not warn for proper data starting at 0"
+
+
+def test_counting_process_mixed_start_times_warns() -> None:
+    """Counting-process data with mixed start times should warn."""
+    import pandas as pd
+    
+    df = pd.DataFrame({
+        "start": [0, 5, 0, 4, 100, 105],  # Subject 3 starts at 100
+        "stop": [5, 15, 4, 12, 105, 115],
+        "event": [0, 1, 0, 1, 0, 1],
+        "x": [1.0, 1.0, 2.0, 2.0, 3.0, 3.0],
+    })
+    
+    surv = Surv.counting(start=df["start"], stop=df["stop"], event=df["event"])
+    
+    with pytest.warns(UserWarning, match="start time.*calendar time"):
+        CoxPH().fit(surv, df[["x"]])
+
+
+def test_counting_process_large_gaps_warns() -> None:
+    """Counting-process data with large gaps in start times should warn."""
+    import pandas as pd
+    
+    df = pd.DataFrame({
+        "start": [0, 5, 200, 205],  # Large gap from 5 to 200
+        "stop": [5, 15, 205, 215],
+        "event": [0, 1, 0, 1],
+        "x": [1.0, 1.0, 2.0, 2.0],
+    })
+    
+    surv = Surv.counting(start=df["start"], stop=df["stop"], event=df["event"])
+    
+    with pytest.warns(UserWarning, match="start time.*calendar time"):
+        try:
+            CoxPH().fit(surv, df[["x"]])
+        except np.linalg.LinAlgError:
+            # Large gaps may cause numerical issues; that's expected
+            pass
+
+
+def test_counting_process_negative_start_warns() -> None:
+    """Counting-process data with negative start times should warn."""
+    import pandas as pd
+    
+    df = pd.DataFrame({
+        "start": [-5, 0, 0, 5],
+        "stop": [0, 10, 5, 15],
+        "event": [0, 1, 0, 1],
+        "x": [1.0, 1.0, 2.0, 2.0],
+    })
+    
+    surv = Surv.counting(start=df["start"], stop=df["stop"], event=df["event"])
+    
+    with pytest.warns(UserWarning, match="negative.*start time"):
+        CoxPH().fit(surv, df[["x"]])
+
+
+def test_right_censored_data_no_warning() -> None:
+    """Right-censored data should not trigger counting-process warnings."""
+    import pandas as pd
+    import warnings
+    
+    df = pd.DataFrame({
+        "time": [10, 20, 15, 25, 30],
+        "event": [1, 1, 0, 1, 1],
+        "x": [1.0, 2.0, 1.5, 2.5, 1.2],
+    })
+    
+    surv = Surv.right(df["time"], event=df["event"])
+    
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        CoxPH().fit(surv, df[["x"]])
+        our_warnings = [x for x in w if "start time" in str(x.message).lower()]
+        assert len(our_warnings) == 0, "Right-censored data should not warn about start times"
