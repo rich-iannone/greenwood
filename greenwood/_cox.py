@@ -1016,7 +1016,7 @@ class CoxPH:
 
     # -- residuals & diagnostics ---------------------------------------------
 
-    def residuals(self, type: str = "martingale") -> Any:
+    def residuals(self, type: str = "martingale", *, format: str | None = None) -> Any:
         """Return `"martingale"` or `"schoenfeld"` residuals.
 
         Martingale residuals are one per observation; Schoenfeld residuals are one row per
@@ -1028,12 +1028,23 @@ class CoxPH:
             Type of residuals to return: `"martingale"` (default) or `"schoenfeld"`.
             Martingale residuals are one value per observation. Schoenfeld residuals
             are one row per event with one column per covariate.
+        format
+            Output format (for `type="schoenfeld"` only): `None` (default), `"pandas"`,
+            `"polars"`, or `"pyarrow"`.
+
+            - `None` (default): Auto-detects and tries Polars first, falls back to Pandas,
+              then Pyarrow. Raises an error if no DataFrame library is installed.
+            - `"pandas"`: returns pandas.DataFrame.
+            - `"polars"`: returns polars.DataFrame.
+            - `"pyarrow"`: returns pyarrow.Table.
+            
+            Returns an array for `type="martingale"`.
 
         Returns
         -------
-        ndarray or pd.DataFrame
+        ndarray or DataFrame
             For `type="martingale"`, returns a 1-D array with one residual per observation.
-            For `type="schoenfeld"`, returns a pandas DataFrame with one row per event and
+            For `type="schoenfeld"`, returns a DataFrame with one row per event and
             one column per covariate, ordered by stratum and then event time.
 
         Examples
@@ -1059,11 +1070,10 @@ class CoxPH:
                 cumhaz_i[members] = h0 * risk[members]
             return self._event.astype(float) - cumhaz_i
         if type == "schoenfeld":
-            import pandas as pd
-
             residuals, _, _ = self._event_contributions()
             arr = np.array(residuals)
-            return pd.DataFrame({name: arr[:, j] for j, name in enumerate(self.term_names_)})
+            data = {name: arr[:, j] for j, name in enumerate(self.term_names_)}
+            return _to_dataframe(data, format=format)
         raise ValueError(f"Unknown residual type {type!r}; use 'martingale' or 'schoenfeld'.")
 
     def _event_contributions(self) -> tuple[list[Array], list[float], list[Array]]:
