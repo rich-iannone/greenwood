@@ -158,6 +158,24 @@ gw.CoxPH(ties="breslow").fit(y, lung[["age", "sex"]]).to_polars()[["term", "esti
 Unless you have a specific reason to match another tool's Breslow output, the Efron default
 is the right choice.
 
+::: {.callout-tip}
+## Flexibility in tie-handling methods
+
+Greenwood's support for both Efron and Breslow tie-handling methods gives you flexibility
+that is useful in several situations:
+
+- **Matching textbook examples**: If you're learning from a textbook that uses SAS (which
+  defaults to Breslow), you can use `ties="breslow"` to get results that match exactly.
+- **Comparing across tools**: If you're validating results across R, SAS, and Python, you
+  can switch the tie method in Greenwood to match any tool's output with a single parameter
+  change, rather than rewriting your analysis in a different language.
+- **Sensitivity analysis**: You can easily compare whether your results change substantially
+  between the two methods, which is a good diagnostic when ties are very common.
+
+Most analyses will stick with the default Efron method (which matches R), but this flexibility
+means you're never locked into one approach.
+:::
+
 ## Time-varying covariates
 
 Some covariates change during follow-up: a treatment that starts partway through, a lab value
