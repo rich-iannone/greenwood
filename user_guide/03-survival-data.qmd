@@ -182,8 +182,33 @@ except ValueError as error:
     print(error)
 ```
 
+Another common data quality issue is when a subject's entry time equals their exit time
+(zero follow-up time). This indicates a data problem: if a subject has no time at risk, they
+cannot experience an event. Greenwood catches this early:
+
+```{python}
+#| eval: false
+try:
+    # Subject enters at time 1, exits at time 1 (follow-up = 0)
+    gw.Surv.counting(start=[1, 0], stop=[1, 2], event=[1, 0])
+except ValueError as error:
+    print(error)
+```
+
+Output:
+
+```
+Each `start` must be strictly less than its `stop`.
+```
+
+If you encounter this error, check your data:
+
+- **Most common fix**: Exclude subjects with `start >= stop` (they have zero or negative follow-up time)
+- **Data quality check**: Why do some subjects have identical entry and exit times? Is this a data entry error?
+- **If intentional**: If the event truly occurred instantaneously, add a small epsilon to the stop time: `stop = start + 1e-10`
+
 A response also serializes to and from JSON without loss, which is useful for saving an
-analysis input or moving it between systems. Calling `to_json` returns a plain string, so you
+analysis input or moving it between systems. Calling `to_json()` returns a plain string, so you
 can write it to a file or send it over the wire. Here is the serialized form of the `lung`
 response, truncated to its first stretch so you can see the shape of it.
 
