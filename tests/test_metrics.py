@@ -80,7 +80,7 @@ def test_calibration_structure_and_coverage() -> None:
     y = Surv.right(df["time"], event=(df["status"] == 2))
     cox = gw.CoxPH().fit(y, df[["age", "sex"]])
     pred = cox.predict(df[["age", "sex"]], type="survival", times=[365.0], format="pandas").iloc[0, 1:].to_numpy()
-    cal = gw.calibration(y, pred, 365.0, n_bins=5)
+    cal = gw.calibration(y, pred, 365.0, n_bins=5, format="pandas")
     assert list(cal.columns) == [
         "bin",
         "n",
@@ -98,7 +98,7 @@ def test_calibration_single_bin_is_overall_km() -> None:
     # A constant prediction collapses to one bin; the observed is the overall KM at the time.
     df = gw.load_dataset("lung", backend="pandas")
     y = Surv.right(df["time"], event=(df["status"] == 2))
-    cal = gw.calibration(y, np.full(len(df), 0.5), 365.0, n_bins=3)
+    cal = gw.calibration(y, np.full(len(df), 0.5), 365.0, n_bins=3, format="pandas")
     assert len(cal) == 1
     km_at = float(gw.KaplanMeier().fit(y).predict([365.0])[0])
     np.testing.assert_allclose(cal["observed"].iloc[0], km_at)
@@ -118,7 +118,7 @@ def test_calibration_diagonal_on_well_specified_model() -> None:
     cox = gw.CoxPH().fit(y, x.reshape(-1, 1))
     horizon = float(np.quantile(time, 0.4))
     pred = cox.predict(x.reshape(-1, 1), type="survival", times=[horizon], format="pandas").iloc[0, 1:].to_numpy()
-    cal = gw.calibration(y, pred, horizon, n_bins=10)
+    cal = gw.calibration(y, pred, horizon, n_bins=10, format="pandas")
     # A correctly specified model is close to the diagonal on average.
     assert np.mean(np.abs(cal["predicted"] - cal["observed"])) < 0.05
 

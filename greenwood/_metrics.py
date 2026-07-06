@@ -105,7 +105,7 @@ def brier_score(surv: Surv, survival_prob: Any, times: Any) -> Array:
     cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
 
     times = [180, 365, 540]
-    surv = cox.predict(lung[["age", "sex"]], type="survival", times=times)
+    surv = cox.predict(lung[["age", "sex"]], type="survival", times=times, format="pandas")
     probs = surv.iloc[:, 1:].to_numpy().T   # shape (n_subjects, n_times)
     gw.brier_score(y, probs, times)
     ```
@@ -161,7 +161,7 @@ def integrated_brier_score(surv: Surv, survival_prob: Any, times: Any) -> float:
     cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
 
     times = [180, 365, 540]
-    surv = cox.predict(lung[["age", "sex"]], type="survival", times=times)
+    surv = cox.predict(lung[["age", "sex"]], type="survival", times=times, format="pandas")
     probs = surv.iloc[:, 1:].to_numpy().T   # shape (n_subjects, n_times)
     gw.integrated_brier_score(y, probs, times)
     ```
@@ -176,6 +176,7 @@ def integrated_brier_score(surv: Surv, survival_prob: Any, times: Any) -> float:
 
 def _survival_at(km: Any, time: float) -> tuple[float, float, float]:
     """Read a Kaplan-Meier estimate and its confidence limits at a single time."""
+    # Always convert KaplanMeier to pandas first (to_pandas() method)
     frame = km.to_pandas()
     grid = frame["time"].to_numpy()
     idx = int(np.searchsorted(grid, time, side="right")) - 1
@@ -186,7 +187,7 @@ def _survival_at(km: Any, time: float) -> tuple[float, float, float]:
 
 
 def calibration(
-    surv: Surv, predicted: Any, time: float, *, n_bins: int = 10, conf_level: float = 0.95
+    surv: Surv, predicted: Any, time: float, *, n_bins: int = 10, conf_level: float = 0.95, format: str | None = None
 ) -> Any:
     """Assess calibration of predicted survival probabilities at a fixed time.
 
@@ -209,11 +210,20 @@ def calibration(
         dropped, so ties in `predicted` may yield fewer rows.
     conf_level
         Confidence level for the observed (Kaplan-Meier) interval.
+    format
+        Output format for the returned DataFrame: `None` (default), `"pandas"`, `"polars"`,
+        or `"pyarrow"`.
+
+        - `None` (default): Auto-detects and prefers Polars if available, falls back to
+          Pandas, then Pyarrow. Raises error if no DataFrame library is available.
+        - `"pandas"`: returns pandas.DataFrame.
+        - `"polars"`: returns polars.DataFrame.
+        - `"pyarrow"`: returns pyarrow.Table.
 
     Returns
     -------
-    A pandas DataFrame with one row per bin: `bin`, `n`, `predicted` (mean), `observed`,
-    `observed_lower`, `observed_upper`.
+    A DataFrame with one row per bin: `bin`, `n`, `predicted` (mean), `observed`,
+    `observed_lower`, `observed_upper`. Format depends on `format` parameter.
 
     Examples
     --------
@@ -229,13 +239,12 @@ def calibration(
     y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
     cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
 
-    surv = cox.predict(lung[["age", "sex"]], type="survival", times=[365.0])
+    surv = cox.predict(lung[["age", "sex"]], type="survival", times=[365.0], format="pandas")
     predicted = surv.iloc[0, 1:].to_numpy()
     gw.calibration(y, predicted, 365.0, n_bins=5)
     ```
     """
-    import pandas as pd
-
+    from ._cox import _to_dataframe
     from ._nonparametric import KaplanMeier
     from ._resample import _subset_surv
 
@@ -267,4 +276,6 @@ def calibration(
                 "observed_upper": upper,
             }
         )
-    return pd.DataFrame(rows)
+    return _to_dataframe({col: [row[col] for row in rows] for col in rows[0].keys()} if rows else {
+        "bin": [], "n": [], "predicted": [], "observed": [], "observed_lower": [], "observed_upper": []
+    }, format=format)
