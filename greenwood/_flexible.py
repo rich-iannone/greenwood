@@ -149,6 +149,7 @@ class RoystonParmar:
         freedom, using the same `y` response and `lung` data from the class example above:
 
         ```{python}
+import greenwood as gw
         gw.RoystonParmar(df=5).fit(y, lung[["age", "sex"]])
         ```
         """

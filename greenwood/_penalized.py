@@ -126,6 +126,7 @@ class CoxNet:
         same `y` response and `lung` data from the class example above:
 
         ```{python}
+import greenwood as gw
         gw.CoxNet(penalizer=0.05, l1_ratio=0.0).fit(y, lung[cols])
         ```
         """

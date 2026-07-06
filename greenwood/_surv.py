@@ -304,6 +304,7 @@ class Surv:
         (1 if event occurred, 0 if censored):
 
         ```{python}
+import greenwood as gw
         y = gw.Surv.right(time=[5, 6, 4, 9], event=[1, 0, 1, 0])
         y
         ```
@@ -367,6 +368,7 @@ class Surv:
         (event=1), and one was event-free at observation (event=0):
 
         ```{python}
+import greenwood as gw
         y = gw.Surv.left(time=[5, 6, 4], event=[1, 0, 1])
         y
         ```
@@ -432,6 +434,7 @@ class Surv:
         Here we have 3 subjects with different entry times:
 
         ```{python}
+import greenwood as gw
         y = gw.Surv.counting(start=[0, 2, 1], stop=[5, 6, 4], event=[1, 0, 1])
         y
         ```
@@ -609,6 +612,7 @@ class Surv:
         Here we have 4 subjects with 2 competing outcomes (relapse and death):
 
         ```{python}
+import greenwood as gw
         y = gw.Surv.multistate(
             time=[5, 6, 7, 8],
             event=[1, 2, 0, 1],
@@ -654,6 +658,7 @@ class Surv:
         Examples
         --------
         ```{python}
+import greenwood as gw
         y = gw.Surv.right(time=[5, 6, 4, 9], event=[1, 0, 1, 0])
         y.n
         ```
@@ -682,6 +687,7 @@ class Surv:
         Right-censored data (no left truncation) has all -∞ entry times:
 
         ```{python}
+import greenwood as gw
         y_right = gw.Surv.right(time=[5, 6, 4], event=[1, 0, 1])
         y_right.entry
         ```
@@ -689,6 +695,7 @@ class Surv:
         Counting-process data shows each subject's entry time:
 
         ```{python}
+import greenwood as gw
         y_counting = gw.Surv.counting(start=[0, 2, 1], stop=[5, 6, 4], event=[1, 0, 1])
         y_counting.entry
         ```
@@ -716,6 +723,7 @@ class Surv:
         Examples
         --------
         ```{python}
+import greenwood as gw
         y = gw.Surv.right(time=[5, 6, 4, 9], event=[1, 0, 1, 0])
         y.event
         ```
@@ -725,6 +733,7 @@ class Surv:
         this collapses all states into a single "any event" indicator:
 
         ```{python}
+import greenwood as gw
         y_multi = gw.Surv.multistate(
             time=[5, 6, 7, 8],
             event=[1, 2, 0, 1],
@@ -754,6 +763,7 @@ class Surv:
         Right-censored data has no left truncation:
 
         ```{python}
+import greenwood as gw
         y_right = gw.Surv.right(time=[5, 6, 4], event=[1, 0, 1])
         y_right.is_truncated
         ```
@@ -761,6 +771,7 @@ class Surv:
         Counting-process data with late entry is truncated:
 
         ```{python}
+import greenwood as gw
         y_counting = gw.Surv.counting(start=[0, 2, 1], stop=[5, 6, 4], event=[1, 0, 1])
         y_counting.is_truncated
         ```
@@ -788,6 +799,7 @@ class Surv:
         Right-censored data has a single outcome:
 
         ```{python}
+import greenwood as gw
         y_right = gw.Surv.right(time=[5, 6, 4], event=[1, 0, 1])
         y_right.is_multistate
         ```
@@ -795,6 +807,7 @@ class Surv:
         Multi-state data with competing risks:
 
         ```{python}
+import greenwood as gw
         y_multi = gw.Surv.multistate(
             time=[5, 6, 7, 8],
             event=[1, 2, 0, 1],
@@ -824,6 +837,7 @@ class Surv:
         Examples
         --------
         ```{python}
+import greenwood as gw
         y = gw.Surv.right(time=[5, 6, 4, 9], event=[1, 0, 1, 0])
         y.n_events
         ```
@@ -834,6 +848,7 @@ class Surv:
         For multi-state data, this gives the total event count across all states:
 
         ```{python}
+import greenwood as gw
         y_multi = gw.Surv.multistate(
             time=[5, 6, 7, 8],
             event=[1, 2, 0, 1],
@@ -860,6 +875,7 @@ class Surv:
         Examples
         --------
         ```{python}
+import greenwood as gw
         y = gw.Surv.right(time=[5, 6, 4, 9], event=[1, 0, 1, 0])
         y.n_censored
         ```
@@ -1109,6 +1125,7 @@ class Surv:
         serialize `y` and immediately deserialize it:
 
         ```{python}
+import greenwood as gw
         reconstructed = gw.Surv.from_dict(y.to_dict())
         print("Objects equal:", y.to_dict() == reconstructed.to_dict())
         ```

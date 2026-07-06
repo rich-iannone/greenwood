@@ -167,6 +167,7 @@ class AalenJohansen:
         response from the class example above:
 
         ```{python}
+import greenwood as gw
         gw.AalenJohansen().fit(y, by=mg["sex"])
         ```
         """
@@ -383,6 +384,7 @@ class FineGray:
     is reused by the method examples below.
 
     ```{python}
+import greenwood as gw
     gw.tidy(fg, exponentiate=True)
     ```
     """
@@ -433,6 +435,7 @@ class FineGray:
         the class example above:
 
         ```{python}
+import greenwood as gw
         gw.FineGray("pcm").fit(y, mg[["age", "sex"]])
         ```
         """
@@ -825,6 +828,7 @@ class MultiState:
         built in the class example above:
 
         ```{python}
+import greenwood as gw
         gw.MultiState().fit(start, stop, state, event, states=("mgus", "pcm", "death"))
         ```
         """

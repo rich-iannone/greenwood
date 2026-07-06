@@ -375,6 +375,7 @@ class CoxPH:
     below.
 
     ```{python}
+import greenwood as gw
     gw.tidy(cox, exponentiate=True)
     ```
     """
@@ -443,6 +444,7 @@ class CoxPH:
         response and `lung` data from the class example above:
 
         ```{python}
+import greenwood as gw
         gw.CoxPH().fit(y, lung[["age", "ph.ecog"]], strata=lung["sex"]).to_pandas()
         ```
 

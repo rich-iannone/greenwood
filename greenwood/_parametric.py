@@ -157,6 +157,7 @@ class AFT:
         `lung` data from the class example above:
 
         ```{python}
+import greenwood as gw
         gw.AFT(dist="lognormal").fit(y, lung[["age", "sex"]])
         ```
         """

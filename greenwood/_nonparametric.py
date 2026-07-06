@@ -303,6 +303,7 @@ class KaplanMeier:
         example above:
 
         ```{python}
+import greenwood as gw
         gw.KaplanMeier().fit(y, by=lung["sex"])
         ```
         """
@@ -724,6 +725,7 @@ class NelsonAalen:
         above:
 
         ```{python}
+import greenwood as gw
         gw.NelsonAalen().fit(y, by=lung["sex"])
         ```
         """
