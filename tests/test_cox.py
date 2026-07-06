@@ -46,7 +46,13 @@ def test_predict_conditional_after_per_subject(lung_surv) -> None:  # type: igno
     df, y = lung_surv
     cox = CoxPH().fit(y, df[["age", "sex"]])
     nd = df[["age", "sex"]].iloc[:2]
-    out = cox.predict(nd, type="survival", times=[300, 600], conditional_after=[100.0, 250.0], format="pandas")
+    out = cox.predict(
+        nd,
+        type="survival",
+        times=[300, 600],
+        conditional_after=[100.0, 250.0],
+        format="pandas",
+    )
     assert out.shape == (2, 3)
     assert ((out.iloc[:, 1:] >= 0) & (out.iloc[:, 1:] <= 1)).all().all()
 
@@ -223,7 +229,9 @@ def test_predict_unknown_type(lung_surv) -> None:  # type: ignore[no-untyped-def
 def test_predict_survival_in_unit_interval(lung_surv) -> None:  # type: ignore[no-untyped-def]
     df, y = lung_surv
     cox = CoxPH().fit(y, df[["age", "sex"]])
-    surv = cox.predict(df[["age", "sex"]].head(3), type="survival", times=[100, 500], format="pandas")
+    surv = cox.predict(
+        df[["age", "sex"]].head(3), type="survival", times=[100, 500], format="pandas"
+    )
     values = surv.drop(columns="time").to_numpy()
     assert np.all((values >= 0) & (values <= 1))
 

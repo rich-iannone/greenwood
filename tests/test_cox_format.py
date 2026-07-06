@@ -22,8 +22,11 @@ class TestPredictFormat:
         """Test that format='pandas' returns pandas DataFrame."""
         df, y = lung_surv
         cox = CoxPH().fit(y, df[["age", "sex"]])
-        result = cox.predict(df[["age", "sex"]].iloc[:2], type="survival", times=[100, 300], format="pandas")
+        result = cox.predict(
+            df[["age", "sex"]].iloc[:2], type="survival", times=[100, 300], format="pandas"
+        )
         import pandas as pd
+
         assert isinstance(result, pd.DataFrame)
         assert list(result.columns) == ["time", "subject_1", "subject_2"]
 
@@ -32,8 +35,11 @@ class TestPredictFormat:
         pytest.importorskip("polars")
         df, y = lung_surv
         cox = CoxPH().fit(y, df[["age", "sex"]])
-        result = cox.predict(df[["age", "sex"]].iloc[:2], type="survival", times=[100, 300], format="polars")
+        result = cox.predict(
+            df[["age", "sex"]].iloc[:2], type="survival", times=[100, 300], format="polars"
+        )
         import polars as pl
+
         assert isinstance(result, pl.DataFrame)
         assert list(result.columns) == ["time", "subject_1", "subject_2"]
 
@@ -42,8 +48,11 @@ class TestPredictFormat:
         pytest.importorskip("pyarrow")
         df, y = lung_surv
         cox = CoxPH().fit(y, df[["age", "sex"]])
-        result = cox.predict(df[["age", "sex"]].iloc[:2], type="survival", times=[100, 300], format="pyarrow")
+        result = cox.predict(
+            df[["age", "sex"]].iloc[:2], type="survival", times=[100, 300], format="pyarrow"
+        )
         import pyarrow as pa
+
         assert isinstance(result, pa.Table)
         assert list(result.column_names) == ["time", "subject_1", "subject_2"]
 
@@ -51,13 +60,17 @@ class TestPredictFormat:
         """Test that format=None auto-detects (prefers polars)."""
         df, y = lung_surv
         cox = CoxPH().fit(y, df[["age", "sex"]])
-        result = cox.predict(df[["age", "sex"]].iloc[:2], type="survival", times=[100, 300], format=None)
+        result = cox.predict(
+            df[["age", "sex"]].iloc[:2], type="survival", times=[100, 300], format=None
+        )
         # Check if polars is installed; if so, should return polars DataFrame, else pandas
         try:
             import polars as pl
+
             assert isinstance(result, pl.DataFrame)
         except ImportError:
             import pandas as pd
+
             assert isinstance(result, pd.DataFrame)
 
     def test_predict_data_consistent_across_formats(self, lung_surv) -> None:
@@ -71,7 +84,7 @@ class TestPredictFormat:
         result_pandas_vals = result_pandas[["subject_1", "subject_2"]].to_numpy()
 
         try:
-            import polars as pl
+            cox.predict(nd, type="survival", times=times, format="polars")
             result_polars = cox.predict(nd, type="survival", times=times, format="polars")
             result_polars_vals = result_polars[["subject_1", "subject_2"]].to_numpy()
             np.testing.assert_allclose(result_pandas_vals, result_polars_vals)
@@ -120,7 +133,6 @@ class TestBaselineHazardFormat:
         pandas_cumhaz = result_pandas["cumhaz"].to_numpy()
 
         try:
-            import polars as pl
             result_polars = cox.baseline_hazard(format="polars")
             polars_cumhaz = result_polars["cumhaz"].to_numpy()
             np.testing.assert_allclose(pandas_cumhaz, polars_cumhaz)
@@ -166,7 +178,6 @@ class TestResidualsFormat:
         pandas_vals = result_pandas.to_numpy()
 
         try:
-            import polars as pl
             result_polars = cox.residuals(type="schoenfeld", format="polars")
             polars_vals = result_polars.to_numpy()
             np.testing.assert_allclose(pandas_vals, polars_vals)

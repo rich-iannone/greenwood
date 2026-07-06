@@ -187,7 +187,13 @@ def _survival_at(km: Any, time: float) -> tuple[float, float, float]:
 
 
 def calibration(
-    surv: Surv, predicted: Any, time: float, *, n_bins: int = 10, conf_level: float = 0.95, format: str | None = None
+    surv: Surv,
+    predicted: Any,
+    time: float,
+    *,
+    n_bins: int = 10,
+    conf_level: float = 0.95,
+    format: str | None = None,
 ) -> Any:
     """Assess calibration of predicted survival probabilities at a fixed time.
 
@@ -276,6 +282,16 @@ def calibration(
                 "observed_upper": upper,
             }
         )
-    return _to_dataframe({col: [row[col] for row in rows] for col in rows[0].keys()} if rows else {
-        "bin": [], "n": [], "predicted": [], "observed": [], "observed_lower": [], "observed_upper": []
-    }, format=format)
+    return _to_dataframe(
+        {col: [row[col] for row in rows] for col in rows[0]}
+        if rows
+        else {
+            "bin": [],
+            "n": [],
+            "predicted": [],
+            "observed": [],
+            "observed_lower": [],
+            "observed_upper": [],
+        },
+        format=format,
+    )

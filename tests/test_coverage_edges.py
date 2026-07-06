@@ -243,7 +243,13 @@ def test_surv_left_and_interval_dataframe() -> None:
 
 def test_calibration_before_first_event(y, lung) -> None:
     cox = CoxPH().fit(y, lung[["age", "sex"]])
-    pred = cox.predict(lung[["age", "sex"]], type="survival", times=[365.0], format="pandas").iloc[0, 1:].to_numpy()
+    pred = (
+        cox.predict(
+            lung[["age", "sex"]], type="survival", times=[365.0], format="pandas"
+        )
+        .iloc[0, 1:]
+        .to_numpy()
+    )
     cal = gw.calibration(y, pred, 1.0, n_bins=3)  # earlier than any event -> observed is 1
     assert (cal["observed"] == 1.0).all()
 
