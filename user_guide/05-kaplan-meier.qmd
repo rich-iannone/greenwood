@@ -217,7 +217,7 @@ column identifying which curve each row belongs to. We show the first couple of 
 each stratum so you can see both curves side by side without printing every time point.
 
 ```{python}
-km_sex.to_polars().groupby("strata").head(2)
+km_sex.to_polars().group_by("strata").head(2)
 ```
 
 Per-stratum summaries follow naturally. `median` and `rmst` return a dictionary keyed by

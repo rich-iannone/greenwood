@@ -90,7 +90,7 @@ The fitted estimator holds a cumulative incidence curve for each cause. To inspe
 visible side by side.
 
 ```{python}
-aj.to_polars().groupby("cause").head(2)
+aj.to_polars().group_by("cause").head(2)
 ```
 
 Each cause has its own cumulative incidence estimate, standard error, and confidence
@@ -118,7 +118,9 @@ The stratified fit carries a separate set of curves for each level of `sex`. Her
 progression at the final event time in that group.
 
 ```{python}
-aj_sex.to_polars().query("cause == 'pcm'").groupby("strata").tail(1)
+import polars as pl
+
+aj_sex.to_polars().filter(pl.col("cause") == "pcm").group_by("strata").tail(1)
 ```
 
 ## Modeling with the Fine-Gray model
