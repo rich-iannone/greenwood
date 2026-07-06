@@ -119,10 +119,11 @@ class CoxNet:
 
                 Examples
                 --------
-                `penalizer` sets the overall penalty strength and `l1_ratio` the elastic-net mixing:
-                `l1_ratio=1` is a lasso (sparse, selects variables), `l1_ratio=0` is ridge (smooth
-                shrinkage), and `penalizer=0` recovers the ordinary Cox fit. Here is a ridge fit to the
-                same `y` response and `lung` data from the class example above:
+                `penalizer` sets the overall penalty strength and `l1_ratio` the elastic-net
+                mixing: `l1_ratio=1` is a lasso (sparse, selects variables), `l1_ratio=0` is
+                ridge (smooth shrinkage), and `penalizer=0` recovers the ordinary Cox fit. Here
+                is a ridge fit to the same `y` response and `lung` data from the class example
+                above:
 
                 ```{python}
         import greenwood as gw
