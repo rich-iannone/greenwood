@@ -797,16 +797,42 @@ class CoxPH:
         ```{python}
         cox.baseline_hazard()
         ```
-        """
-        import pandas as pd
 
-        frames = []
+        The returned DataFrame shows the estimated hazard and survival trajectory for the
+        reference population (covariates at their means). For stratified models, a separate
+        baseline is provided for each stratum:
+
+        ```{python}
+        cox_stratified = gw.CoxPH().fit(y, lung[["age", "ph.ecog"]], strata=lung["sex"])
+        cox_stratified.baseline_hazard()
+        ```
+
+        The baseline hazard can be combined with individual predictions to compute
+        personalized survival curves (see `predict(type="survival")`).
+        """
+        # Collect all data into lists
+        times_list = []
+        cumhaz_list = []
+        survival_list = []
+        strata_list = []
+
         for label, times, cumhaz in self._baseline():
-            frame = pd.DataFrame({"time": times, "cumhaz": cumhaz, "survival": np.exp(-cumhaz)})
+            times_list.extend(times)
+            cumhaz_list.extend(cumhaz)
+            survival_list.extend(np.exp(-cumhaz))
             if self._strata_labels is not None:
-                frame.insert(0, "strata", label)
-            frames.append(frame)
-        return pd.concat(frames, ignore_index=True)
+                strata_list.extend([label] * len(times))
+
+        # Build data dict
+        data = {
+            "time": times_list,
+            "cumhaz": cumhaz_list,
+            "survival": survival_list,
+        }
+        if self._strata_labels is not None:
+            data["strata"] = strata_list
+
+        return _to_dataframe(data, format=format)
 
     def _linear_predictor(self, x: Array) -> Array:
         """Centered linear predictor `(x - xbar) . beta` (as in R `predict(type='lp')`)."""
