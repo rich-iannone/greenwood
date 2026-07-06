@@ -97,6 +97,7 @@ smaller p-value.
 
 ::: {.callout-warning}
 ## Choose the weighting in advance
+
 Running several weighted tests and reporting the most significant one inflates the false
 positive rate. Decide on the test, and its `rho`, based on subject-matter reasoning before
 you see the data.
@@ -173,7 +174,7 @@ gw.logrank_power(hazard_ratio=0.5, n_events=60)
 
 Events are not the same as subjects. To turn the required events into a sample size, divide by
 the probability that a subject has the event during the study, which you estimate from the
-expected survival and the planned follow-up. `logrank_sample_size` does this.
+expected survival and the planned follow-up. The `logrank_sample_size()` function does this.
 
 ```{python}
 gw.logrank_sample_size(hazard_ratio=0.5, prob_event=0.4, power=0.9)
