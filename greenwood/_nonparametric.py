@@ -233,10 +233,9 @@ class KaplanMeier:
 
     ```{python}
     import greenwood as gw
-    from greenwood import Surv
 
     lung = gw.load_dataset("lung")
-    y = Surv.right(lung["time"], event=(lung["status"] == 2))
+    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
     km = gw.KaplanMeier().fit(y)
     km
     ```
@@ -656,10 +655,9 @@ class NelsonAalen:
 
     ```{python}
     import greenwood as gw
-    from greenwood import Surv
 
     lung = gw.load_dataset("lung")
-    y = Surv.right(lung["time"], event=(lung["status"] == 2))
+    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
     na = gw.NelsonAalen().fit(y)
     na
     ```
