@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
+import warnings
 
 import numpy as np
 import numpy.typing as npt
@@ -490,6 +491,41 @@ class CoxPH:
             raise ValueError("No events remain after dropping missing rows.")
 
         # Group members by stratum (a single group when unstratified).
+        # Check for counting-process data with subjects not starting at time 0
+        # (a common data preparation error when converting from calendar time)
+        if surv.type == CensoringType.COUNTING and entry.min() < 0:
+            warnings.warn(
+                "Some subjects have negative start times in counting-process data. "
+                "Start times must be non-negative.",
+                UserWarning,
+                stacklevel=2,
+            )
+        
+        # Warn if not all rows with the same minimum entry time are 0
+        # (indicates possible calendar time instead of subject-relative time)
+        if surv.type == CensoringType.COUNTING:
+            min_entry = entry.min()
+            if min_entry == 0 and entry.max() > 0:  # At least one subject enters at 0
+                # Check if there are subjects entering at times other than 0
+                # by looking for gaps in the entry times that are large
+                unique_entries = np.unique(entry)
+                if len(unique_entries) > 1:
+                    # Check if the pattern looks like calendar time entries
+                    # (large differences between entry times like 100, 200, 300)
+                    diffs = np.diff(unique_entries)
+                    large_diffs = diffs[diffs > 10]  # Threshold for "large" gaps
+                    if len(large_diffs) > 0:
+                        warnings.warn(
+                            "Subjects in counting-process data have different start times, "
+                            "some much larger than 0. This may indicate that start/stop times are "
+                            "calendar time rather than subject-relative time. "
+                            "Each subject's timeline should begin at 0. "
+                            "If you have calendar dates, subtract each subject's entry date from their "
+                            "start/stop times before fitting.",
+                            UserWarning,
+                            stacklevel=2,
+                        )
+
         if strata_labels is None:
             strata_groups = [(np.arange(x.shape[0]), np.unique(exit_[event]))]
         else:
