@@ -46,6 +46,15 @@ Visualization for grouped survival analyses.
 - Forest plots for stratified hazard ratios and RMST differences
 - Aligned at-risk tables for grouped curves
 
+### Model Validation and Performance
+
+Robust cross-validation and performance assessment for imbalanced survival data.
+
+- Stratified k-fold cross-validation ensuring balanced event representation across folds
+- Handling of highly imbalanced datasets (common in survival analysis) to prevent singular matrix errors
+- Performance metrics (concordance, Brier score) computed reliably with stratified splits
+- Documentation and examples for model selection with imbalanced event data
+
 ### Univariate Parametric Models
 
 Standalone parametric distributions for data exploration and model selection.
