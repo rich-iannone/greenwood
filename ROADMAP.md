@@ -54,6 +54,19 @@ Robust cross-validation and performance assessment for imbalanced survival data.
 - Handling of highly imbalanced datasets (common in survival analysis) to prevent singular matrix errors
 - Performance metrics (concordance, Brier score) computed reliably with stratified splits
 - Documentation and examples for model selection with imbalanced event data
+- Performance optimization for large datasets (memory efficiency, computation speed)
+- Numerical stability benchmarks and recommendations for data scale
+
+### Confidence Intervals & Inference
+
+Systematic confidence interval and standard error support across all estimators.
+
+- Confidence intervals for Cox model coefficients and hazard ratios (analytical)
+- Kaplan-Meier survival function confidence intervals (Greenwood method and alternatives)
+- Cumulative incidence function confidence intervals (competing risks)
+- Standard errors and CIs for parametric model predictions
+- Bootstrap and analytical methods for uncertainty quantification
+- Predictive intervals for time-varying Cox model forecasts
 
 ### Univariate Parametric Models
 
@@ -151,7 +164,7 @@ Discrimination and calibration assessment beyond point-in-time.
 
 Performance and ecosystem integration toward 1.0.
 
-- Full backend matrix algebra with accelerated kernels (JAX/Numba) for large datasets
+- Full backend matrix algebra with accelerated kernels (JAX/Numba) for ultra-large datasets (100k+ rows)
 - Finalized extension protocols and Narwhals dataframe backend completeness
 - Full interoperability with Great Summaries (`tbl_survfit`, `tbl_regression`)
 - Migration guides for users transitioning from R's `survival` package
