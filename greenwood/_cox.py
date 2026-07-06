@@ -71,13 +71,13 @@ class ZPHResult:
     def to_pandas(self) -> Any:
         """Return the test table as a pandas DataFrame (one row per term plus GLOBAL).
 
-        The table contains proportional hazards test statistics for each covariate plus 
+        The table contains proportional hazards test statistics for each covariate plus
         a global test across all terms. One row represents one term in the model.
 
         Returns
         -------
         pandas.DataFrame
-            A DataFrame with columns for term, test statistic, p-value, and other 
+            A DataFrame with columns for term, test statistic, p-value, and other
             diagnostics. Includes a GLOBAL row.
 
         Raises
@@ -109,13 +109,13 @@ class ZPHResult:
     def to_polars(self) -> Any:
         """Return the test table as a Polars DataFrame (one row per term plus GLOBAL).
 
-        The table contains proportional hazards test statistics for each covariate plus 
+        The table contains proportional hazards test statistics for each covariate plus
         a global test across all terms. One row represents one term in the model.
 
         Returns
         -------
         polars.DataFrame
-            A DataFrame with columns for term, test statistic, p-value, and other 
+            A DataFrame with columns for term, test statistic, p-value, and other
             diagnostics. Includes a GLOBAL row.
 
         Raises
@@ -146,13 +146,13 @@ class ZPHResult:
     def to_arrow(self) -> Any:
         """Return the test table as a PyArrow Table (one row per term plus GLOBAL).
 
-        The table contains proportional hazards test statistics for each covariate plus 
+        The table contains proportional hazards test statistics for each covariate plus
         a global test across all terms. One row represents one term in the model.
 
         Returns
         -------
         pyarrow.Table
-            A Table with columns for term, test statistic, p-value, and other 
+            A Table with columns for term, test statistic, p-value, and other
             diagnostics. Includes a GLOBAL row.
 
         Raises
@@ -443,7 +443,7 @@ class CoxPH:
 
         ```{python}
         import greenwood as gw
-        
+
         gw.CoxPH().fit(y, lung[["age", "ph.ecog"]], strata=lung["sex"]).to_pandas()
         ```
 
@@ -500,7 +500,7 @@ class CoxPH:
                 UserWarning,
                 stacklevel=2,
             )
-        
+
         # Warn if not all rows with the same minimum entry time are 0
         # (indicates possible calendar time instead of subject-relative time)
         if surv.type == CensoringType.COUNTING:
@@ -1042,8 +1042,8 @@ class CoxPH:
     def to_pandas(self, *, exponentiate: bool = False) -> Any:
         """Return a tidy coefficient table as pandas DataFrame (one row per term).
 
-        The table contains coefficient estimates, standard errors, test statistics, 
-        p-values, and confidence limits. If `exponentiate=True`, returns hazard ratios 
+        The table contains coefficient estimates, standard errors, test statistics,
+        p-values, and confidence limits. If `exponentiate=True`, returns hazard ratios
         instead of log-hazards.
 
         Parameters
@@ -1054,7 +1054,7 @@ class CoxPH:
         Returns
         -------
         pandas.DataFrame
-            One row per term with columns: term, estimate, std_error, statistic, 
+            One row per term with columns: term, estimate, std_error, statistic,
             p_value, conf_low, conf_high.
 
         Raises
@@ -1106,8 +1106,8 @@ class CoxPH:
     def to_polars(self, *, exponentiate: bool = False) -> Any:
         """Return a tidy coefficient table as Polars DataFrame (one row per term).
 
-        The table contains coefficient estimates, standard errors, test statistics, 
-        p-values, and confidence limits. If `exponentiate=True`, returns hazard ratios 
+        The table contains coefficient estimates, standard errors, test statistics,
+        p-values, and confidence limits. If `exponentiate=True`, returns hazard ratios
         instead of log-hazards.
 
         Parameters
@@ -1118,7 +1118,7 @@ class CoxPH:
         Returns
         -------
         polars.DataFrame
-            One row per term with columns: term, estimate, std_error, statistic, 
+            One row per term with columns: term, estimate, std_error, statistic,
             p_value, conf_low, conf_high.
 
         Raises
@@ -1165,8 +1165,8 @@ class CoxPH:
     def to_arrow(self, *, exponentiate: bool = False) -> Any:
         """Return a tidy coefficient table as PyArrow Table (one row per term).
 
-        The table contains coefficient estimates, standard errors, test statistics, 
-        p-values, and confidence limits. If `exponentiate=True`, returns hazard ratios 
+        The table contains coefficient estimates, standard errors, test statistics,
+        p-values, and confidence limits. If `exponentiate=True`, returns hazard ratios
         instead of log-hazards.
 
         Parameters
@@ -1177,7 +1177,7 @@ class CoxPH:
         Returns
         -------
         pyarrow.Table
-            One row per term with columns: term, estimate, std_error, statistic, 
+            One row per term with columns: term, estimate, std_error, statistic,
             p_value, conf_low, conf_high.
 
         Raises

@@ -119,9 +119,10 @@ def logrank_power(
     if n_events <= 0:
         raise ValueError(f"n_events must be positive, got {n_events}.")
     z_alpha = float(norm.ppf(1.0 - alpha / sides))
-    z_power = math.sqrt(n_events * allocation * (1.0 - allocation)) * abs(
-        math.log(hazard_ratio)
-    ) - z_alpha
+    z_power = (
+        math.sqrt(n_events * allocation * (1.0 - allocation)) * abs(math.log(hazard_ratio))
+        - z_alpha
+    )
     return float(norm.cdf(z_power))
 
 

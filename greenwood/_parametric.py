@@ -146,19 +146,19 @@ class AFT:
     def fit(self, surv: Surv, covariates: Any, *, data: Any = None) -> AFT:
         """Fit the model to a right-censored `Surv` response and a covariate design.
 
-        `covariates` is a dataframe or 2-D array, or a right-hand-side formula string (for
-        example `"age + sex"`) evaluated against `data`. An intercept is added automatically.
+                `covariates` is a dataframe or 2-D array, or a right-hand-side formula string (for
+                example `"age + sex"`) evaluated against `data`. An intercept is added automatically.
 
-        Examples
-        --------
-        The error distribution is chosen with `dist=`, one of `"weibull"`, `"exponential"`,
-        `"lognormal"`, or `"loglogistic"`. Here is a log-normal fit to the same `y` response and
-        `lung` data from the class example above:
+                Examples
+                --------
+                The error distribution is chosen with `dist=`, one of `"weibull"`, `"exponential"`,
+                `"lognormal"`, or `"loglogistic"`. Here is a log-normal fit to the same `y` response and
+                `lung` data from the class example above:
 
-        ```{python}
-import greenwood as gw
-        gw.AFT(dist="lognormal").fit(y, lung[["age", "sex"]])
-        ```
+                ```{python}
+        import greenwood as gw
+                gw.AFT(dist="lognormal").fit(y, lung[["age", "sex"]])
+                ```
         """
         from ._surv import CensoringType
 

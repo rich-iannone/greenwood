@@ -150,7 +150,7 @@ class RoystonParmar:
 
         ```{python}
         import greenwood as gw
-        
+
         gw.RoystonParmar(df=5).fit(y, lung[["age", "sex"]])
         ```
         """

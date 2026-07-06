@@ -242,7 +242,7 @@ def event_table(surv: Surv, *, group: Any = None, weights: Any = None) -> EventT
 
     ```{python}
     import greenwood as gw
-    
+
     gw.event_table(y, group=lung["sex"]).to_pandas()
     ```
     """

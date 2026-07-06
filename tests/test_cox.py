@@ -58,8 +58,12 @@ def test_predict_survival_ci_columns_and_ordering(lung_surv) -> None:  # type: i
     pred = cox.predict(nd, type="survival", times=[180, 365], ci=True)
     assert list(pred.columns) == [
         "time",
-        "subject_1", "subject_1_lower", "subject_1_upper",
-        "subject_2", "subject_2_lower", "subject_2_upper",
+        "subject_1",
+        "subject_1_lower",
+        "subject_1_upper",
+        "subject_2",
+        "subject_2_lower",
+        "subject_2_upper",
     ]
     # The band brackets the point estimate at every time.
     for j in (1, 2):
@@ -71,8 +75,13 @@ def test_predict_ci_with_conditional_after_raises(lung_surv) -> None:  # type: i
     df, y = lung_surv
     cox = CoxPH().fit(y, df[["age", "sex"]])
     with pytest.raises(NotImplementedError, match="conditional_after"):
-        cox.predict(df[["age", "sex"]].iloc[:1], type="survival", times=[180], ci=True,
-                    conditional_after=50.0)
+        cox.predict(
+            df[["age", "sex"]].iloc[:1],
+            type="survival",
+            times=[180],
+            ci=True,
+            conditional_after=50.0,
+        )
 
 
 def test_formula_matches_explicit(lung_surv) -> None:  # type: ignore[no-untyped-def]
@@ -236,18 +245,18 @@ def test_cox_zph_transform_validation(lung_surv) -> None:  # type: ignore[no-unt
 def test_cox_zph_result_to_dataframe(lung_surv) -> None:  # type: ignore[no-untyped-def]
     df, y = lung_surv
     z = CoxPH().fit(y, df[["age", "sex"]]).cox_zph()
-    
+
     # Test to_pandas
     table = z.to_pandas()
     assert list(table["term"]) == ["age", "sex", "GLOBAL"]
     assert "chisq" in table.columns
-    
+
     # Test to_polars
     pytest.importorskip("polars")
     table_pl = z.to_polars()
     assert list(table_pl["term"]) == ["age", "sex", "GLOBAL"]
     assert "chisq" in table_pl.columns
-    
+
     # Test to_arrow
     pytest.importorskip("pyarrow")
     table_pa = z.to_arrow()
@@ -305,16 +314,18 @@ def test_counting_process_proper_data_no_warning() -> None:
     import warnings
 
     import pandas as pd
-    
-    df = pd.DataFrame({
-        "start": [0, 3, 0, 4, 0, 2],
-        "stop": [3, 10, 4, 12, 2, 8],
-        "event": [0, 1, 0, 1, 0, 1],
-        "x": [1.0, 1.0, 2.0, 2.0, 3.0, 3.0],
-    })
-    
+
+    df = pd.DataFrame(
+        {
+            "start": [0, 3, 0, 4, 0, 2],
+            "stop": [3, 10, 4, 12, 2, 8],
+            "event": [0, 1, 0, 1, 0, 1],
+            "x": [1.0, 1.0, 2.0, 2.0, 3.0, 3.0],
+        }
+    )
+
     surv = Surv.counting(start=df["start"], stop=df["stop"], event=df["event"])
-    
+
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
         CoxPH().fit(surv, df[["x"]])
@@ -325,16 +336,18 @@ def test_counting_process_proper_data_no_warning() -> None:
 def test_counting_process_mixed_start_times_warns() -> None:
     """Counting-process data with mixed start times should warn."""
     import pandas as pd
-    
-    df = pd.DataFrame({
-        "start": [0, 5, 0, 4, 100, 105],  # Subject 3 starts at 100
-        "stop": [5, 15, 4, 12, 105, 115],
-        "event": [0, 1, 0, 1, 0, 1],
-        "x": [1.0, 1.0, 2.0, 2.0, 3.0, 3.0],
-    })
-    
+
+    df = pd.DataFrame(
+        {
+            "start": [0, 5, 0, 4, 100, 105],  # Subject 3 starts at 100
+            "stop": [5, 15, 4, 12, 105, 115],
+            "event": [0, 1, 0, 1, 0, 1],
+            "x": [1.0, 1.0, 2.0, 2.0, 3.0, 3.0],
+        }
+    )
+
     surv = Surv.counting(start=df["start"], stop=df["stop"], event=df["event"])
-    
+
     with pytest.warns(UserWarning, match="start time.*calendar time"):
         CoxPH().fit(surv, df[["x"]])
 
@@ -342,18 +355,21 @@ def test_counting_process_mixed_start_times_warns() -> None:
 def test_counting_process_large_gaps_warns() -> None:
     """Counting-process data with large gaps in start times should warn."""
     import pandas as pd
-    
-    df = pd.DataFrame({
-        "start": [0, 5, 200, 205],  # Large gap from 5 to 200
-        "stop": [5, 15, 205, 215],
-        "event": [0, 1, 0, 1],
-        "x": [1.0, 1.0, 2.0, 2.0],
-    })
-    
+
+    df = pd.DataFrame(
+        {
+            "start": [0, 5, 200, 205],  # Large gap from 5 to 200
+            "stop": [5, 15, 205, 215],
+            "event": [0, 1, 0, 1],
+            "x": [1.0, 1.0, 2.0, 2.0],
+        }
+    )
+
     surv = Surv.counting(start=df["start"], stop=df["stop"], event=df["event"])
-    
-    with pytest.warns(UserWarning, match="start time.*calendar time"), contextlib.suppress(
-        np.linalg.LinAlgError
+
+    with (
+        pytest.warns(UserWarning, match="start time.*calendar time"),
+        contextlib.suppress(np.linalg.LinAlgError),
     ):
         # Large gaps may cause numerical issues; that's expected
         CoxPH().fit(surv, df[["x"]])
@@ -362,16 +378,18 @@ def test_counting_process_large_gaps_warns() -> None:
 def test_counting_process_negative_start_warns() -> None:
     """Counting-process data with negative start times should warn."""
     import pandas as pd
-    
-    df = pd.DataFrame({
-        "start": [-5, 0, 0, 5],
-        "stop": [0, 10, 5, 15],
-        "event": [0, 1, 0, 1],
-        "x": [1.0, 1.0, 2.0, 2.0],
-    })
-    
+
+    df = pd.DataFrame(
+        {
+            "start": [-5, 0, 0, 5],
+            "stop": [0, 10, 5, 15],
+            "event": [0, 1, 0, 1],
+            "x": [1.0, 1.0, 2.0, 2.0],
+        }
+    )
+
     surv = Surv.counting(start=df["start"], stop=df["stop"], event=df["event"])
-    
+
     with pytest.warns(UserWarning, match="negative.*start time"):
         CoxPH().fit(surv, df[["x"]])
 
@@ -381,15 +399,17 @@ def test_right_censored_data_no_warning() -> None:
     import warnings
 
     import pandas as pd
-    
-    df = pd.DataFrame({
-        "time": [10, 20, 15, 25, 30],
-        "event": [1, 1, 0, 1, 1],
-        "x": [1.0, 2.0, 1.5, 2.5, 1.2],
-    })
-    
+
+    df = pd.DataFrame(
+        {
+            "time": [10, 20, 15, 25, 30],
+            "event": [1, 1, 0, 1, 1],
+            "x": [1.0, 2.0, 1.5, 2.5, 1.2],
+        }
+    )
+
     surv = Surv.right(df["time"], event=df["event"])
-    
+
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
         CoxPH().fit(surv, df[["x"]])

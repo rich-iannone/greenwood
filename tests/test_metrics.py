@@ -82,7 +82,12 @@ def test_calibration_structure_and_coverage() -> None:
     pred = cox.predict(df[["age", "sex"]], type="survival", times=[365.0]).iloc[0, 1:].to_numpy()
     cal = gw.calibration(y, pred, 365.0, n_bins=5)
     assert list(cal.columns) == [
-        "bin", "n", "predicted", "observed", "observed_lower", "observed_upper",
+        "bin",
+        "n",
+        "predicted",
+        "observed",
+        "observed_lower",
+        "observed_upper",
     ]
     assert cal["n"].sum() == len(df)  # bins partition the subjects
     assert list(cal["predicted"]) == sorted(cal["predicted"])  # bins ordered by prediction

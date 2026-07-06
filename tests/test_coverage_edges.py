@@ -44,9 +44,7 @@ def test_resolve_backend_fallback_and_error(monkeypatch) -> None:  # type: ignor
     from greenwood.data import _resolve_backend
 
     real = importlib.util.find_spec
-    monkeypatch.setattr(
-        importlib.util, "find_spec", lambda n: None if n == "polars" else real(n)
-    )
+    monkeypatch.setattr(importlib.util, "find_spec", lambda n: None if n == "polars" else real(n))
     assert _resolve_backend(None) == "pandas"  # prefers Polars, falls back to pandas
     monkeypatch.setattr(
         importlib.util, "find_spec", lambda n: None if n in ("polars", "pandas") else real(n)
@@ -243,7 +241,6 @@ def test_surv_left_and_interval_dataframe() -> None:
     assert "lower" in iv.to_pandas().columns
 
 
-
 def test_calibration_before_first_event(y, lung) -> None:
     cox = CoxPH().fit(y, lung[["age", "sex"]])
     pred = cox.predict(lung[["age", "sex"]], type="survival", times=[365.0]).iloc[0, 1:].to_numpy()
@@ -286,8 +283,9 @@ def test_cox_predict_ci_before_event_and_conditional_mismatch(y, lung) -> None:
 def test_competing_backends_and_validation() -> None:
     from greenwood import AalenJohansen, FineGray, MultiState
 
-    y_cr = Surv.multistate([5, 6, 7, 8, 9, 10, 11, 12], event=[1, 2, 1, 2, 0, 1, 2, 1],
-                           states=("pcm", "death"))
+    y_cr = Surv.multistate(
+        [5, 6, 7, 8, 9, 10, 11, 12], event=[1, 2, 1, 2, 0, 1, 2, 1], states=("pcm", "death")
+    )
     aj = AalenJohansen().fit(y_cr)
     assert aj.to_polars().shape[0] > 0
     assert aj.to_arrow().num_rows > 0

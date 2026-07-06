@@ -137,8 +137,14 @@ def test_multistate_repr(mgus_cr) -> None:
 
 
 def test_unfitted_reprs_do_not_error() -> None:
-    for text in (repr(gw.CoxPH()), repr(gw.AFT()), repr(gw.KaplanMeier()),
-                 repr(gw.NelsonAalen()), repr(gw.AalenJohansen()),
-                 repr(gw.FineGray("pcm")), repr(gw.MultiState())):
+    for text in (
+        repr(gw.CoxPH()),
+        repr(gw.AFT()),
+        repr(gw.KaplanMeier()),
+        repr(gw.NelsonAalen()),
+        repr(gw.AalenJohansen()),
+        repr(gw.FineGray("pcm")),
+        repr(gw.MultiState()),
+    ):
         assert "<unfitted>" in text
         _clean(text)

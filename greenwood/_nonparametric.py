@@ -197,9 +197,7 @@ def _rmrl_block(block: _Block, s: float, tau: float) -> tuple[float, float]:
     rmrl = area_window / s_at
 
     # A_i = area from each event time to tau (full curve); variance uses times in (s, tau].
-    seg_area = heights * np.clip(
-        np.minimum(next_starts, tau) - np.minimum(starts, tau), 0.0, None
-    )
+    seg_area = heights * np.clip(np.minimum(next_starts, tau) - np.minimum(starts, tau), 0.0, None)
     area_from = np.cumsum(seg_area[::-1])[::-1][1:]  # aligned with t
     with np.errstate(divide="ignore", invalid="ignore"):
         contrib = np.where(
@@ -295,16 +293,16 @@ class KaplanMeier:
     def fit(self, surv: Surv, *, by: Any = None, weights: Any = None) -> KaplanMeier:
         """Fit the estimator to a `Surv` response, optionally stratified by `by`.
 
-        Examples
-        --------
-        Passing `by=` produces one curve per group. Here we fit a separate survival
-        function for each sex, reusing the `y` response and `lung` data from the class
-        example above:
+                Examples
+                --------
+                Passing `by=` produces one curve per group. Here we fit a separate survival
+                function for each sex, reusing the `y` response and `lung` data from the class
+                example above:
 
-        ```{python}
-import greenwood as gw
-        gw.KaplanMeier().fit(y, by=lung["sex"])
-        ```
+                ```{python}
+        import greenwood as gw
+                gw.KaplanMeier().fit(y, by=lung["sex"])
+                ```
         """
         z = float(norm.ppf(1.0 - (1.0 - self.conf_level) / 2.0))
         self._blocks = _fit_blocks(surv, by, weights, self.conf_type, z)
@@ -704,16 +702,16 @@ class NelsonAalen:
     def fit(self, surv: Surv, *, by: Any = None, weights: Any = None) -> NelsonAalen:
         """Fit the estimator to a `Surv` response, optionally stratified by `by`.
 
-        Examples
-        --------
-        Passing `by=` produces one cumulative-hazard curve per group. Here we fit a separate
-        curve for each sex, reusing the `y` response and `lung` data from the class example
-        above:
+                Examples
+                --------
+                Passing `by=` produces one cumulative-hazard curve per group. Here we fit a separate
+                curve for each sex, reusing the `y` response and `lung` data from the class example
+                above:
 
-        ```{python}
-import greenwood as gw
-        gw.NelsonAalen().fit(y, by=lung["sex"])
-        ```
+                ```{python}
+        import greenwood as gw
+                gw.NelsonAalen().fit(y, by=lung["sex"])
+                ```
         """
         z = float(norm.ppf(1.0 - (1.0 - self.conf_level) / 2.0))
         self._blocks = _fit_blocks(surv, by, weights, "log", z)

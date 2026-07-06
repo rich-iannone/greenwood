@@ -167,7 +167,7 @@ class AalenJohansen:
 
         ```{python}
         import greenwood as gw
-        
+
         gw.AalenJohansen().fit(y, by=mg["sex"])
         ```
         """
@@ -372,7 +372,7 @@ class FineGray:
 
     ```{python}
     import greenwood as gw
-    
+
     gw.tidy(fg, exponentiate=True)
     ```
     """
@@ -424,7 +424,7 @@ class FineGray:
 
         ```{python}
         import greenwood as gw
-        
+
         gw.FineGray("pcm").fit(y, mg[["age", "sex"]])
         ```
         """
@@ -818,7 +818,7 @@ class MultiState:
 
         ```{python}
         import greenwood as gw
-        
+
         gw.MultiState().fit(start, stop, state, event, states=("mgus", "pcm", "death"))
         ```
         """
