@@ -744,10 +744,50 @@ class CoxPH:
             out.append((self._group_label(members), times, np.cumsum(increments)))
         return out
 
-    def baseline_hazard(self) -> Any:
+    def baseline_hazard(self, *, format: str | None = None) -> Any:
         """Return the uncentered baseline cumulative hazard and survival as a frame.
 
-        When the model is stratified, rows carry a `strata` column.
+        The baseline hazard represents the hazard rate for a reference subject with all
+        covariates at their mean values. It is useful for understanding the underlying
+        time-to-event distribution estimated by the model, and can be combined with
+        individual covariate values to compute predicted survival probabilities for
+        specific subjects.
+
+        In Cox proportional hazards models, the hazard for an individual is modeled as:
+        h(t | x) = h₀(t) * exp(x'β), where h₀(t) is the baseline hazard. This method
+        returns the estimated cumulative baseline hazard H₀(t) at each observed event time,
+        evaluated using the Breslow estimator (non-parametric).
+
+        Parameters
+        ----------
+        format
+            Output format: `None` (default), `"pandas"`, `"polars"`, or `"pyarrow"`.
+
+            - `None` (default): Auto-detects and tries Polars first, falls back to
+            Pandas, then Pyarrow. Raises an error if no DataFrame library is installed.
+            - `"pandas"`: returns pandas.DataFrame.
+            - `"polars"`: returns polars.DataFrame.
+            - `"pyarrow"`: returns pyarrow.Table.
+
+        Returns
+        -------
+        pandas.DataFrame, polars.DataFrame, or pyarrow.Table
+            A DataFrame with one row per event time containing:
+            
+            - `time`: Event times at which the baseline hazard is evaluated.
+            - `cumhaz`: Cumulative baseline hazard H₀(t) at each time.
+            - `survival`: Baseline survival probability S₀(t) = exp(-H₀(t)).
+            - `strata` (if stratified): Stratum label, one baseline hazard per stratum.
+
+        Notes
+        -----
+        The baseline hazard is evaluated only at the event times in the training data.
+        The cumulative hazard is non-decreasing by construction. For stratified models,
+        each stratum has its own baseline hazard while coefficients are shared across
+        strata, allowing different baseline risks for different groups.
+
+        The baseline survival S₀(t) is computed from the cumulative hazard using the
+        relationship S₀(t) = exp(-H₀(t)), consistent with the exponential survival model.
 
         Examples
         --------
