@@ -379,7 +379,8 @@ class Surv:
 
     @classmethod
     def counting(cls, start: Any, stop: Any, event: Any = None, *, weights: Any = None) -> Self:
-        """Counting-process response: track subjects entering and exiting the risk set at different times.
+        """Counting-process response: track subjects entering and exiting the risk set at
+        different times.
 
         The counting-process form handles two important real-world complexities:
         
@@ -504,7 +505,8 @@ class Surv:
         The display shows:
         - Subject 1: Exact event at time 2 (lower == upper)
         - Subject 2: Right-censored at time 2 (upper = infinity means event never observed)
-        - Subject 3: Interval-censored between times 3 and 5 (event happened somewhere in that window)
+        - Subject 3: Interval-censored between times 3 and 5 (event happened somewhere in
+          that window)
 
         Interval censoring gives you more information than right censoring alone. Rather than 
         just knowing "no event by time X," you may know "event was definitely before time Y 
@@ -588,7 +590,8 @@ class Surv:
             Labels are arbitrary strings describing what the transition represents.
         start : array-like, optional
             Optional entry times (for late entry / left truncation). If provided, each subject
-            is only at risk from `start` until `time`. Default is `None` (all subjects enter at time 0).
+            is only at risk from `start` until `time`. Default is `None` (all subjects enter at
+            time 0).
         weights : array-like, optional
             Case weights (strictly positive, one per subject). Used to weight subjects 
             differently in survival analysis. Default is `None` (all weights = 1).

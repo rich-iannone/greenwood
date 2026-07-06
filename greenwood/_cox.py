@@ -18,9 +18,9 @@ data are handled.
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
-import warnings
 
 import numpy as np
 import numpy.typing as npt
@@ -520,8 +520,8 @@ class CoxPH:
                             "some much larger than 0. This may indicate that start/stop times are "
                             "calendar time rather than subject-relative time. "
                             "Each subject's timeline should begin at 0. "
-                            "If you have calendar dates, subtract each subject's entry date from their "
-                            "start/stop times before fitting.",
+                            "If you have calendar dates, subtract each subject's entry date from "
+                            "their start/stop times before fitting.",
                             UserWarning,
                             stacklevel=2,
                         )

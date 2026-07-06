@@ -89,7 +89,8 @@ class RoystonParmar:
     -----
     Call `fit(surv, covariates)` with a right-censored `Surv` response and a covariate design
     (a dataframe, a 2-D array, or a formula string with `data`). Results are exposed as arrays
-    (`coef_`, `std_error_`, ...), the fitted `knots_`, and tidy frames via `to_pandas()`, `to_polars()`, `to_arrow()`.
+    (`coef_`, `std_error_`, ...), the fitted `knots_`, and tidy frames via `to_pandas()`,
+    `to_polars()`, `to_arrow()`.
 
     Examples
     --------

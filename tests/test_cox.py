@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import contextlib
+
 import numpy as np
 import pytest
 
@@ -300,8 +302,9 @@ def test_strata_length_checked(lung_surv) -> None:  # type: ignore[no-untyped-de
 
 def test_counting_process_proper_data_no_warning() -> None:
     """Counting-process data with subjects starting at 0 should not warn."""
-    import pandas as pd
     import warnings
+
+    import pandas as pd
     
     df = pd.DataFrame({
         "start": [0, 3, 0, 4, 0, 2],
@@ -349,12 +352,11 @@ def test_counting_process_large_gaps_warns() -> None:
     
     surv = Surv.counting(start=df["start"], stop=df["stop"], event=df["event"])
     
-    with pytest.warns(UserWarning, match="start time.*calendar time"):
-        try:
-            CoxPH().fit(surv, df[["x"]])
-        except np.linalg.LinAlgError:
-            # Large gaps may cause numerical issues; that's expected
-            pass
+    with pytest.warns(UserWarning, match="start time.*calendar time"), contextlib.suppress(
+        np.linalg.LinAlgError
+    ):
+        # Large gaps may cause numerical issues; that's expected
+        CoxPH().fit(surv, df[["x"]])
 
 
 def test_counting_process_negative_start_warns() -> None:
@@ -376,8 +378,9 @@ def test_counting_process_negative_start_warns() -> None:
 
 def test_right_censored_data_no_warning() -> None:
     """Right-censored data should not trigger counting-process warnings."""
-    import pandas as pd
     import warnings
+
+    import pandas as pd
     
     df = pd.DataFrame({
         "time": [10, 20, 15, 25, 30],
