@@ -144,11 +144,11 @@ class Surv:
     Here's an example of direct instantiation of `Surv`:
 
     ```{python}
-    from greenwood import Surv, CensoringType
+    import greenwood as gw
     import numpy as np
 
-    y = Surv(
-        type=CensoringType.RIGHT,
+    y = gw.Surv(
+        type=gw.CensoringType.RIGHT,
         stop=np.array([5, 6, 4, 9]),
         status=np.array([1, 0, 1, 0])
     )
@@ -162,39 +162,30 @@ class Surv:
     indicator.
 
     ```{python}
-    y = Surv.right(time=[5, 6, 4, 9], event=[1, 0, 1, 0])
+    y = gw.Surv.right(time=[5, 6, 4, 9], event=[1, 0, 1, 0])
     y
     ```
 
     Counting-process form with left truncation (late entry):
 
     ```{python}
-    y = Surv.counting(start=[0, 2, 1], stop=[5, 6, 4], event=[1, 0, 1])
+    y = gw.Surv.counting(start=[0, 2, 1], stop=[5, 6, 4], event=[1, 0, 1])
     y
     ```
 
     Interval-censored (event known to occur in a time window):
 
     ```{python}
-    y = Surv.interval(lower=[1, 3], upper=[3, 8])
+    y = gw.Surv.interval(lower=[1, 3], upper=[3, 8])
     y
     ```
 
     Multi-state (competing risks, multiple mutually exclusive events):
 
     ```{python}
-    y = Surv.multistate(time=[5, 6, 4], event=[1, 0, 2], states=("pcm", "death"))
+    y = gw.Surv.multistate(time=[5, 6, 4], event=[1, 0, 2], states=("pcm", "death"))
     y
     ```
-
-    See Also
-    --------
-    Surv.right : Right-censored response constructor
-    Surv.left : Left-censored response constructor
-    Surv.counting : Counting-process response constructor (with left truncation)
-    Surv.interval : Interval-censored response constructor
-    Surv.multistate : Multi-state / competing-risks response constructor
-    CensoringType : Enumeration of censoring types
     """
 
     type: CensoringType
@@ -269,11 +260,11 @@ class Surv:
 
         Parameters
         ----------
-        time : array-like
+        time
             Exit times when follow-up ends (one per subject). Must be finite and 
             non-negative. This is the time of either the event or censoring, whichever 
             came first.
-        event : array-like, optional
+        event
             Event indicators:
 
             - 1 = event occurred (fully observed)
@@ -281,7 +272,7 @@ class Surv:
             
             If `None`, all subjects are treated as having experienced the event 
             (useful for testing or descriptive purposes).
-        weights : array-like, optional
+        weights
             Case weights (strictly positive, one per subject). Used to weight subjects 
             differently in survival analysis (e.g., inverse probability weighting). 
             Default is `None` (all weights = 1).
@@ -291,20 +282,14 @@ class Surv:
         Surv
             A right-censored `Surv` response object (the most common type).
 
-        See Also
-        --------
-        left : Event occurred before the observation time.
-        interval : Event time is known to lie in a range.
-        counting : Late entry and time-varying covariates.
-        multistate : Track multiple competing outcomes.
-
         Examples
         --------
         The most common case: subjects have an exit `time` and an `event` indicator 
         (1 if event occurred, 0 if censored):
 
         ```{python}
-import greenwood as gw
+        import greenwood as gw
+        
         y = gw.Surv.right(time=[5, 6, 4, 9], event=[1, 0, 1, 0])
         y
         ```
@@ -316,6 +301,13 @@ import greenwood as gw
         This is the default input format for nearly all survival analysis methods. 
         Right-censored data is so ubiquitous that "survival data" often refers specifically 
         to right-censored observations.
+
+        See Also
+        --------
+        left : Event occurred before the observation time.
+        interval : Event time is known to lie in a range.
+        counting : Late entry and time-varying covariates.
+        multistate : Track multiple competing outcomes.
         """
         stop = _to_1d_array(time)
         status = _coerce_event(event, stop.shape[0])
@@ -337,17 +329,17 @@ import greenwood as gw
 
         Parameters
         ----------
-        time : array-like
+        time
             Observation times (the upper bound on when the event occurred). Must be 
             finite and non-negative. Each value represents "the event happened by this time".
-        event : array-like, optional
+        event
             Event indicators:
 
             - 1 = event occurred before `time` (left-censored)
             - 0 = subject was event-free at `time` (not censored)
             
             If `None`, all subjects are treated as having experienced the event.
-        weights : array-like, optional
+        weights
             Case weights (strictly positive, one per subject). Used to weight subjects 
             differently in survival analysis. Default is `None` (all weights = 1).
 
@@ -356,27 +348,29 @@ import greenwood as gw
         Surv
             A left-censored `Surv` response object.
 
-        See Also
-        --------
-        right : Right-censored response (event after the observation time).
-        counting : Time intervals with late entry.
-        interval : Event lies in a known interval.
-
         Examples
         --------
         Here we have 3 subjects. Two experienced the event before the recorded time 
         (event=1), and one was event-free at observation (event=0):
 
         ```{python}
-import greenwood as gw
+        import greenwood as gw
+        
         y = gw.Surv.left(time=[5, 6, 4], event=[1, 0, 1])
         y
         ```
 
         The display shows the data structure:
+
         - The `<` symbol indicates left-censored observations (event occurred before time)
         - The `+` symbol indicates subjects who were still event-free at the observation time
         - The left-censoring type `"left"` is displayed at the top
+
+        See Also
+        --------
+        right : Right-censored response (event after the observation time).
+        counting : Time intervals with late entry.
+        interval : Event lies in a known interval.
         """
         stop = _to_1d_array(time)
         status = _coerce_event(event, stop.shape[0])
@@ -403,18 +397,18 @@ import greenwood as gw
 
         Parameters
         ----------
-        start : array-like
+        start
             Entry times (when each subject becomes at risk). Must be finite and non-negative.
             Represents when the subject enters the risk set. In standard studies, this is 0;
             in studies with late entry, it's the age/time at enrollment.
-        stop : array-like
+        stop
             Exit times (when follow-up ends). Must be finite, non-negative, and strictly 
             greater than the corresponding `start`. Represents when the subject leaves follow-up
             (event, censoring, or end of study).
-        event : array-like, optional
+        event
             Event indicators (1 = event occurred, 0 = censored at `stop` time).
             If `None`, all subjects are treated as having experienced the event.
-        weights : array-like, optional
+        weights
             Case weights (strictly positive, one per subject). Used to weight subjects 
             differently in survival analysis. Default is `None` (all weights = 1).
 
@@ -423,23 +417,19 @@ import greenwood as gw
         Surv
             A counting-process `Surv` response object with potential left truncation.
 
-        See Also
-        --------
-        right : Simple right-censored response (all subjects start at time 0).
-        interval : Event lies in a known interval.
-        multistate : Track transitions to multiple competing states.
-
         Examples
         --------
         Here we have 3 subjects with different entry times:
 
         ```{python}
-import greenwood as gw
+        import greenwood as gw
+        
         y = gw.Surv.counting(start=[0, 2, 1], stop=[5, 6, 4], event=[1, 0, 1])
         y
         ```
 
         The display shows:
+
         - Subject 1: Entered at time 0, exited with an event at time 5
         - Subject 2: Entered at time 2 (late entry), exited censored at time 6
         - Subject 3: Entered at time 1, experienced an event at time 4
@@ -448,6 +438,12 @@ import greenwood as gw
         form elegantly handles all cases uniformly. This representation is also essential 
         for studies with time-varying covariates, where you create multiple rows per subject 
         as their covariate values change.
+
+        See Also
+        --------
+        right : Simple right-censored response (all subjects start at time 0).
+        interval : Event lies in a known interval.
+        multistate : Track transitions to multiple competing states.
         """
         start_a = _to_1d_array(start)
         stop_a = _to_1d_array(stop)
@@ -477,15 +473,15 @@ import greenwood as gw
 
         Parameters
         ----------
-        lower : array-like
+        lower
             Interval lower bounds (one per subject). Must be finite and non-negative. 
             Event happened *after* this time (possibly at this time).
             Set to 0 to mark left-censored subjects (event happened before first observation).
-        upper : array-like
+        upper
             Interval upper bounds (one per subject). Must be finite, non-negative, and >= `lower`.
             Event happened *by* this time. Set to `numpy.inf` to mark right-censored subjects (no
             event observed by end of study).
-        weights : array-like, optional
+        weights
             Case weights (strictly positive, one per subject). Used to weight subjects 
             differently in survival analysis. Default is `None` (all weights = 1).
 
@@ -494,18 +490,13 @@ import greenwood as gw
         Surv
             An interval-censored `Surv` response object.
 
-        See Also
-        --------
-        left : Event occurred before the observation time.
-        right : Event occurred after the observation time.
-        counting : Track subjects entering and exiting at different times.
-
         Examples
         --------
         Here we have 3 subjects with different levels of observation precision:
 
         ```{python}
         import numpy as np
+
         y = gw.Surv.interval(lower=[1, 2, 3], upper=[2, np.inf, 5])
         y
         ```
@@ -519,6 +510,12 @@ import greenwood as gw
         just knowing "no event by time X," you may know "event was definitely before time Y 
         but after time X," which allows for more precise estimation when multiple observations 
         bracket the event.
+
+        See Also
+        --------
+        left : Event occurred before the observation time.
+        right : Event occurred after the observation time.
+        counting : Track subjects entering and exiting at different times.
         """
         lower_a = _to_1d_array(lower)
         upper_a = _to_1d_array(upper)
@@ -569,10 +566,10 @@ import greenwood as gw
 
         Parameters
         ----------
-        time : array-like
+        time
             Event or censoring times (one per subject). Must be finite and non-negative.
             Represents when the subject experienced an outcome (or was censored).
-        event : array-like (int)
+        event
             Event codes indicating which state occurred:
 
             - 0 = censored (no event observed)
@@ -601,23 +598,19 @@ import greenwood as gw
         Surv
             A multi-state / competing-risks `Surv` response object.
 
-        See Also
-        --------
-        right : Simple right-censored `Surv` response object (only one possible outcome).
-        counting : Time intervals with late entry.
-        left : Event occurred before the observation time.
-
         Examples
         --------
         Here we have 4 subjects with 2 competing outcomes (relapse and death):
 
         ```{python}
-import greenwood as gw
+        import greenwood as gw
+        
         y = gw.Surv.multistate(
             time=[5, 6, 7, 8],
             event=[1, 2, 0, 1],
             states=("relapse", "death")
         )
+        
         y
         ```
 
@@ -631,6 +624,12 @@ import greenwood as gw
         You can then estimate the probability of each outcome separately, capturing the 
         full picture: not just "will something happen?" but "which specific outcome is most likely?"
         This avoids the bias of artificially grouping competing outcomes together.
+
+        See Also
+        --------
+        right : Simple right-censored `Surv` response object (only one possible outcome).
+        counting : Time intervals with late entry.
+        left : Event occurred before the observation time.
         """
         stop = _to_1d_array(time)
         status = _to_1d_array(event, dtype=int).astype(np.int64)
@@ -658,7 +657,8 @@ import greenwood as gw
         Examples
         --------
         ```{python}
-import greenwood as gw
+        import greenwood as gw
+        
         y = gw.Surv.right(time=[5, 6, 4, 9], event=[1, 0, 1, 0])
         y.n
         ```
@@ -687,7 +687,8 @@ import greenwood as gw
         Right-censored data (no left truncation) has all -∞ entry times:
 
         ```{python}
-import greenwood as gw
+        import greenwood as gw
+        
         y_right = gw.Surv.right(time=[5, 6, 4], event=[1, 0, 1])
         y_right.entry
         ```
@@ -695,7 +696,8 @@ import greenwood as gw
         Counting-process data shows each subject's entry time:
 
         ```{python}
-import greenwood as gw
+        import greenwood as gw
+        
         y_counting = gw.Surv.counting(start=[0, 2, 1], stop=[5, 6, 4], event=[1, 0, 1])
         y_counting.entry
         ```
@@ -711,19 +713,20 @@ import greenwood as gw
     def event(self) -> Array:
         """Boolean event indicator: True if any event occurred, False if censored.
 
-        Converts the integer `status` codes to a simple boolean: 1 or more → True (event),
-        0 → False (censored). This is a convenient summary when you only care about 
+        Converts the integer `status` codes to a simple boolean: 1 or more -> True (event),
+        0 -> False (censored). This is a convenient summary when you only care about 
         event occurrence, not which specific state occurred in multi-state data.
 
         Returns
         -------
-        Array (bool)
+        Array
             Boolean array with shape (n,). `True` where status >= 1, `False` otherwise.
 
         Examples
         --------
         ```{python}
-import greenwood as gw
+        import greenwood as gw
+        
         y = gw.Surv.right(time=[5, 6, 4, 9], event=[1, 0, 1, 0])
         y.event
         ```
@@ -733,12 +736,14 @@ import greenwood as gw
         this collapses all states into a single "any event" indicator:
 
         ```{python}
-import greenwood as gw
+        import greenwood as gw
+        
         y_multi = gw.Surv.multistate(
             time=[5, 6, 7, 8],
             event=[1, 2, 0, 1],
             states=("relapse", "death")
         )
+        
         y_multi.event
         ```
         """
@@ -763,7 +768,8 @@ import greenwood as gw
         Right-censored data has no left truncation:
 
         ```{python}
-import greenwood as gw
+        import greenwood as gw
+        
         y_right = gw.Surv.right(time=[5, 6, 4], event=[1, 0, 1])
         y_right.is_truncated
         ```
@@ -771,7 +777,8 @@ import greenwood as gw
         Counting-process data with late entry is truncated:
 
         ```{python}
-import greenwood as gw
+        import greenwood as gw
+        
         y_counting = gw.Surv.counting(start=[0, 2, 1], stop=[5, 6, 4], event=[1, 0, 1])
         y_counting.is_truncated
         ```
@@ -799,7 +806,8 @@ import greenwood as gw
         Right-censored data has a single outcome:
 
         ```{python}
-import greenwood as gw
+        import greenwood as gw
+        
         y_right = gw.Surv.right(time=[5, 6, 4], event=[1, 0, 1])
         y_right.is_multistate
         ```
@@ -807,12 +815,14 @@ import greenwood as gw
         Multi-state data with competing risks:
 
         ```{python}
-import greenwood as gw
+        import greenwood as gw
+        
         y_multi = gw.Surv.multistate(
             time=[5, 6, 7, 8],
             event=[1, 2, 0, 1],
             states=("relapse", "death")
         )
+
         y_multi.is_multistate
         ```
 
@@ -837,7 +847,8 @@ import greenwood as gw
         Examples
         --------
         ```{python}
-import greenwood as gw
+        import greenwood as gw
+        
         y = gw.Surv.right(time=[5, 6, 4, 9], event=[1, 0, 1, 0])
         y.n_events
         ```
@@ -848,7 +859,8 @@ import greenwood as gw
         For multi-state data, this gives the total event count across all states:
 
         ```{python}
-import greenwood as gw
+        import greenwood as gw
+        
         y_multi = gw.Surv.multistate(
             time=[5, 6, 7, 8],
             event=[1, 2, 0, 1],
@@ -875,7 +887,8 @@ import greenwood as gw
         Examples
         --------
         ```{python}
-import greenwood as gw
+        import greenwood as gw
+        
         y = gw.Surv.right(time=[5, 6, 4, 9], event=[1, 0, 1, 0])
         y.n_censored
         ```
@@ -1110,7 +1123,7 @@ import greenwood as gw
 
         Parameters
         ----------
-        data : dict[str, Any]
+        data
             A dictionary produced by `to_dict()` containing keys `type`, `stop`, `status`,
             and optional keys for `start`, `lower`, `states`, `weights`.
 
@@ -1125,7 +1138,8 @@ import greenwood as gw
         serialize `y` and immediately deserialize it:
 
         ```{python}
-import greenwood as gw
+        import greenwood as gw
+
         reconstructed = gw.Surv.from_dict(y.to_dict())
         print("Objects equal:", y.to_dict() == reconstructed.to_dict())
         ```
@@ -1158,7 +1172,7 @@ import greenwood as gw
 
         Parameters
         ----------
-        indent : int | None, optional
+        indent
             Number of spaces to use for indentation. If `None`, produces compact JSON
             without whitespace. Default is 2 (human-readable).
 
