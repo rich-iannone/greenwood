@@ -103,10 +103,9 @@ class AFT:
 
     ```{python}
     import greenwood as gw
-    from greenwood import Surv
 
     lung = gw.load_dataset("lung")
-    y = Surv.right(lung["time"], event=(lung["status"] == 2))
+    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
     aft = gw.AFT("weibull").fit(y, lung[["age", "sex"]])
     aft
     ```
