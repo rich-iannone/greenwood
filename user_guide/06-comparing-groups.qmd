@@ -102,6 +102,17 @@ positive rate. Decide on the test, and its `rho`, based on subject-matter reason
 you see the data.
 :::
 
+::: {.callout-tip}
+## Robust handling of edge cases
+
+Greenwood validates input data upfront, so weighted tests handle edge cases robustly.
+Times can be zero (events at baseline are valid in survival analysis), and weighted tests
+like Fleming-Harrington work correctly without silent data loss or dimension mismatches.
+This robustness extends to all censoring patterns and follows the validation rules
+documented in the [Validation and reproducibility](03-survival-data.qmd#validation-and-reproducibility)
+section.
+:::
+
 ## Comparing more than two groups
 
 The log-rank test extends to any number of groups, giving one overall test. We switch to the
