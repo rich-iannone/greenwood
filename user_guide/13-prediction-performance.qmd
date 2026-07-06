@@ -55,6 +55,16 @@ risk = cox.predict(type="lp")
 risk[:8]
 ```
 
+::: {.callout-tip}
+## Linear predictors are centered
+
+The linear predictor returned by `predict(type="lp")` is always centered around the mean of
+the training covariates. This ensures consistent, numerically stable predictions across all
+variable types—continuous, categorical, and mixed. The centering is applied uniformly, so you
+always get mathematically sound risk scores, even in edge cases like categorical-only models
+with all positive associations.
+:::
+
 These are the scores the index will rank against the observed event order. Because higher risk
 should correspond to earlier failure, we pass a score where larger means higher risk, such as
 this linear predictor or its exponential.
@@ -65,6 +75,7 @@ gw.concordance_index(y, risk)
 
 ::: {.callout-note}
 ## Discrimination is only part of the story
+
 A model can rank subjects well yet produce poorly calibrated probabilities, or vice versa.
 The concordance index says nothing about whether predicted probabilities are numerically
 accurate. That is what the Brier score adds.
@@ -115,6 +126,7 @@ gw.integrated_brier_score(y, probs, times)
 
 ::: {.callout-tip}
 ## Evaluate on data the model did not see
+
 Computing these metrics on the same data used to fit the model gives optimistic results.
 For an honest assessment, evaluate on a held-out test set or use cross-validation, fitting on
 one part of the data and scoring predictions on another.
@@ -157,6 +169,7 @@ signal miscalibration even when discrimination is good.
 
 ::: {.callout-tip}
 ## Assess calibration out of sample too
+
 Like the other metrics, calibration is optimistic on the training data. For a fair picture,
 compute it on held-out predictions, for instance the test-fold predictions from a
 cross-validation split.
