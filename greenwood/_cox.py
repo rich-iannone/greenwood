@@ -435,6 +435,36 @@ class CoxPH:
         `cluster` ids) reports the Lin-Wei sandwich variance; `cluster` sums the score
         residuals within groups before forming the sandwich.
 
+        Parameters
+        ----------
+        surv
+            A `Surv` object representing the response (censoring type must be
+            right-censored or counting-process).
+        covariates
+            Covariate design, either a 2-D array, dataframe, or formula string.
+        data
+            DataFrame to evaluate formula strings against (required if `covariates=`
+            is a formula string).
+        strata
+            Optional stratification variable, giving each stratum its own baseline
+            hazard while sharing coefficients. Can be a 1-D array or series.
+        robust
+            If `True`, report Lin-Wei sandwich variance (robust standard errors).
+            Default is `False`.
+        cluster
+            Optional cluster labels for grouped robust variance estimation.
+            Sums score residuals within groups before forming the sandwich.
+        max_iter
+            Maximum number of iterations for the Newton-Raphson solver. Default is `30`.
+        tol
+            Convergence tolerance for the optimization. Default is `1e-9`.
+
+        Returns
+        -------
+        CoxPH
+            Returns self with fitted attributes including `coef_`, `std_error_`,
+            `hazard_ratio_`, `z_`, `p_value_`, and other model diagnostics.
+
         Examples
         --------
         Passing `strata=` gives each stratum its own baseline hazard while sharing the
@@ -695,6 +725,32 @@ class CoxPH:
         per subject: a pointwise confidence band from the cumulative-hazard standard error
         (the log transform used by R's `survfit`), at the model's `conf_level`.
 
+        Parameters
+        ----------
+        newdata
+            Covariate design for prediction. If None, predictions are made on the
+            fitted data. Can be a 2-D array or dataframe.
+        type
+            Type of prediction: `"lp"` (centered linear predictor, default),
+            `"risk"` (exp of linear predictor), or `"survival"` (survival probability).
+        times
+            Time points at which to compute survival probabilities (for `type="survival"`).
+            Defaults to the event times from the fitted model.
+        conditional_after
+            Optional scalar or per-subject time for conditional survival prediction.
+            Computes P(T > t | T > c) where c is the conditional_after time.
+        ci
+            If `True` (survival only), include confidence intervals (`_lower` and `_upper`
+            columns). Default is `False`.
+
+        Returns
+        -------
+        ndarray or pd.DataFrame
+            For `type="lp"` or `"risk"`, returns a 1-D array with one prediction per row.
+            For `type="survival"`, returns a pandas DataFrame with rows for each time point
+            and columns for each subject (named `subject_1`, `subject_2`, etc.), optionally
+            with `_lower` and `_upper` columns for confidence intervals.
+
         Examples
         --------
         The default `type="lp"` returns the centered linear predictor, one value per fitted
@@ -822,6 +878,20 @@ class CoxPH:
 
         Martingale residuals are one per observation; Schoenfeld residuals are one row per
         event (columns are the covariates), ordered by stratum and then event time.
+
+        Parameters
+        ----------
+        type
+            Type of residuals to return: `"martingale"` (default) or `"schoenfeld"`.
+            Martingale residuals are one value per observation. Schoenfeld residuals
+            are one row per event with one column per covariate.
+
+        Returns
+        -------
+        ndarray or pd.DataFrame
+            For `type="martingale"`, returns a 1-D array with one residual per observation.
+            For `type="schoenfeld"`, returns a pandas DataFrame with one row per event and
+            one column per covariate, ordered by stratum and then event time.
 
         Examples
         --------
