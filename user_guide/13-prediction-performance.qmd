@@ -93,7 +93,7 @@ time. Start by asking the Cox model for survival curves at three fixed times.
 
 ```{python}
 times = [180, 365, 540]
-surv = cox.predict(lung[["age", "sex"]], type="survival", times=times)
+surv = cox.predict(lung[["age", "sex"]], type="survival", times=times, format="polars")
 surv.shape
 ```
 
@@ -103,7 +103,7 @@ wants the transpose of this: an array with one row per subject and one column pe
 drop the `time` column and transpose to get there.
 
 ```{python}
-probs = surv.iloc[:, 1:].to_numpy().T
+probs = surv.drop("time").to_numpy().T
 probs.shape
 ```
 
@@ -157,8 +157,10 @@ a horizon, then compares the mean prediction in each bin against the observed su
 Kaplan-Meier estimate for that bin.
 
 ```{python}
-surv_at_year = cox.predict(lung[["age", "sex"]], type="survival", times=[365.0])
-predicted = surv_at_year.iloc[0, 1:].to_numpy()
+surv_at_year = cox.predict(
+    lung[["age", "sex"]], type="survival", times=[365.0], format="polars"
+)
+predicted = surv_at_year.slice(0, 1).drop("time").to_numpy().flatten()
 gw.calibration(y, predicted, 365.0, n_bins=5)
 ```
 
