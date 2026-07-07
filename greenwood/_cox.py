@@ -303,13 +303,14 @@ def _cox_terms(
 
 
 class CoxPH:
-    """Cox proportional hazards model.
+    r"""Cox proportional hazards model.
 
     The Cox proportional hazards model is the most widely used regression method for survival
     data. It models the hazard (instantaneous risk of an event) as a multiplicative function
-    of covariates: h(t | x) = h₀(t) exp(β'x). The model is semi-parametric: the baseline
-    hazard h₀(t) is left unspecified (estimated non-parametrically), while covariate effects
-    are estimated parametrically through the log-hazard-ratio coefficients β.
+    of covariates: $h(t \mid x) = h_0(t) \exp(\beta^\top x)$. The model is semi-parametric:
+    the baseline hazard $h_0(t)$ is left unspecified (estimated non-parametrically), while
+    covariate effects are estimated parametrically through the log-hazard-ratio coefficients
+    $\beta$.
 
     To use this model, call `fit()` with a right-censored or counting-process `Surv` response
     and a design matrix of covariates (2-D array or DataFrame). The model automatically handles
@@ -666,7 +667,7 @@ class CoxPH:
         return out
 
     def baseline_hazard(self, *, format: str | None = None) -> Any:
-        """Return the uncentered baseline cumulative hazard and survival as a frame.
+        r"""Return the uncentered baseline cumulative hazard and survival as a frame.
 
         The baseline hazard represents the hazard rate for a reference subject with all
         covariates at their mean values. It is useful for understanding the underlying
@@ -675,9 +676,9 @@ class CoxPH:
         specific subjects.
 
         In Cox proportional hazards models, the hazard for an individual is modeled as:
-        h(t | x) = h₀(t) * exp(x'β), where h₀(t) is the baseline hazard. This method
-        returns the estimated cumulative baseline hazard H₀(t) at each observed event time,
-        evaluated using the Breslow estimator (non-parametric).
+        $h(t \mid x) = h_0(t) \exp(x^\top \beta)$, where $h_0(t)$ is the baseline hazard.
+        This method returns the estimated cumulative baseline hazard $H_0(t)$ at each observed
+        event time, evaluated using the Breslow estimator (non-parametric).
 
         Parameters
         ----------
@@ -696,8 +697,8 @@ class CoxPH:
             A DataFrame with one row per event time containing:
 
             - `time`: Event times at which the baseline hazard is evaluated.
-            - `cumhaz`: Cumulative baseline hazard H₀(t) at each time.
-            - `survival`: Baseline survival probability S₀(t) = exp(-H₀(t)).
+            - `cumhaz`: Cumulative baseline hazard $H_0(t)$ at each time.
+            - `survival`: Baseline survival probability $S_0(t) = \exp(-H_0(t))$.
             - `strata` (if stratified): Stratum label, one baseline hazard per stratum.
 
         Notes
@@ -707,8 +708,8 @@ class CoxPH:
         each stratum has its own baseline hazard while coefficients are shared across
         strata, allowing different baseline risks for different groups.
 
-        The baseline survival S₀(t) is computed from the cumulative hazard using the
-        relationship S₀(t) = exp(-H₀(t)), consistent with the exponential survival model.
+        The baseline survival $S_0(t)$ is computed from the cumulative hazard using the
+        relationship $S_0(t) = \exp(-H_0(t))$, consistent with the exponential survival model.
 
         Examples
         --------
@@ -774,7 +775,7 @@ class CoxPH:
         ci: bool = False,
         format: str | None = None,
     ) -> Any:
-        """Predict from the fitted model.
+        r"""Predict from the fitted model.
 
         `type` is one of `"lp"` (centered linear predictor), `"risk"` (`exp(lp)`), or
         `"survival"`. For `"survival"`, returns a frame of survival probabilities at `times`
@@ -782,8 +783,8 @@ class CoxPH:
         for stratified models is not yet supported.
 
         `conditional_after` (a scalar or one value per subject) predicts survival conditional
-        on having already survived to that time: the returned value at time `t` is
-        `P(T > t | T > c) = S(t) / S(c)`, and is 1 for `t <= c`.
+        on having already survived to that time: the returned value at time $t$ is
+        $P(T > t \mid T > c) = S(t) / S(c)$, and is 1 for $t \le c$.
 
         With `ci=True` (survival only), the frame also carries `_lower` and `_upper` columns
         per subject: a pointwise confidence band from the cumulative-hazard standard error
@@ -802,7 +803,7 @@ class CoxPH:
             Defaults to the event times from the fitted model.
         conditional_after
             Optional scalar or per-subject time for conditional survival prediction.
-            Computes P(T > t | T > c) where c is the conditional_after time.
+            Computes $P(T > t \mid T > c)$ where $c$ is the conditional_after time.
         ci
             If `True` (survival only), include confidence intervals (`_lower` and `_upper`
             columns). Default is `False`.
@@ -950,7 +951,7 @@ class CoxPH:
     # -- residuals & diagnostics ---------------------------------------------
 
     def residuals(self, type: str = "martingale", *, format: str | None = None) -> Any:
-        """Return diagnostic residuals from the fitted Cox model.
+        r"""Return diagnostic residuals from the fitted Cox model.
 
         Residuals measure the difference between observed events and model predictions,
         helping diagnose model fit and identify outliers or influential observations.
@@ -963,7 +964,7 @@ class CoxPH:
         type
             Type of residuals to return: `"martingale"` (default) or `"schoenfeld"`.
 
-            - `"martingale"`: One residual per observation. Ranges from -∞ to 1. Positive
+            - `"martingale"`: One residual per observation. Ranges from $-\infty$ to 1. Positive
               values suggest the model underestimated risk; negative values suggest
               overestimation. Useful for overall fit assessment.
             - `"schoenfeld"`: One row per event with one column per covariate. Useful for
@@ -991,12 +992,13 @@ class CoxPH:
 
         Notes
         -----
-        Martingale residuals are computed as: M_i = event_i - H_0(t_i) * exp(X_i*β),
-        where H_0 is the baseline cumulative hazard and X_i*β is the linear predictor.
+        Martingale residuals are computed as:
+        $M_i = \text{event}_i - H_0(t_i) \exp(X_i \beta)$, where $H_0$ is the baseline
+        cumulative hazard and $X_i \beta$ is the linear predictor.
 
-        Schoenfeld residuals are computed at each event time as X_i - X̄, where X_i is
-        the covariate vector of the subject with the event and X̄ is the weighted mean
-        covariate vector for the risk set.
+        Schoenfeld residuals are computed at each event time as $X_i - \bar{X}$, where $X_i$
+        is the covariate vector of the subject with the event and $\bar{X}$ is the weighted
+        mean covariate vector for the risk set.
 
         Examples
         --------
@@ -1257,6 +1259,7 @@ class CoxPH:
         the fraction of concordant pairs out of all comparable pairs.
 
         Comparable pairs are those where:
+        
         - One subject has an event (event=True) and exits at time t.
         - The other subject exits at time > t, OR exits at time = t with event=False
           (censored).
