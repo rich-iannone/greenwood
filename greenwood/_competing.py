@@ -116,10 +116,9 @@ class AalenJohansen:
 
     Returns
     -------
-    Not applicable at instantiation. Call `fit()` to produce a fitted estimator with
-    cached results about cumulative incidence for each competing cause (`states_`, and
-    internal cache), accessible as tidy DataFrames via `to_pandas()`, `to_polars()`,
-    `to_arrow()`.
+    Fitted estimator
+        Call `fit()` to produce a fitted estimator with cached results (`states_`, and
+        internal transition matrices), accessible as tidy DataFrames.
 
     Notes
     -----
@@ -447,10 +446,10 @@ class FineGray:
 
     Returns
     -------
-    Not applicable at instantiation. Call `fit()` to produce a fitted estimator with
-    cached results (`coef_`, `hazard_ratio_`, `std_error_`, `z_`, `p_value_`, `conf_low_`,
-    `conf_high_`), accessible as arrays or exported to DataFrames via `tidy()` or
-    `to_pandas()`/`to_polars()`/`to_arrow()`.
+    Fitted estimator
+        Call `fit()` to produce a fitted estimator with cached results (`coef_`,
+        `hazard_ratio_`, `std_error_`, `z_`, `p_value_`, `conf_low_`, `conf_high_`),
+        accessible as arrays or exported to DataFrames.
 
     Notes
     -----
@@ -901,9 +900,10 @@ class MultiState:
 
     Returns
     -------
-    Not applicable at instantiation. Call `fit()` to produce a fitted estimator with
-    cached results (`states_`, `time_`, `occupancy_`, and internal transition matrices),
-    accessible as tidy DataFrames via `to_pandas()`, `to_polars()`, `to_arrow()`.
+    Fitted estimator
+        Call `fit()` to produce a fitted estimator with cached results (`states_`,
+        `time_`, `occupancy_`, and internal transition matrices), accessible as tidy
+        DataFrames.
 
     Examples
     --------

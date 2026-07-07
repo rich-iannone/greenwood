@@ -237,9 +237,10 @@ class KaplanMeier:
 
     Returns
     -------
-    Not applicable at instantiation. Call `fit()` to produce a fitted estimator with
-    cached results (`time_`, `surv_`, `std_error_`, `conf_low_`, `conf_high_`, `n_risk_`,
-    `n_event_`, `n_censor_`), accessible as aligned arrays or exported to DataFrames.
+    Fitted estimator
+        Call `fit()` to produce a fitted estimator with cached results (`time_`, `surv_`,
+        `std_error_`, `conf_low_`, `conf_high_`, `n_risk_`, `n_event_`, `n_censor_`),
+        accessible as aligned arrays or exported to DataFrames.
 
     Notes
     -----
@@ -884,10 +885,10 @@ class NelsonAalen:
 
     Returns
     -------
-    Not applicable at instantiation. Call `fit()` to produce a fitted estimator with
-    cached results (`time_`, `cumulative_hazard_`, `std_error_`, `conf_low_`, `conf_high_`,
-    `n_risk_`, `n_event_`, `n_censor_`), accessible as aligned arrays or exported to
-    DataFrames.
+    Fitted estimator
+        Call `fit()` to produce a fitted estimator with cached results (`time_`,
+        `cumulative_hazard_`, `std_error_`, `conf_low_`, `conf_high_`, `n_risk_`, `n_event_`,
+        `n_censor_`), accessible as aligned arrays or exported to DataFrames.
 
     Notes
     -----

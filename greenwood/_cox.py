@@ -464,10 +464,10 @@ class CoxPH:
 
     Returns
     -------
-    Not applicable at instantiation. Call `fit()` to produce a fitted estimator with
-    cached results (`coef_`, `hazard_ratio_`, `std_error_`, `z_`, `p_value_`, `conf_low_`,
-    `conf_high_`, `concordance_`, `lr_stat_`, `df_`), accessible as arrays or exported to
-    DataFrames via `tidy()` or `to_pandas()`/`to_polars()`/`to_arrow()`.
+    Fitted estimator
+        Call `fit()` to produce a fitted estimator with cached results (`coef_`,
+        `hazard_ratio_`, `std_error_`, `z_`, `p_value_`, `conf_low_`, `conf_high_`,
+        `concordance_`, `lr_stat_`, `df_`), accessible as arrays or exported to DataFrames.
 
     Notes
     -----

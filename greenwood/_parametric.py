@@ -110,10 +110,10 @@ class AFT:
 
     Returns
     -------
-    Not applicable at instantiation. Call `fit()` to produce a fitted estimator with
-    cached results (`coef_`, `scale_`, `std_error_`, `z_`, `p_value_`, `conf_low_`,
-    `conf_high_`, `loglik_`, `aic_`, `bic_`), accessible as arrays or exported to DataFrames
-    via `tidy()` or `to_pandas()`/`to_polars()`/`to_arrow()`.
+    Fitted estimator
+        Call `fit()` to produce a fitted estimator with cached results (`coef_`,
+        `scale_`, `std_error_`, `z_`, `p_value_`, `conf_low_`, `conf_high_`, `loglik_`,
+        `aic_`, `bic_`), accessible as arrays or exported to DataFrames.
 
     Notes
     -----
