@@ -677,21 +677,21 @@ class Surv:
 
     @property
     def entry(self) -> Array:
-        """Entry times for each observation (or -∞ if no left truncation).
+        r"""Entry times for each observation (or $-\infty$ if no left truncation).
 
         For counting-process data (late entry), this returns the `start` time when each
         subject became at risk. For standard right-censored data with no left truncation,
-        all values are -∞, indicating subjects entered at the beginning of follow-up.
+        all values are $-\infty$, indicating subjects entered at the beginning of follow-up.
 
         Returns
         -------
         Array
             Entry times with shape (n,). Contains start times for counting-process form
-            or -∞ where there is no left truncation.
+            or $-\infty$ where there is no left truncation.
 
         Examples
         --------
-        Right-censored data (no left truncation) has all -∞ entry times:
+        Right-censored data (no left truncation) has all $-\infty$ entry times:
 
         ```{python}
         import greenwood as gw
