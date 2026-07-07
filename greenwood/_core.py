@@ -150,7 +150,7 @@ def _tabulate_block(
 
 
 def event_table(surv: Surv, *, group: Any = None, weights: Any = None) -> EventTable:
-    """Tabulate the event history: risk sets and events at each observed time.
+    r"""Tabulate the event history: risk sets and events at each observed time.
 
     Creates a structured summary of the survival data at each unique event time. The table
     shows how many subjects were at risk, how many experienced events, and how many were
@@ -198,10 +198,10 @@ def event_table(surv: Surv, *, group: Any = None, weights: Any = None) -> EventT
 
     Notes
     -----
-    **Risk-set definition**: At time t, subjects "at risk" are those with:
+    **Risk-set definition**: At time $t$, subjects "at risk" are those with:
 
-    - Entry time ≤ t (for counting-process data)
-    - Exit time > t (not yet having an event or censoring)
+    - Entry time $\le t$ (for counting-process data)
+    - Exit time $> t$ (not yet having an event or censoring)
 
     For right-censored data, entry is always 0, so the condition simplifies.
 
@@ -247,7 +247,7 @@ def event_table(surv: Surv, *, group: Any = None, weights: Any = None) -> EventT
     differ by group.
 
     Compute a manual survival estimate from risk-set counts. The survival probability at
-    time t is the product of (1 - n_event / n_risk) over all times ≤ t:
+    time $t$ is the product of `(1 - n_event / n_risk)` over all times $\le t$:
 
     ```{python}
     import numpy as np
