@@ -1,12 +1,14 @@
-"""Competing-risks estimation: the Aalen-Johansen cumulative incidence function.
+r"""Competing-risks estimation: the Aalen-Johansen cumulative incidence function.
 
 For competing risks (each subject starts in one state and makes a single transition to one
-of several absorbing causes), the cumulative incidence function (CIF) for cause `k` is
+of several absorbing causes), the cumulative incidence function (CIF) for cause $k$ is
 
-    CIF_k(t) = sum_{t_i <= t} S(t_i^-) * d_{ki} / n_i,
+$$
+\mathrm{CIF}_k(t) = \sum_{t_i \le t} \hat{S}(t_i^-) \, \frac{d_{ki}}{n_i},
+$$
 
-where `S` is the all-cause Kaplan-Meier survival, `d_{ki}` the cause-`k` events at `t_i`, and
-`n_i` the number at risk. The standard error uses the Aalen (Marubini-Valsecchi)
+where $\hat{S}$ is the all-cause Kaplan-Meier survival, $d_{ki}$ the cause-$k$ events at
+$t_i$, and $n_i$ the number at risk. The standard error uses the Aalen (Marubini-Valsecchi)
 delta-method estimator. Both are validated to tolerance against R's `survfit`.
 """
 
@@ -91,7 +93,7 @@ def _cif_block(
 
 
 class AalenJohansen:
-    """Aalen-Johansen estimator of cumulative incidence functions for competing risks.
+    r"""Aalen-Johansen estimator of cumulative incidence functions for competing risks.
 
     In survival analysis, competing risks occur when subjects can experience multiple types
     of events (e.g., progression to malignancy vs. death from other causes), and experiencing
@@ -106,10 +108,11 @@ class AalenJohansen:
     (built with `Surv.multistate()`) to obtain estimates for each competing cause. Results
     are returned as tidy DataFrames with one row per combination of stratum, cause, and time.
 
-    The estimator uses the formula: CIF_j(t) = Σ_{s≤t} S(s-) P_{0j}(s), where S(s-) is the
-    probability of being event-free before time s, and P_{0j}(s) is the transition probability
-    from censoring to cause j. Confidence intervals use the Greenwood-style variance estimator
-    on the complementary log-log scale for improved coverage.
+    The estimator uses the formula $\mathrm{CIF}_j(t) = \sum_{s \le t} \hat{S}(s^-) P_{0j}(s)$,
+    where $\hat{S}(s^-)$ is the probability of being event-free before time $s$, and
+    $P_{0j}(s)$ is the transition probability from censoring to cause $j$. Confidence intervals
+    use the Greenwood-style variance estimator on the complementary log-log scale for improved
+    coverage.
 
     Parameters
     ----------
@@ -180,7 +183,7 @@ class AalenJohansen:
         return "\n".join(head) + "\n\n" + table
 
     def fit(self, surv: Surv, *, by: Any = None) -> AalenJohansen:
-        """Fit cumulative incidence functions to a competing-risks response.
+        r"""Fit cumulative incidence functions to a competing-risks response.
 
         Computes the cumulative incidence function (CIF) for each cause-of-interest from a
         multi-state `Surv` response. Unlike Kaplan-Meier (which handles only a single event
@@ -190,10 +193,10 @@ class AalenJohansen:
         the fitted object; access them via `to_frame()` (optionally `format=`).
 
         The Aalen-Johansen estimator generalizes both Kaplan-Meier and Nelson-Aalen to the
-        competing-risks setting. For each cause j, it estimates F_j(t), the cumulative
-        probability of experiencing cause j by time t, accounting for all competing causes. The
-        CIFs sum to the overall event probability at any time. Pass `by=` to produce separate
-        CIF estimates per group (stratified competing-risks analysis).
+        competing-risks setting. For each cause $j$, it estimates $F_j(t)$, the cumulative
+        probability of experiencing cause $j$ by time $t$, accounting for all competing causes.
+        The CIFs sum to the overall event probability at any time. Pass `by=` to produce
+        separate CIF estimates per group (stratified competing-risks analysis).
 
         Parameters
         ----------
@@ -216,9 +219,10 @@ class AalenJohansen:
         Notes
         -----
         The Aalen-Johansen estimator is a product-integral estimator of the CIF:
-        F_j(t) = integral S_{-}(u) dM_j(u), where S_{-}(u) is the estimated probability of
-        surviving (remaining uncensored) just before u, and M_j(u) is the counting process for
-        cause j. It reduces to Kaplan-Meier when there is only one cause and no censoring.
+        $F_j(t) = \int \hat{S}_{-}(u) \, dM_j(u)$, where $\hat{S}_{-}(u)$ is the estimated
+        probability of surviving (remaining uncensored) just before $u$, and $M_j(u)$ is the
+        counting process for cause $j$. It reduces to Kaplan-Meier when there is only one cause
+        and no censoring.
 
         Left truncation is not yet supported. Multi-state responses must be built with
         `Surv.multistate()`.
@@ -463,7 +467,7 @@ class FineGray:
     def fit(
         self, surv: Surv, covariates: Any, *, max_iter: int = 30, tol: float = 1e-9
     ) -> FineGray:
-        """Fit the Fine-Gray subdistribution hazard model to competing-risks data.
+        r"""Fit the Fine-Gray subdistribution hazard model to competing-risks data.
 
         Fits a Cox-like regression model to the subdistribution hazard of a target cause in
         a competing-risks setting. Subjects who experience a competing event remain in the
@@ -494,14 +498,14 @@ class FineGray:
 
         Notes
         -----
-        The Fine-Gray model estimates the subdistribution hazard h_j(t) using weighted partial
-        likelihood. Weights are the inverse of the Kaplan-Meier estimate of the censoring
-        distribution, computed just before each target event time. Subjects with competing
-        events receive time-decreasing weights reflecting reduced ability to contribute
-        information.
+        The Fine-Gray model estimates the subdistribution hazard $h_j(t)$ using weighted
+        partial likelihood. Weights are the inverse of the Kaplan-Meier estimate of the
+        censoring distribution, computed just before each target event time. Subjects with
+        competing events receive time-decreasing weights reflecting reduced ability to
+        contribute information.
 
         Coefficients are interpreted as log-hazard ratios on the subdistribution hazard scale,
-        not the cause-specific hazard. The model directly targets cumulative incidence (F_j),
+        not the cause-specific hazard. The model directly targets cumulative incidence ($F_j$),
         making it ideal for policy-relevant questions about the probability of experiencing
         a specific cause.
 
@@ -754,11 +758,11 @@ _register_finegray()
 
 
 class MultiState:
-    """Aalen-Johansen estimator of multi-state transition and occupancy probabilities.
+    r"""Aalen-Johansen estimator of multi-state transition and occupancy probabilities.
 
     Given counting-process intervals `(start, stop]` each labelled with the state occupied
     (`state`) and the state transitioned to at `stop` (`event`, or a censoring marker), this
-    forms the Aalen-Johansen product `P(0, t) = prod (I + dA(s))` and reports the state
+    forms the Aalen-Johansen product $P(0, t) = \prod (I + dA(s))$ and reports the state
     occupancy probabilities over time. Occupancy probabilities are validated to tolerance
     against R's `survfit` multi-state `pstate`. (Competing risks and Kaplan-Meier are special
     cases handled by `AalenJohansen` and `KaplanMeier`.)
