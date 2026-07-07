@@ -162,6 +162,7 @@ def cross_validate(
             # Works with pandas, polars, or pyarrow without requiring pandas
             try:
                 import polars as pl
+
                 if isinstance(frame, pl.DataFrame):
                     # Polars: drop the first column and convert to numpy
                     probs = frame[:, 1:].to_numpy().T  # (n_test, n_times)

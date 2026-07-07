@@ -244,9 +244,7 @@ def test_surv_left_and_interval_dataframe() -> None:
 def test_calibration_before_first_event(y, lung) -> None:
     cox = CoxPH().fit(y, lung[["age", "sex"]])
     pred = (
-        cox.predict(
-            lung[["age", "sex"]], type="survival", times=[365.0], format="pandas"
-        )
+        cox.predict(lung[["age", "sex"]], type="survival", times=[365.0], format="pandas")
         .iloc[0, 1:]
         .to_numpy()
     )

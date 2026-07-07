@@ -23,9 +23,7 @@ class TestCalibrationFormat:
         df, y = lung_surv
         cox = CoxPH().fit(y, df[["age", "sex"]])
         pred = (
-            cox.predict(
-                df[["age", "sex"]], type="survival", times=[365.0], format="pandas"
-            )
+            cox.predict(df[["age", "sex"]], type="survival", times=[365.0], format="pandas")
             .iloc[0, 1:]
             .to_numpy()
         )
@@ -48,9 +46,7 @@ class TestCalibrationFormat:
         df, y = lung_surv
         cox = CoxPH().fit(y, df[["age", "sex"]])
         pred = (
-            cox.predict(
-                df[["age", "sex"]], type="survival", times=[365.0], format="pandas"
-            )
+            cox.predict(df[["age", "sex"]], type="survival", times=[365.0], format="pandas")
             .iloc[0, 1:]
             .to_numpy()
         )
@@ -73,9 +69,7 @@ class TestCalibrationFormat:
         df, y = lung_surv
         cox = CoxPH().fit(y, df[["age", "sex"]])
         pred = (
-            cox.predict(
-                df[["age", "sex"]], type="survival", times=[365.0], format="pandas"
-            )
+            cox.predict(df[["age", "sex"]], type="survival", times=[365.0], format="pandas")
             .iloc[0, 1:]
             .to_numpy()
         )
@@ -97,9 +91,7 @@ class TestCalibrationFormat:
         df, y = lung_surv
         cox = CoxPH().fit(y, df[["age", "sex"]])
         pred = (
-            cox.predict(
-                df[["age", "sex"]], type="survival", times=[365.0], format="pandas"
-            )
+            cox.predict(df[["age", "sex"]], type="survival", times=[365.0], format="pandas")
             .iloc[0, 1:]
             .to_numpy()
         )
@@ -119,9 +111,7 @@ class TestCalibrationFormat:
         df, y = lung_surv
         cox = CoxPH().fit(y, df[["age", "sex"]])
         pred = (
-            cox.predict(
-                df[["age", "sex"]], type="survival", times=[365.0], format="pandas"
-            )
+            cox.predict(df[["age", "sex"]], type="survival", times=[365.0], format="pandas")
             .iloc[0, 1:]
             .to_numpy()
         )

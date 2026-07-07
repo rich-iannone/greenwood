@@ -101,6 +101,7 @@ class TestBaselineHazardFormat:
         cox = CoxPH().fit(y, df[["age", "sex"]])
         result = cox.baseline_hazard(format="pandas")
         import pandas as pd
+
         assert isinstance(result, pd.DataFrame)
         assert "cumhaz" in result.columns
 
@@ -111,6 +112,7 @@ class TestBaselineHazardFormat:
         cox = CoxPH().fit(y, df[["age", "sex"]])
         result = cox.baseline_hazard(format="polars")
         import polars as pl
+
         assert isinstance(result, pl.DataFrame)
         assert "cumhaz" in result.columns
 
@@ -121,6 +123,7 @@ class TestBaselineHazardFormat:
         cox = CoxPH().fit(y, df[["age", "sex"]])
         result = cox.baseline_hazard(format="pyarrow")
         import pyarrow as pa
+
         assert isinstance(result, pa.Table)
         assert "cumhaz" in result.column_names
 
@@ -149,6 +152,7 @@ class TestResidualsFormat:
         cox = CoxPH().fit(y, df[["age", "sex"]])
         result = cox.residuals(type="schoenfeld", format="pandas")
         import pandas as pd
+
         assert isinstance(result, pd.DataFrame)
 
     def test_residuals_format_polars(self, lung_surv) -> None:
@@ -158,6 +162,7 @@ class TestResidualsFormat:
         cox = CoxPH().fit(y, df[["age", "sex"]])
         result = cox.residuals(type="schoenfeld", format="polars")
         import polars as pl
+
         assert isinstance(result, pl.DataFrame)
 
     def test_residuals_format_pyarrow(self, lung_surv) -> None:
@@ -167,6 +172,7 @@ class TestResidualsFormat:
         cox = CoxPH().fit(y, df[["age", "sex"]])
         result = cox.residuals(type="schoenfeld", format="pyarrow")
         import pyarrow as pa
+
         assert isinstance(result, pa.Table)
 
     def test_residuals_data_consistent_across_formats(self, lung_surv) -> None:

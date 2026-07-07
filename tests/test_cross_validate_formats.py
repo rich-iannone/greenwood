@@ -86,51 +86,47 @@ class TestCrossValidatePolyArrow:
 class TestCrossValidateConsistency:
     """Test that cross_validate gives consistent results across formats."""
 
-    def test_cross_validate_results_consistent_pandas_vs_polars(
-        self, lung_surv
-    ) -> None:
+    def test_cross_validate_results_consistent_pandas_vs_polars(self, lung_surv) -> None:
         """Test that results are consistent between pandas and polars inputs."""
         pytest.importorskip("polars")
         import polars as pl
 
         df, y = lung_surv
-        
+
         # Run with pandas
         result_pandas = cross_validate(
             CoxPH(), y, df[["age", "sex"]], metric="brier", times=[180, 365], seed=42, k=3
         )
-        
+
         # Run with polars
         df_polars = pl.from_pandas(df)
         result_polars = cross_validate(
             CoxPH(), y, df_polars[["age", "sex"]], metric="brier", times=[180, 365], seed=42, k=3
         )
-        
+
         # Results should be identical (same seed and folds)
         np.testing.assert_allclose(result_pandas["scores"], result_polars["scores"])
         assert result_pandas["mean"] == result_polars["mean"]
         assert result_pandas["std"] == result_polars["std"]
 
-    def test_cross_validate_results_consistent_pandas_vs_pyarrow(
-        self, lung_surv
-    ) -> None:
+    def test_cross_validate_results_consistent_pandas_vs_pyarrow(self, lung_surv) -> None:
         """Test that results are consistent between pandas and pyarrow inputs."""
         pytest.importorskip("pyarrow")
         import pyarrow as pa
 
         df, y = lung_surv
-        
+
         # Run with pandas
         result_pandas = cross_validate(
             CoxPH(), y, df[["age", "sex"]], metric="brier", times=[180, 365], seed=42, k=3
         )
-        
+
         # Run with pyarrow
         df_arrow = pa.table(df[["age", "sex"]])
         result_arrow = cross_validate(
             CoxPH(), y, df_arrow, metric="brier", times=[180, 365], seed=42, k=3
         )
-        
+
         # Results should be identical
         np.testing.assert_allclose(result_pandas["scores"], result_arrow["scores"])
         assert result_pandas["mean"] == result_arrow["mean"]
