@@ -133,8 +133,8 @@ def cross_validate(
 
         For concordance, higher mean is better. For Brier, lower mean is better.
 
-    Technical Details
-    -----------------
+    Details
+    -------
     **How folds work**: Subjects are randomly shuffled and split into k roughly equal-sized
     groups. On iteration i, fold i is held out for testing, while the other k-1 folds are
     combined for training. This repeats k times until each fold has served as test data once.

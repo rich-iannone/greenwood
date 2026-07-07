@@ -257,8 +257,8 @@ class KaplanMeier:
         `std_error_`, `conf_low_`, `conf_high_`, `n_risk_`, `n_event_`, `n_censor_`),
         accessible as aligned arrays or exported to DataFrames.
 
-    Notes
-    -----
+    Details
+    -------
     Call `fit` with a `Surv` response. Results are exposed as aligned arrays (`time_`,
     `survival_`, `std_error_`, `conf_low_`, `conf_high_`, `strata_`), as tidy frames via
     `to_frame()` (optionally `format=`), and through `median`, `quantile`, and `predict`.
@@ -366,8 +366,8 @@ class KaplanMeier:
             (`time_`, `surv_`, `conf_low_`, `conf_high_`, `n_risk_`, `n_event_`, etc. as
             attributes).
 
-        Notes
-        -----
+        Details
+        -------
         The Kaplan-Meier estimator is a non-parametric maximum likelihood estimator of the
         survival function $S(t)$. It is defined as the product of $(1 - d/n)$ over all event
         times up to $t$, where $d$ is the number of events and $n$ is the number at risk at
@@ -465,8 +465,8 @@ class KaplanMeier:
             stratum label, with values as above. If the survival curve never drops to
             (1 - p), the quantile is `nan`.
 
-        Notes
-        -----
+        Details
+        -------
         The quantile is found by inverting the step-function survival curve: the smallest time
         $t$ such that $S(t) \le (1 - p)$. Confidence intervals are obtained by inverting the
         pointwise confidence band, following R's convention. These are not simultaneous
@@ -522,8 +522,8 @@ class KaplanMeier:
             stratum label, with values as above. If the survival curve never drops to 0.5,
             the median is `nan`.
 
-        Notes
-        -----
+        Details
+        -------
         The median is a convenience wrapper around `quantile(0.5, ci=ci)`. It is the
         time-to-event value that divides the cohort into two equal halves (in terms of
         probability of experiencing the event). Unlike parametric models, the non-parametric
@@ -572,8 +572,8 @@ class KaplanMeier:
             (estimate, lower, upper) if `ci=True`. For stratified fits: a dict keyed by
             stratum label, with values as above.
 
-        Notes
-        -----
+        Details
+        -------
         The restricted mean survival time is computed as the definite integral of $S(t)$
         from 0 to $\tau$:
 
@@ -649,8 +649,8 @@ class KaplanMeier:
             stratum label, with values as above. If everyone has failed by time `s`
             (i.e., S(s) = 0), the value is `nan`.
 
-        Notes
-        -----
+        Details
+        -------
         The restricted mean residual life at a landmark time `s` measures the expected
         additional survival time for subjects who have survived to `s`, restricted to time
         `tau`. It generalizes RMST (which is equivalently rmrl(0, tau)). This is useful in
@@ -715,8 +715,8 @@ class KaplanMeier:
             at the query times. For stratified fits: a dict keyed by stratum label, with values
             as above.
 
-        Notes
-        -----
+        Details
+        -------
         The survival and cumulative hazard curves are step functions defined only at observed
         event times. Values at times between events are interpolated using the right-continuous
         step-function convention: the value at time $t$ is the last step at time $\le t$. Times
@@ -884,8 +884,8 @@ class NelsonAalen:
         `cumulative_hazard_`, `std_error_`, `conf_low_`, `conf_high_`, `n_risk_`, `n_event_`,
         `n_censor_`), accessible as aligned arrays or exported to DataFrames.
 
-    Notes
-    -----
+    Details
+    -------
     Call `fit()` with a `Surv` response. Results are exposed as aligned arrays, as tidy
     frames via `to_frame()` (optionally `format=`), and through the `predict()`,
     `quantile()`, and other methods.
@@ -976,8 +976,8 @@ class NelsonAalen:
             (`time_`, `cumulative_hazard_`, `conf_low_`, `conf_high_`, `n_risk_`, `n_event_`
             as attributes).
 
-        Notes
-        -----
+        Details
+        -------
         The Nelson-Aalen estimator is
 
         $$

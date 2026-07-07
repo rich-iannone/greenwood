@@ -338,8 +338,8 @@ class CoxPH:
         `hazard_ratio_`, `std_error_`, `z_`, `p_value_`, `conf_low_`, `conf_high_`,
         `concordance_`, `lr_stat_`, `df_`), accessible as arrays or exported to DataFrames.
 
-    Notes
-    -----
+    Details
+    -------
     Call `fit(surv, covariates)` with a `Surv` response and a design (a 2-D array or a
     dataframe of covariates). Rows with missing values are dropped (complete-case, as in R's
     default `na.omit`). Results are exposed as arrays (`coef_`, `std_error_`, `hazard_ratio_`,
@@ -701,8 +701,8 @@ class CoxPH:
             - `survival`: Baseline survival probability $S_0(t) = \exp(-H_0(t))$.
             - `strata` (if stratified): Stratum label, one baseline hazard per stratum.
 
-        Notes
-        -----
+        Details
+        -------
         The baseline hazard is evaluated only at the event times in the training data.
         The cumulative hazard is non-decreasing by construction. For stratified models,
         each stratum has its own baseline hazard while coefficients are shared across
@@ -990,8 +990,8 @@ class CoxPH:
             For `type="schoenfeld"`: a DataFrame with one row per event and one column
             per covariate, ordered by stratum and then event time.
 
-        Notes
-        -----
+        Details
+        -------
         Martingale residuals are computed as:
         $M_i = \text{event}_i - H_0(t_i) \exp(X_i \beta)$, where $H_0$ is the baseline
         cumulative hazard and $X_i \beta$ is the linear predictor.
@@ -1117,9 +1117,9 @@ class CoxPH:
             test (`global_test` dict) across all covariates. Each includes chi-squared
             statistic, degrees of freedom, and p-value. Access results via `.to_frame()`
             or dictionary keys.
-
-        Notes
-        -----
+    
+        Details
+        -------
         The test uses scaled Schoenfeld residuals, which under the null hypothesis
         (proportional hazards) have a known asymptotic distribution. The test statistic is
         approximately chi-squared with 1 df for each term, and chi-squared with degrees
@@ -1252,14 +1252,14 @@ class CoxPH:
             - 0.7-0.8: Excellent discrimination.
             - 0.8+: Outstanding discrimination.
 
-        Notes
-        -----
+        Details
+        -------
         The concordance index is equivalent to the Area Under the Receiver Operating
         Characteristic curve (AUC) for binary classification problems. It is computed as
         the fraction of concordant pairs out of all comparable pairs.
 
         Comparable pairs are those where:
-        
+
         - One subject has an event (event=True) and exits at time t.
         - The other subject exits at time > t, OR exits at time = t with event=False
           (censored).

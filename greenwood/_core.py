@@ -196,8 +196,8 @@ def event_table(surv: Surv, *, group: Any = None, weights: Any = None) -> EventT
 
         Access columns via `.to_frame()` (optionally `format=`), or iterate directly.
 
-    Notes
-    -----
+    Details
+    -------
     **Risk-set definition**: At time $t$, subjects "at risk" are those with:
 
     - Entry time $\le t$ (for counting-process data)

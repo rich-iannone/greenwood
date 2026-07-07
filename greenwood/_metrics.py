@@ -60,8 +60,8 @@ def concordance_index(surv: Surv, risk: Any) -> float:
         better than random; below 0.5 indicates worse-than-random discrimination (possibly
         inverted risk scale).
 
-    Notes
-    -----
+    Details
+    -------
     **Pair comparison rule**:
 
     - A subject with an observed event at time t is compared to all subjects still under
@@ -185,8 +185,8 @@ def brier_score(surv: Surv, survival_prob: Any, times: Any) -> Array:
     ndarray
         Brier score at each time, shape `(len(times),)`. Lower is better.
 
-    Notes
-    -----
+    Details
+    -------
     **Graf (IPCW) Brier score**: The unbiased Brier score under censoring is
 
     $$
@@ -321,8 +321,8 @@ def integrated_brier_score(surv: Surv, survival_prob: Any, times: Any) -> float:
     float
         Integrated Brier score (time-averaged). Lower is better.
 
-    Technical Details
-    -----------------
+    Details
+    -------
     **Computation**: The integrated Brier score is
 
     $$

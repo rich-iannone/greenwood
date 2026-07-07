@@ -145,8 +145,8 @@ def plot_survival(
     `risk_table=True`). The returned object is composable: you can add layers, scales, themes,
     and facets using plotnine's `+` operator or `/` operator for arrangement.
 
-    Notes
-    -----
+    Details
+    -------
     The survival curve is drawn as a right-continuous step function, reflecting how the
     Kaplan-Meier estimate changes only at observed event times (not between them). Confidence
     bands are point-wise (not uniform/simultaneous), so they do not guarantee that the true

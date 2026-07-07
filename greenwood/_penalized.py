@@ -81,8 +81,8 @@ class CoxNet:
         `std_error_`, `n_features_in_`, `feature_names_in_`), accessible as arrays or
         exported to DataFrames.
 
-    Notes
-    -----
+    Details
+    -------
     Call `fit(surv, covariates)` with a right-censored or counting-process `Surv` response.
     `covariates` may be a dataframe, a 2-D array, or a formula string with `data`. Stratified
     penalized fits are not supported.
@@ -175,8 +175,8 @@ class CoxNet:
             The fitted estimator object itself (for method chaining) with cached coefficient
             arrays, standard errors, and model metrics.
 
-        Notes
-        -----
+        Details
+        -------
         The elastic-net penalty is $\lambda(\alpha L_1 + (1 - \alpha) L_2)$, where
         $\lambda$ = `penalizer` and $\alpha$ = `l1_ratio`. Setting `l1_ratio=1` gives lasso
         ($L_1$ only, induces sparsity); `l1_ratio=0` gives ridge ($L_2$ only, smooth
@@ -355,8 +355,8 @@ class CoxNet:
         ValueError
             If `type` is not one of `"lp"`, `"risk"`, or `"survival"`.
 
-        Notes
-        -----
+        Details
+        -------
         The penalized Cox model estimates $\exp(\text{lp})$ as a multiplier on the baseline
         cumulative hazard: $H(t \mid x) = H_0(t)\,\exp(\text{lp})$. Survival is then
         $S(t \mid x) = \exp(-H(t \mid x))$. The baseline cumulative hazard $H_0(t)$ is

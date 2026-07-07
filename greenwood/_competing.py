@@ -124,9 +124,9 @@ class AalenJohansen:
     Fitted estimator
         Call `fit()` to produce a fitted estimator with cached results (`states_`, and
         internal transition matrices), accessible as tidy DataFrames.
-
-    Notes
-    -----
+    
+    Details
+    -------
     Call `fit(surv, by=...)` with a multi-state `Surv` response (built with
     `Surv.multistate`, where `event` codes are 0 for censoring and `1..K` for the competing
     causes). Results are tidy frames via `to_frame()` (optionally `format=`) with one row
@@ -216,8 +216,8 @@ class AalenJohansen:
             incidence results (time arrays, CIF per cause, confidence bands) accessible via
             `to_frame()` (optionally `format=`).
 
-        Notes
-        -----
+        Details
+        -------
         The Aalen-Johansen estimator is a product-integral estimator of the CIF:
         $F_j(t) = \int \hat{S}_{-}(u) \, dM_j(u)$, where $\hat{S}_{-}(u)$ is the estimated
         probability of surviving (remaining uncensored) just before $u$, and $M_j(u)$ is the
@@ -399,8 +399,8 @@ class FineGray:
         `hazard_ratio_`, `std_error_`, `z_`, `p_value_`, `conf_low_`, `conf_high_`),
         accessible as arrays or exported to DataFrames.
 
-    Notes
-    -----
+    Details
+    -------
     Call `fit(surv, covariates)` with a multi-state `Surv` response (built with
     `Surv.multistate()`) and specify the target `cause`. The model uses weighted Cox-like
     optimization with robust standard errors. Results can be tidy frames via `to_frame()`
@@ -496,8 +496,8 @@ class FineGray:
             arrays (`coef_`, `std_error_`, `hazard_ratio_`, `z_`, `p_value_`), event counts,
             and model fit statistics.
 
-        Notes
-        -----
+        Details
+        -------
         The Fine-Gray model estimates the subdistribution hazard $h_j(t)$ using weighted
         partial likelihood. Weights are the inverse of the Kaplan-Meier estimate of the
         censoring distribution, computed just before each target event time. Subjects with
@@ -876,8 +876,8 @@ class MultiState:
             (optionally `format=`). Occupancy probabilities and transition probabilities can
             be queried at any time via `predict()`.
 
-        Notes
-        -----
+        Details
+        -------
         **Data format**: Intervals are half-open (start, stop]. Each row represents a
         subject-interval: the period during which the subject was in `state` and either
         remained (censored) or transitioned to `event` at `stop`.

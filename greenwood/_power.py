@@ -104,8 +104,8 @@ def logrank_n_events(
     int
         Minimum number of events (rounded up), required across all groups combined.
 
-    Notes
-    -----
+    Details
+    -------
     **Schoenfeld's formula**: The exact number of events is
 
     $$
@@ -233,8 +233,8 @@ def logrank_power(
         Statistical power, a value between 0 and 1. Power of 0.8 (80%) is conventional in many
         fields; higher power (0.9, 0.95) requires more events.
 
-    Notes
-    -----
+    Details
+    -------
     **Schoenfeld's formula**: Under proportional hazards, the power of the log-rank test is
 
     $$
@@ -365,8 +365,8 @@ def logrank_sample_size(
         Total number of subjects (enrollment) needed, rounded up. This is the total across all
         groups.
 
-    Notes
-    -----
+    Details
+    -------
     **Relationship between events and subjects**:
 
         n_subjects = ceil(n_events / prob_event)

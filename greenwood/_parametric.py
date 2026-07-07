@@ -117,8 +117,8 @@ class AFT:
         `scale_`, `std_error_`, `z_`, `p_value_`, `conf_low_`, `conf_high_`, `loglik_`,
         `aic_`, `bic_`), accessible as arrays or exported to DataFrames.
 
-    Notes
-    -----
+    Details
+    -------
     Call `fit(surv, covariates)` with a right-censored `Surv` response and a covariate design
     (a 2-D array or a dataframe). An intercept is added automatically; rows with missing
     covariates are dropped. Results are exposed as arrays (`coef_`, `scale_`, `std_error_`,
@@ -205,8 +205,8 @@ class AFT:
             arrays (`coef_`, `std_error_`, `z_`, `p_value_`), scale parameter (`scale_`),
             and log-likelihood (`loglik_`).
 
-        Notes
-        -----
+        Details
+        -------
         The AFT model parameterizes log-survival time as $\log(T) = X\beta + \sigma\varepsilon$,
         where $X$ is the design matrix, $\beta$ are coefficients, $\sigma$ is a scale parameter,
         and $\varepsilon$ is an error term from the chosen distribution. The survival function
@@ -375,8 +375,8 @@ class AFT:
             `subject_1`, `subject_2`, etc. containing survival probabilities at each time.
             Column names match the input row index if `newdata` has a row index.
 
-        Notes
-        -----
+        Details
+        -------
         The AFT model assumes $\log(T) = X\beta + \sigma\varepsilon$, where $\varepsilon$
         follows a parametric error distribution (Weibull, lognormal, etc.). Predictions are made
         by evaluating the CDF/survival function of this distribution at covariate-adjusted

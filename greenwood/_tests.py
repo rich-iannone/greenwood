@@ -58,8 +58,8 @@ class TestResult:
         hypothesis of equal survival. Comparison of observed vs. expected reveals which
         groups have more or fewer events than expected.
 
-    Notes
-    -----
+    Details
+    -------
     For a significant result (p_value < 0.05), examine the `observed` and `expected`
     dictionaries to see which groups experienced more or fewer events than expected. Groups
     with observed > expected have worse (shorter) survival; groups with observed < expected
@@ -296,8 +296,8 @@ def logrank_test(
         - `observed`: Dictionary mapping group labels to observed weighted event counts.
         - `expected`: Dictionary mapping group labels to expected event counts under null.
 
-    Notes
-    -----
+    Details
+    -------
     The log-rank test uses the hypergeometric variance for the chi-square statistic, matching
     R's `survival::survdiff`. The pooled Kaplan-Meier survivor curve from all groups combined
     is used to compute the Fleming-Harrington weights, ensuring the test is consistently
@@ -489,8 +489,8 @@ def pairwise_logrank_test(
         - `p_adjusted`: Adjusted p-value after multiple-comparison correction. Use this for
           significance testing (e.g., p_adjusted < 0.05).
 
-    Notes
-    -----
+    Details
+    -------
     The number of pairs tested is $C(k, 2) = k(k-1)/2$, where $k$ is the number of groups. For
     $k=3$, that's 3 pairs; for $k=5$, that's 10 pairs. Larger numbers of pairs can reduce power
     per comparison (wider adjusted confidence intervals), so keep the number of groups

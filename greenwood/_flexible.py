@@ -115,8 +115,8 @@ class RoystonParmar:
         `std_error_`, `z_`, `p_value_`, `conf_low_`, `conf_high_`, `knots_`, `loglik_`,
         `aic_`, `bic_`), accessible as arrays or exported to DataFrames.
 
-    Notes
-    -----
+    Details
+    -------
     Call `fit(surv, covariates)` with a right-censored `Surv` response and a covariate design
     (a dataframe, a 2-D array, or a formula string with `data`). Results are exposed as arrays
     (`coef_`, `std_error_`, ...), the fitted `knots_`, and tidy frames via `to_frame()`
@@ -200,8 +200,8 @@ class RoystonParmar:
             arrays (`coef_`, `std_error_`, `z_`, `p_value_`), fitted knot locations (`knots_`),
             and model fit statistics.
 
-        Notes
-        -----
+        Details
+        -------
         The Royston-Parmar model parameterizes the log cumulative hazard as a restricted
         cubic spline in log-time, with proportional-hazards covariate effects added linearly.
         Knots are placed at quantiles of observed event times. Maximum likelihood estimation
@@ -388,8 +388,8 @@ class RoystonParmar:
         ValueError
             If `type=` is not one of `"survival"`, `"hazard"`, or `"cumhaz"`.
 
-        Notes
-        -----
+        Details
+        -------
         The Royston-Parmar model represents log cumulative hazard as a smooth spline function
         in log-time, with proportional-hazards covariate effects: $H(t \mid x) = \exp(\eta(t, x))$,
         where $\eta(t, x) = \text{spline}(\log t) + x^\top \beta$. The spline basis and knot
