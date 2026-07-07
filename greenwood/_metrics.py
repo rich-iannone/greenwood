@@ -363,7 +363,9 @@ def integrated_brier_score(surv: Surv, survival_prob: Any, times: Any) -> float:
 
     ```{python}
     times_wide = list(range(100, 700, 50))
-    surv_pred_wide = cox.predict(lung[["age", "sex"]], type="survival", times=times_wide, format="pandas")
+    surv_pred_wide = cox.predict(
+        lung[["age", "sex"]], type="survival", times=times_wide, format="pandas"
+    )
     probs_wide = surv_pred_wide.iloc[:, 1:].to_numpy().T
     ibs_wide = gw.integrated_brier_score(y, probs_wide, times_wide)
     print(f"IBS over {len(times_wide)} time points: {ibs_wide:.3f}")
