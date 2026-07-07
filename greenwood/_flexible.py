@@ -1,16 +1,18 @@
-"""Royston-Parmar flexible parametric survival models.
+r"""Royston-Parmar flexible parametric survival models.
 
-A Royston-Parmar model puts a restricted cubic spline in `log(time)` on the log cumulative
-hazard:
+A Royston-Parmar model puts a restricted cubic spline in $\log(\text{time})$ on the log
+cumulative hazard:
 
-    log H(t | x) = s(log t; gamma) + x . beta,
+$$
+\log H(t \mid x) = s(\log t; \gamma) + x^\top \beta,
+$$
 
-so `S(t | x) = exp(-exp(s(log t) + x.beta))`. The spline `s` has boundary knots at the
-extreme uncensored log times and internal knots at quantiles in between; its flexibility is
-set by `df` (the number of spline terms, equivalently one more than the number of internal
-knots). With `df=1` the spline is linear in `log t`, which is exactly a Weibull proportional
-hazards model, so `RoystonParmar(df=1)` reproduces a Weibull fit; larger `df` relaxes the
-parametric shape while keeping smooth, extrapolatable survival and hazard curves.
+so $S(t \mid x) = \exp\!\big(-\exp(s(\log t) + x^\top \beta)\big)$. The spline $s$ has boundary
+knots at the extreme uncensored log times and internal knots at quantiles in between; its
+flexibility is set by `df` (the number of spline terms, equivalently one more than the number of
+internal knots). With `df=1` the spline is linear in $\log t$, which is exactly a Weibull
+proportional hazards model, so `RoystonParmar(df=1)` reproduces a Weibull fit; larger `df` relaxes
+the parametric shape while keeping smooth, extrapolatable survival and hazard curves.
 
 Coefficients are fit by maximum likelihood for right-censored data. This is the proportional
 hazards (log cumulative hazard) scale, matching R's `flexsurv::flexsurvspline(scale="hazard")`
@@ -47,11 +49,11 @@ def _square_plus(a: Array) -> Array:
 
 
 def _rcs_basis(u: Array, knots: Array) -> tuple[Array, Array]:
-    """Restricted cubic spline basis and its derivative at `u`.
+    r"""Restricted cubic spline basis and its derivative at `u`.
 
     `knots` is the sorted knot vector (boundary knots first and last, internal in between).
-    Returns `(basis, deriv)`, each with columns `[1, u, v_1, ..., v_m]` where `v_j` are the
-    Royston-Parmar internal-knot terms; `deriv` holds the columnwise `d/du`.
+    Returns `(basis, deriv)`, each with columns $[1, u, v_1, \ldots, v_m]$ where $v_j$ are the
+    Royston-Parmar internal-knot terms; `deriv` holds the columnwise $d/du$.
     """
     kmin, kmax = float(knots[0]), float(knots[-1])
     internal = knots[1:-1]
@@ -329,26 +331,26 @@ class RoystonParmar:
         times: Any = None,
         format: str | None = None,
     ) -> Any:
-        """Predict survival probability, hazard, or cumulative hazard from the fitted model.
+        r"""Predict survival probability, hazard, or cumulative hazard from the fitted model.
 
         Generates predictions from a fitted Royston-Parmar flexible parametric model. Pass
         `newdata=None` to predict for a baseline subject (all covariates set to 0, or training
         data mean if covariates are centered).
 
         The Royston-Parmar model flexibly estimates the baseline cumulative hazard via splines,
-        then multiplies by exp(eta) for each subject's covariate-adjusted log-hazard eta. This
-        produces smooth, covariate-adjusted survival and hazard curves.
+        then multiplies by $\exp(\eta)$ for each subject's covariate-adjusted log-hazard $\eta$.
+        This produces smooth, covariate-adjusted survival and hazard curves.
 
         Three prediction types are available:
 
-        1. **Survival** (`type="survival"`): Survival probabilities S(t|x) at specified times.
-           Useful for survival curves and prognosis.
+        1. **Survival** (`type="survival"`): Survival probabilities $S(t \mid x)$ at specified
+           times. Useful for survival curves and prognosis.
 
-        2. **Hazard** (`type="hazard"`): Instantaneous hazard h(t|x) at specified times. Shows
-           the rate of events at each time.
+        2. **Hazard** (`type="hazard"`): Instantaneous hazard $h(t \mid x)$ at specified times.
+           Shows the rate of events at each time.
 
-        3. **Cumulative hazard** (`type="cumhaz"`): Cumulative hazard H(t|x) at specified times.
-           Useful for risk quantification and comparisons.
+        3. **Cumulative hazard** (`type="cumhaz"`): Cumulative hazard $H(t \mid x)$ at specified
+           times. Useful for risk quantification and comparisons.
 
         Parameters
         ----------
@@ -359,11 +361,11 @@ class RoystonParmar:
         type
             Prediction type (default `"survival"`):
 
-            - `"survival"`: Survival probabilities S(t|x) = exp(-H(t|x)). Returns a frame
+            - `"survival"`: Survival probabilities $S(t \mid x) = \exp(-H(t \mid x))$. Returns a
+              frame with `time` column and one column per subject.
+            - `"hazard"`: Instantaneous hazard $h(t \mid x) = dH(t \mid x)/dt$. Returns a frame
               with `time` column and one column per subject.
-            - `"hazard"`: Instantaneous hazard h(t|x) = dH(t|x)/dt. Returns a frame with
-              `time` column and one column per subject.
-            - `"cumhaz"`: Cumulative hazard H(t|x). Returns a frame with `time` column and
+            - `"cumhaz"`: Cumulative hazard $H(t \mid x)$. Returns a frame with `time` column and
               one column per subject.
 
         times
@@ -389,9 +391,9 @@ class RoystonParmar:
         Notes
         -----
         The Royston-Parmar model represents log cumulative hazard as a smooth spline function
-        in log-time, with proportional-hazards covariate effects: H(t|x) = exp(eta(t, x)),
-        where eta(t, x) = spline(log t) + x*beta. The spline basis and knot locations are
-        fitted to the training data; predictions use these fixed basis functions.
+        in log-time, with proportional-hazards covariate effects: $H(t \mid x) = \exp(\eta(t, x))$,
+        where $\eta(t, x) = \text{spline}(\log t) + x^\top \beta$. The spline basis and knot
+        locations are fitted to the training data; predictions use these fixed basis functions.
 
         Hazard is computed numerically as the derivative of cumulative hazard, so predictions
         may be slightly noisy if times are coarsely spaced. For smooth hazard predictions,
