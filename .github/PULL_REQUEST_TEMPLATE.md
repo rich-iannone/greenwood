@@ -9,7 +9,6 @@ contribution, and list the changes made to the code or docs.
 
 # Checklist
 
-- [ ] I understand and agree to the [Code of Conduct](CODE_OF_CONDUCT.md).
 - [ ] `make check` passes (ruff, pyright, pytest).
 - [ ] I have added tests for any new functionality.
 - [ ] For new/changed statistics, I have added or updated R-parity fixtures.
