@@ -444,12 +444,11 @@ class KaplanMeier:
 
         Returns
         -------
-        For a single stratum: a float (point estimate) or 3-tuple of floats
-        (estimate, lower, upper) if `ci=True`.
-
-        For stratified fits: a dict keyed by stratum label, with values as above.
-
-        If the survival curve never drops to (1 - p), the quantile is `nan`.
+        float or tuple or dict
+            For a single stratum: a float (point estimate) or 3-tuple of floats
+            (estimate, lower, upper) if `ci=True`. For stratified fits: a dict keyed by
+            stratum label, with values as above. If the survival curve never drops to
+            (1 - p), the quantile is `nan`.
 
         Notes
         -----
@@ -497,13 +496,11 @@ class KaplanMeier:
 
         Returns
         -------
-        For a single stratum: a float (point estimate) or 3-tuple of floats
-        (estimate, lower, upper) if `ci=True`.
-
-        For stratified fits: a dict keyed by stratum label, with values as above.
-
-        If the survival curve never drops to 0.5, the median is `nan` (indicating median
-        survival has not yet been reached in the follow-up period).
+        float or tuple or dict
+            For a single stratum: a float (point estimate) or 3-tuple of floats
+            (estimate, lower, upper) if `ci=True`. For stratified fits: a dict keyed by
+            stratum label, with values as above. If the survival curve never drops to 0.5,
+            the median is `nan`.
 
         Notes
         -----
@@ -545,10 +542,10 @@ class KaplanMeier:
 
         Returns
         -------
-        For a single stratum: a float (point estimate) or 3-tuple of floats
-        (estimate, lower, upper) if `ci=True`.
-
-        For stratified fits: a dict keyed by stratum label, with values as above.
+        float or tuple or dict
+            For a single stratum: a float (point estimate) or 3-tuple of floats
+            (estimate, lower, upper) if `ci=True`. For stratified fits: a dict keyed by
+            stratum label, with values as above.
 
         Notes
         -----
@@ -606,12 +603,11 @@ class KaplanMeier:
 
         Returns
         -------
-        For a single stratum: a float (point estimate) or 3-tuple of floats
-        (estimate, lower, upper) if `ci=True`.
-
-        For stratified fits: a dict keyed by stratum label, with values as above.
-
-        If everyone has failed by time `s` (i.e., S(s) = 0), the value is `nan`.
+        float or tuple or dict
+            For a single stratum: a float (point estimate) or 3-tuple of floats
+            (estimate, lower, upper) if `ci=True`. For stratified fits: a dict keyed by
+            stratum label, with values as above. If everyone has failed by time `s`
+            (i.e., S(s) = 0), the value is `nan`.
 
         Notes
         -----
@@ -669,10 +665,10 @@ class KaplanMeier:
 
         Returns
         -------
-        For a single stratum: an array (or scalar if `times` is scalar) of estimated values
-        at the query times.
-
-        For stratified fits: a dict keyed by stratum label, with values as above.
+        ndarray or dict
+            For a single stratum: an array (or scalar if `times` is scalar) of estimated values
+            at the query times. For stratified fits: a dict keyed by stratum label, with values
+            as above.
 
         Notes
         -----
