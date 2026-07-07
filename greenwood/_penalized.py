@@ -351,9 +351,10 @@ class CoxNet:
         Examples
         --------
         The default `type="lp"` returns the centered linear predictor (log-hazard). Here are
-        the values for the first five subjects:
+        the values for the first five subjects. Reusing the `coxnet` fit from the class example:
 
         ```{python}
+        cols = ["age", "sex", "ph.ecog"]
         coxnet.predict(lung[cols], type="lp")[:5]
         ```
 
