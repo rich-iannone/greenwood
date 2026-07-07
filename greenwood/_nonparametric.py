@@ -418,9 +418,36 @@ class KaplanMeier:
     def quantile(self, p: float, *, ci: bool = False) -> Any:
         """Return the `p`-quantile survival time per stratum.
 
-        With `ci=True`, also return confidence limits obtained by inverting the survival
-        confidence band (the R `quantile.survfit` convention). For a single stratum a
-        scalar (or 3-tuple) is returned; when stratified, a dict keyed by stratum label.
+        Computes the quantile (percentile) of the survival time distribution, i.e., the time
+        at which the survival curve first drops to (1 - p). For example, `p=0.25` returns the
+        25th percentile (first-quartile time: the time by which 25% of subjects have
+        experienced the event). Useful for reporting clinically meaningful landmarks.
+
+        Parameters
+        ----------
+        p
+            Quantile level between 0 and 1. For example, `p=0.5` is the median, `p=0.25` is
+            the first quartile, `p=0.75` is the third quartile.
+        ci
+            If `True`, return (estimate, lower, upper) confidence limits by inverting the
+            survival confidence band (follows R's `quantile.survfit` convention). If `False`
+            (default), return only the point estimate.
+
+        Returns
+        -------
+        For a single stratum: a float (point estimate) or 3-tuple of floats
+        (estimate, lower, upper) if `ci=True`.
+
+        For stratified fits: a dict keyed by stratum label, with values as above.
+
+        If the survival curve never drops to (1 - p), the quantile is `nan`.
+
+        Notes
+        -----
+        The quantile is found by inverting the step-function survival curve: the smallest time
+        t such that S(t) <= (1 - p). Confidence intervals are obtained by inverting the
+        pointwise confidence band, following R's convention. These are not simultaneous
+        confidence intervals.
 
         Examples
         --------
@@ -449,6 +476,34 @@ class KaplanMeier:
     def median(self, *, ci: bool = False) -> Any:
         """Median survival time per stratum (the 0.5-quantile).
 
+        Computes the median survival time: the time at which the survival curve first drops
+        to 0.5, meaning 50% of subjects have experienced the event. A key clinical summary
+        statistic when comparing survival across groups or evaluating prognosis.
+
+        Parameters
+        ----------
+        ci
+            If `True`, return (estimate, lower, upper) confidence limits by inverting the
+            survival confidence band. If `False` (default), return only the point estimate.
+
+        Returns
+        -------
+        For a single stratum: a float (point estimate) or 3-tuple of floats
+        (estimate, lower, upper) if `ci=True`.
+
+        For stratified fits: a dict keyed by stratum label, with values as above.
+
+        If the survival curve never drops to 0.5, the median is `nan` (indicating median
+        survival has not yet been reached in the follow-up period).
+
+        Notes
+        -----
+        The median is a convenience wrapper around `quantile(0.5, ci=ci)`. It is the
+        time-to-event value that divides the cohort into two equal halves (in terms of
+        probability of experiencing the event). Unlike parametric models, the non-parametric
+        median may not be uniquely defined if the curve jumps over 0.5; by convention, the
+        first time the curve reaches or falls below 0.5 is returned.
+
         Examples
         --------
         The median is the time at which the survival curve first drops to 0.5. Pass
@@ -461,11 +516,39 @@ class KaplanMeier:
         return self.quantile(0.5, ci=ci)
 
     def rmst(self, tau: float, *, ci: bool = False) -> Any:
-        """Restricted mean survival time up to `tau` (area under the curve).
+        """Restricted mean survival time up to `tau` (area under the survival curve).
 
-        With `ci=True`, return `(rmst, lower, upper)` using a normal approximation
-        (`rmst +/- z * se`, lower bounded at 0). For a single stratum a scalar (or
-        3-tuple) is returned; when stratified, a dict keyed by stratum label.
+        Computes the restricted mean survival time: the expected survival time over a fixed
+        time window [0, tau], calculated as the area under the survival curve up to tau.
+        Unlike median or quantiles, RMST uses all available follow-up information in the
+        window, making it robust and easily interpretable as the average survival time over
+        tau (e.g., 1-year mean survival, 5-year mean survival).
+
+        Parameters
+        ----------
+        tau
+            The upper time limit for the restriction. Must be positive. Typically chosen as
+            a clinically relevant horizon (e.g., 1, 5, or 10 years).
+        ci
+            If `True`, return (estimate, lower, upper) confidence limits using a normal
+            approximation (estimate +/- z * se, with lower bound at 0). If `False` (default),
+            return only the point estimate.
+
+        Returns
+        -------
+        For a single stratum: a float (point estimate) or 3-tuple of floats
+        (estimate, lower, upper) if `ci=True`.
+
+        For stratified fits: a dict keyed by stratum label, with values as above.
+
+        Notes
+        -----
+        The restricted mean survival time is computed as the definite integral of S(t)
+        from 0 to tau: RMST(tau) = integral_0^tau S(t) dt. It is estimated numerically
+        by integrating the step-function survival curve. Unlike the median, RMST is defined
+        even when the survival curve does not reach 0.5, and is easily comparable across
+        groups. Confidence intervals use the normal approximation with Greenwood-style
+        variance estimation.
 
         Examples
         --------
@@ -492,14 +575,43 @@ class KaplanMeier:
     def rmrl(self, s: float, tau: float, *, ci: bool = False) -> Any:
         """Restricted mean residual life at time `s`, over the window `(s, tau]`.
 
-        This is the expected additional survival time beyond `s`, restricted to `tau` and
-        conditional on having survived to `s`: `RMRL(s; tau) = integral_s^tau S(u) du / S(s)`.
-        It generalizes `rmst` (which is `rmrl(0, tau)`) to a later landmark time.
+        Computes the expected additional survival time beyond a landmark time `s`, conditional
+        on having survived to `s`, restricted to an upper time limit `tau`. Mathematically:
+        RMRL(s; tau) = integral_s^tau S(u) du / S(s). This is a generalization of RMST to a
+        later landmark point, useful for assessing prognosis or remaining life expectancy
+        for subjects who have already reached a specific milestone.
 
-        With `ci=True`, return `(rmrl, lower, upper)` using a normal approximation
-        (`rmrl +/- z * se`, lower bounded at 0). For a single stratum a scalar (or 3-tuple)
-        is returned; when stratified, a dict keyed by stratum label. If everyone has failed by
-        `s`, the value is `nan`.
+        Parameters
+        ----------
+        s
+            The landmark time. Must be non-negative. Represents the time at which subjects
+            are assessed (e.g., time to remission, time at clinic visit, etc.).
+        tau
+            The upper time limit for the restriction. Must be greater than `s`. Typically a
+            clinically relevant horizon beyond the landmark (e.g., s=180 days landmark,
+            tau=730 days endpoint).
+        ci
+            If `True`, return (estimate, lower, upper) confidence limits using a normal
+            approximation (estimate +/- z * se, with lower bound at 0). If `False` (default),
+            return only the point estimate.
+
+        Returns
+        -------
+        For a single stratum: a float (point estimate) or 3-tuple of floats
+        (estimate, lower, upper) if `ci=True`.
+
+        For stratified fits: a dict keyed by stratum label, with values as above.
+
+        If everyone has failed by time `s` (i.e., S(s) = 0), the value is `nan`.
+
+        Notes
+        -----
+        The restricted mean residual life at a landmark time `s` measures the expected
+        additional survival time for subjects who have survived to `s`, restricted to time
+        `tau`. It generalizes RMST (which is equivalently rmrl(0, tau)). This is useful in
+        clinical follow-up: given that a patient has survived to time `s`, what is the
+        expected additional survival time? Variance estimation accounts for the conditioning
+        on S(s).
 
         Examples
         --------
@@ -530,9 +642,37 @@ class KaplanMeier:
     # -- prediction -----------------------------------------------------------
 
     def predict(self, times: Any, *, what: str = "survival") -> Any:
-        """Evaluate the step function at `times` (survival or cumulative hazard).
+        """Evaluate the survival or cumulative hazard curve at specified times.
 
-        Returns an array for a single stratum, or a dict of arrays when stratified.
+        Reads the estimated survival function or cumulative hazard off the step-function
+        curve at any set of query times. Useful for extracting survival probabilities or
+        hazard accumulation at clinically relevant time points (e.g., 1-year, 5-year
+        survival).
+
+        Parameters
+        ----------
+        times
+            Query times at which to evaluate the curve. Can be a scalar or array-like of
+            floats. Results are returned as a scalar or array matching the input shape.
+        what
+            Quantity to evaluate: `"survival"` (default) for survival probability S(t), or
+            `"cumhaz"` for cumulative hazard H(t). Raises `ValueError` if any other value.
+
+        Returns
+        -------
+        For a single stratum: an array (or scalar if `times` is scalar) of estimated values
+        at the query times.
+
+        For stratified fits: a dict keyed by stratum label, with values as above.
+
+        Notes
+        -----
+        The survival and cumulative hazard curves are step functions defined only at observed
+        event times. Values at times between events are interpolated using the right-continuous
+        step-function convention: the value at time t is the last step at time <= t. Times
+        before the first event (or after the last observed time with non-zero survival) may
+        return baseline values (1.0 for survival, 0.0 for cumulative hazard) or the last
+        estimated value, respectively.
 
         Examples
         --------
@@ -544,7 +684,11 @@ class KaplanMeier:
         km.predict([180, 365, 730])
         ```
 
-        Pass `what="cumhaz"` instead to evaluate the cumulative hazard at those same times.
+        Pass `what="cumhaz"` instead to evaluate the cumulative hazard at those same times:
+
+        ```{python}
+        km.predict([180, 365, 730], what="cumhaz")
+        ```
         """
         if what not in ("survival", "cumhaz"):
             raise ValueError(f"what must be 'survival' or 'cumhaz', got {what!r}.")
