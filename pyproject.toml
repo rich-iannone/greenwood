@@ -12,7 +12,7 @@ greenwood = ["py.typed", "data/*.csv.gz"]
 
 [project]
 name = "greenwood"
-description = "Modern survival analysis for Python: Narwhals-native, R-validated, plotnine-visualized."
+description = "Modern survival analysis for Python: Narwhals-native, R-validated, beautifully visualized."
 readme = "README.md"
 keywords = [
     "survival analysis",
@@ -57,10 +57,11 @@ pd = ["pandas>=2.0"]
 pl = ["polars>=1.0"]
 pa = ["pyarrow>=15"]
 formula = ["formulaic>=1.0"]
-viz = ["plotnine>=0.13"]
+plotnine = ["plotnine>=0.13"]
+altair = ["altair>=6", "vl-convert-python>=1.9"]
 tables = ["great-tables>=0.17"]
 fast = ["numba>=0.59"]
-all = ["greenwood[pd,pl,pa,formula,viz,tables]"]
+all = ["greenwood[pd,pl,pa,formula,plotnine,altair,tables]"]
 dev = [
     "pytest>=8",
     "pytest-cov",
@@ -75,8 +76,10 @@ dev = [
     "pyarrow>=15",
     "formulaic>=1.0",
     "plotnine>=0.13",
+    "altair>=6",
+    "vl-convert-python>=1.9",
 ]
-docs = ["jupyter", "nbclient", "nbformat", "pandas>=2.0", "polars>=1.0", "pyarrow>=15", "plotnine>=0.13", "formulaic>=1.0"]
+docs = ["jupyter", "nbclient", "nbformat", "pandas>=2.0", "polars>=1.0", "pyarrow>=15", "altair>=6", "vl-convert-python>=1.9", "plotnine>=0.13", "formulaic>=1.0"]
 
 [project.urls]
 Homepage = "https://github.com/rich-iannone/greenwood"
