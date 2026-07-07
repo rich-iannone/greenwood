@@ -351,9 +351,15 @@ class CoxNet:
         Examples
         --------
         The default `type="lp"` returns the centered linear predictor (log-hazard). Here are
-        the values for the first five subjects. Reusing the `coxnet` fit from the class example:
+        the values for the first five subjects:
 
         ```{python}
+        import greenwood as gw
+
+        lung = gw.load_dataset("lung")
+        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        cols = ["age", "sex", "ph.ecog", "ph.karno", "wt.loss"]
+        coxnet = gw.CoxNet(penalizer=0.05, l1_ratio=1.0).fit(y, lung[cols])
         coxnet.predict(lung[cols], type="lp")[:5]
         ```
 
