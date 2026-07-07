@@ -1,9 +1,9 @@
-"""Parametric accelerated failure time (AFT) models.
+r"""Parametric accelerated failure time (AFT) models.
 
-`AFT` fits the log-linear (accelerated failure time) model `log(T) = X beta + sigma * W`,
-where the error `W` follows a standard distribution chosen by `dist`:
+`AFT` fits the log-linear (accelerated failure time) model $\log(T) = X\beta + \sigma W$,
+where the error $W$ follows a standard distribution chosen by `dist`:
 
-- `"weibull"` and `"exponential"` (exponential fixes `sigma = 1`): minimum extreme value,
+- `"weibull"` and `"exponential"` (exponential fixes $\sigma = 1$): minimum extreme value,
 - `"lognormal"`: standard normal,
 - `"loglogistic"`: standard logistic.
 
@@ -45,10 +45,10 @@ def _log_density_survival(dist: str, z: Array) -> tuple[Array, Array]:
 
 
 def _error_quantile(dist: str, p: Array) -> Array:
-    """Standardized quantile of the error term `W` at probabilities `p`.
+    r"""Standardized quantile of the error term `W` at probabilities `p`.
 
     `p` is the cumulative probability of failure, so the returned `w` satisfies
-    `F_W(w) = p`; the corresponding time quantile is `exp(mu + sigma * w)`.
+    $F_W(w) = p$; the corresponding time quantile is $\exp(\mu + \sigma w)$.
     """
     if dist in ("weibull", "exponential"):  # minimum extreme value
         return np.log(-np.log1p(-p))
@@ -79,14 +79,15 @@ def _num_hessian(fn: Any, x: Array, rel_step: float = 1e-5) -> Array:
 
 
 class AFT:
-    """Parametric accelerated failure time model.
+    r"""Parametric accelerated failure time model.
 
     While the Cox proportional hazards model leaves the baseline hazard unspecified, AFT models
     assume a fully parametric distribution for survival times and model how covariates
-    accelerate or decelerate the "clock" of failure. Specifically, log(T) = μ + β'x + σε, where
-    T is survival time, β are log-time-scale coefficients, σ is a scale parameter, and ε follows
-    a specified error distribution (e.g., extreme-value, logistic, normal). This means a unit
-    increase in covariate x multiplies survival time by exp(β).
+    accelerate or decelerate the "clock" of failure. Specifically, $\log(T) = \mu + \beta^\top x
+    + \sigma\varepsilon$, where $T$ is survival time, $\beta$ are log-time-scale coefficients,
+    $\sigma$ is a scale parameter, and $\varepsilon$ follows a specified error distribution
+    (e.g., extreme-value, logistic, normal). This means a unit increase in covariate $x$
+    multiplies survival time by $\exp(\beta)$.
 
     AFT models are useful when you want explicit, interpretable survival time predictions or when
     the parametric assumptions are reasonable. Unlike Cox models, they require choosing a
@@ -97,9 +98,9 @@ class AFT:
 
     The implementation uses numerical optimization (typically Newton-Raphson) to maximize the
     likelihood. Coefficients on the log-time scale can be exponentiated to obtain time-
-    acceleration ratios: exp(β) is the multiplicative effect on median or mean survival. The
-    model also supports prediction of survival probabilities and quantiles at future times given
-    covariate values.
+    acceleration ratios: $\exp(\beta)$ is the multiplicative effect on median or mean survival.
+    The model also supports prediction of survival probabilities and quantiles at future times
+    given covariate values.
 
     Parameters
     ----------
@@ -171,7 +172,7 @@ class AFT:
         )
 
     def fit(self, surv: Surv, covariates: Any, *, data: Any = None) -> AFT:
-        """Fit the accelerated failure time model to survival data.
+        r"""Fit the accelerated failure time model to survival data.
 
         Fits a parametric accelerated failure time (AFT) model to a right-censored response
         and covariates. The AFT models the log-survival time as a linear regression on
@@ -182,7 +183,7 @@ class AFT:
         survival distribution at the cost of stronger distributional assumptions. Unlike Cox,
         AFT supports median survival predictions and is naturally interpreted on the
         log-time scale: a coefficient of 0.1 means the covariate multiplies survival time by
-        exp(0.1). Results are stored in the fitted object as coefficient arrays and can be
+        $\exp(0.1)$. Results are stored in the fitted object as coefficient arrays and can be
         exported to DataFrames.
 
         Parameters
@@ -206,11 +207,11 @@ class AFT:
 
         Notes
         -----
-        The AFT model parameterizes log-survival time as log(T) = X*beta + sigma*epsilon,
-        where X is the design matrix, beta are coefficients, sigma is a scale parameter, and
-        epsilon is an error term from the chosen distribution. The survival function is then
-        S(t | X) = P(T > t | X) = G((log(t) - X*beta) / sigma), where G is the survival
-        function of the error distribution.
+        The AFT model parameterizes log-survival time as $\log(T) = X\beta + \sigma\varepsilon$,
+        where $X$ is the design matrix, $\beta$ are coefficients, $\sigma$ is a scale parameter,
+        and $\varepsilon$ is an error term from the chosen distribution. The survival function
+        is then $S(t \mid X) = P(T > t \mid X) = G((\log(t) - X\beta) / \sigma)$, where $G$ is
+        the survival function of the error distribution.
 
         Estimation uses maximum likelihood via numerical optimization. Exponential and
         Weibull models are nested special cases; log-normal and log-logistic offer different
@@ -309,7 +310,7 @@ class AFT:
         conditional_after: Any = None,
         format: str | None = None,
     ) -> Any:
-        """Predict survival times, quantiles, or survival probabilities from the AFT model.
+        r"""Predict survival times, quantiles, or survival probabilities from the AFT model.
 
         Generates predictions from a fitted accelerated failure time model. The AFT is a fully
         parametric survival model, so predictions require specifying both the predictor values
@@ -318,15 +319,15 @@ class AFT:
 
         Three prediction types are available:
 
-        1. **Linear predictor** (`type="lp"`): the log-time location X*beta, showing how
+        1. **Linear predictor** (`type="lp"`): the log-time location $X\beta$, showing how
            covariates shift the log-survival time distribution.
 
         2. **Quantile** (`type="quantile"`): predicted survival-time quantiles at specified
-           failure probabilities (e.g., median survival when p=0.5). Useful for clinical
+           failure probabilities (e.g., median survival when $p=0.5$). Useful for clinical
            summaries like "50% of subjects with these covariates survive to time X."
 
-        3. **Survival** (`type="survival"`): survival probabilities S(t|x) at specified times,
-           returned as a DataFrame for easy visualization. Optionally condition on already
+        3. **Survival** (`type="survival"`): survival probabilities $S(t \mid x)$ at specified
+           times, returned as a DataFrame for easy visualization. Optionally condition on already
            having survived to a landmark time (`conditional_after`) for landmark-based
            predictions.
 
@@ -339,10 +340,10 @@ class AFT:
         type
             Prediction type (default `"survival"`):
 
-            - `"lp"`: Linear predictor X*beta (log-time location). Returns an array.
+            - `"lp"`: Linear predictor $X\beta$ (log-time location). Returns an array.
             - `"quantile"`: Survival-time quantiles at failure probabilities `p`. Returns a
               frame with `p` column and one column per subject.
-            - `"survival"`: Survival probabilities S(t|x) at times in `times`. Returns a
+            - `"survival"`: Survival probabilities $S(t \mid x)$ at times in `times`. Returns a
               frame with `time` column and one column per subject (one per query time, one
               per subject in newdata).
 
@@ -355,10 +356,10 @@ class AFT:
             scalar (e.g., `0.5` for median) or array-like. Default `0.5` (median). Must be in
             (0, 1).
         conditional_after
-            For `type="survival"`, optionally compute conditional survival: P(T > t | T > c)
-            = S(t) / S(c). Scalar (same conditioning time for all subjects) or array-like
-            (one per subject). Default `None` (unconditional). Predictions before the landmark
-            time return `1.0`.
+            For `type="survival"`, optionally compute conditional survival:
+            $P(T > t \mid T > c) = S(t) / S(c)$. Scalar (same conditioning time for all
+            subjects) or array-like (one per subject). Default `None` (unconditional).
+            Predictions before the landmark time return `1.0`.
         format
             Output format for the returned frame (`type="quantile"` or `"survival"`): `None`
             (default), `"pandas"`, `"polars"`, or `"pyarrow"`. When `None`, a backend is
@@ -376,9 +377,9 @@ class AFT:
 
         Notes
         -----
-        The AFT model assumes log(T) = X*beta + sigma*epsilon, where epsilon follows a
-        parametric error distribution (Weibull, lognormal, etc.). Predictions are made by
-        evaluating the CDF/survival function of this distribution at covariate-adjusted
+        The AFT model assumes $\log(T) = X\beta + \sigma\varepsilon$, where $\varepsilon$
+        follows a parametric error distribution (Weibull, lognormal, etc.). Predictions are made
+        by evaluating the CDF/survival function of this distribution at covariate-adjusted
         locations. All predictions respect the fitted distribution and scale parameter.
 
         Predictions assume the model is well-specified. For flexible models, consider
