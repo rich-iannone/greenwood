@@ -86,11 +86,11 @@ aj
 ```
 
 The fitted estimator holds a cumulative incidence curve for each cause. To inspect it we call
-`to_pandas()` and take the first couple of rows within each cause, so both curves are
+`to_frame()` and take the first couple of rows within each cause, so both curves are
 visible side by side.
 
 ```{python}
-aj.to_polars().group_by("cause").head(2)
+aj.to_frame(format="polars").group_by("cause").head(2)
 ```
 
 Each cause has its own cumulative incidence estimate, standard error, and confidence
@@ -120,7 +120,7 @@ progression at the final event time in that group.
 ```{python}
 import polars as pl
 
-aj_sex.to_polars().filter(pl.col("cause") == "pcm").group_by("strata").tail(1)
+aj_sex.to_frame(format="polars").filter(pl.col("cause") == "pcm").group_by("strata").tail(1)
 ```
 
 ## Modeling with the Fine-Gray model

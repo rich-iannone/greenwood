@@ -44,11 +44,11 @@ km
 ```
 
 The fitted `km` object holds the whole curve internally. The most direct way to read it is
-`to_polars()`, which lays the estimate out one row per observed time. We show the first
+`to_frame()`, which lays the estimate out one row per observed time. We show the first
 few rows.
 
 ```{python}
-km.to_pandas()
+km.to_frame(format="pandas")
 ```
 
 Each row corresponds to a distinct observed time. The columns tell a complete story:
@@ -93,7 +93,7 @@ Pulling out just the estimate and its interval limits lets you compare this fit 
 default one. We select those columns to keep the table narrow.
 
 ```{python}
-km_loglog.to_pandas()[["time", "estimate", "conf_low", "conf_high"]]
+km_loglog.to_frame(format="pandas")[["time", "estimate", "conf_low", "conf_high"]]
 ```
 
 The point estimates are identical across transforms; only the interval limits differ. Choose
@@ -110,7 +110,7 @@ km_90 = gw.KaplanMeier(conf_level=0.90).fit(y)
 km_99 = gw.KaplanMeier(conf_level=0.99).fit(y)
 
 # Compare intervals at a few time points
-km_90.to_polars()[["time", "estimate", "conf_low", "conf_high"]].head(3)
+km_90.to_frame(format="polars")[["time", "estimate", "conf_low", "conf_high"]].head(3)
 ```
 
 Note that narrower confidence levels (0.90) produce tighter bands, while wider levels (0.99)
@@ -133,7 +133,7 @@ km_loglog = gw.KaplanMeier(conf_type="log-log").fit(y)
 # Compare interval widths at selected quantile times
 results = []
 for km, name in [(km_plain, "plain"), (km_log, "log"), (km_loglog, "log-log")]:
-    df = km.to_polars()
+    df = km.to_frame(format="polars")
     # Select every 30th row to show interval differences across follow-up
     df_subset = df[::30].select(["time", "estimate", "conf_low", "conf_high"])
     df_subset = df_subset.with_columns(pl.lit(name).alias("transform"))
@@ -217,7 +217,7 @@ column identifying which curve each row belongs to. We show the first couple of 
 each stratum so you can see both curves side by side without printing every time point.
 
 ```{python}
-km_sex.to_polars().group_by("strata").head(2)
+km_sex.to_frame(format="polars").group_by("strata").head(2)
 ```
 
 Per-stratum summaries follow naturally. `median` and `rmst` return a dictionary keyed by
@@ -262,12 +262,12 @@ na = gw.NelsonAalen().fit(y)
 na
 ```
 
-Reading `na` with `to_polars()` gives the same table layout as before, but now the
+Reading `na` with `to_frame()` gives the same table layout as before, but now the
 `estimate` column holds the cumulative hazard rather than the survival probability. Unlike
 survival, it starts at 0 and climbs as events accumulate.
 
 ```{python}
-na.to_arrow()
+na.to_frame(format="pyarrow")
 ```
 
 ## Next steps

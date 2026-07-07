@@ -107,10 +107,10 @@ y_pl
 ```
 
 Fitting a Cox model on the Polars-backed response and covariates, then viewing the result with
-`to_polars()`, gives the same coefficient table you would get from the Polars frame.
+`to_frame()`, gives the same coefficient table you would get from the Polars frame.
 
 ```{python}
-gw.CoxPH().fit(y_pl, lung_pl[["age", "sex"]]).to_polars()
+gw.CoxPH().fit(y_pl, lung_pl[["age", "sex"]]).to_frame(format="polars")
 ```
 
 ::: {.callout-tip}
@@ -123,10 +123,11 @@ frame is a valid source.
 
 ## Tidy output frames
 
-Every estimator and model returns its results as tidy data frames, through the `to_polars()`,
-`to_polars()`, `to_arrow()` methods and through the `tidy` and `glance` functions. These come back as pandas data frames by
-default, which makes them easy to inspect, filter, join, or pass on to a plotting or table
-library.
+Every estimator and model returns its results as tidy data frames, through the `to_frame()`
+method and through the `tidy` and `glance` functions. Pass `format=` (`"pandas"`, `"polars"`,
+or `"pyarrow"`) to choose the backend; when you leave it off, Greenwood auto-detects one
+(Polars if installed, otherwise pandas, otherwise PyArrow). This makes the results easy to
+inspect, filter, join, or pass on to a plotting or table library.
 
 ```{python}
 gw.glance(cox)

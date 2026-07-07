@@ -38,7 +38,7 @@ y = gw.Surv.right(df["time"], event=(df["status"] == 2))
 
 # Kaplan-Meier survival, stratified, with log-log confidence intervals.
 km = gw.KaplanMeier(conf_type="log-log").fit(y, by=df["sex"])
-km.to_pandas().head()
+km.to_frame(format="pandas").head()
 km.median(ci=True)
 
 # Compare groups with the log-rank test.

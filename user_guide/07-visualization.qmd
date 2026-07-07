@@ -38,13 +38,13 @@ km
 ```
 
 Everything below draws from this fitted `km` object. Before plotting, it also helps to see
-the numbers the curve is built from. Calling `to_polars()` on the fitted estimator returns
+the numbers the curve is built from. Calling `to_frame()` on the fitted estimator returns
 the step-function estimates in tidy form, one row per stratum and time, with the survival
 probability and its confidence limits. The preview shows the first and last rows along with
 the full dimensions of the table.
 
 ```{python}
-km.to_polars()
+km.to_frame(format="polars")
 ```
 
 Each row is a step in one of the curves. The `time` and `estimate` columns give the point at
