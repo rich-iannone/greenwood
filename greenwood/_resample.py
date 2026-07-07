@@ -79,7 +79,7 @@ def cross_validate(
     and evaluates on held-out data, simulating performance on new subjects.
 
     **Metrics**:
-    
+
     - `"concordance"` (default): Harrell's C-statistic on the test fold. Higher is better
       (0.5 = random, 1.0 = perfect). Requires CoxPH, CoxNet, or AFT model.
     - `"brier"`: Integrated IPCW Brier score over specified times. Lower is better

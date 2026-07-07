@@ -213,7 +213,7 @@ def event_table(surv: Surv, *, group: Any = None, weights: Any = None) -> EventT
     non-parametric estimators (Kaplan-Meier, Nelson-Aalen) and the log-rank test.
 
     **Uses**:
-    
+
     - **Verification**: Inspect risk sets to understand data structure and check for
       censoring patterns.
     - **Manual calculations**: Compute survival estimates, cumulative event rates, or
