@@ -23,7 +23,7 @@ Array = npt.NDArray[Any]
 
 
 def concordance_index(surv: Surv, risk: Any) -> float:
-    """Harrell's concordance index: discrimination of risk scores against observed survival.
+    r"""Harrell's concordance index: discrimination of risk scores against observed survival.
 
     Computes Harrell's C-statistic, a measure of how well a risk score discriminates between
     subjects who experience early events and those who survive longer. The concordance index
@@ -78,7 +78,7 @@ def concordance_index(surv: Surv, risk: Any) -> float:
 
     **Relationship to other metrics**: The concordance index is related to the rank correlation
     between risk and observed survival. It's invariant to monotonic transformations of risk
-    (e.g., exp(lp) vs. lp both give the same concordance).
+    (e.g., $\exp(\text{lp})$ vs. $\text{lp}$ both give the same concordance).
 
     Examples
     --------
@@ -147,7 +147,7 @@ def _censoring_survival(surv: Surv) -> tuple[Array, Array]:
 
 
 def brier_score(surv: Surv, survival_prob: Any, times: Any) -> Array:
-    """IPCW (Graf) Brier score of predicted survival probabilities at specified times.
+    r"""IPCW (Graf) Brier score of predicted survival probabilities at specified times.
 
     Measures calibration and accuracy of predicted survival probabilities at fixed time points
     using inverse-probability-of-censoring-weighted (IPCW) averaging. The Brier score is the
@@ -157,10 +157,10 @@ def brier_score(surv: Surv, survival_prob: Any, times: Any) -> Array:
     **Interpretation**:
 
     - Ranges from 0 (perfect predictions) to 1 (worst possible).
-    - Lower is better. A Brier score of 0.25 means, on average, predictions are off by ±0.5
-      in terms of squared deviation.
+    - Lower is better. A Brier score of 0.25 means, on average, predictions are off by
+      $\pm 0.5$ in terms of squared deviation.
     - **Null model baseline**: A model predicting 50% survival at every time has Brier score
-      ~0.25. Compare your model to this baseline to assess practical improvement.
+      $\approx 0.25$. Compare your model to this baseline to assess practical improvement.
     - Score typically increases with time (harder to predict farther into the future).
 
     **Practical use**: After fitting a survival model (Cox, parametric, flexible), evaluate
@@ -189,20 +189,25 @@ def brier_score(surv: Surv, survival_prob: Any, times: Any) -> Array:
     -----
     **Graf (IPCW) Brier score**: The unbiased Brier score under censoring is
 
-        BS(t) = E[(S(t) - hat_S(t))^2 * weights],
+    $$
+    BS(t) = E\left[(S(t) - \hat{S}(t))^2 \cdot \text{weights}\right],
+    $$
 
     where:
 
-    - S(t) is the true survival status at time t (1 if alive, 0 if dead)
-    - hat_S(t) is the predicted survival probability
-    - weights are inverse-probability-of-censoring: inverse of the censoring survival function
+    - $S(t)$ is the true survival status at time $t$ (1 if alive, 0 if dead)
+    - $\hat{S}(t)$ is the predicted survival probability
+    - $\text{weights}$ are inverse-probability-of-censoring: inverse of the censoring survival
+      function
 
     Mathematically:
 
-        BS(t) = (1/n) * [sum over dead at t: (hat_S_i(t))^2 / G(t_i^-)]
-                 + (1/n) * [sum over alive at t: (1 - hat_S_i(t))^2 / G(t)]
+    $$
+    BS(t) = \frac{1}{n} \sum_{\text{dead at } t} \frac{(\hat{S}_i(t))^2}{G(t_i^-)}
+            + \frac{1}{n} \sum_{\text{alive at } t} \frac{(1 - \hat{S}_i(t))^2}{G(t)}
+    $$
 
-    where G(u) is the Kaplan-Meier estimate of the censoring distribution (probability of not
+    where $G(u)$ is the Kaplan-Meier estimate of the censoring distribution (probability of not
     being censored).
 
     **Advantages over MSE**: IPCW weighting makes the Brier score unbiased under censoring,
@@ -286,7 +291,7 @@ def brier_score(surv: Surv, survival_prob: Any, times: Any) -> Array:
 
 
 def integrated_brier_score(surv: Surv, survival_prob: Any, times: Any) -> float:
-    """Integrated (time-averaged) Brier score across multiple time points.
+    r"""Integrated (time-averaged) Brier score across multiple time points.
 
     Summarizes Brier scores computed at multiple time horizons into a single summary metric
     via trapezoidal integration. This provides an overall calibration measure that doesn't
@@ -316,11 +321,13 @@ def integrated_brier_score(surv: Surv, survival_prob: Any, times: Any) -> float:
     float
         Integrated Brier score (time-averaged). Lower is better.
 
-    Notes
-    -----
+    Technical Details
+    -----------------
     **Computation**: The integrated Brier score is
 
-        IBS = (1 / (t_max - t_min)) * integral over t of BS(t) dt
+    $$
+    IBS = \frac{1}{t_{\max} - t_{\min}} \int BS(t) \, dt
+    $$
 
     Using trapezoidal rule to approximate the integral. This ensures the summary score
     balances contributions from all times without emphasizing early or late horizons.
