@@ -1,9 +1,11 @@
-"""Elastic-net penalized Cox regression.
+r"""Elastic-net penalized Cox regression.
 
 `CoxNet` fits the Cox proportional-hazards model with an elastic-net penalty, minimizing the
 negative partial log-likelihood (per observation) plus
 
-    penalizer * [ l1_ratio * ||b||_1 + (1 - l1_ratio) / 2 * ||b||_2^2 ]
+$$
+\lambda\left(\alpha\|\beta\|_1 + \tfrac{1-\alpha}{2}\|\beta\|_2^2\right)
+$$
 
 on standardized covariates, the objective used by glmnet's `coxnet`. `l1_ratio=1` is the
 lasso (sparse, selects variables), `l1_ratio=0` is ridge (shrinks smoothly), and values in
@@ -38,14 +40,14 @@ def _soft_threshold(v: Array, thr: float) -> Array:
 
 
 class CoxNet:
-    """Elastic-net penalized Cox proportional hazards model.
+    r"""Elastic-net penalized Cox proportional hazards model.
 
     When the number of covariates is large relative to the sample size, unpenalized Cox models
     may overfit or fail to converge due to multicollinearity. CoxNet addresses this by adding
     a penalty term to the partial likelihood, which shrinks coefficients toward zero and can
-    perform automatic variable selection. The elastic-net penalty combines L₁ (lasso) and L₂
-    (ridge) penalties: λ(α ||β||₁ + (1-α)/2 ||β||₂²), where the mixing parameter α controls
-    the trade-off between sparsity and smoothness.
+    perform automatic variable selection. The elastic-net penalty combines $L_1$ (lasso) and
+    $L_2$ (ridge) penalties: $\lambda(\alpha\|\beta\|_1 + \tfrac{1-\alpha}{2}\|\beta\|_2^2)$,
+    where the mixing parameter $\alpha$ controls the trade-off between sparsity and smoothness.
 
     Fit the model with `fit()` supplying a right-censored or counting-process `Surv` response
     and a design matrix of covariates. The algorithm uses FISTA (Fast Iterative Shrinkage-
@@ -141,7 +143,7 @@ class CoxNet:
         )
 
     def fit(self, surv: Surv, covariates: Any, *, data: Any = None) -> CoxNet:
-        """Fit the elastic-net penalized Cox model to survival data.
+        r"""Fit the elastic-net penalized Cox model to survival data.
 
         Fits a Cox proportional-hazards model with elastic-net penalty (L1 + L2
         regularization) to a right-censored or counting-process response and covariates.
@@ -175,10 +177,10 @@ class CoxNet:
 
         Notes
         -----
-        The elastic-net penalty is lambda * (alpha * L1 + (1 - alpha) * L2), where
-        lambda = penalizer and alpha = l1_ratio. Setting l1_ratio=1 gives lasso (L1 only,
-        induces sparsity); l1_ratio=0 gives ridge (L2 only, smooth shrinkage);
-        intermediate values blend both effects.
+        The elastic-net penalty is $\lambda(\alpha L_1 + (1 - \alpha) L_2)$, where
+        $\lambda$ = `penalizer` and $\alpha$ = `l1_ratio`. Setting `l1_ratio=1` gives lasso
+        ($L_1$ only, induces sparsity); `l1_ratio=0` gives ridge ($L_2$ only, smooth
+        shrinkage); intermediate values blend both effects.
 
         Estimation uses proximal gradient descent (FISTA) to optimize the penalized
         partial likelihood. Covariates are centered and optionally standardized before
@@ -297,24 +299,24 @@ class CoxNet:
         times: Any = None,
         format: str | None = None,
     ) -> Any:
-        """Predict log-hazard, risk, or survival probabilities from the penalized Cox model.
+        r"""Predict log-hazard, risk, or survival probabilities from the penalized Cox model.
 
         Generates predictions from a fitted elastic-net penalized Cox model. Pass `newdata=None`
         to predict for the training data (fitted subjects).
 
         Three prediction types are available:
 
-        1. **Linear predictor** (`type="lp"`): the centered log-hazard X*beta, a risk score
+        1. **Linear predictor** (`type="lp"`): the centered log-hazard $X\beta$, a risk score
            showing how covariates affect hazard. Higher values indicate higher risk. Centered
-           means the baseline is set such that exp(lp) = 1 for an average subject (average
-           covariate values).
+           means the baseline is set such that $\exp(\text{lp}) = 1$ for an average subject
+           (average covariate values).
 
-        2. **Risk** (`type="risk"`): the relative hazard exp(lp), comparing each subject's
-           hazard to the baseline (average). A value of 2.0 means 2x baseline hazard.
+        2. **Risk** (`type="risk"`): the relative hazard $\exp(\text{lp})$, comparing each
+           subject's hazard to the baseline (average). A value of 2.0 means 2x baseline hazard.
 
-        3. **Survival** (`type="survival"`): survival probabilities S(t|x) at specified times,
-           returned as a DataFrame. Uses the baseline cumulative hazard from the training data
-           and applies the covariate adjustment via relative risk.
+        3. **Survival** (`type="survival"`): survival probabilities $S(t \mid x)$ at specified
+           times, returned as a DataFrame. Uses the baseline cumulative hazard from the training
+           data and applies the covariate adjustment via relative risk.
 
         Parameters
         ----------
@@ -326,9 +328,9 @@ class CoxNet:
         type
             Prediction type (default `"lp"`):
 
-            - `"lp"`: Centered linear predictor X*beta (log-hazard). Returns an array.
-            - `"risk"`: Relative risk exp(lp). Returns an array (always positive).
-            - `"survival"`: Survival probabilities S(t|x) at times in `times`. Returns a
+            - `"lp"`: Centered linear predictor $X\beta$ (log-hazard). Returns an array.
+            - `"risk"`: Relative risk $\exp(\text{lp})$. Returns an array (always positive).
+            - `"survival"`: Survival probabilities $S(t \mid x)$ at times in `times`. Returns a
               frame with `time` column and one column per subject.
         times
             Query times for `type="survival"` (ignored for other types). An array-like of
@@ -355,10 +357,11 @@ class CoxNet:
 
         Notes
         -----
-        The penalized Cox model estimates exp(lp) as a multiplier on the baseline cumulative
-        hazard: H(t|x) = H_0(t) * exp(lp). Survival is then S(t|x) = exp(-H(t|x)). The
-        baseline cumulative hazard H_0(t) is estimated using the Breslow estimator from the
-        training data, and is fixed for new predictions.
+        The penalized Cox model estimates $\exp(\text{lp})$ as a multiplier on the baseline
+        cumulative hazard: $H(t \mid x) = H_0(t)\,\exp(\text{lp})$. Survival is then
+        $S(t \mid x) = \exp(-H(t \mid x))$. The baseline cumulative hazard $H_0(t)$ is
+        estimated using the Breslow estimator from the training data, and is fixed for new
+        predictions.
 
         Centering ensures that the linear predictor at the average covariate level is 0,
         making relative risks and survival curves interpretable. Predictions assume the model
@@ -379,8 +382,8 @@ class CoxNet:
         coxnet.predict(lung[cols], type="lp")[:5]
         ```
 
-        Pass `type="risk"` for the relative risk exp(lp), showing how many times the baseline
-        hazard each subject has:
+        Pass `type="risk"` for the relative risk $\exp(\text{lp})$, showing how many times the
+        baseline hazard each subject has:
 
         ```{python}
         coxnet.predict(lung[cols], type="risk")[:5]
