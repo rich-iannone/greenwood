@@ -7,8 +7,8 @@ toc: false
 
 Greenwood is a time-to-event modeling library built for 2026: it works on pandas, Polars,
 PyArrow, and anything else [Narwhals](https://narwhals-dev.github.io/narwhals/) supports;
-it is validated to tolerance against R's `survival` package; it visualizes with
-[plotnine](https://plotnine.org/); and it plugs into the Great Tables ecosystem for
+it is validated to tolerance against R's `survival` package; it visualizes beautifully, with
+a choice of plotting backends; and it plugs into the Great Tables ecosystem for
 publication-quality tables. The name is a nod to Greenwood's formula, the classic variance
 estimator for the Kaplan-Meier curve.
 
@@ -21,7 +21,7 @@ The core estimators are `KaplanMeier` (survival curves with Greenwood confidence
 intervals, medians, quantiles, and restricted mean survival time) and `NelsonAalen`
 (cumulative hazard). For group comparisons, the `logrank_test` implements the log-rank
 test and the G-rho/Fleming-Harrington family. You also get `CoxPH` for proportional
-hazards regression, with publication-quality curves and risk tables via plotnine.
+hazards regression, with interactive curves and aligned risk tables.
 
 Every statistic is validated to tolerance against R's `survival` package. Parametric
 models, competing risks, and Cox model extensions will arrive in later releases. See
