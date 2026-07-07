@@ -124,7 +124,7 @@ class AalenJohansen:
     Fitted estimator
         Call `fit()` to produce a fitted estimator with cached results (`states_`, and
         internal transition matrices), accessible as tidy DataFrames.
-    
+
     Details
     -------
     Call `fit(surv, by=...)` with a multi-state `Surv` response (built with

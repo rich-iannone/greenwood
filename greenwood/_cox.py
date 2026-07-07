@@ -1117,7 +1117,7 @@ class CoxPH:
             test (`global_test` dict) across all covariates. Each includes chi-squared
             statistic, degrees of freedom, and p-value. Access results via `.to_frame()`
             or dictionary keys.
-    
+
         Details
         -------
         The test uses scaled Schoenfeld residuals, which under the null hypothesis

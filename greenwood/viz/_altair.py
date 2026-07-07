@@ -36,8 +36,16 @@ _CENSOR_NOTCH = "M 0,0 L 1,-1"
 # on the default) so we know each stratum's exact color and can derive a matching darker tint
 # for the censoring notches. Lines keep the same colors they had before.
 _PALETTE = (
-    "#4c78a8", "#f58518", "#e45756", "#72b7b2", "#54a24b",
-    "#eeca3b", "#b279a2", "#ff9da6", "#9d755d", "#bab0ac",
+    "#4c78a8",
+    "#f58518",
+    "#e45756",
+    "#72b7b2",
+    "#54a24b",
+    "#eeca3b",
+    "#b279a2",
+    "#ff9da6",
+    "#9d755d",
+    "#bab0ac",
 )
 
 
@@ -53,8 +61,7 @@ def _require_altair() -> Any:
         import altair as alt  # pyright: ignore[reportMissingImports]
     except ImportError as exc:  # pragma: no cover - exercised only without the extra
         raise ImportError(
-            "Altair visualization requires altair. Install it with "
-            "`pip install greenwood[altair]`."
+            "Altair visualization requires altair. Install it with `pip install greenwood[altair]`."
         ) from exc
     return alt
 
@@ -214,13 +221,15 @@ def plot_survival(
     layers: list[Any] = []
 
     if conf_int:
-        area = base.transform_filter(_VALID_CI).mark_area(
-            interpolate="step-after", opacity=0.18
-        ).encode(
-            x=x,
-            y=alt.Y("conf_low:Q", title=ylab, scale=alt.Scale(domain=[0.0, 1.0])),
-            y2=alt.Y2("conf_high:Q"),
-            fill=_line_color(),
+        area = (
+            base.transform_filter(_VALID_CI)
+            .mark_area(interpolate="step-after", opacity=0.18)
+            .encode(
+                x=x,
+                y=alt.Y("conf_low:Q", title=ylab, scale=alt.Scale(domain=[0.0, 1.0])),
+                y2=alt.Y2("conf_high:Q"),
+                fill=_line_color(),
+            )
         )
         layers.append(area)
 
@@ -245,12 +254,14 @@ def plot_survival(
             # anchors its origin (0,0) — the notch's bottom-left tip — at the data point, so the
             # mark rests *on* the curve and slants up and to the right, away from the
             # descending trace, rather than being centered across it.
-            marks = alt.Chart(to_dataframe(censors)).mark_point(
-                shape=_CENSOR_NOTCH, size=140, strokeWidth=2, opacity=0.9
-            ).encode(
-                x=x,
-                y=alt.Y("estimate:Q", scale=alt.Scale(domain=[0.0, 1.0])),
-                stroke=stroke_color,
+            marks = (
+                alt.Chart(to_dataframe(censors))
+                .mark_point(shape=_CENSOR_NOTCH, size=140, strokeWidth=2, opacity=0.9)
+                .encode(
+                    x=x,
+                    y=alt.Y("estimate:Q", scale=alt.Scale(domain=[0.0, 1.0])),
+                    stroke=stroke_color,
+                )
             )
             layers.append(marks)
 
