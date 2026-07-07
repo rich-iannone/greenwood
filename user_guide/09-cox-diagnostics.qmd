@@ -156,7 +156,7 @@ cox.predict(newdata, type="survival", times=[180, 365, 730], ci=True, format="po
 
 You can also predict conditional on a subject having already survived some time, which is
 useful for updating a prognosis partway through follow-up. With `conditional_after=180`, the
-returned probabilities are `P(T > t | T > 180) = S(t) / S(180)`.
+returned probabilities are $P(T > t \mid T > 180) = S(t) / S(180)$.
 
 ```{python}
 cox.predict(newdata, type="survival", times=[365, 730], conditional_after=180, format="polars")
