@@ -243,8 +243,8 @@ class Surv:
         """Right-censored response: the standard and most common form of survival data.
 
         Right censoring is the default in survival analysis. It occurs when follow-up
-        ends before the event happens—a subject is still event-free when we last observed
-        them. This is the most common censoring mechanism in practice:
+        ends before the event happens (a subject is still event-free when we last observed
+        them). This is the most common censoring mechanism in practice:
 
         - **Study ends**: A clinical trial concludes while some patients are still healthy
         - **Loss to follow-up**: A subject drops out, moves away, or stops visiting the clinic
@@ -295,8 +295,9 @@ class Surv:
         ```
 
         The display shows 4 observations with 2 events and 2 censored observations:
+
         - Subjects 1 and 3: Event observed (no marker or `*` depending on visualization)
-        - Subjects 2 and 4: Censored (indicated by `+` marker)—still event-free at times 6 and 9
+        - Subjects 2 and 4: Censored (indicated by `+` marker; still event-free at times 6 and 9)
 
         This is the default input format for nearly all survival analysis methods.
         Right-censored data is so ubiquitous that "survival data" often refers specifically

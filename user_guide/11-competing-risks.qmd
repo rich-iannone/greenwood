@@ -172,7 +172,7 @@ pd.concat([pcm_tidy, death_tidy])
 
 This comparison reveals how covariates affect each cause differently. A covariate might
 increase the incidence of progression to PCM while decreasing the incidence of death from
-other causes—or vice versa—which both tell important clinical stories.
+other causes (or vice versa) which both tell important clinical stories.
 
 ::: {.callout-note}
 ## Two kinds of hazard, two kinds of question

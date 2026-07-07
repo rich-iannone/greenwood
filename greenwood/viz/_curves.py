@@ -162,7 +162,7 @@ def plot_survival(
     The function returns a composable plotnine `ggplot` object: add layers, facets, scales,
     or themes using the `+` operator. Pass `risk_table=True` to stack an aligned
     numbers-at-risk table beneath the curve, showing how many subjects remain at-risk at each
-    time point—a standard element in publication-quality survival plots. Confidence bands
+    time point (a standard element in publication-quality survival plots). Confidence bands
     use point-wise confidence intervals (as computed by `KaplanMeier`) and are drawn as
     right-continuous step functions to match the step-function nature of the Kaplan-Meier
     estimator.

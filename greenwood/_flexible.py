@@ -80,8 +80,8 @@ class RoystonParmar:
     Weibull) and fully non-parametric methods (like Kaplan-Meier). It models the log baseline
     cumulative hazard as a smooth spline function on the log-time scale, combined with
     proportional-hazards covariate effects. This allows flexible baseline shapes while
-    maintaining interpretable proportional-hazards covariate coefficients—a key advantage over
-    fully parametric AFT models.
+    maintaining interpretable proportional-hazards covariate coefficients. It's a key advantage
+    over fully parametric AFT models.
 
     The model uses restricted cubic splines with a fixed number of degrees of freedom (controlled
     by knots placed at quantiles of event times). A low df value (e.g., df=1) approaches a

@@ -15,7 +15,7 @@ estimator for the Kaplan-Meier curve.
 ## What's present
 
 This release centers on the `Surv` response object, which handles right, left, interval,
-and counting-process censoring—including left truncation and multi-state endpoints.
+and counting-process censoring (including left truncation and multi-state endpoints).
 
 The core estimators are `KaplanMeier` (survival curves with Greenwood confidence
 intervals, medians, quantiles, and restricted mean survival time) and `NelsonAalen`
@@ -24,8 +24,8 @@ test and the G-rho/Fleming-Harrington family. You also get `CoxPH` for proportio
 hazards regression, with publication-quality curves and risk tables via plotnine.
 
 Every statistic is validated to tolerance against R's `survival` package. Parametric
-models, competing risks, and Cox model extensions arrive in later releases—see the
-[project roadmap](https://rich-iannone.github.io/greenwood/roadmap.html).
+models, competing risks, and Cox model extensions will arrive in later releases. See
+the [project roadmap](https://rich-iannone.github.io/greenwood/roadmap.html).
 
 ## A first look
 

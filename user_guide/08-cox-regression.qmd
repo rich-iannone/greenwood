@@ -225,16 +225,19 @@ response.
 :::
 
 ::: {.callout-important}
-## Subject timelines must start at 0
+## Subject timelines must start at `0`
+
 Each subject needs their own timeline starting at 0 (subject-relative time), not calendar time.
 
 **Correct** (subject-relative): Each subject's earliest interval starts at 0
-- Subject 1: (0, 4], (4, 10] — personal follow-up time
-- Subject 2: (0, 7] — personal follow-up time
+
+- Subject 1: (0, 4], (4, 10] (personal follow-up time)
+- Subject 2: (0, 7] (personal follow-up time)
 
 **Incorrect** (calendar time): Subjects enter the study at different dates
+
 - Subject 1: (2024-01-01, 2024-01-04], (2024-01-04, 2024-01-10]
-- Subject 2: (2024-06-15, 2024-06-22] — different calendar dates
+- Subject 2: (2024-06-15, 2024-06-22] (different calendar dates)
 
 If your data uses calendar time (e.g., from a wide dataset where subjects enroll on different dates),
 subtract each subject's entry date from their start/stop times.

@@ -60,7 +60,7 @@ risk[:8]
 
 The linear predictor returned by `predict(type="lp")` is always centered around the mean of
 the training covariates. This ensures consistent, numerically stable predictions across all
-variable types—continuous, categorical, and mixed. The centering is applied uniformly, so you
+variable types: continuous, categorical, and mixed. The centering is applied uniformly, so you
 always get mathematically sound risk scores, even in edge cases like categorical-only models
 with all positive associations.
 :::
