@@ -161,8 +161,8 @@ fg_pcm = gw.FineGray("pcm").fit(y, mg[["age", "sex"]])
 fg_death = gw.FineGray("death").fit(y, mg[["age", "sex"]])
 
 # Compare the hazard ratios side-by-side
-pcm_tidy = gw.tidy(fg_pcm, exponentiate=True)
-death_tidy = gw.tidy(fg_death, exponentiate=True)
+pcm_tidy = gw.tidy(fg_pcm, exponentiate=True, format="pandas")
+death_tidy = gw.tidy(fg_death, exponentiate=True, format="pandas")
 
 pcm_tidy["cause"] = "PCM"
 death_tidy["cause"] = "Death"

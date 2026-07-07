@@ -85,7 +85,7 @@ lower value indicates a better fit:
 results = []
 for dist in ("exponential", "weibull", "lognormal", "loglogistic"):
     model = gw.AFT(dist).fit(y, lung[["age", "sex"]])
-    glance_result = gw.glance(model)
+    glance_result = gw.glance(model, format="pandas")
     glance_result["distribution"] = dist
     results.append(glance_result)
 
@@ -107,7 +107,7 @@ import pandas as pd
 comparisons = []
 for dist in ("exponential", "weibull", "lognormal", "loglogistic"):
     model = gw.AFT(dist).fit(y, lung[["age", "sex"]])
-    result = gw.glance(model)
+    result = gw.glance(model, format="pandas")
     result["distribution"] = dist
     comparisons.append(result)
 
