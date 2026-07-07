@@ -54,8 +54,8 @@ after it give a 95 percent confidence interval for that median, 285 to 363 days.
 
 ## Plot the curve
 
-`plot_survival` draws the curve as a figure, with a shaded confidence band and a tick mark
-wherever a patient was censored.
+`plot_survival` draws the curve as an interactive chart, with a shaded confidence band and a
+notch wherever a patient was censored.
 
 ```{python}
 import greenwood as gw
