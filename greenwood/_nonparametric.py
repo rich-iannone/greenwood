@@ -29,10 +29,10 @@ _CONF_TYPES = frozenset({"plain", "log", "log-log"})
 
 
 def _km_confidence(surv: Array, sigma: Array, conf_type: str, z: float) -> tuple[Array, Array]:
-    """Confidence limits for the survival function on the requested scale.
+    r"""Confidence limits for the survival function on the requested scale.
 
-    `sigma` is the standard error of `log(S)` (the square root of Greenwood's sum), so
-    `se(S) = S * sigma`. Limits are clipped to `[0, 1]`, matching R's `survfit`.
+    `sigma` is the standard error of $\log S$ (the square root of Greenwood's sum), so
+    $\mathrm{se}(S) = S \cdot \sigma$. Limits are clipped to $[0, 1]$, matching R's `survfit`.
     """
     with np.errstate(divide="ignore", invalid="ignore"):
         if conf_type == "plain":
@@ -139,12 +139,17 @@ def _crossing_time(time: Array, curve: Array, level: float) -> float:
 
 
 def _rmst_block(block: _Block, tau: float) -> tuple[float, float]:
-    """Restricted mean survival time up to `tau` and its standard error.
+    r"""Restricted mean survival time up to `tau` and its standard error.
 
-    RMST is the area under the Kaplan-Meier curve on `[0, tau]`. The variance uses the
-    standard estimator `sum_i A_i^2 d_i / (n_i (n_i - d_i))` over event times `t_i <=
-    tau`, where `A_i` is the area under the curve from `t_i` to `tau` (as in R's
-    `survival::survfit` restricted mean).
+    RMST is the area under the Kaplan-Meier curve on $[0, \tau]$. The variance uses the
+    standard estimator
+
+    $$
+    \sum_i \frac{A_i^2 \, d_i}{n_i (n_i - d_i)}
+    $$
+
+    over event times $t_i \le \tau$, where $A_i$ is the area under the curve from $t_i$ to
+    $\tau$ (as in R's `survival::survfit` restricted mean).
     """
     t = block.time
     s = block.surv
@@ -169,12 +174,16 @@ def _rmst_block(block: _Block, tau: float) -> tuple[float, float]:
 
 
 def _rmrl_block(block: _Block, s: float, tau: float) -> tuple[float, float]:
-    """Restricted mean residual life at `s` over the window `(s, tau]`, and its SE.
+    r"""Restricted mean residual life at `s` over the window $(s, \tau]$, and its SE.
 
-    RMRL(s; tau) = (1 / S(s)) * integral_s^tau S(u) du, the expected additional survival
-    beyond `s` restricted to `tau`, given survival to `s`. The variance is the restricted-mean
-    (Greenwood) estimator applied to the conditional curve, summed over event times in
-    `(s, tau]`; at `s = 0` this reduces exactly to `_rmst_block` (S(0) = 1).
+    $$
+    \mathrm{RMRL}(s; \tau) = \frac{1}{S(s)} \int_s^\tau S(u) \, du
+    $$
+
+    the expected additional survival beyond $s$ restricted to $\tau$, given survival to $s$.
+    The variance is the restricted-mean (Greenwood) estimator applied to the conditional
+    curve, summed over event times in $(s, \tau]$; at $s = 0$ this reduces exactly to
+    `_rmst_block` ($S(0) = 1$).
     """
     t = block.time
     surv = block.surv
@@ -209,7 +218,7 @@ def _rmrl_block(block: _Block, s: float, tau: float) -> tuple[float, float]:
 
 
 class KaplanMeier:
-    """Kaplan-Meier product-limit estimator of the survival function.
+    r"""Kaplan-Meier product-limit estimator of the survival function.
 
     The Kaplan-Meier estimator is a non-parametric method to estimate the survival function
     from right-censored data. It computes the survival probability at each observed event time
@@ -223,10 +232,15 @@ class KaplanMeier:
     arrays, exported to pandas/polars/pyarrow DataFrames, or queried through methods like
     `median()`, `quantile()`, and `predict()`.
 
-    The implementation uses the product-limit formula: S(t) = ∏_{t_i ≤ t} (n_i - d_i) / n_i,
-    where n_i is the number at risk and d_i is the number of events at time t_i. Variance
-    uses Greenwood's formula, and confidence intervals can be constructed on the log,
-    log-log, or identity scale.
+    The implementation uses the product-limit formula
+
+    $$
+    S(t) = \prod_{t_i \le t} \frac{n_i - d_i}{n_i}
+    $$
+
+    where $n_i$ is the number at risk and $d_i$ is the number of events at time $t_i$.
+    Variance uses Greenwood's formula, and confidence intervals can be constructed on the
+    log, log-log, or identity scale.
 
     Parameters
     ----------
@@ -316,7 +330,7 @@ class KaplanMeier:
         return "KaplanMeier (Kaplan-Meier survival estimate)\n\n" + table
 
     def fit(self, surv: Surv, *, by: Any = None, weights: Any = None) -> KaplanMeier:
-        """Fit the Kaplan-Meier estimator to survival data.
+        r"""Fit the Kaplan-Meier estimator to survival data.
 
         Computes the product-limit survival estimate from a `Surv` response (time-to-event
         data, possibly right-censored). The estimator remains in the fitted object after
@@ -355,10 +369,10 @@ class KaplanMeier:
         Notes
         -----
         The Kaplan-Meier estimator is a non-parametric maximum likelihood estimator of the
-        survival function S(t). It is defined as the product of (1 - d/n) over all event times
-        up to t, where d is the number of events and n is the number at risk at each time.
-        Confidence intervals are point-wise; they do not guarantee that the true curve lies
-        entirely within the band.
+        survival function $S(t)$. It is defined as the product of $(1 - d/n)$ over all event
+        times up to $t$, where $d$ is the number of events and $n$ is the number at risk at
+        each time. Confidence intervals are point-wise; they do not guarantee that the true
+        curve lies entirely within the band.
 
         Examples
         --------
@@ -426,7 +440,7 @@ class KaplanMeier:
     # -- quantiles ------------------------------------------------------------
 
     def quantile(self, p: float, *, ci: bool = False) -> Any:
-        """Return the `p`-quantile survival time per stratum.
+        r"""Return the `p`-quantile survival time per stratum.
 
         Computes the quantile (percentile) of the survival time distribution, i.e., the time
         at which the survival curve first drops to (1 - p). For example, `p=0.25` returns the
@@ -454,7 +468,7 @@ class KaplanMeier:
         Notes
         -----
         The quantile is found by inverting the step-function survival curve: the smallest time
-        t such that S(t) <= (1 - p). Confidence intervals are obtained by inverting the
+        $t$ such that $S(t) \le (1 - p)$. Confidence intervals are obtained by inverting the
         pointwise confidence band, following R's convention. These are not simultaneous
         confidence intervals.
 
@@ -533,7 +547,7 @@ class KaplanMeier:
         return self.quantile(0.5, ci=ci)
 
     def rmst(self, tau: float, *, ci: bool = False) -> Any:
-        """Restricted mean survival time up to `tau` (area under the survival curve).
+        r"""Restricted mean survival time up to `tau` (area under the survival curve).
 
         Computes the restricted mean survival time: the expected survival time over a fixed
         time window [0, tau], calculated as the area under the survival curve up to tau.
@@ -548,8 +562,8 @@ class KaplanMeier:
             a clinically relevant horizon (e.g., 1, 5, or 10 years).
         ci
             If `True`, return (estimate, lower, upper) confidence limits using a normal
-            approximation (estimate +/- z * se, with lower bound at 0). If `False` (default),
-            return only the point estimate.
+            approximation ($\text{estimate} \pm z \cdot \text{se}$, with lower bound at 0).
+            If `False` (default), return only the point estimate.
 
         Returns
         -------
@@ -560,12 +574,17 @@ class KaplanMeier:
 
         Notes
         -----
-        The restricted mean survival time is computed as the definite integral of S(t)
-        from 0 to tau: RMST(tau) = integral_0^tau S(t) dt. It is estimated numerically
-        by integrating the step-function survival curve. Unlike the median, RMST is defined
-        even when the survival curve does not reach 0.5, and is easily comparable across
-        groups. Confidence intervals use the normal approximation with Greenwood-style
-        variance estimation.
+        The restricted mean survival time is computed as the definite integral of $S(t)$
+        from 0 to $\tau$:
+
+        $$
+        \mathrm{RMST}(\tau) = \int_0^\tau S(t) \, dt
+        $$
+
+        It is estimated numerically by integrating the step-function survival curve. Unlike
+        the median, RMST is defined even when the survival curve does not reach 0.5, and is
+        easily comparable across groups. Confidence intervals use the normal approximation
+        with Greenwood-style variance estimation.
 
         Examples
         --------
@@ -595,13 +614,18 @@ class KaplanMeier:
         return {b.label: one(b) for b in self._blocks}
 
     def rmrl(self, s: float, tau: float, *, ci: bool = False) -> Any:
-        """Restricted mean residual life at time `s`, over the window `(s, tau]`.
+        r"""Restricted mean residual life at time `s`, over the window $(s, \tau]$.
 
         Computes the expected additional survival time beyond a landmark time `s`, conditional
         on having survived to `s`, restricted to an upper time limit `tau`. Mathematically:
-        RMRL(s; tau) = integral_s^tau S(u) du / S(s). This is a generalization of RMST to a
-        later landmark point, useful for assessing prognosis or remaining life expectancy
-        for subjects who have already reached a specific milestone.
+
+        $$
+        \mathrm{RMRL}(s; \tau) = \frac{\int_s^\tau S(u) \, du}{S(s)}
+        $$
+
+        This is a generalization of RMST to a later landmark point, useful for assessing
+        prognosis or remaining life expectancy for subjects who have already reached a
+        specific milestone.
 
         Parameters
         ----------
@@ -609,13 +633,13 @@ class KaplanMeier:
             The landmark time. Must be non-negative. Represents the time at which subjects
             are assessed (e.g., time to remission, time at clinic visit, etc.).
         tau
-            The upper time limit for the restriction. Must be greater than `s`. Typically a
-            clinically relevant horizon beyond the landmark (e.g., s=180 days landmark,
-            tau=730 days endpoint).
+            The upper time limit for the restriction. Must be greater than $s$. Typically a
+            clinically relevant horizon beyond the landmark (e.g., $s = 180$ days landmark,
+            $\tau = 730$ days endpoint).
         ci
             If `True`, return (estimate, lower, upper) confidence limits using a normal
-            approximation (estimate +/- z * se, with lower bound at 0). If `False` (default),
-            return only the point estimate.
+            approximation ($\text{estimate} \pm z \cdot \text{se}$, with lower bound at 0).
+            If `False` (default), return only the point estimate.
 
         Returns
         -------
@@ -632,7 +656,7 @@ class KaplanMeier:
         `tau`. It generalizes RMST (which is equivalently rmrl(0, tau)). This is useful in
         clinical follow-up: given that a patient has survived to time `s`, what is the
         expected additional survival time? Variance estimation accounts for the conditioning
-        on S(s).
+        on $S(s)$.
 
         Examples
         --------
@@ -668,7 +692,7 @@ class KaplanMeier:
     # -- prediction -----------------------------------------------------------
 
     def predict(self, times: Any, *, what: str = "survival") -> Any:
-        """Evaluate the survival or cumulative hazard curve at specified times.
+        r"""Evaluate the survival or cumulative hazard curve at specified times.
 
         Reads the estimated survival function or cumulative hazard off the step-function
         curve at any set of query times. Useful for extracting survival probabilities or
@@ -681,8 +705,8 @@ class KaplanMeier:
             Query times at which to evaluate the curve. Can be a scalar or array-like of
             floats. Results are returned as a scalar or array matching the input shape.
         what
-            Quantity to evaluate: `"survival"` (default) for survival probability S(t), or
-            `"cumhaz"` for cumulative hazard H(t). Raises `ValueError` if any other value.
+            Quantity to evaluate: `"survival"` (default) for survival probability $S(t)$, or
+            `"cumhaz"` for cumulative hazard $H(t)$. Raises `ValueError` if any other value.
 
         Returns
         -------
@@ -695,7 +719,7 @@ class KaplanMeier:
         -----
         The survival and cumulative hazard curves are step functions defined only at observed
         event times. Values at times between events are interpolated using the right-continuous
-        step-function convention: the value at time t is the last step at time <= t. Times
+        step-function convention: the value at time $t$ is the last step at time $\le t$. Times
         before the first event (or after the last observed time with non-zero survival) may
         return baseline values (1.0 for survival, 0.0 for cumulative hazard) or the last
         estimated value, respectively.
@@ -819,23 +843,32 @@ def _glance_kaplan_meier(km: KaplanMeier, *, format: str | None = None, **_: Any
 
 
 class NelsonAalen:
-    """Nelson-Aalen estimator of the cumulative hazard.
+    r"""Nelson-Aalen estimator of the cumulative hazard.
 
     The Nelson-Aalen estimator provides a non-parametric estimate of the cumulative hazard
     function, which represents the total "accumulated risk" up to a given time. Unlike the
     Kaplan-Meier estimator which models survival directly, this approach models the force of
     mortality. The cumulative hazard at each event time is computed as a running sum of the
-    ratio of events to subjects at risk: H(t) = Σ_{t_i ≤ t} d_i / n_i.
+    ratio of events to subjects at risk:
+
+    $$
+    H(t) = \sum_{t_i \le t} \frac{d_i}{n_i}
+    $$
 
     This estimator is useful when you want to examine the hazard directly rather than survival
     probabilities, and is often used as the basis for other analyses. You can convert the
-    cumulative hazard to a survival estimate via S(t) = exp(-H(t)), though the Kaplan-Meier
+    cumulative hazard to a survival estimate via $S(t) = \exp(-H(t))$, though the Kaplan-Meier
     estimator is typically preferred for direct survival estimation. Call `fit()` with a
     right-censored `Surv` response to compute cumulative hazard at each event time.
 
-    The variance of the cumulative hazard estimate uses Aalen's formula: Var(H(t)) = Σ_{t_i ≤ t}
-    d_i / n_i^2. Confidence intervals can be constructed on the plain or log scale, with the
-    log scale providing better coverage in the tails.
+    The variance of the cumulative hazard estimate uses Aalen's formula:
+
+    $$
+    \mathrm{Var}(H(t)) = \sum_{t_i \le t} \frac{d_i}{n_i^2}
+    $$
+
+    Confidence intervals can be constructed on the plain or log scale, with the log scale
+    providing better coverage in the tails.
 
     Parameters
     ----------
@@ -909,13 +942,13 @@ class NelsonAalen:
         return "NelsonAalen (Nelson-Aalen cumulative hazard estimate)\n\n" + table
 
     def fit(self, surv: Surv, *, by: Any = None, weights: Any = None) -> NelsonAalen:
-        """Fit the Nelson-Aalen estimator to survival data.
+        r"""Fit the Nelson-Aalen estimator to survival data.
 
-        Computes the cumulative hazard function H(t) from a `Surv` response (time-to-event
+        Computes the cumulative hazard function $H(t)$ from a `Surv` response (time-to-event
         data). Like Kaplan-Meier, this is a non-parametric estimate requiring no distributional
         assumptions. The Nelson-Aalen estimator is an alternative to Kaplan-Meier; it estimates
-        the cumulative hazard directly (sum of d/n at each event time), from which the survival
-        probability can be derived via S(t) = exp(-H(t)). Results are stored in the fitted
+        the cumulative hazard directly (sum of $d/n$ at each event time), from which the survival
+        probability can be derived via $S(t) = \exp(-H(t))$. Results are stored in the fitted
         object; access them via attributes or export to a DataFrame with `to_frame()`
         (optionally `format=`).
 
@@ -945,10 +978,21 @@ class NelsonAalen:
 
         Notes
         -----
-        The Nelson-Aalen estimator is H(t) = sum_{t_i <= t} (d_i / n_i), where d_i and n_i are
-        events and number at risk at time t_i. Its variance is estimated using Aalen's formula:
-        Var(H) = sum (d_i / n_i^2). The survival function can be recovered as S(t) = exp(-H(t)).
-        Confidence intervals are point-wise.
+        The Nelson-Aalen estimator is
+
+        $$
+        H(t) = \sum_{t_i \le t} \frac{d_i}{n_i}
+        $$
+
+        where $d_i$ and $n_i$ are events and number at risk at time $t_i$. Its variance is
+        estimated using Aalen's formula:
+
+        $$
+        \mathrm{Var}(H) = \sum \frac{d_i}{n_i^2}
+        $$
+
+        The survival function can be recovered as $S(t) = \exp(-H(t))$. Confidence intervals
+        are point-wise.
 
         Examples
         --------
