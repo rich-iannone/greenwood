@@ -19,10 +19,11 @@ are optional extras:
 | `pd` | pandas |
 | `pl` | Polars |
 | `formula` | formulaic (the `Surv(...) ~ x` formula API) |
-| `viz` | plotnine (visualization) |
+| `altair` | Altair (interactive, Narwhals-native visualization) |
+| `plotnine` | plotnine (grammar-of-graphics visualization) |
 | `tables` | Great Tables (publication tables) |
 | `fast` | numba (accelerated kernels) |
-| `all` | pd, pl, formula, viz, tables |
+| `all` | pd, pl, formula, altair, plotnine, tables |
 
 ```bash
 pip install "greenwood[all]"
