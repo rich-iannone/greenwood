@@ -67,52 +67,141 @@ def cross_validate(
     times: Any = None,
     seed: int | None = None,
 ) -> dict[str, Any]:
-    """Evaluate a survival model out-of-sample with k-fold cross-validation.
+    """Evaluate a survival model's out-of-sample performance using k-fold cross-validation.
+
+    Provides an honest, unbiased estimate of model performance by splitting data into folds,
+    fitting on training folds, and evaluating on held-out test folds. This avoids overfitting
+    bias that occurs when fitting and scoring on the same data.
+
+    **Why cross-validate?** Fitting and scoring on the training data gives overly optimistic
+    performance estimates. A model may fit the training data well due to overfitting, not
+    true predictive ability. Cross-validation repeatedly fits on different training splits
+    and evaluates on held-out data, simulating performance on new subjects.
+
+    **Metrics**:
+    
+    - `"concordance"` (default): Harrell's C-statistic on the test fold. Higher is better
+      (0.5 = random, 1.0 = perfect). Requires CoxPH, CoxNet, or AFT model.
+    - `"brier"`: Integrated IPCW Brier score over specified times. Lower is better
+      (0 = perfect calibration, 1 = worst). Requires explicit `times=` parameter.
 
     Parameters
     ----------
     model
-        An unfitted estimator instance (for example `CoxPH()` or `AFT("weibull")`). A fresh
-        copy is fit on each training split, so the passed object is left untouched.
+        An unfitted estimator instance (e.g., `CoxPH()`, `CoxNet()`, `AFT("weibull")`).
+        A fresh copy is fit on each training fold, leaving the passed object unchanged.
+        Supported: CoxPH, CoxNet, AFT (for concordance) and any of those (for Brier).
     surv
-        The `Surv` response (right-censored or counting-process).
+        A `Surv` response (time-to-event data). Can be right-censored or counting-process.
+        Weights in the response are carried through the cross-validation.
     covariates
-        A dataframe or 2-D array, or a right-hand-side formula string evaluated against
-        `data` (as in `CoxPH.fit`). The design is resolved once, then split by fold.
+        Covariates/predictors for the model. Can be:
+
+        - A 2-D array or pandas/Polars DataFrame with one row per subject
+        - A formula string (as in `CoxPH.fit()`), evaluated against `data`
+
     data
-        The data frame a formula string is evaluated against.
+        If `covariates` is a formula string, the data frame to evaluate it against.
     k
-        Number of folds (default 5).
+        Number of folds (default 5). Each fold serves as test data once; subjects are split
+        randomly and evenly across folds. Typical choices: 5 or 10.
     metric
-        `"concordance"` (Harrell's C on the held-out fold, needs a CoxPH or AFT model) or
-        `"brier"` (integrated IPCW Brier score, lower is better; requires `times`).
+        Performance metric for evaluation:
+
+        - `"concordance"` (default): Harrell's C-statistic. Requires CoxPH, CoxNet, or AFT.
+        - `"brier"`: Integrated inverse-probability-of-censoring-weighted (IPCW) Brier
+          score. Requires `times=` with at least 2 time points.
+
     times
-        For `metric="brier"`, at least two evaluation times.
+        For `metric="brier"`, evaluation time points (1-D array-like, length ≥ 2). The Brier
+        score is computed at each time, then integrated (time-averaged). Example:
+        `times=[365, 730, 1095]` for 1, 2, 3-year predictions.
     seed
-        Seed for the fold shuffle, for reproducibility.
+        Random seed for fold shuffling, ensures reproducibility. If `None`, results may vary
+        between runs. Use a fixed seed for consistent comparisons.
 
     Returns
     -------
     dict
-        `{"metric", "k", "scores" (per fold), "mean", "std"}`.
+        Dictionary with keys:
+
+        - `"metric"`: Metric name used (`"concordance"` or `"brier"`).
+        - `"k"`: Number of folds.
+        - `"scores"`: List of per-fold scores (one per fold).
+        - `"mean"`: Mean score across folds (primary summary).
+        - `"std"`: Standard deviation of scores (variability estimate).
+
+        For concordance, higher mean is better. For Brier, lower mean is better.
+
+    Notes
+    -----
+    **How folds work**: Subjects are randomly shuffled and split into k roughly equal-sized
+    groups. On iteration i, fold i is held out for testing, while the other k-1 folds are
+    combined for training. This repeats k times until each fold has served as test data once.
+
+    **Completeness**: Subjects with missing covariates are dropped before folding. This
+    ensures all folds use the same cleaned data, avoiding alignment issues.
+
+    **AFT model note**: For AFT, concordance uses the negated linear predictor (since in AFT,
+    larger lp means longer survival, opposite to Cox). This is handled automatically.
+
+    **Reproducibility**: Set `seed=` to ensure the same folds are used across runs. This is
+    important for comparing different models or reporting consistent results.
 
     Examples
     --------
-    Fit-and-score on the same data is optimistic; cross-validation gives an honest,
-    out-of-sample estimate. Here five-fold concordance for a Cox model on the bundled `lung`
-    dataset. The returned dict carries the per-fold `scores` alongside their `mean` and `std`.
+    Evaluate a Cox model with 5-fold cross-validation using concordance:
 
     ```{python}
     import greenwood as gw
 
     lung = gw.load_dataset("lung")
     y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-
-    gw.cross_validate(gw.CoxPH(), y, lung[["age", "sex"]], k=5, metric="concordance", seed=1)
+    result = gw.cross_validate(
+        gw.CoxPH(), y, lung[["age", "sex"]], k=5, metric="concordance", seed=1
+    )
+    result
     ```
 
-    Pass `metric="brier"` with a `times=` grid instead to score the integrated
-    inverse-probability-of-censoring-weighted Brier score (lower is better).
+    Access individual components. The mean concordance across folds:
+
+    ```{python}
+    result["mean"]
+    ```
+
+    Per-fold scores (variability check):
+
+    ```{python}
+    result["scores"]
+    ```
+
+    Standard deviation (estimate of generalization uncertainty):
+
+    ```{python}
+    result["std"]
+    ```
+
+    Use Brier score (calibration) instead of concordance (discrimination):
+
+    ```{python}
+    result_brier = gw.cross_validate(
+        gw.CoxPH(), y, lung[["age", "sex"]], k=5,
+        metric="brier", times=[180, 365, 540], seed=1
+    )
+    result_brier
+    ```
+
+    Compare two models via cross-validation. Model with higher mean concordance (or lower
+    mean Brier) generalizes better:
+
+    ```{python}
+    # simple_model = gw.CoxPH()
+    # complex_model = gw.CoxPH()
+    # simple_cv = gw.cross_validate(simple_model, y, lung[["age"]], seed=1)
+    # complex_cv = gw.cross_validate(complex_model, y, lung[["age", "sex", "ph.ecog"]], seed=1)
+    # print(f"Simple model C-index: {simple_cv['mean']:.3f} ± {simple_cv['std']:.3f}")
+    # print(f"Complex model C-index: {complex_cv['mean']:.3f} ± {complex_cv['std']:.3f}")
+    ```
     """
     from ._cox import CoxPH, _design_matrix
     from ._metrics import concordance_index, integrated_brier_score

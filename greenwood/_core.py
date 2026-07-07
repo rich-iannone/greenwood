@@ -205,46 +205,115 @@ def _tabulate_block(
 
 
 def event_table(surv: Surv, *, group: Any = None, weights: Any = None) -> EventTable:
-    """Tabulate the risk set at each unique exit time.
+    """Tabulate the event history: risk sets and events at each observed time.
+
+    Creates a structured summary of the survival data at each unique event time. The table
+    shows how many subjects were at risk, how many experienced events, and how many were
+    censored at each time point. This is the foundational data structure used by
+    non-parametric estimators (Kaplan-Meier, Nelson-Aalen) and the log-rank test.
+
+    **Uses**:
+    
+    - **Verification**: Inspect risk sets to understand data structure and check for
+      censoring patterns.
+    - **Manual calculations**: Compute survival estimates, cumulative event rates, or
+      other summaries directly from the risk-set counts.
+    - **Understanding censoring**: See censoring patterns by time and stratification.
+    - **Reporting**: Present summary tables in publications (common in clinical trials).
 
     Parameters
     ----------
     surv
-        A `Surv` response (right-censored or counting-process; interval and multi-state
-        endpoints are tabulated later, once their estimators land).
+        A `Surv` response (time-to-event data). Supports right-censored or counting-process
+        format. Weighted responses are supported; weights are incorporated into risk-set
+        counts.
     group
-        Optional group labels (any Narwhals series / array / sequence, length `n`). When
-        given, the table is stratified and carries a `strata` column.
+        Optional grouping variable for stratification, one value per subject. Can be a
+        Pandas/Polars series, 1-D array, or Python sequence. When provided, the table is
+        split into blocks with a `strata` column, one group per block. Groups appear in
+        order of first appearance in the data.
     weights
-        Optional case weights. Defaults to the response's weights, or 1.
+        Optional case weights. Can be a 1-D array or series. If `None` (default), uses
+        weights from the `surv` response if present, otherwise treats all subjects as
+        weight 1.
 
     Returns
     -------
     EventTable
-        The per-time tabulation, ascending in time within each stratum.
+        A structured result with the following attributes:
+
+        - `time`: Unique event times (ascending, per stratum if grouped).
+        - `n_risk`: Weighted number of subjects at risk (alive/uncensored and under follow-up)
+          at each time.
+        - `n_event`: Weighted number of events at each time.
+        - `n_censor`: Weighted number of censored subjects at each time.
+        - `strata` (if grouped): Stratum label for each row.
+
+        Access columns via `.to_pandas()`, `.to_polars()`, `.to_arrow()`, or iterate directly.
+
+    Notes
+    -----
+    **Risk-set definition**: At time t, subjects "at risk" are those with:
+
+    - Entry time ≤ t (for counting-process data)
+    - Exit time > t (not yet having an event or censoring)
+
+    For right-censored data, entry is always 0, so the condition simplifies.
+
+    **Censoring and events at the same time**: Subjects censored at time t are handled
+    carefully. A subject censored at exactly time t is at risk for any event at t (following
+    convention in survival analysis). The table counts them in `n_risk` at time t, but
+    removes them from `n_risk` at times > t.
+
+    **Stratification order**: If grouped, strata appear in the order of first appearance in
+    the input data, not alphabetically. This allows meaningful orderings (e.g., control,
+    then treatment).
+
+    **Weights**: If weights are provided, all counts (n_risk, n_event, n_censor) are sums
+    of weights, not subject counts. This handles case weights or frequency weights.
 
     Examples
     --------
-    Tabulate the risk set from the bundled `lung` dataset. Each row is a unique exit
-    `time` with the number still at risk (`n_risk`), the number of events (`n_event`), and
-    the number censored (`n_censor`) at that time.
+    View the basic event table for the `lung` dataset: how many subjects are at risk,
+    events, and censoring at each time.
 
     ```{python}
     import greenwood as gw
 
     lung = gw.load_dataset("lung")
     y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-    gw.event_table(y).to_pandas()
+    et = gw.event_table(y)
+    et.to_pandas().head(10)
     ```
 
-    Passing `group=` stratifies the table, adding a `strata` column with one block of rows
-    per group.
+    The first row shows the first event time: how many subjects were at risk, how many
+    experienced an event, and how many were censored. Note that `n_risk` decreases over
+    time as subjects leave the risk set (events or censoring).
+
+    Stratify by sex to see event patterns for each group separately:
 
     ```{python}
-    import greenwood as gw
-
-    gw.event_table(y, group=lung["sex"]).to_pandas()
+    et_sex = gw.event_table(y, group=lung["sex"])
+    et_sex.to_pandas().head(15)
     ```
+
+    Now each unique time appears twice (once per stratum) with a `strata` column indicating
+    the group. This is useful for inspecting whether event rates and censoring patterns
+    differ by group.
+
+    Compute a manual survival estimate from risk-set counts. The survival probability at
+    time t is the product of (1 - n_event / n_risk) over all times ≤ t:
+
+    ```{python}
+    import numpy as np
+    et = gw.event_table(y)
+    df = et.to_pandas()
+    # Kaplan-Meier survival at each time
+    df["surv"] = np.cumprod(1 - df["n_event"] / df["n_risk"])
+    df[["time", "n_risk", "n_event", "surv"]].head(10)
+    ```
+
+    This manual calculation matches the Kaplan-Meier estimate from `KaplanMeier().fit()`.
     """
     from ._surv import CensoringType, _to_1d_array
 
