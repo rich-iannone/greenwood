@@ -188,7 +188,7 @@ class CoxNet:
 
         lung = gw.load_dataset("lung")
         y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-        cols = ["age", "sex", "ph.ecog"]
+        cols = ["age", "sex", "ph.ecog", "ph.karno", "wt.loss"]
         coxnet_ridge = gw.CoxNet(penalizer=0.05, l1_ratio=0.0).fit(y, lung[cols])
         coxnet_ridge
         ```
@@ -354,7 +354,6 @@ class CoxNet:
         the values for the first five subjects. Reusing the `coxnet` fit from the class example:
 
         ```{python}
-        cols = ["age", "sex", "ph.ecog"]
         coxnet.predict(lung[cols], type="lp")[:5]
         ```
 
