@@ -346,8 +346,10 @@ class KaplanMeier:
 
         Returns
         -------
-        The fitted `KaplanMeier` object itself (for method chaining), now with cached results
-        (`time`, `surv`, `conf_low`, `conf_high`, `n_risk`, `n_event`, etc. as attributes).
+        KaplanMeier
+            The fitted estimator object itself (for method chaining) with cached results
+            (`time_`, `surv_`, `conf_low_`, `conf_high_`, `n_risk_`, `n_event_`, etc. as
+            attributes).
 
         Notes
         -----
@@ -979,8 +981,10 @@ class NelsonAalen:
 
         Returns
         -------
-        The fitted `NelsonAalen` object itself (for method chaining), now with cached results
-        (`time`, `cumhaz`, `conf_low`, `conf_high`, `n_risk`, `n_event` as attributes).
+        NelsonAalen
+            The fitted estimator object itself (for method chaining) with cached results
+            (`time_`, `cumulative_hazard_`, `conf_low_`, `conf_high_`, `n_risk_`, `n_event_`
+            as attributes).
 
         Notes
         -----

@@ -209,9 +209,10 @@ class AalenJohansen:
 
         Returns
         -------
-        The fitted `AalenJohansen` object itself (for method chaining), now with cached CIF
-        results (time arrays, cumulative incidence per cause, confidence bands) accessible via
-        `to_pandas()` and related methods.
+        AalenJohansen
+            The fitted estimator object itself (for method chaining) with cached cumulative
+            incidence results (time arrays, CIF per cause, confidence bands) accessible via
+            `to_pandas()` and related methods.
 
         Notes
         -----
@@ -546,9 +547,10 @@ class FineGray:
 
         Returns
         -------
-        The fitted `FineGray` object itself (for method chaining), now with coefficient arrays
-        (`coef_`, `std_error_`, `hazard_ratio_`, `z_`, `p_value_`), event counts, and
-        log-likelihood.
+        FineGray
+            The fitted estimator object itself (for method chaining) with cached coefficient
+            arrays (`coef_`, `std_error_`, `hazard_ratio_`, `z_`, `p_value_`), event counts,
+            and model fit statistics.
 
         Notes
         -----
@@ -974,6 +976,13 @@ class MultiState:
             no transition.
         states
             Optional ordered list of all state labels (default: sorted unique).
+
+        Returns
+        -------
+        MultiState
+            The fitted estimator object itself (for method chaining) with cached results
+            (`states_`, `time_`, `occupancy_`, transition matrices) accessible via
+            `to_pandas()` and related methods.
 
         Examples
         --------

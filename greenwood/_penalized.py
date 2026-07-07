@@ -170,8 +170,9 @@ class CoxNet:
 
         Returns
         -------
-        The fitted `CoxNet` object itself (for method chaining), now with coefficient
-        arrays, the event times used, and metrics like log-likelihood and degrees of freedom.
+        CoxNet
+            The fitted estimator object itself (for method chaining) with cached coefficient
+            arrays, standard errors, and model metrics.
 
         Notes
         -----

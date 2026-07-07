@@ -194,9 +194,10 @@ class RoystonParmar:
 
         Returns
         -------
-        The fitted `RoystonParmar` object itself (for method chaining), now with coefficient
-        arrays (`coef_`, `std_error_`, `z_`, `p_value_`), fitted knot locations (`knots_`),
-        and summary statistics like log-likelihood.
+        RoystonParmar
+            The fitted estimator object itself (for method chaining) with cached coefficient
+            arrays (`coef_`, `std_error_`, `z_`, `p_value_`), fitted knot locations (`knots_`),
+            and model fit statistics.
 
         Notes
         -----

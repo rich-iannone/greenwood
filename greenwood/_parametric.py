@@ -200,9 +200,10 @@ class AFT:
 
         Returns
         -------
-        The fitted `AFT` object itself (for method chaining), now with coefficient arrays
-        (`coef_`, `std_error_`, `z_`, `p_value_`), the fitted distribution parameters
-        (`scale_`), and log-likelihood (`loglik_`).
+        AFT
+            The fitted estimator object itself (for method chaining) with cached coefficient
+            arrays (`coef_`, `std_error_`, `z_`, `p_value_`), scale parameter (`scale_`),
+            and log-likelihood (`loglik_`).
 
         Notes
         -----
