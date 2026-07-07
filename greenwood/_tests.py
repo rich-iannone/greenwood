@@ -1,7 +1,7 @@
-"""Group comparison tests: the log-rank statistic and the G-rho (Fleming-Harrington) family.
+r"""Group comparison tests: the log-rank statistic and the G-rho (Fleming-Harrington) family.
 
 `logrank_test` compares survival across two or more groups using the weighted log-rank
-statistic. The weight is the Fleming-Harrington `S(t-)^rho * (1 - S(t-))^gamma` evaluated
+statistic. The weight is the Fleming-Harrington $S(t-)^\rho \, (1 - S(t-))^\gamma$ evaluated
 on the pooled Kaplan-Meier estimate, so `rho=0, gamma=0` is the standard log-rank test and
 `rho=1, gamma=0` is the Peto-Peto (Wilcoxon-type) test. This matches R's
 `survival::survdiff` (which exposes the `rho` parameter).
@@ -206,10 +206,10 @@ def _logrank_statistic(
     rho: float,
     gamma: float,
 ) -> tuple[float, int, Array, Array]:
-    """Compute the (optionally stratified) log-rank statistic over `groups`.
+    r"""Compute the (optionally stratified) log-rank statistic over `groups`.
 
     A stratified test sums the observed, expected, and variance contributions across strata
-    before forming `chisq = U' V^-1 U` on a dropped-one basis (matching R `survdiff` with a
+    before forming $\chi^2 = U' V^{-1} U$ on a dropped-one basis (matching R `survdiff` with a
     `strata()` term).
     """
     n_groups = len(groups)
@@ -238,7 +238,7 @@ def _logrank_statistic(
 def logrank_test(
     surv: Surv, group: Any, *, rho: float = 0.0, gamma: float = 0.0, strata: Any = None
 ) -> TestResult:
-    """Compare survival across groups using the weighted log-rank (G-rho) test.
+    r"""Compare survival across groups using the weighted log-rank (G-rho) test.
 
     Tests whether survival curves differ significantly across two or more groups using a
     chi-square test based on weighted event counts. The test is flexible: with default weights
@@ -269,7 +269,7 @@ def logrank_test(
         Must have the same length as `surv`.
     rho, gamma
         Fleming-Harrington weight exponents applied to the pooled Kaplan-Meier survival
-        `S(t-)` at each event time. The weight is `S(t-)^rho * (1-S(t-))^gamma`.
+        $S(t-)$ at each event time. The weight is $S(t-)^\rho \, (1-S(t-))^\gamma$.
 
         - `rho=0, gamma=0` (default): Standard log-rank test. Equal weight across all times.
         - `rho=1, gamma=0`: Peto-Peto (Wilcoxon) test. Emphasizes early events.
@@ -431,7 +431,7 @@ def pairwise_logrank_test(
     correction: str = "holm",
     format: str | None = None,
 ) -> Any:
-    """Pairwise log-rank tests for all group pairs with multiple-comparison correction.
+    r"""Pairwise log-rank tests for all group pairs with multiple-comparison correction.
 
     Runs the log-rank test on every pair of groups, then adjusts p-values to control for
     multiple testing. This answers the question: "Which pairs of groups have significantly
@@ -470,8 +470,8 @@ def pairwise_logrank_test(
           small numbers of pairs (fewer than ~10).
         - `"bh"`: Benjamini-Hochberg false-discovery rate. Less conservative; recommended for
           many pairs. Allows more false positives but focuses on their rate.
-        - `"bonferroni"`: Bonferroni correction. Very conservative; adjusted p = raw p × m,
-          where m is the number of pairs.
+        - `"bonferroni"`: Bonferroni correction. Very conservative; adjusted $p = p \times m$,
+          where $m$ is the number of pairs.
         - `"none"`: No adjustment. Use only if you're testing a single pre-planned pair
           (though use `logrank_test` directly in that case).
     format
@@ -491,8 +491,8 @@ def pairwise_logrank_test(
 
     Notes
     -----
-    The number of pairs tested is C(k, 2) = k(k-1)/2, where k is the number of groups. For
-    k=3, that's 3 pairs; for k=5, that's 10 pairs. Larger numbers of pairs can reduce power
+    The number of pairs tested is $C(k, 2) = k(k-1)/2$, where $k$ is the number of groups. For
+    $k=3$, that's 3 pairs; for $k=5$, that's 10 pairs. Larger numbers of pairs can reduce power
     per comparison (wider adjusted confidence intervals), so keep the number of groups
     reasonable when possible.
 
