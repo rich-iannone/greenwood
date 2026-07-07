@@ -170,9 +170,8 @@ class CoxNet:
 
         Returns
         -------
-        The fitted `CoxNet` object itself (for method chaining), now with coefficient arrays
-        (`coef_`, `std_error_`, `z_`, `p_value_`, `hazard_ratio_`), the event times used,
-        and metrics like log-likelihood and degrees of freedom.
+        The fitted `CoxNet` object itself (for method chaining), now with coefficient
+        arrays, the event times used, and metrics like log-likelihood and degrees of freedom.
 
         Notes
         -----
@@ -324,7 +323,6 @@ class CoxNet:
             - `"risk"`: Relative risk exp(lp). Returns an array (always positive).
             - `"survival"`: Survival probabilities S(t|x) at times in `times`. Returns a
               frame with `time` column and one column per subject.
-
         times
             Query times for `type="survival"` (ignored for other types). An array-like of
             floats. If `None` (the default), uses the event times from the training data
