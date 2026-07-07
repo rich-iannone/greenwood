@@ -11,14 +11,15 @@ import great_docs as gd
 gd.enable_tbl_preview(n_head=8, n_tail=3)
 ```
 
-A survival curve is far easier to understand as a picture than as a table of numbers.
-Greenwood draws curves with [plotnine](https://plotnine.org/), a grammar-of-graphics library
-modeled on ggplot2. Because the plotting functions return ordinary plotnine objects, you can
-extend them with any plotnine layer, scale, or theme, which means you are never limited to
-the built-in appearance. This page covers the survival curve plot, confidence bands,
-censoring marks, and the numbers-at-risk table.
+A survival curve is far easier to understand as a picture than as a table of numbers. By
+default Greenwood draws curves with [Altair](https://altair-viz.github.io/), which produces
+interactive charts (tooltips and zoom) and is Narwhals-native: the numbers flow straight from
+your Polars fit into the chart with no Pandas or Matplotlib in the way, so a pure
+Polars/Narwhals workflow stays pure. This page covers the survival curve plot, confidence
+bands, censoring marks, and the numbers-at-risk table. A [plotnine](https://plotnine.org/)
+backend, for a grammar-of-graphics workflow, is described near the end.
 
-Plotnine is an optional dependency. If you installed Greenwood with the `viz` extra, or with
+Altair is an optional dependency. If you installed Greenwood with the `altair` extra, or with
 `all`, you already have it. We use the `lung` dataset throughout. First we build the response.
 
 ```{python}
@@ -57,7 +58,7 @@ numbers into a picture.
 ## The survival curve plot
 
 The main entry point is `plot_survival`. Given a fitted `KaplanMeier`, it draws the step
-curve for each stratum, a shaded confidence ribbon, and a tick mark at each censoring time.
+curve for each stratum, a shaded confidence band, and a small notch at each censoring time.
 
 ```{python}
 import greenwood as gw
@@ -69,12 +70,14 @@ km = gw.KaplanMeier(conf_type="log-log").fit(y, by=lung["sex"])
 gw.plot_survival(km)
 ```
 
-Each element carries meaning. The steps show the estimated survival probability, the ribbon
-shows its uncertainty, and the censoring ticks show where subjects left the risk set without
-an event. Curves that separate and stay apart suggest a real group difference, which you
+Each element carries meaning. The steps show the estimated survival probability, the band
+shows its uncertainty, and the censoring notches — angled so they sit on the curve without
+obscuring it — show where subjects left the risk set without an event. Because the chart is
+interactive, you can hover a curve to read the survival probability at a time, and drag or
+scroll to zoom. Curves that separate and stay apart suggest a real group difference, which you
 would confirm with a log-rank test from [Comparing groups](06-comparing-groups.qmd).
 
-You can turn individual elements off. Removing the ribbon and the censoring marks produces a
+You can turn individual elements off. Removing the band and the censoring marks produces a
 cleaner curve for a slide or a small figure.
 
 ```{python}
@@ -89,31 +92,26 @@ and the table makes that visible. Pass `risk_table=True` to stack an aligned tab
 the curve.
 
 ```{python}
-import greenwood as gw
-
-lung = gw.load_dataset("lung", backend="polars")
-y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-km = gw.KaplanMeier(conf_type="log-log").fit(y, by=lung["sex"])
-
 gw.plot_survival(km, risk_table=True)
 ```
 
 The table shares the horizontal axis with the curve above it, so the counts line up with the
-times they describe. You control the times shown with the `times` argument.
+times they describe — and because they share one x scale, panning or zooming the curve moves
+the table with it. You control the times shown with the `times` argument.
 
 ```{python}
 gw.plot_survival(km, risk_table=True, times=[0, 250, 500, 750, 1000])
 ```
 
 If you only need the numbers, `risk_table_data` returns them as a tidy frame, which you can
-render however you like, including through Great Tables.
+render however you like, including through Great Tables. It is backend-neutral, so it works
+whether or not you have a plotting library installed.
 
 ```{python}
 gw.viz.risk_table_data(km, times=[0, 250, 500, 750, 1000], format="polars")
 ```
 
-To draw just the aligned table as its own plot, without a curve above it, use `risk_table`. It
-returns a plotnine object, so you can display or save it on its own.
+To draw just the aligned table as its own chart, without a curve above it, use `risk_table`.
 
 ```{python}
 gw.risk_table(km, times=[0, 250, 500, 750, 1000])
@@ -121,38 +119,55 @@ gw.risk_table(km, times=[0, 250, 500, 750, 1000])
 
 ## Customizing the plot
 
-Because the result is a plotnine object, you refine it by adding layers and themes with the
-`+` operator, exactly as you would any plotnine figure. This is the advantage of building on
-a grammar-of-graphics library rather than a fixed plotting routine.
+`plot_survival` returns an ordinary Altair chart, so you refine it with Altair's API. Chaining
+`.properties` sets the title and dimensions, and you can keep layering or restyling from there.
 
 ```{python}
-import greenwood as gw
+gw.plot_survival(km).properties(
+    title="Survival by sex", width=640, height=360
+)
+```
+
+::: {.callout-note}
+## The plot is a chart object, not an image
+`plot_survival` returns an Altair chart (an `alt.LayerChart`, or an `alt.VConcatChart` when
+`risk_table=True`). It renders interactively in notebooks and browsers, and you keep composing
+it with Altair's API. Nothing about the figure is locked down.
+:::
+
+::: {.callout-tip}
+## Saving figures
+Call `save` on the returned chart. Use `chart.save("survival.html")` for the interactive
+version, or `chart.save("survival.png")` (also `.svg`, `.pdf`) for a static image — static
+export uses `vl-convert`, which ships with the `altair` extra.
+:::
+
+## The plotnine backend
+
+If you prefer a grammar-of-graphics workflow, or you already build figures with ggplot2-style
+layers, Greenwood also draws the same curves with [plotnine](https://plotnine.org/) under
+`greenwood.viz.plotnine`. It is an optional dependency, installed with the `plotnine` extra
+(or with `all`). The plotnine backend is built on Matplotlib and Pandas, so it is not part of
+a Pandas-free workflow, but it produces static, publication-ready figures you compose with the
+`+` operator.
+
+The API mirrors the default one: `plot_survival` takes the same fitted `KaplanMeier` and the
+same `conf_int`, `censor_marks`, `risk_table`, and `times` arguments, but returns a plotnine
+`ggplot` (or a plotnine composition when `risk_table=True`).
+
+```{python}
 from plotnine import labs, theme_bw
 
-lung = gw.load_dataset("lung", backend="polars")
-y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-km = gw.KaplanMeier(conf_type="log-log").fit(y, by=lung["sex"])
-
 (
-    gw.plot_survival(km)
+    gw.viz.plotnine.plot_survival(km, risk_table=True)
     + theme_bw()
     + labs(title="Survival by sex", x="Days since enrollment", color="Sex")
 )
 ```
 
-::: {.callout-note}
-## The plot is a plotnine object, not an image
-`plot_survival` returns a plotnine `ggplot` (or a plotnine composition when `risk_table=True`).
-You can keep composing it, save it with its `save` method, or display it in any notebook.
-Nothing about the figure is locked down.
-:::
-
-::: {.callout-tip}
-## Saving figures
-To write a figure to a file, call `save` on the returned object, for example
-`plot.save("survival.png", width=8, height=6, dpi=300)`. plotnine chooses the format from the
-file extension, so `.pdf` and `.svg` work too.
-:::
+Because the result is a plotnine object, you extend it with any plotnine layer, scale, or
+theme, and you save it with its `save` method, for example
+`plot.save("survival.png", width=8, height=6, dpi=300)`.
 
 ## Next steps
 
@@ -161,6 +176,6 @@ You can now produce and customize publication-quality survival figures.
 - [Cox regression](08-cox-regression.qmd) introduces models whose coefficients you will
   later visualize as forest plots.
 - [Competing risks](11-competing-risks.qmd) produces cumulative incidence curves, which are
-  plotted with the same grammar-of-graphics approach.
+  plotted the same way.
 - Revisit [Comparing groups](06-comparing-groups.qmd) to pair a grouped figure with a formal
   test.
