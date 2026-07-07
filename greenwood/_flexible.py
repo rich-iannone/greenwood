@@ -365,9 +365,10 @@ class RoystonParmar:
 
         Returns
         -------
-        DataFrame with columns `time` (query times) and `subject_1`, `subject_2`, etc.
-        (predictions for each subject, one row per query time). All three types return the
-        same DataFrame structure.
+        DataFrame
+            A DataFrame with columns `time` (query times) and `subject_1`, `subject_2`, etc.
+            containing predictions for each subject (one row per query time). All three
+            prediction types return the same DataFrame structure with different values.
 
         Raises
         ------

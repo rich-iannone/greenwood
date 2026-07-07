@@ -1050,15 +1050,48 @@ class MultiState:
         return self
 
     def predict(self, times: Any) -> Any:
-        """State occupancy probabilities at `times` (right-continuous step function).
+        """State occupancy probabilities at specified times.
+
+        Evaluates the state occupancy probabilities (probability of being in each state) at
+        requested times. The occupancy probability for each state is a right-continuous step
+        function, defined at the fitted time points and interpolated or held constant elsewhere.
+
+        Parameters
+        ----------
+        times
+            Time points at which to evaluate state occupancy. Can be a scalar or array-like of
+            floats. Values before the first transition time use the initial distribution;
+            values after the last transition time use the final distribution.
+
+        Returns
+        -------
+        DataFrame
+            A DataFrame with a `time` column and one column per state, containing occupancy
+            probabilities (values between 0 and 1) at each query time. Row indices match the
+            input times.
 
         Examples
         --------
-        Read the occupancy probabilities off the fitted model at any set of times. Here are the
-        probabilities of being in each state at 60, 120, and 240 months (reusing the `ms` fit
-        above):
+        Evaluate occupancy probabilities at specific times. The result shows how the
+        probability of being in each state changes over time:
 
         ```{python}
+        import greenwood as gw
+
+        mg = gw.load_dataset("mgus2")
+        start, stop, state, event = [], [], [], []
+        for i in range(len(mg)):
+            pt, ft = mg["ptime"][i], mg["futime"][i]
+            progressed, died = mg["pstat"][i] == 1, mg["death"][i] == 1
+            if progressed and pt < ft:
+                start += [0, pt]; stop += [pt, ft]; state += ["mgus", "pcm"]
+                event += ["pcm", "death" if died else None]
+            else:
+                start += [0]; stop += [ft]; state += ["mgus"]
+                event += ["death" if died else ("pcm" if progressed else None)]
+        rows = [(a, b, s, e) for a, b, s, e in zip(start, stop, state, event) if b > a]
+        start, stop, state, event = map(list, zip(*rows))
+        ms = gw.MultiState().fit(start, stop, state, event, states=("mgus", "pcm", "death"))
         ms.predict([60, 120, 240])
         ```
         """

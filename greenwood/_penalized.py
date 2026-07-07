@@ -331,12 +331,12 @@ class CoxNet:
 
         Returns
         -------
-        If `type="lp"` an array of shape (n_subjects,) is returned, containing centered
-        log-hazard values. If `type="risk"` an array of shape (n_subjects,) is returned,
-        containing relative risk values (all positive). If `type="survival"` a DataFrame is
-        returned with columns `time` (query times) and `subject_1`, `subject_2`, etc.
-        (survival probabilities at each time). Column names can be customized if `newdata`
-        has a row index.
+        ndarray or DataFrame
+            For `type="lp"` or `type="risk"`: an array of shape (n_subjects,) containing
+            centered log-hazard or relative risk values respectively. For `type="survival"`:
+            a DataFrame with columns `time` (query times) and `subject_1`, `subject_2`, etc.
+            containing survival probabilities at each time. Column names match the input row
+            index if `newdata` has a row index.
 
         Raises
         ------
