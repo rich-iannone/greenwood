@@ -963,37 +963,104 @@ class MultiState:
     def fit(
         self, start: Any, stop: Any, state: Any, event: Any, *, states: Any = None
     ) -> MultiState:
-        """Fit to counting-process multi-state intervals.
+        """Fit a multi-state model using counting-process intervals.
+
+        Estimates state-occupancy probabilities and transition dynamics over time from
+        counting-process data (multiple overlapping intervals per subject). The model tracks
+        how subjects move between states and computes the probability of being in each state
+        at any given time, accounting for censoring and competing transitions.
+
+        This estimator is ideal for:
+
+        - **Panel data**: Subjects observed at discrete times, with state changes recorded
+          between observations.
+        - **Chronic-disease progression**: Modeling progression through stages (e.g., MGUS →
+          PCM → death).
+        - **Multi-event data**: Non-absorbing or semi-absorbing intermediate states.
+        - **Irregular follow-up**: Each subject's observation times may differ.
+
+        The model estimates without distributional assumptions via non-parametric maximum
+        likelihood. Occupancy probabilities are computed as a product of transition
+        matrices evaluated at each event time.
 
         Parameters
         ----------
-        start, stop
-            Interval bounds `(start, stop]`.
+        start
+            Start time of each interval. Can be a 1-D array-like (or Polars/Pandas
+            Series). Intervals are half-open: (start, stop].
+        stop
+            Stop (end) time of each interval. Must have the same length as `start`.
+            Intervals define subject-time windows.
         state
-            The state occupied during each interval (the "from" state).
+            The state occupied during each interval (the "from" state). Can be string, int,
+            or other hashable label. Must have the same length as `start` and `stop`.
         event
-            The state transitioned to at `stop`; a censoring marker (`None`/NaN/`0`) means
-            no transition.
+            The state transitioned to at the stop time. If `None`, NaN, or 0, the subject
+            was censored (no transition). Otherwise, must be a valid state label. Must have
+            the same length as `start` and `stop`.
         states
-            Optional ordered list of all state labels (default: sorted unique).
+            Optional ordered sequence of all state labels (default: auto-detected from data).
+            If provided, must include all unique states in `state` and `event`. Useful for
+            enforcing a specific state ordering (e.g., disease progression order) or
+            including states with no observed transitions.
 
         Returns
         -------
         MultiState
             The fitted estimator object itself (for method chaining) with cached results
-            (`states_`, `time_`, `occupancy_`, transition matrices) accessible via
-            `to_pandas()` and related methods.
+            (`states_`, `time_`, `occupancy_`, `transition_`) accessible via `to_pandas()`
+            and related methods. Occupancy probabilities and transition probabilities can
+            be queried at any time via `predict()`.
+
+        Notes
+        -----
+        **Data format**: Intervals are half-open (start, stop]. Each row represents a
+        subject-interval: the period during which the subject was in `state` and either
+        remained (censored) or transitioned to `event` at `stop`.
+
+        **State labels**: States can be strings, integers, or other hashable types (e.g.,
+        tuples). Mixed types are not allowed. Transitions between the same state (self-loops)
+        treated as censoring.
+
+        **Handling censoring**: Censored intervals (event = None/NaN/0) contribute
+        right-censored data. Subjects re-enter their original state after censoring (common
+        in discrete-time or periodic follow-up studies).
+
+        **Computational method**: Non-parametric maximum likelihood. At each distinct event
+        time, transition intensities are estimated from risk sets (subjects at risk to
+        transition from each state), and occupancy is updated by matrix multiplication of
+        transition probabilities.
 
         Examples
         --------
-        The estimator takes counting-process intervals, each labelled with the state occupied
-        and the state transitioned to at the interval's end. Refit using the interval arrays
-        built in the class example above:
+        Build a multi-state model from counting-process intervals. First, prepare interval
+        data from a chronic-disease cohort:
 
         ```{python}
         import greenwood as gw
+        import numpy as np
 
-        gw.MultiState().fit(start, stop, state, event, states=("mgus", "pcm", "death"))
+        mg = gw.load_dataset("mgus2")
+        start, stop, state, event = [], [], [], []
+        for i in range(len(mg)):
+            pt, ft = mg["ptime"][i], mg["futime"][i]
+            progressed, died = mg["pstat"][i] == 1, mg["death"][i] == 1
+            if progressed and pt < ft:
+                start += [0, pt]; stop += [pt, ft]; state += ["mgus", "pcm"]
+                event += ["pcm", "death" if died else None]
+            else:
+                start += [0]; stop += [ft]; state += ["mgus"]
+                event += ["death" if died else ("pcm" if progressed else None)]
+        rows = [(a, b, s, e) for a, b, s, e in zip(start, stop, state, event) if b > a]
+        start, stop, state, event = map(list, zip(*rows))
+        ms = gw.MultiState().fit(start, stop, state, event, states=("mgus", "pcm", "death"))
+        ms
+        ```
+
+        Query occupancy probabilities at specific follow-up times (60, 120, and 240 months):
+
+        ```{python}
+        ms.predict([60, 120, 240])
         ```
         """
         from ._surv import _to_1d_array
