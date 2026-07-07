@@ -32,7 +32,7 @@ def concordance_index(surv: Surv, risk: Any) -> float:
     earlier failure; if predictions match reality better than chance, the index exceeds 0.5.
 
     **Interpretation**:
-    
+
     - 0.5: Random discrimination (no better than a coin flip)
     - 0.6-0.7: Moderate discrimination (clinically useful)
     - 0.7-0.8: Strong discrimination
