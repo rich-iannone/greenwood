@@ -39,6 +39,26 @@ def _soft_threshold(v: Array, thr: float) -> Array:
 class CoxNet:
     """Elastic-net penalized Cox proportional hazards model.
 
+    When the number of covariates is large relative to the sample size, unpenalized Cox models
+    may overfit or fail to converge due to multicollinearity. CoxNet addresses this by adding
+    a penalty term to the partial likelihood, which shrinks coefficients toward zero and can
+    perform automatic variable selection. The elastic-net penalty combines L₁ (lasso) and L₂
+    (ridge) penalties: λ(α ||β||₁ + (1-α)/2 ||β||₂²), where the mixing parameter α controls
+    the trade-off between sparsity and smoothness.
+
+    Fit the model with `fit()` supplying a right-censored or counting-process `Surv` response
+    and a design matrix of covariates. The algorithm uses FISTA (Fast Iterative Shrinkage-
+    Thresholding Algorithm) to optimize the penalized partial likelihood. By default, covariates
+    are standardized before penalizing (for fair comparison of penalties across features), but
+    coefficients are returned on the original scale. Ridge (`l1_ratio=0`) encourages small,
+    spread-out coefficients; lasso (`l1_ratio=1`) drives some coefficients exactly to zero.
+
+    The implementation follows the glmnet model for elastic-net regularization, using coordinate
+    descent-like optimization with soft-thresholding. Results include penalized coefficients,
+    standard errors, and indicators of which features were selected (non-zero coefficients).
+    Unlike unpenalized Cox, this model does not compute hazard ratios or perform formal
+    hypothesis tests on individual coefficients.
+
     Parameters
     ----------
     penalizer

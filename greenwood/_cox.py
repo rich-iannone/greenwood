@@ -38,8 +38,31 @@ Array = npt.NDArray[Any]
 class ZPHResult:
     """Proportional-hazards test results (Grambsch-Therneau).
 
-    `per_term` maps each covariate to a `{chisq, df, p_value}` dict; `global_test` holds
-    the same for the overall test.
+    A key assumption of the Cox proportional hazards model is that the hazard ratio between
+    any two subjects is constant over time (hence "proportional"). When this assumption is
+    violated—for example, if a treatment effect diminishes over time—the Cox model may produce
+    biased estimates. The Grambsch-Therneau proportional hazards test checks this assumption
+    by testing whether scaled residuals are correlated with time.
+
+    `ZPHResult` holds the test results obtained from a fitted Cox model's `cox_zph()` method.
+    It provides both per-term tests (one for each covariate) and a global test (jointly across
+    all terms). Each test includes a chi-squared test statistic, degrees of freedom, and
+    p-value. Results can be printed, accessed via dictionary keys, or exported to pandas/polars/
+    pyarrow DataFrames for further analysis or visualization.
+
+    The test uses scaled Schoenfeld residuals, which have a known asymptotic distribution under
+    the proportional hazards assumption. Large chi-squared values or small p-values (typically
+    p < 0.05) suggest violation of the assumption. When the assumption is violated, stratified
+    analysis or time-dependent covariate models may be more appropriate.
+
+    Attributes
+    ----------
+    transform
+        The transformation applied to time when computing the test (e.g., identity, log, rank).
+    per_term
+        Dictionary mapping each covariate name to `{chisq, df, p_value}` dict.
+    global_test
+        Dictionary with `{chisq, df, p_value}` for the joint test across all terms.
 
     Examples
     --------
@@ -413,6 +436,24 @@ def _cox_terms(
 
 class CoxPH:
     """Cox proportional hazards model.
+
+    The Cox proportional hazards model is the most widely used regression method for survival
+    data. It models the hazard (instantaneous risk of an event) as a multiplicative function
+    of covariates: h(t | x) = h₀(t) exp(β'x). The model is semi-parametric: the baseline
+    hazard h₀(t) is left unspecified (estimated non-parametrically), while covariate effects
+    are estimated parametrically through the log-hazard-ratio coefficients β.
+
+    To use this model, call `fit()` with a right-censored or counting-process `Surv` response
+    and a design matrix of covariates (2-D array or DataFrame). The model automatically handles
+    stratification (via `by=` in fit), tied event times (via configurable tie-handling methods),
+    and can compute predictions, baseline hazards, and diagnostic residuals. Results include
+    coefficient estimates with confidence intervals, hazard ratios, standard errors, and
+    global significance tests.
+
+    The implementation uses maximum partial likelihood to estimate coefficients. Variance
+    estimates use the observed information matrix (Hessian). The model assumes proportional
+    hazards—the ratio of hazards between two subjects remains constant over time. This can
+    be checked using the `cox_zph()` method for formal tests or diagnostic plots.
 
     Parameters
     ----------

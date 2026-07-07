@@ -91,6 +91,24 @@ def _cif_block(
 class AalenJohansen:
     """Aalen-Johansen estimator of cumulative incidence functions for competing risks.
 
+    In survival analysis, competing risks occur when subjects can experience multiple types
+    of events (e.g., progression to malignancy vs. death from other causes), and experiencing
+    one event precludes the others. The Aalen-Johansen estimator extends the Kaplan-Meier
+    approach to this setting by estimating the cumulative incidence function (CIF) for each
+    cause: the probability of experiencing that specific cause by time t, accounting for
+    competition from other causes.
+
+    Unlike naive estimates that ignore censoring or competing events, the Aalen-Johansen CIF
+    correctly accounts for both. It is computed using transition probabilities between states
+    via generalized Kaplan-Meier estimates. Call `fit()` with a multi-state `Surv` response
+    (built with `Surv.multistate()`) to obtain estimates for each competing cause. Results
+    are returned as tidy DataFrames with one row per combination of stratum, cause, and time.
+
+    The estimator uses the formula: CIF_j(t) = Σ_{s≤t} S(s-) P_{0j}(s), where S(s-) is the
+    probability of being event-free before time s, and P_{0j}(s) is the transition probability
+    from censoring to cause j. Confidence intervals use the Greenwood-style variance estimator
+    on the complementary log-log scale for improved coverage.
+
     Parameters
     ----------
     conf_level
@@ -340,12 +358,33 @@ class AalenJohansen:
 class FineGray:
     """Fine-Gray subdistribution hazard model for a competing-risks endpoint.
 
-    The Fine-Gray model is a Cox-like regression on the subdistribution hazard of a target
-    cause. Subjects who experience a competing event remain in the risk set with a
-    time-decreasing inverse-probability-of-censoring weight, so the coefficients describe the
-    covariate effects on the cumulative incidence of the target cause. Coefficients and both
-    the model-based and clustered robust (Lin-Wei) standard errors are validated against R's
-    `survival::finegray` plus `coxph`.
+    The Fine-Gray model extends Cox regression to competing-risks settings where multiple
+    event types (e.g., disease progression vs. death) can occur and only the first is observed.
+    Rather than modeling the cause-specific hazard (as in standard Cox), it models the
+    subdistribution hazard: the rate at which subjects experience the target cause as if
+    competing events did not occur. This allows inference directly on the cumulative incidence
+    function, making it ideal for policy-relevant questions like "what is the effect of
+    treatment on my probability of experiencing event A?"
+
+    Technically, the Fine-Gray model uses a weighted Cox-like approach: subjects who experience
+    a competing event remain in the risk set but with decreasing inverse-probability-of-censoring
+    weights, reflecting their reduced ability to contribute information about the target cause.
+    Call `fit()` with a multi-state `Surv` response (built with `Surv.multistate()`) and specify
+    the target cause of interest. Coefficients, hazard ratios, and standard errors are computed
+    via weighted partial likelihood, with robust (clustered) standard errors accounting for the
+    weighting scheme.
+
+    The implementation automatically computes event weights and handles censoring. Standard errors
+    use the Lin-Wei robust (sandwich) estimator, validated against R's survival package. Unlike
+    the Aalen-Johansen non-parametric approach, Fine-Gray provides covariate-adjusted estimates
+    and supports prediction of cumulative incidence at specified times.
+
+    Parameters
+    ----------
+    cause
+        The target cause-of-interest label from the multi-state `Surv` response.
+    conf_level
+        Confidence level for coefficient intervals (default 0.95).
 
     Examples
     --------

@@ -80,6 +80,26 @@ def _num_hessian(fn: Any, x: Array, rel_step: float = 1e-5) -> Array:
 class AFT:
     """Parametric accelerated failure time model.
 
+    While the Cox proportional hazards model leaves the baseline hazard unspecified, AFT models
+    assume a fully parametric distribution for survival times and model how covariates
+    accelerate or decelerate the "clock" of failure. Specifically, log(T) = μ + β'x + σε, where
+    T is survival time, β are log-time-scale coefficients, σ is a scale parameter, and ε follows
+    a specified error distribution (e.g., extreme-value, logistic, normal). This means a unit
+    increase in covariate x multiplies survival time by exp(β).
+
+    AFT models are useful when you want explicit, interpretable survival time predictions or when
+    the parametric assumptions are reasonable. Unlike Cox models, they require choosing a
+    distributional family (Weibull, exponential, lognormal, or loglogistic). Call `fit()` with
+    a right-censored `Surv` response and a design matrix. The model automatically adds an
+    intercept and estimates coefficients (on the log-time scale), the scale parameter, and
+    standard errors via maximum likelihood.
+
+    The implementation uses numerical optimization (typically Newton-Raphson) to maximize the
+    likelihood. Coefficients on the log-time scale can be exponentiated to obtain time-
+    acceleration ratios: exp(β) is the multiplicative effect on median or mean survival. The
+    model also supports prediction of survival probabilities and quantiles at future times given
+    covariate values.
+
     Parameters
     ----------
     dist

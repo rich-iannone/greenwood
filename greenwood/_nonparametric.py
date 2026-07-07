@@ -210,6 +210,23 @@ def _rmrl_block(block: _Block, s: float, tau: float) -> tuple[float, float]:
 class KaplanMeier:
     """Kaplan-Meier product-limit estimator of the survival function.
 
+    The Kaplan-Meier estimator is a non-parametric method to estimate the survival function
+    from right-censored data. It computes the survival probability at each observed event time
+    as the product of conditional survival probabilities, accounting for subjects still at risk.
+    This is the most widely used method for survival analysis and is the starting point for
+    comparing survival between groups or assessing model fit.
+
+    To use this estimator, call `fit()` with a right-censored `Surv` response (built with
+    `Surv.right()`). The estimator computes survival probabilities, standard errors, and
+    confidence intervals at each unique event time. Results can be accessed as aligned
+    arrays, exported to pandas/polars/pyarrow DataFrames, or queried through methods like
+    `median()`, `quantile()`, and `predict()`.
+
+    The implementation uses the product-limit formula: S(t) = ∏_{t_i ≤ t} (n_i - d_i) / n_i,
+    where n_i is the number at risk and d_i is the number of events at time t_i. Variance
+    uses Greenwood's formula, and confidence intervals can be constructed on the log,
+    log-log, or identity scale.
+
     Parameters
     ----------
     conf_type
@@ -642,9 +659,28 @@ def _glance_kaplan_meier(km: KaplanMeier, **_: Any) -> Any:
 class NelsonAalen:
     """Nelson-Aalen estimator of the cumulative hazard.
 
-    The cumulative hazard is the running sum of `d / n` over event times, with Aalen
-    variance `sum(d / n^2)`. Confidence limits use the `conf_type` transform (`"plain"`
-    or `"log"`).
+    The Nelson-Aalen estimator provides a non-parametric estimate of the cumulative hazard
+    function, which represents the total "accumulated risk" up to a given time. Unlike the
+    Kaplan-Meier estimator which models survival directly, this approach models the force of
+    mortality. The cumulative hazard at each event time is computed as a running sum of the
+    ratio of events to subjects at risk: H(t) = Σ_{t_i ≤ t} d_i / n_i.
+
+    This estimator is useful when you want to examine the hazard directly rather than survival
+    probabilities, and is often used as the basis for other analyses. You can convert the
+    cumulative hazard to a survival estimate via S(t) = exp(-H(t)), though the Kaplan-Meier
+    estimator is typically preferred for direct survival estimation. Call `fit()` with a
+    right-censored `Surv` response to compute cumulative hazard at each event time.
+
+    The variance of the cumulative hazard estimate uses Aalen's formula: Var(H(t)) = Σ_{t_i ≤ t}
+    d_i / n_i^2. Confidence intervals can be constructed on the plain or log scale, with the
+    log scale providing better coverage in the tails.
+
+    Parameters
+    ----------
+    conf_type
+        Confidence-interval transform: `"plain"` (default for Nelson-Aalen) or `"log"`.
+    conf_level
+        Confidence level for the interval (default 0.95).
 
     Examples
     --------
