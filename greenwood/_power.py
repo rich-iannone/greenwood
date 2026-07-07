@@ -1,12 +1,15 @@
-"""Sample size and power for the log-rank test (Schoenfeld's method).
+r"""Sample size and power for the log-rank test (Schoenfeld's method).
 
 For a two-group comparison under proportional hazards, Schoenfeld (1981, 1983) showed that
 the power of the log-rank test depends on the data only through the total number of events.
-The required number of events to detect a hazard ratio `HR` is
+The required number of events to detect a hazard ratio $\mathrm{HR}$ is
 
-    d = (z_{1 - alpha/sides} + z_{power})^2 / (p * (1 - p) * (ln HR)^2),
+$$
+d = \frac{(z_{1 - \alpha/\mathrm{sides}} + z_{\mathrm{power}})^2}
+{p \, (1 - p) \, (\ln \mathrm{HR})^2},
+$$
 
-where `p` is the fraction of subjects allocated to one group. These functions implement that
+where $p$ is the fraction of subjects allocated to one group. These functions implement that
 relationship: the events needed for a target power, the power achieved with a given number of
 events, and the sample size needed given the probability that a subject has the event.
 """
@@ -47,7 +50,7 @@ def logrank_n_events(
     allocation: float = 0.5,
     sides: int = 2,
 ) -> int:
-    """Number of events needed for the log-rank test to reach a target power.
+    r"""Number of events needed for the log-rank test to reach a target power.
 
     Computes the minimum number of events required for a log-rank test to achieve a specified
     power when detecting a given hazard ratio in a two-group survival study. This is the
@@ -105,19 +108,22 @@ def logrank_n_events(
     -----
     **Schoenfeld's formula**: The exact number of events is
 
-        d = (z_{1 - alpha/sides} + z_{power})^2 / (p * (1 - p) * (ln HR)^2),
+    $$
+    d = \frac{(z_{1 - \alpha/\mathrm{sides}} + z_{\mathrm{power}})^2}
+    {p \, (1 - p) \, (\ln \mathrm{HR})^2},
+    $$
 
     where:
 
-    - z_{1 - alpha/sides}: critical value for significance level and sides
-    - z_{power}: critical value for desired power
-    - p: allocation fraction (default 0.5)
-    - ln(HR): natural log of hazard ratio
+    - $z_{1 - \alpha/\mathrm{sides}}$: critical value for significance level and sides
+    - $z_{\mathrm{power}}$: critical value for desired power
+    - $p$: allocation fraction (default 0.5)
+    - $\ln(\mathrm{HR})$: natural log of hazard ratio
 
-    Balanced allocation (p = 0.5) minimizes the denominator and thus minimizes events needed.
+    Balanced allocation ($p = 0.5$) minimizes the denominator and thus minimizes events needed.
 
     **Practical use**: Once you know the required event count, estimate sample size by dividing
-    by the expected event rate: n_subjects = ceil(n_events / prob_event). Then design your
+    by the expected event rate: `n_subjects = ceil(n_events / prob_event)`. Then design your
     study (enrollment, duration, follow-up) to observe that many events.
 
     Examples
@@ -182,7 +188,7 @@ def logrank_power(
     allocation: float = 0.5,
     sides: int = 2,
 ) -> float:
-    """Power of the log-rank test given the number of observed events.
+    r"""Power of the log-rank test given the number of observed events.
 
     Computes the statistical power to detect a specified hazard ratio using the log-rank test,
     given a fixed number of observed events in a two-group survival study. This is the inverse
@@ -190,13 +196,14 @@ def logrank_power(
     this function finds the power achieved with a given number of events.
 
     Power depends on three factors:
+
     1. **Number of events** (`n_events`): More events → higher power
     2. **Effect size** (`hazard_ratio`): Larger effects (HR far from 1.0) → higher power
     3. **Significance level** (`alpha`): More stringent (smaller alpha) → lower power
 
-    Under proportional hazards assumption (Schoenfeld, 1981), power depends only on the total
-    event count, not the follow-up duration, censoring rate, or sample size separately. This
-    makes it a practical tool for updating power calculations as events accumulate during a trial.
+    Under the proportional hazards assumption, power depends only on the total event count, not
+    the follow-up duration, censoring rate, or sample size separately. This makes it a practical
+    tool for updating power calculations as events accumulate during a trial.
 
     Parameters
     ----------
@@ -230,11 +237,14 @@ def logrank_power(
     -----
     **Schoenfeld's formula**: Under proportional hazards, the power of the log-rank test is
 
-        Power = Phi(sqrt(d * p * (1-p)) * |ln(HR)| - z_{1-alpha/sides}),
+    $$
+    \mathrm{Power} = \Phi\!\left(\sqrt{d \, p \, (1-p)} \; |\ln(\mathrm{HR})|
+    - z_{1-\alpha/\mathrm{sides}}\right),
+    $$
 
-    where d is the number of events, p is the allocation fraction, and Phi is the cumulative
-    normal distribution function. This formula is exact under proportional hazards and
-    asymptotically valid for finite samples.
+    where $d$ is the number of events, $p$ is the allocation fraction, and $\Phi$ is the
+    cumulative normal distribution function. This formula is exact under proportional hazards
+    and asymptotically valid for finite samples.
 
     **Practical use**: During a running trial, as events accumulate, you can use this function
     to assess interim power. If interim power is low despite many events, the effect size may
@@ -293,7 +303,7 @@ def logrank_sample_size(
     allocation: float = 0.5,
     sides: int = 2,
 ) -> int:
-    """Total sample size needed for the log-rank test to reach a target power.
+    r"""Total sample size needed for the log-rank test to reach a target power.
 
     Computes the number of subjects required to observe enough events for a log-rank test to
     achieve a target power when detecting a specified hazard ratio. This function combines two
@@ -370,7 +380,8 @@ def logrank_sample_size(
     - Design is unbalanced: 3:1 allocation needs more subjects than 1:1
 
     **Estimating prob_event**: Use Kaplan-Meier curves from historical data or prior studies,
-    or calculate from baseline rates: prob_event ≈ 1 - exp(-baseline_hazard × follow_up_time).
+    or calculate from baseline rates:
+    $\text{prob\_event} \approx 1 - \exp(-\lambda_0 \times t_{\text{follow-up}})$.
 
     **Sensitivity analysis**: If prob_event is uncertain, compute sample size for a range of
     values (e.g., 0.3 to 0.5) to understand robustness.
