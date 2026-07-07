@@ -354,12 +354,12 @@ class AFT:
 
         Returns
         -------
-        - `type="lp"`: Array of shape (n_subjects,) containing log-time locations.
-        - `type="quantile"`: DataFrame with columns `p` (failure probabilities) and
-          `subject_1`, `subject_2`, etc. (survival times at each p).
-        - `type="survival"`: DataFrame with columns `time` (query times) and `subject_1`,
-          `subject_2`, etc. (survival probabilities at each time). Column names can be
-          customized if `newdata` has a row index.
+        If `type="lp"` an array of shape (n_subjects,) is returned, containing log-time
+        locations. If `type="quantile"` a DataFrame is returned with columns `p`
+        (failure probabilities) and `subject_1`, `subject_2`, etc. (survival times at each p).
+        If `type="survival"` a DataFrame is returned with columns `time` (query times) and
+        `subject_1`, `subject_2`, etc. (survival probabilities at each time). Column names can
+        be `customized if `newdata` has a row index.
 
         Notes
         -----
