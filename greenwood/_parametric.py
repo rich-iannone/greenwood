@@ -106,14 +106,15 @@ class AFT:
         Error distribution: `"weibull"` (default), `"exponential"`, `"lognormal"`, or
         `"loglogistic"`.
     conf_level
-        Confidence level for coefficient intervals (default 0.95).
+        Confidence level for coefficient intervals (default is `0.95`).
 
     Notes
     -----
     Call `fit(surv, covariates)` with a right-censored `Surv` response and a covariate design
     (a 2-D array or a dataframe). An intercept is added automatically; rows with missing
     covariates are dropped. Results are exposed as arrays (`coef_`, `scale_`, `std_error_`,
-    …) and as tidy frames via `to_pandas()`, `to_polars()`, `to_arrow()`, and `greenwood.tidy`.
+    `z_`, `p_value_`) and as tidy frames via `to_pandas()`, `to_polars()`, `to_arrow()`, and
+    `greenwood.tidy`.
 
     Examples
     --------
@@ -300,34 +301,103 @@ class AFT:
         p: Any = 0.5,
         conditional_after: Any = None,
     ) -> Any:
-        """Predict from the fitted AFT model.
+        """Predict survival times, quantiles, or survival probabilities from the AFT model.
 
-        `type` is one of:
+        Generates predictions from a fitted accelerated failure time model. The AFT is a fully
+        parametric survival model, so predictions require specifying both the predictor values
+        (via `newdata`) and the type of prediction desired. Pass `newdata=None` to predict
+        for the training data (fitted subjects).
 
-        - `"lp"`: the linear predictor `X . beta` (the fitted `log(T)` location).
-        - `"quantile"`: predicted survival-time quantiles at the failure probabilities `p`
-          (default the median). Matches R `predict(survreg, type="quantile")`.
-        - `"survival"`: survival probabilities `S(t | x)` at each time in `times` (defaulting
-          to a grid), returned as a frame with a `time` column and one column per subject.
+        Three prediction types are available:
 
-        For `type="survival"`, `conditional_after` (a scalar or one value per subject)
-        predicts conditional on having already survived to that time: the value at time `t` is
-        `P(T > t | T > c) = S(t) / S(c)`, and is 1 for `t <= c`.
+        1. **Linear predictor** (`type="lp"`): the log-time location X*beta, showing how
+           covariates shift the log-survival time distribution.
+
+        2. **Quantile** (`type="quantile"`): predicted survival-time quantiles at specified
+           failure probabilities (e.g., median survival when p=0.5). Useful for clinical
+           summaries like "50% of subjects with these covariates survive to time X."
+
+        3. **Survival** (`type="survival"`): survival probabilities S(t|x) at specified times,
+           returned as a DataFrame for easy visualization. Optionally condition on already
+           having survived to a landmark time (`conditional_after`) for landmark-based
+           predictions.
+
+        Parameters
+        ----------
+        newdata
+            Covariate values for prediction. A DataFrame (Pandas or Polars), 2-D array, or
+            `None` (default). If `None`, uses the training data (design matrix used at fit time).
+            Must have the same columns/features as the training data.
+        type
+            Prediction type (default `"survival"`):
+
+            - `"lp"`: Linear predictor X*beta (log-time location). Returns an array.
+            - `"quantile"`: Survival-time quantiles at failure probabilities `p`. Returns a
+              frame with `p` column and one column per subject.
+            - `"survival"`: Survival probabilities S(t|x) at times in `times`. Returns a
+              frame with `time` column and one column per subject (one per query time, one
+              per subject in newdata).
+
+        times
+            Query times for `type="survival"` (ignored for other types). An array-like of
+            floats. If None (default), uses an automatic grid based on the fitted distribution
+            (50 equally spaced times on the log scale, rounded).
+        p
+            Failure probabilities for `type="quantile"` (ignored for other types). Can be a
+            scalar (e.g., `0.5` for median) or array-like. Default `0.5` (median). Must be in
+            (0, 1).
+        conditional_after
+            For `type="survival"`, optionally compute conditional survival: P(T > t | T > c)
+            = S(t) / S(c). Scalar (same conditioning time for all subjects) or array-like
+            (one per subject). Default `None` (unconditional). Predictions before the landmark
+            time return `1.0`.
+
+        Returns
+        -------
+        - `type="lp"`: Array of shape (n_subjects,) containing log-time locations.
+        - `type="quantile"`: DataFrame with columns `p` (failure probabilities) and
+          `subject_1`, `subject_2`, etc. (survival times at each p).
+        - `type="survival"`: DataFrame with columns `time` (query times) and `subject_1`,
+          `subject_2`, etc. (survival probabilities at each time). Column names can be
+          customized if `newdata` has a row index.
+
+        Notes
+        -----
+        The AFT model assumes log(T) = X*beta + sigma*epsilon, where epsilon follows a
+        parametric error distribution (Weibull, lognormal, etc.). Predictions are made by
+        evaluating the CDF/survival function of this distribution at covariate-adjusted
+        locations. All predictions respect the fitted distribution and scale parameter.
+
+        Predictions assume the model is well-specified. For flexible models, consider
+        parametric bootstrap to quantify uncertainty.
 
         Examples
         --------
-        Predicted survival-time quantiles for the first two subjects, at the lower quartile,
-        median, and upper quartile (reusing the `aft` fit above):
+        Predict the linear predictor (log-time location) for the first two subjects:
+
+        ```{python}
+        aft.predict(lung[["age", "sex"]][:2], type="lp")
+        ```
+
+        Predicted survival-time quantiles for the first two subjects at the lower quartile,
+        median, and upper quartile:
 
         ```{python}
         aft.predict(lung[["age", "sex"]][:2], type="quantile", p=[0.25, 0.5, 0.75])
         ```
 
-        With `type="survival"`, read survival probabilities off the fitted curves at chosen
-        times. Here are the estimates at 180 and 365 days for those same two subjects:
+        Read survival probabilities off the fitted curves at chosen times. Here are the
+        estimates at 180 and 365 days for those same two subjects:
 
         ```{python}
         aft.predict(lung[["age", "sex"]][:2], type="survival", times=[180, 365])
+        ```
+
+        Predict conditional survival given already having survived to 100 days:
+
+        ```{python}
+        aft.predict(lung[["age", "sex"]][:2], type="survival", times=[180, 365],
+                    conditional_after=100)
         ```
         """
         x = self._design(newdata)

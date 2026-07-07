@@ -284,19 +284,92 @@ class CoxNet:
         return self._event_times, cumhaz
 
     def predict(self, newdata: Any = None, *, type: str = "lp", times: Any = None) -> Any:
-        """Predict `"lp"` (centered linear predictor), `"risk"` (`exp(lp)`), or `"survival"`.
+        """Predict log-hazard, risk, or survival probabilities from the penalized Cox model.
+
+        Generates predictions from a fitted elastic-net penalized Cox model. Pass `newdata=None`
+        to predict for the training data (fitted subjects).
+
+        Three prediction types are available:
+
+        1. **Linear predictor** (`type="lp"`): the centered log-hazard X*beta, a risk score
+           showing how covariates affect hazard. Higher values indicate higher risk. Centered
+           means the baseline is set such that exp(lp) = 1 for an average subject (average
+           covariate values).
+
+        2. **Risk** (`type="risk"`): the relative hazard exp(lp), comparing each subject's
+           hazard to the baseline (average). A value of 2.0 means 2x baseline hazard.
+
+        3. **Survival** (`type="survival"`): survival probabilities S(t|x) at specified times,
+           returned as a DataFrame. Uses the baseline cumulative hazard from the training data
+           and applies the covariate adjustment via relative risk.
+
+        Parameters
+        ----------
+        newdata
+            Covariate values for prediction. A dataframe (Pandas or Polars), 2-D array, or
+            None (default). If `None`, uses the training data (design matrix used at fit time).
+            Must have the same columns/features as the training data. Covariates are centered
+            using the centering from the training data.
+        type
+            Prediction type (default `"lp"`):
+
+            - `"lp"`: Centered linear predictor X*beta (log-hazard). Returns an array.
+            - `"risk"`: Relative risk exp(lp). Returns an array (always positive).
+            - `"survival"`: Survival probabilities S(t|x) at times in `times`. Returns a
+              frame with `time` column and one column per subject.
+
+        times
+            Query times for `type="survival"` (ignored for other types). An array-like of
+            floats. If `None` (the default), uses the event times from the training data
+            (baseline cumulative hazard times).
+
+        Returns
+        -------
+        - `type="lp"`: Array of shape (n_subjects,) containing centered log-hazard values.
+        - `type="risk"`: Array of shape (n_subjects,) containing relative risk values (all
+          positive).
+        - `type="survival"`: DataFrame with columns `time` (query times) and `subject_1`,
+          `subject_2`, etc. (survival probabilities at each time). Column names can be
+          customized if `newdata` has a row index.
+
+        Raises
+        ------
+        ValueError
+            If `type` is not one of `"lp"`, `"risk"`, or `"survival"`.
+
+        Notes
+        -----
+        The penalized Cox model estimates exp(lp) as a multiplier on the baseline cumulative
+        hazard: H(t|x) = H_0(t) * exp(lp). Survival is then S(t|x) = exp(-H(t|x)). The
+        baseline cumulative hazard H_0(t) is estimated using the Breslow estimator from the
+        training data, and is fixed for new predictions.
+
+        Centering ensures that the linear predictor at the average covariate level is 0,
+        making relative risks and survival curves interpretable. Predictions assume the model
+        is well-specified and that the proportional-hazards assumption holds.
 
         Examples
         --------
-        The default `type="lp"` returns the centered linear predictor. Here are the values for
-        the first five subjects (reusing the `coxnet` fit above):
+        The default `type="lp"` returns the centered linear predictor (log-hazard). Here are
+        the values for the first five subjects:
 
         ```{python}
         coxnet.predict(lung[cols], type="lp")[:5]
         ```
 
-        Pass `type="risk"` for the relative risk `exp(lp)`, or `type="survival"` for predicted
-        survival curves.
+        Pass `type="risk"` for the relative risk exp(lp), showing how many times the baseline
+        hazard each subject has:
+
+        ```{python}
+        coxnet.predict(lung[cols], type="risk")[:5]
+        ```
+
+        Pass `type="survival"` for predicted survival curves at specified times or at the
+        event times from training data:
+
+        ```{python}
+        coxnet.predict(lung[cols][:2], type="survival", times=[180, 365])
+        ```
         """
         x = self._x if newdata is None else _design_matrix(newdata)[0]
         lp = (x - self._center) @ self.coef_

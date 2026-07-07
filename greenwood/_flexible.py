@@ -314,22 +314,97 @@ class RoystonParmar:
         return basis @ gamma + lp, deriv @ gamma
 
     def predict(self, newdata: Any = None, *, type: str = "survival", times: Any = None) -> Any:
-        """Predict `"survival"`, `"hazard"`, or `"cumhaz"` at `times` for each row of `newdata`.
+        """Predict survival probability, hazard, or cumulative hazard from the fitted model.
 
-        Returns a frame with a `time` column and one column per subject.
+        Generates predictions from a fitted Royston-Parmar flexible parametric model. Pass
+        `newdata=None` to predict for a baseline subject (all covariates set to 0, or training
+        data mean if covariates are centered).
+
+        The Royston-Parmar model flexibly estimates the baseline cumulative hazard via splines,
+        then multiplies by exp(eta) for each subject's covariate-adjusted log-hazard eta. This
+        produces smooth, covariate-adjusted survival and hazard curves.
+
+        Three prediction types are available:
+
+        1. **Survival** (`type="survival"`): Survival probabilities S(t|x) at specified times.
+           Useful for survival curves and prognosis.
+
+        2. **Hazard** (`type="hazard"`): Instantaneous hazard h(t|x) at specified times. Shows
+           the rate of events at each time.
+
+        3. **Cumulative hazard** (`type="cumhaz"`): Cumulative hazard H(t|x) at specified times.
+           Useful for risk quantification and comparisons.
+
+        Parameters
+        ----------
+        newdata
+            Covariate values for prediction. A DataFrame (Pandas or Polars), 2-D array, or
+            `None` (the default). If `None`, uses baseline (all covariates `0` or the training
+            data mean). Must have the same columns/features as the training data.
+        type
+            Prediction type (default `"survival"`):
+
+            - `"survival"`: Survival probabilities S(t|x) = exp(-H(t|x)). Returns a frame
+              with `time` column and one column per subject.
+            - `"hazard"`: Instantaneous hazard h(t|x) = dH(t|x)/dt. Returns a frame with
+              `time` column and one column per subject.
+            - `"cumhaz"`: Cumulative hazard H(t|x). Returns a frame with `time` column and
+              one column per subject.
+
+        times
+            Query times at which to evaluate curves. An array-like of floats. Required unless
+            a default grid is used. If None, may raise an error or use a default grid.
+
+        Returns
+        -------
+        DataFrame with columns `time` (query times) and `subject_1`, `subject_2`, etc.
+        (predictions for each subject, one row per query time). All three types return the
+        same DataFrame structure.
+
+        Raises
+        ------
+        ValueError
+            If `type=` is not one of `"survival"`, `"hazard"`, or `"cumhaz"`.
+
+        Notes
+        -----
+        The Royston-Parmar model represents log cumulative hazard as a smooth spline function
+        in log-time, with proportional-hazards covariate effects: H(t|x) = exp(eta(t, x)),
+        where eta(t, x) = spline(log t) + x*beta. The spline basis and knot locations are
+        fitted to the training data; predictions use these fixed basis functions.
+
+        Hazard is computed numerically as the derivative of cumulative hazard, so predictions
+        may be slightly noisy if times are coarsely spaced. For smooth hazard predictions,
+        use a fine query grid.
+
+        Predictions assume the model is well-specified and fit the training data adequately.
 
         Examples
         --------
         Read predicted survival probabilities off the fitted curves at chosen times. Here are
-        the estimates at 180 and 365 days for the first two subjects (reusing the `rp` fit
-        above):
+        the estimates at 180 and 365 days for the first two subjects:
 
         ```{python}
         rp.predict(lung[["age", "sex"]][:2], type="survival", times=[180, 365])
         ```
 
-        Pass `type="hazard"` or `type="cumhaz"` for the hazard or cumulative hazard at those
-        same times instead.
+        Predict the instantaneous hazard (force of mortality) at those same times:
+
+        ```{python}
+        rp.predict(lung[["age", "sex"]][:2], type="hazard", times=[180, 365])
+        ```
+
+        Predict cumulative hazard (total risk accumulated by time t):
+
+        ```{python}
+        rp.predict(lung[["age", "sex"]][:2], type="cumhaz", times=[180, 365])
+        ```
+
+        Predict for a baseline subject (covariates all zero):
+
+        ```{python}
+        rp.predict(type="survival", times=[180, 365])
+        ```
         """
         import pandas as pd
 
