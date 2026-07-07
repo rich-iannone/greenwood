@@ -152,31 +152,69 @@ def plot_survival(
 ) -> Any:
     """Plot Kaplan-Meier survival curve(s) with plotnine.
 
+    Renders one or more Kaplan-Meier survival curves as a publication-ready ggplot
+    visualization. Each curve shows the proportion of subjects surviving (event-free) over
+    time, with a shaded confidence band indicating uncertainty. Censoring events (subjects
+    who exit the study without experiencing the event) are marked with tick points on the
+    curve. If the fit is stratified (by groups), separate curves appear with distinct colors
+    and a legend.
+
+    The function returns a composable plotnine `ggplot` object: add layers, facets, scales,
+    or themes using the `+` operator. Pass `risk_table=True` to stack an aligned
+    numbers-at-risk table beneath the curve, showing how many subjects remain at-risk at each
+    time point—a standard element in publication-quality survival plots. Confidence bands
+    use point-wise confidence intervals (as computed by `KaplanMeier`) and are drawn as
+    right-continuous step functions to match the step-function nature of the Kaplan-Meier
+    estimator.
+
+    The plot uses a light, minimal theme suitable for publications. Requires plotnine
+    (install with `pip install greenwood[viz]`).
+
     Parameters
     ----------
     km
-        A fitted `KaplanMeier`.
+        A fitted `KaplanMeier` object, either unstratified (single curve) or stratified
+        (multiple curves, one per group).
     conf_int
-        Draw the confidence band as a stepped ribbon.
+        If `True` (default), draw the confidence band as a shaded ribbon around the curve.
+        Set `False` to hide the confidence band and show only the point estimate.
     censor_marks
-        Mark censoring times with tick points on the curve.
+        If `True` (default), mark censoring times with `+` symbols on the curve. Set `False`
+        to hide these marks.
     risk_table
-        If true, return a `plotnine.composition` stacking the curve over an aligned
-        numbers-at-risk table instead of a bare `ggplot`.
+        If `True`, return a `plotnine.composition` stacking the curve over an aligned
+        numbers-at-risk table; the table's x-axis aligns with the curve. If `False` (default),
+        return only the survival curve plot.
     times
-        Times for the risk table (defaults to six evenly spaced, rounded times).
-    xlab, ylab
-        Axis labels.
+        Query times for the numbers-at-risk table (used only if `risk_table=True`). Defaults
+        to six evenly spaced, rounded times from 0 to the maximum observed follow-up time.
+        Specify a list of times (e.g., `[0, 100, 200, 300]`) to customize the table rows.
+    xlab
+        X-axis label (default `"Time"`).
+    ylab
+        Y-axis label (default `"Survival probability"`).
 
     Returns
     -------
-    A plotnine `ggplot` (or a composition when `risk_table=True`).
+    A plotnine `ggplot` object (or a `plotnine.composition` combining the curve and table if
+    `risk_table=True`). The returned object is composable: you can add layers, scales, themes,
+    and facets using plotnine's `+` operator or `/` operator for arrangement.
+
+    Notes
+    -----
+    The survival curve is drawn as a right-continuous step function, reflecting how the
+    Kaplan-Meier estimate changes only at observed event times (not between them). Confidence
+    bands are point-wise (not uniform/simultaneous), so they do not guarantee that the true
+    survival curve lies entirely within the band.
+
+    For stratified fits, group labels appear in the legend as `"Group"`. Censoring marks
+    appear at the same survival level as the curve but with a `+` shape for visibility.
 
     Examples
     --------
-    Fit a stratified Kaplan-Meier estimator on the bundled `lung` dataset and draw one survival
-    curve per group. The result is a composable plotnine object, so you can add layers, scales,
-    or themes to it.
+    Fit a stratified Kaplan-Meier estimator on the bundled `lung` dataset and draw one
+    survival curve per group (by sex). The result is a composable plotnine object, so you can
+    add layers, scales, or themes to it.
 
     ```{python}
     import greenwood as gw
@@ -188,9 +226,19 @@ def plot_survival(
     gw.plot_survival(km)
     ```
 
-    Pass `risk_table=True` to stack an aligned numbers-at-risk table beneath the curve,
-    `conf_int=False` to drop the confidence band, and `censor_marks=False` to hide the
-    censoring ticks.
+    Add a numbers-at-risk table by passing `risk_table=True`:
+
+    ```{python}
+    gw.plot_survival(km, risk_table=True)
+    ```
+
+    Customize the plot by dropping the confidence band or censoring marks, specifying
+    custom times for the risk table, or adding plotnine layers:
+
+    ```{python}
+    gw.plot_survival(km, conf_int=False, censor_marks=False, risk_table=True,
+                     times=[0, 200, 400, 600])
+    ```
     """
     import pandas as pd
 
