@@ -324,9 +324,9 @@ class KaplanMeier:
         produce separate curves per group (stratified analysis); each group's fit is stored
         independently and can be visualized with `plot_survival()`.
 
-        The fit is exact—no distributional assumptions are made. Optionally supply `weights`
-        (e.g., inverse-probability-of-censoring weights from the survey literature) to
-        adjust for selection bias or survey design. Confidence intervals use the method
+        The fit is exact and no distributional assumptions are made. Optionally supply
+        `weights=` (e.g., inverse-probability-of-censoring weights from the survey literature)
+        to adjust for selection bias or survey design. Confidence intervals use the method
         specified at instantiation (`conf_type`), typically Greenwood's variance estimator.
 
         Parameters

@@ -40,7 +40,7 @@ class ZPHResult:
 
     A key assumption of the Cox proportional hazards model is that the hazard ratio between
     any two subjects is constant over time (hence "proportional"). When this assumption is
-    violated—for example, if a treatment effect diminishes over time—the Cox model may produce
+    violated (for example, if a treatment effect diminishes over time) the Cox model may produce
     biased estimates. The Grambsch-Therneau proportional hazards test checks this assumption
     by testing whether scaled residuals are correlated with time.
 
@@ -452,7 +452,7 @@ class CoxPH:
 
     The implementation uses maximum partial likelihood to estimate coefficients. Variance
     estimates use the observed information matrix (Hessian). The model assumes proportional
-    hazards—the ratio of hazards between two subjects remains constant over time. This can
+    hazards: the ratio of hazards between two subjects remains constant over time. This can
     be checked using the `cox_zph()` method for formal tests or diagnostic plots.
 
     Parameters
@@ -1068,17 +1068,26 @@ class CoxPH:
     # -- residuals & diagnostics ---------------------------------------------
 
     def residuals(self, type: str = "martingale", *, format: str | None = None) -> Any:
-        """Return `"martingale"` or `"schoenfeld"` residuals.
+        """Return diagnostic residuals from the fitted Cox model.
 
-        Martingale residuals are one per observation; Schoenfeld residuals are one row per
-        event (columns are the covariates), ordered by stratum and then event time.
+        Residuals measure the difference between observed events and model predictions,
+        helping diagnose model fit and identify outliers or influential observations.
+        Martingale residuals are individual-level; Schoenfeld residuals are event-level
+        and useful for checking the proportional-hazards assumption. Both types can be
+        visualized against time or other variables to detect systematic deviations.
 
         Parameters
         ----------
         type
             Type of residuals to return: `"martingale"` (default) or `"schoenfeld"`.
-            Martingale residuals are one value per observation. Schoenfeld residuals
-            are one row per event with one column per covariate.
+
+            - `"martingale"`: One residual per observation. Ranges from -∞ to 1. Positive
+              values suggest the model underestimated risk; negative values suggest
+              overestimation. Useful for overall fit assessment.
+            - `"schoenfeld"`: One row per event with one column per covariate. Useful for
+              checking the proportional-hazards assumption: plot against time to look for
+              trends. Scaled Schoenfeld residuals are used in the `cox_zph()` test.
+
         format
             Output format (for `type="schoenfeld"` only): `None` (default), `"pandas"`,
             `"polars"`, or `"pyarrow"`.
@@ -1089,26 +1098,44 @@ class CoxPH:
             - `"polars"`: returns polars.DataFrame.
             - `"pyarrow"`: returns pyarrow.Table.
 
-            Returns an array for `type="martingale"`.
+            Returns a numpy array for `type="martingale"`.
 
         Returns
         -------
         ndarray or DataFrame
-            For `type="martingale"`, returns a 1-D array with one residual per observation.
-            For `type="schoenfeld"`, returns a DataFrame with one row per event and
-            one column per covariate, ordered by stratum and then event time.
+            For `type="martingale"`: a 1-D array with one residual per observation.
+            For `type="schoenfeld"`: a DataFrame with one row per event and one column
+            per covariate, ordered by stratum and then event time.
+
+        Notes
+        -----
+        Martingale residuals are computed as: M_i = event_i - H_0(t_i) * exp(X_i*β),
+        where H_0 is the baseline cumulative hazard and X_i*β is the linear predictor.
+
+        Schoenfeld residuals are computed at each event time as X_i - X̄, where X_i is
+        the covariate vector of the subject with the event and X̄ is the weighted mean
+        covariate vector for the risk set.
 
         Examples
         --------
-        Martingale residuals are returned as one value per observation (reusing the `cox`
-        fit from the class example above):
+        Martingale residuals are returned as one value per observation to assess
+        overall model fit. Large negative residuals may indicate overpredicted risk:
 
         ```{python}
+        import greenwood as gw
+
+        lung = gw.load_dataset("lung")
+        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
         cox.residuals("martingale")[:5]
         ```
 
-        Passing `"schoenfeld"` instead returns a DataFrame with one row per event and one
-        column per covariate.
+        Schoenfeld residuals are useful for checking the proportional-hazards assumption
+        by plotting against time or other variables:
+
+        ```{python}
+        cox.residuals("schoenfeld", format="pandas")
+        ```
         """
         if type == "martingale":
             risk = np.exp(self._x @ self.coef_)
@@ -1178,24 +1205,65 @@ class CoxPH:
     def cox_zph(self, *, transform: str = "identity") -> ZPHResult:
         """Test the proportional-hazards assumption (Grambsch-Therneau).
 
-        Regresses the scaled Schoenfeld residuals on a transform of time. `transform` is
-        `"identity"` (default) or `"log"`, both validated against R's `cox.zph`. (R defaults
-        to a Kaplan-Meier transform; `"km"` and `"rank"` are planned.)
+        The Cox model assumes that the hazard ratio between any two subjects is constant
+        over time (proportional hazards). If this assumption is violated (for example, if
+        a treatment effect diminishes over time) the Cox estimates may be biased. This test
+        checks for violations by regressing scaled Schoenfeld residuals on time.
+
+        Large test statistics or small p-values (typically p < 0.05) suggest the
+        proportional-hazards assumption is violated for that covariate. When violated,
+        consider stratified analysis (separate baseline hazards per stratum), time-dependent
+        covariates, or time-varying coefficients.
+
+        Parameters
+        ----------
+        transform
+            Transformation to apply to time when computing the test. Options are:
+
+            - `"identity"` (default): Use time as-is. Regression on raw time.
+            - `"log"`: Use log(time). Regression on log-transformed time.
+
+            Both are validated against R's `cox.zph()` (though R defaults to
+            Kaplan-Meier transform; `"km"` and `"rank"` are planned).
+
+        Returns
+        -------
+        ZPHResult
+            An object containing per-term test results (`per_term` dict) and a global
+            test (`global_test` dict) across all covariates. Each includes chi-squared
+            statistic, degrees of freedom, and p-value. Access results via `.to_pandas()`
+            or dictionary keys.
+
+        Notes
+        -----
+        The test uses scaled Schoenfeld residuals, which under the null hypothesis
+        (proportional hazards) have a known asymptotic distribution. The test statistic is
+        approximately chi-squared with 1 df for each term, and chi-squared with degrees
+        of freedom equal to the number of terms for the global test.
+
+        Schoenfeld residuals are weighted by the variance-covariance matrix of the risk
+        set at each event time. The regression accounts for the constraint that Schoenfeld
+        residuals sum to zero.
 
         Examples
         --------
-        The test returns a `ZPHResult`; printing it summarizes the per-term and global
-        p-values (reusing the `cox` fit from the class example above):
+        The test returns a `ZPHResult` summarizing per-term and global p-values:
 
         ```{python}
-        cox.cox_zph()
+        import greenwood as gw
+
+        lung = gw.load_dataset("lung")
+        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+        zph = cox.cox_zph()
+        zph
         ```
 
-        The full statistics are available as a tidy frame, one row per term plus a `GLOBAL`
-        row:
+        The full statistics are available as a tidy frame, one row per term plus a
+        `GLOBAL` row:
 
         ```{python}
-        cox.cox_zph().to_pandas()
+        zph.to_pandas()
         ```
         """
         residuals, times, covariances = self._event_contributions()
@@ -1277,17 +1345,54 @@ class CoxPH:
     def concordance(self) -> float:
         """Harrell's concordance index (C-statistic) of the fitted risk scores.
 
-        Matches R's `survival::concordance`: a subject that dies at time `t` is treated as
-        having failed before another subject still under observation at `t` (including one
-        censored exactly at `t`); pairs tied in event time are excluded. For stratified
-        models, only within-stratum pairs are compared.
+        The concordance index measures how well the model's predicted risk scores order
+        subjects by their survival times. It ranges from 0 to 1, where 0.5 indicates
+        predictions are no better than random (coin flip), and 1.0 indicates perfect
+        discrimination (the model always assigns higher risk to subjects who die first).
+
+        Pairs of subjects are compared: a subject who experiences an event at time t is
+        considered to have "failed before" another subject still under observation at t
+        (including one censored exactly at t). If the model assigns higher risk to the
+        subject who failed first, the pair is concordant. Ties in predicted risk are
+        treated as half-concordant.
+
+        For stratified models, only within-stratum pairs are compared.
+
+        Returns
+        -------
+        float
+            The concordance index, a value between 0 and 1. Typical interpretation:
+
+            - 0.5: Random predictions.
+            - 0.6-0.7: Acceptable discrimination.
+            - 0.7-0.8: Excellent discrimination.
+            - 0.8+: Outstanding discrimination.
+
+        Notes
+        -----
+        The concordance index is equivalent to the Area Under the Receiver Operating
+        Characteristic curve (AUC) for binary classification problems. It is computed as
+        the fraction of concordant pairs out of all comparable pairs.
+
+        Comparable pairs are those where:
+        - One subject has an event (event=True) and exits at time t.
+        - The other subject exits at time > t, OR exits at time = t with event=False
+          (censored).
+
+        Tied event times within the same outcome (both events or both censored at the
+        same time) are excluded from comparison.
 
         Examples
         --------
-        Harrell's C is returned as a single number, where 0.5 is chance and 1.0 is perfect
-        discrimination (reusing the `cox` fit from the class example above):
+        Harrell's C is returned as a single number between 0 and 1. A value of 0.5 means
+        the model is not better than random guessing; 1.0 means perfect discrimination:
 
         ```{python}
+        import greenwood as gw
+
+        lung = gw.load_dataset("lung")
+        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
         cox.concordance()
         ```
         """
