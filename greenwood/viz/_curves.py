@@ -2,7 +2,7 @@
 
 Everything returns composable plotnine objects: `plot_survival` gives a `ggplot`, and with
 `risk_table=True` it returns a `plotnine.composition` stacking the curve over an aligned
-numbers-at-risk table (the x-axes line up). plotnine is an optional dependency (the `viz`
+numbers-at-risk table (the x-axes line up). plotnine is an optional dependency (the `plotnine`
 extra), so it is imported lazily.
 """
 
@@ -10,19 +10,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-import numpy as np
-import numpy.typing as npt
-
-from .._backends import to_dataframe
+from ._shared import _strata_label, risk_table_data
 
 if TYPE_CHECKING:
     from .._nonparametric import KaplanMeier
 
-__all__ = ["plot_survival", "risk_table", "risk_table_data", "theme_survival"]
-
-Array = npt.NDArray[Any]
-
-_OVERALL = "Overall"
+__all__ = ["plot_survival", "risk_table", "theme_survival"]
 
 
 def _require_plotnine() -> Any:
@@ -30,20 +23,9 @@ def _require_plotnine() -> Any:
         import plotnine as p9
     except ImportError as exc:  # pragma: no cover - exercised only without the extra
         raise ImportError(
-            "Visualization requires plotnine. Install it with `pip install greenwood[viz]`."
+            "Visualization requires plotnine. Install it with `pip install greenwood[plotnine]`."
         ) from exc
     return p9
-
-
-def _strata_label(block: Any) -> str:
-    return _OVERALL if block.label is None else str(block.label)
-
-
-def _default_times(km: KaplanMeier) -> list[float]:
-    """Six evenly spaced, rounded times from 0 to the largest observed time."""
-    max_t = max(float(b.time[-1]) for b in km._blocks if b.time.size)
-    raw = np.linspace(0.0, max_t, 6)
-    return sorted({round(float(t)) for t in raw})
 
 
 def _step_frame(block: Any) -> Any:
@@ -94,57 +76,6 @@ def _censor_frame(block: Any) -> Any:
     )
 
 
-def _n_at_risk(block: Any, times: Array) -> Array:
-    """Number at risk at each query time (as in R's `summary(fit, times=)$n.risk`)."""
-    idx = np.searchsorted(block.time, times, side="left")
-    out = np.zeros(times.shape[0])
-    valid = idx < block.time.shape[0]
-    out[valid] = block.n_risk[idx[valid]]
-    return out
-
-
-def risk_table_data(km: KaplanMeier, times: Any = None, *, format: str | None = None) -> Any:
-    """Return a tidy frame of the number at risk per stratum at each of `times`.
-
-    Parameters
-    ----------
-    km
-        A fitted `KaplanMeier` estimator.
-    times
-        Query times for the numbers-at-risk table. Defaults to an automatic grid.
-    format
-        Output format: `None` (default), `"pandas"`, `"polars"`, or `"pyarrow"`. When
-        `None`, a backend is auto-detected (Polars, then Pandas, then PyArrow).
-
-    Examples
-    --------
-    Fit a stratified Kaplan-Meier estimator on the bundled `lung` dataset, then tabulate the
-    number of subjects still at risk in each group at a chosen set of times. This returns the
-    numbers as a tidy frame (one row per stratum and time).
-
-    ```{python}
-    import greenwood as gw
-
-    lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-    km = gw.KaplanMeier().fit(y, by=lung["sex"])
-
-    gw.viz.risk_table_data(km, times=[0, 250, 500, 750, 1000], format="polars")
-    ```
-    """
-    query = np.asarray(_default_times(km) if times is None else times, dtype=float)
-    strata: list[str] = []
-    time_col: list[float] = []
-    n_risk: list[float] = []
-    for block in km._blocks:
-        counts = _n_at_risk(block, query)
-        for t, n in zip(query, counts, strict=True):
-            strata.append(_strata_label(block))
-            time_col.append(float(t))
-            n_risk.append(float(n))
-    return to_dataframe({"strata": strata, "time": time_col, "n_risk": n_risk}, format=format)
-
-
 def theme_survival() -> Any:
     """A light publication theme for survival plots."""
     p9 = _require_plotnine()
@@ -182,7 +113,7 @@ def plot_survival(
     estimator.
 
     The plot uses a light, minimal theme suitable for publications. Requires plotnine
-    (install with `pip install greenwood[viz]`).
+    (install with `pip install greenwood[plotnine]`).
 
     Parameters
     ----------

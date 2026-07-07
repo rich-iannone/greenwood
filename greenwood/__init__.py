@@ -1,11 +1,11 @@
 """Greenwood: modern survival analysis for Python.
 
-Narwhals-native, validated against R's `survival`, visualized with plotnine, and a
-first-class citizen of the Great Tables ecosystem.
+Narwhals-native, validated against R's `survival`, visualized with Altair (or plotnine), and
+a first-class citizen of the Great Tables ecosystem.
 
 This release provides the `Surv` response object, the risk-set / event-table kernel, the
 non-parametric estimators (`KaplanMeier`, `NelsonAalen`), group comparison tests
-(`logrank_test`), and plotnine visualization (`plot_survival` with aligned risk tables).
+(`logrank_test`), and interactive visualization (`plot_survival` with aligned risk tables).
 Regression and parametric models arrive in later releases (see `ROADMAP.md`).
 """
 
