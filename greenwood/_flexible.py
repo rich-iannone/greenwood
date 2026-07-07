@@ -160,18 +160,74 @@ class RoystonParmar:
         )
 
     def fit(self, surv: Surv, covariates: Any = None, *, data: Any = None) -> RoystonParmar:
-        """Fit the model to a right-censored `Surv` response and an optional covariate design.
+        """Fit the Royston-Parmar flexible parametric model to survival data.
+
+        Fits a flexible parametric survival model to a right-censored response and optional
+        covariates. The model uses restricted cubic splines on the log-time scale to flexibly
+        estimate the baseline cumulative hazard, combined with proportional-hazards covariate
+        effects. This combines the interpretability of proportional-hazards regression with the
+        flexibility of non-parametric methods.
+
+        The spline flexibility is controlled by `df` (degrees of freedom): `df=1` recovers a
+        Weibull model; higher `df` values provide more flexibility to capture non-standard
+        baseline hazard shapes. An intercept is added automatically. Covariates are optional;
+        if omitted, the fit is a flexible univariate survival model (baseline hazard only).
+
+        Parameters
+        ----------
+        surv
+            A right-censored `Surv` response. Built with `Surv.right()`.
+        covariates
+            Optional. A dataframe (pandas or polars), a 2-D array, or a formula string
+            (e.g., `"age + sex"`) evaluated against the `data` argument. If `None` (default),
+            fits a univariate model with no covariates.
+        data
+            A dataframe to evaluate the formula string (ignored if `covariates` is a
+            dataframe, array, or `None`).
+
+        Returns
+        -------
+        The fitted `RoystonParmar` object itself (for method chaining), now with coefficient
+        arrays (`coef_`, `std_error_`, `z_`, `p_value_`), fitted knot locations (`knots_`),
+        and summary statistics like log-likelihood.
+
+        Notes
+        -----
+        The Royston-Parmar model parameterizes the log cumulative hazard as a restricted
+        cubic spline in log-time, with proportional-hazards covariate effects added linearly.
+        Knots are placed at quantiles of observed event times. Maximum likelihood estimation
+        is used; constraints ensure that the log cumulative hazard is monotone increasing
+        (required for a valid hazard function).
+
+        The model is useful when baseline hazard shape is unknown but important, yet you want
+        interpretable proportional-hazards effects of covariates.
 
         Examples
         --------
-        The spline flexibility is set by `df`: `df=1` is a Weibull model, and larger values
-        relax the parametric shape. Here is a more flexible fit with two extra degrees of
-        freedom, using the same `y` response and `lung` data from the class example above:
+        Fit a flexible Royston-Parmar model with three degrees of freedom (two internal knots)
+        on the bundled `lung` dataset with `age` and `sex` as covariates:
 
         ```{python}
         import greenwood as gw
 
-        gw.RoystonParmar(df=5).fit(y, lung[["age", "sex"]])
+        lung = gw.load_dataset("lung")
+        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        rp = gw.RoystonParmar(df=3).fit(y, lung[["age", "sex"]])
+        rp
+        ```
+
+        Fit a more flexible model with five degrees of freedom:
+
+        ```{python}
+        rp_flexible = gw.RoystonParmar(df=5).fit(y, lung[["age", "sex"]])
+        rp_flexible
+        ```
+
+        Fit a univariate flexible model without covariates:
+
+        ```{python}
+        rp_univariate = gw.RoystonParmar(df=3).fit(y)
+        rp_univariate
         ```
         """
         from ._nonparametric import NelsonAalen

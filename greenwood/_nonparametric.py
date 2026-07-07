@@ -308,18 +308,68 @@ class KaplanMeier:
         return "KaplanMeier (Kaplan-Meier survival estimate)\n\n" + table
 
     def fit(self, surv: Surv, *, by: Any = None, weights: Any = None) -> KaplanMeier:
-        """Fit the estimator to a `Surv` response, optionally stratified by `by`.
+        """Fit the Kaplan-Meier estimator to survival data.
 
-                Examples
-                --------
-                Passing `by=` produces one curve per group. Here we fit a separate survival
-                function for each sex, reusing the `y` response and `lung` data from the class
-                example above:
+        Computes the product-limit survival estimate from a `Surv` response (time-to-event
+        data, possibly right-censored). The estimator remains in the fitted object after
+        calling `fit()`; access it via attributes like `surv`, `time`, `n_risk`, etc., or
+        access raw tables with `to_pandas()`, `to_polars()`, `to_arrow()`. Pass `by=` to
+        produce separate curves per group (stratified analysis); each group's fit is stored
+        independently and can be visualized with `plot_survival()`.
 
-                ```{python}
+        The fit is exact—no distributional assumptions are made. Optionally supply `weights`
+        (e.g., inverse-probability-of-censoring weights from the survey literature) to
+        adjust for selection bias or survey design. Confidence intervals use the method
+        specified at instantiation (`conf_type`), typically Greenwood's variance estimator.
+
+        Parameters
+        ----------
+        surv
+            A `Surv` response (typically right-censored, but supports counting-process and
+            other forms). Built from data using `Surv.right()`, `Surv.interval()`, etc.
+        by
+            Optional grouping variable (e.g., a column or array). Produces one fit (one curve)
+            per unique value of `by`, enabling stratified Kaplan-Meier analysis. Each group's
+            results are stored and can be accessed separately via `to_pandas()` etc., or
+            visualized as separate curves via `plot_survival()`. Default (`None`): fit a
+            single, unstratified curve.
+        weights
+            Optional weights (e.g., from survey design or inverse-probability-of-censoring
+            adjustments). Must have the same length as `surv`. Default (`None`): unit weights.
+
+        Returns
+        -------
+        The fitted `KaplanMeier` object itself (for method chaining), now with cached results
+        (`time`, `surv`, `conf_low`, `conf_high`, `n_risk`, `n_event`, etc. as attributes).
+
+        Notes
+        -----
+        The Kaplan-Meier estimator is a non-parametric maximum likelihood estimator of the
+        survival function S(t). It is defined as the product of (1 - d/n) over all event times
+        up to t, where d is the number of events and n is the number at risk at each time.
+        Confidence intervals are point-wise; they do not guarantee that the true curve lies
+        entirely within the band.
+
+        Examples
+        --------
+        Fit a single (unstratified) survival curve on the bundled `lung` dataset:
+
+        ```{python}
         import greenwood as gw
-                gw.KaplanMeier().fit(y, by=lung["sex"])
-                ```
+
+        lung = gw.load_dataset("lung")
+        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        km = gw.KaplanMeier().fit(y)
+        km
+        ```
+
+        Fit stratified curves by sex by passing `by=lung["sex"]`. This produces one curve per
+        group; the results are stored and can be visualized separately:
+
+        ```{python}
+        km_stratified = gw.KaplanMeier().fit(y, by=lung["sex"])
+        gw.plot_survival(km_stratified)
+        ```
         """
         z = float(norm.ppf(1.0 - (1.0 - self.conf_level) / 2.0))
         self._blocks = _fit_blocks(surv, by, weights, self.conf_type, z)
@@ -736,18 +786,64 @@ class NelsonAalen:
         return "NelsonAalen (Nelson-Aalen cumulative hazard estimate)\n\n" + table
 
     def fit(self, surv: Surv, *, by: Any = None, weights: Any = None) -> NelsonAalen:
-        """Fit the estimator to a `Surv` response, optionally stratified by `by`.
+        """Fit the Nelson-Aalen estimator to survival data.
 
-                Examples
-                --------
-                Passing `by=` produces one cumulative-hazard curve per group. Here we fit a separate
-                curve for each sex, reusing the `y` response and `lung` data from the class example
-                above:
+        Computes the cumulative hazard function H(t) from a `Surv` response (time-to-event
+        data). Like Kaplan-Meier, this is a non-parametric estimate requiring no distributional
+        assumptions. The Nelson-Aalen estimator is an alternative to Kaplan-Meier; it estimates
+        the cumulative hazard directly (sum of d/n at each event time), from which the survival
+        probability can be derived via S(t) = exp(-H(t)). Results are stored in the fitted
+        object; access them via attributes or export to pandas/polars/arrow with `to_pandas()`
+        etc.
 
-                ```{python}
+        Pass `by=` to produce separate cumulative hazard curves per group (stratified analysis),
+        enabling covariate-free comparison of hazard accumulation across groups. Optionally
+        supply `weights` to adjust for selection bias or survey design.
+
+        Parameters
+        ----------
+        surv
+            A `Surv` response (typically right-censored). Built from data using `Surv.right()`,
+            `Surv.interval()`, etc.
+        by
+            Optional grouping variable (e.g., a column or array). Produces one fit (one
+            cumulative hazard curve) per unique value of `by`, enabling stratified
+            Nelson-Aalen analysis. Default (`None`): fit a single, unstratified curve.
+        weights
+            Optional weights (e.g., from survey design or inverse-probability-of-censoring
+            adjustments). Must have the same length as `surv`. Default (`None`): unit weights.
+
+        Returns
+        -------
+        The fitted `NelsonAalen` object itself (for method chaining), now with cached results
+        (`time`, `cumhaz`, `conf_low`, `conf_high`, `n_risk`, `n_event` as attributes).
+
+        Notes
+        -----
+        The Nelson-Aalen estimator is H(t) = sum_{t_i <= t} (d_i / n_i), where d_i and n_i are
+        events and number at risk at time t_i. Its variance is estimated using Aalen's formula:
+        Var(H) = sum (d_i / n_i^2). The survival function can be recovered as S(t) = exp(-H(t)).
+        Confidence intervals are point-wise.
+
+        Examples
+        --------
+        Fit a single (unstratified) cumulative hazard curve on the bundled `lung` dataset:
+
+        ```{python}
         import greenwood as gw
-                gw.NelsonAalen().fit(y, by=lung["sex"])
-                ```
+
+        lung = gw.load_dataset("lung")
+        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        na = gw.NelsonAalen().fit(y)
+        na
+        ```
+
+        Fit stratified curves by sex to compare cumulative hazard accumulation:
+
+        ```{python}
+        na_stratified = gw.NelsonAalen().fit(y, by=lung["sex"])
+        na_stratified
+        ```
         """
         z = float(norm.ppf(1.0 - (1.0 - self.conf_level) / 2.0))
         self._blocks = _fit_blocks(surv, by, weights, "log", z)

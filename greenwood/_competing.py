@@ -175,18 +175,70 @@ class AalenJohansen:
         return "\n".join(head) + "\n\n" + table
 
     def fit(self, surv: Surv, *, by: Any = None) -> AalenJohansen:
-        """Fit cumulative incidence functions to a competing-risks `Surv` response.
+        """Fit cumulative incidence functions to a competing-risks response.
+
+        Computes the cumulative incidence function (CIF) for each cause-of-interest from a
+        multi-state `Surv` response. Unlike Kaplan-Meier (which handles only a single event
+        type), the Aalen-Johansen estimator accounts for competing events: subjects who
+        experience a competing cause are removed from the risk set, preventing overly optimistic
+        estimates of the probability of experiencing the target cause. Results are stored in
+        the fitted object; access them via `to_pandas()`, `to_polars()`, or `to_arrow()`.
+
+        The Aalen-Johansen estimator generalizes both Kaplan-Meier and Nelson-Aalen to the
+        competing-risks setting. For each cause j, it estimates F_j(t), the cumulative
+        probability of experiencing cause j by time t, accounting for all competing causes. The
+        CIFs sum to the overall event probability at any time. Pass `by=` to produce separate
+        CIF estimates per group (stratified competing-risks analysis).
+
+        Parameters
+        ----------
+        surv
+            A multi-state `Surv` response built with `Surv.multistate()`. Must have multiple
+            causes-of-interest. Raises `ValueError` if a single-event response is passed
+            (use `KaplanMeier` for that).
+        by
+            Optional grouping variable (e.g., a column or array). Produces one set of
+            cumulative incidence functions per unique value of `by`. Default (`None`): fit
+            a single, unstratified set of CIFs.
+
+        Returns
+        -------
+        The fitted `AalenJohansen` object itself (for method chaining), now with cached CIF
+        results (time arrays, cumulative incidence per cause, confidence bands) accessible via
+        `to_pandas()` and related methods.
+
+        Notes
+        -----
+        The Aalen-Johansen estimator is a product-integral estimator of the CIF:
+        F_j(t) = integral S_{-}(u) dM_j(u), where S_{-}(u) is the estimated probability of
+        surviving (remaining uncensored) just before u, and M_j(u) is the counting process for
+        cause j. It reduces to Kaplan-Meier when there is only one cause and no censoring.
+
+        Left truncation is not yet supported. Multi-state responses must be built with
+        `Surv.multistate()`.
 
         Examples
         --------
-        Passing `by=` stratifies the estimate, producing one set of cumulative incidence
-        functions per group. Here we fit a separate estimate for each sex, reusing the `y`
-        response from the class example above:
+        Fit cumulative incidence functions on the competing-risks `mgus2` dataset, where
+        subjects can experience plasma-cell malignancy (pcm) or death:
 
         ```{python}
+        import numpy as np
         import greenwood as gw
 
-        gw.AalenJohansen().fit(y, by=mg["sex"])
+        mg = gw.load_dataset("mgus2")
+        etime = np.where(mg["pstat"] == 1, mg["ptime"], mg["futime"])
+        cause = np.where(mg["pstat"] == 1, 1, 2 * mg["death"])
+        y = gw.Surv.multistate(etime, event=cause, states=("pcm", "death"))
+        aj = gw.AalenJohansen().fit(y)
+        aj
+        ```
+
+        Fit stratified cumulative incidence functions by sex to compare risk accumulation:
+
+        ```{python}
+        aj_stratified = gw.AalenJohansen().fit(y, by=mg["sex"])
+        aj_stratified
         ```
         """
         if not surv.is_multistate:
@@ -450,21 +502,68 @@ class FineGray:
     def fit(
         self, surv: Surv, covariates: Any, *, max_iter: int = 30, tol: float = 1e-9
     ) -> FineGray:
-        """Fit the model to a competing-risks `Surv` response and a covariate design.
+        """Fit the Fine-Gray subdistribution hazard model to competing-risks data.
 
-        The model targets the cumulative incidence of the named cause, keeping subjects who
-        experience a competing event in the risk set with time-decreasing weights, and reports
-        clustered robust (Lin-Wei) standard errors.
+        Fits a Cox-like regression model to the subdistribution hazard of a target cause in
+        a competing-risks setting. Subjects who experience a competing event remain in the
+        risk set with inverse-probability-of-censoring weights, allowing direct inference on
+        cumulative incidence of the target cause. The model reports coefficients, hazard
+        ratios, and clustered robust (Lin-Wei) standard errors.
+
+        Parameters
+        ----------
+        surv
+            A multi-state `Surv` response built with `Surv.multistate()`. Must have multiple
+            causes-of-interest. Raises `ValueError` if a single-event response is passed.
+        covariates
+            A dataframe (pandas or polars) or 2-D array of covariates to adjust for in the
+            subdistribution hazard. An intercept is added automatically. Must have the same
+            number of rows as `surv`.
+        max_iter
+            Maximum number of Newton-Raphson iterations (default 30).
+        tol
+            Convergence tolerance for coefficient changes (default 1e-9).
+
+        Returns
+        -------
+        The fitted `FineGray` object itself (for method chaining), now with coefficient arrays
+        (`coef_`, `std_error_`, `hazard_ratio_`, `z_`, `p_value_`), event counts, and
+        log-likelihood.
+
+        Notes
+        -----
+        The Fine-Gray model estimates the subdistribution hazard h_j(t) using weighted partial
+        likelihood. Weights are the inverse of the Kaplan-Meier estimate of the censoring
+        distribution, computed just before each target event time. Subjects with competing
+        events receive time-decreasing weights reflecting reduced ability to contribute
+        information.
+
+        Coefficients are interpreted as log-hazard ratios on the subdistribution hazard scale,
+        not the cause-specific hazard. The model directly targets cumulative incidence (F_j),
+        making it ideal for policy-relevant questions about the probability of experiencing
+        a specific cause.
 
         Examples
         --------
-        Refit the model with the same competing-risks response and covariate design used in
-        the class example above:
+        Fit a Fine-Gray model on the competing-risks `mgus2` dataset, modeling the cumulative
+        incidence of plasma-cell malignancy (pcm) as a function of age and sex:
 
         ```{python}
+        import numpy as np
         import greenwood as gw
 
-        gw.FineGray("pcm").fit(y, mg[["age", "sex"]])
+        mg = gw.load_dataset("mgus2")
+        etime = np.where(mg["pstat"] == 1, mg["ptime"], mg["futime"])
+        cause = np.where(mg["pstat"] == 1, 1, 2 * mg["death"])
+        y = gw.Surv.multistate(etime, event=cause, states=("pcm", "death"))
+        fg = gw.FineGray("pcm").fit(y, mg[["age", "sex"]])
+        fg
+        ```
+
+        Extract hazard ratios with exponentiation for interpretation:
+
+        ```{python}
+        gw.tidy(fg, exponentiate=True)
         ```
         """
         from ._cox import _design_matrix

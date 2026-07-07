@@ -164,22 +164,70 @@ class AFT:
         )
 
     def fit(self, surv: Surv, covariates: Any, *, data: Any = None) -> AFT:
-        """Fit the model to a right-censored `Surv` response and a covariate design.
+        """Fit the accelerated failure time model to survival data.
 
-                `covariates` is a dataframe or 2-D array, or a right-hand-side formula string
-                (for example `"age + sex"`) evaluated against `data`. An intercept is added
-                automatically.
+        Fits a parametric accelerated failure time (AFT) model to a right-censored response
+        and covariates. The AFT models the log-survival time as a linear regression on
+        covariates plus a random error from a specified parametric distribution (Weibull,
+        exponential, log-normal, or log-logistic). An intercept is added automatically.
 
-                Examples
-                --------
-                The error distribution is chosen with `dist=`, one of `"weibull"`,
-                `"exponential"`, `"lognormal"`, or `"loglogistic"`. Here is a log-normal fit to
-                the same `y` response and `lung` data from the class example above:
+        The AFT is a parametric alternative to Cox regression, providing a fully specified
+        survival distribution at the cost of stronger distributional assumptions. Unlike Cox,
+        AFT supports median survival predictions and is naturally interpreted on the
+        log-time scale: a coefficient of 0.1 means the covariate multiplies survival time by
+        exp(0.1). Results are stored in the fitted object as coefficient arrays and can be
+        exported to DataFrames.
 
-                ```{python}
+        Parameters
+        ----------
+        surv
+            A right-censored `Surv` response. Built with `Surv.right()`. Interval-censored
+            or other response types raise `NotImplementedError`.
+        covariates
+            A dataframe (pandas or polars), a 2-D array, or a formula string (e.g.,
+            `"age + sex"`) evaluated against the `data` argument.
+        data
+            A dataframe to evaluate the formula string (ignored if `covariates` is a
+            dataframe or array).
+
+        Returns
+        -------
+        The fitted `AFT` object itself (for method chaining), now with coefficient arrays
+        (`coef_`, `std_error_`, `z_`, `p_value_`), the fitted distribution parameters
+        (`scale_`), and log-likelihood (`loglik_`).
+
+        Notes
+        -----
+        The AFT model parameterizes log-survival time as log(T) = X*beta + sigma*epsilon,
+        where X is the design matrix, beta are coefficients, sigma is a scale parameter, and
+        epsilon is an error term from the chosen distribution. The survival function is then
+        S(t | X) = P(T > t | X) = G((log(t) - X*beta) / sigma), where G is the survival
+        function of the error distribution.
+
+        Estimation uses maximum likelihood via numerical optimization. Exponential and
+        Weibull models are nested special cases; log-normal and log-logistic offer different
+        tail behaviors.
+
+        Examples
+        --------
+        Fit a log-normal AFT model on the bundled `lung` dataset with `age` and `sex` as
+        covariates:
+
+        ```{python}
         import greenwood as gw
-                gw.AFT(dist="lognormal").fit(y, lung[["age", "sex"]])
-                ```
+
+        lung = gw.load_dataset("lung")
+        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        aft = gw.AFT(dist="lognormal").fit(y, lung[["age", "sex"]])
+        aft
+        ```
+
+        Use a formula string with the `data` argument:
+
+        ```{python}
+        aft_formula = gw.AFT(dist="weibull").fit(y, "age + sex", data=lung)
+        aft_formula
+        ```
         """
         from ._surv import CensoringType
 

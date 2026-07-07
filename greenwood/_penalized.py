@@ -135,20 +135,70 @@ class CoxNet:
         )
 
     def fit(self, surv: Surv, covariates: Any, *, data: Any = None) -> CoxNet:
-        """Fit the penalized model to a `Surv` response and a covariate design.
+        """Fit the elastic-net penalized Cox model to survival data.
 
-                Examples
-                --------
-                `penalizer` sets the overall penalty strength and `l1_ratio` the elastic-net
-                mixing: `l1_ratio=1` is a lasso (sparse, selects variables), `l1_ratio=0` is
-                ridge (smooth shrinkage), and `penalizer=0` recovers the ordinary Cox fit. Here
-                is a ridge fit to the same `y` response and `lung` data from the class example
-                above:
+        Fits a Cox proportional-hazards model with elastic-net penalty (L1 + L2
+        regularization) to a right-censored or counting-process response and covariates.
+        The penalty shrinks coefficients toward zero, selecting a sparse subset of important
+        variables (when L1 dominates) or smoothly shrinking all coefficients (when L2
+        dominates). An intercept is added automatically.
 
-                ```{python}
+        The CoxNet model is useful for high-dimensional covariate spaces where unpenalized
+        Cox fails to converge or produces unstable estimates. It maintains the
+        proportional-hazards interpretation of hazard ratios while controlling model
+        complexity. Tuning the `penalizer` strength and `l1_ratio` mixing parameter enables
+        variable selection and regularized estimation.
+
+        Parameters
+        ----------
+        surv
+            A `Surv` response (right-censored or counting-process). Built with `Surv.right()`
+            or `Surv.counting()`.
+        covariates
+            A dataframe (pandas or polars), a 2-D array, or a formula string (e.g.,
+            `"age + sex"`) evaluated against the `data` argument.
+        data
+            A dataframe to evaluate the formula string (ignored if `covariates` is a
+            dataframe or array).
+
+        Returns
+        -------
+        The fitted `CoxNet` object itself (for method chaining), now with coefficient arrays
+        (`coef_`, `std_error_`, `z_`, `p_value_`, `hazard_ratio_`), the event times used,
+        and metrics like log-likelihood and degrees of freedom.
+
+        Notes
+        -----
+        The elastic-net penalty is lambda * (alpha * L1 + (1 - alpha) * L2), where
+        lambda = penalizer and alpha = l1_ratio. Setting l1_ratio=1 gives lasso (L1 only,
+        induces sparsity); l1_ratio=0 gives ridge (L2 only, smooth shrinkage);
+        intermediate values blend both effects.
+
+        Estimation uses proximal gradient descent (FISTA) to optimize the penalized
+        partial likelihood. Covariates are centered and optionally standardized before
+        fitting; standardization affects the penalty scale but not the fitted hazard ratios.
+
+        Examples
+        --------
+        Fit a ridge-penalized Cox model (L2 penalty, smooth shrinkage) on the bundled
+        `lung` dataset:
+
+        ```{python}
         import greenwood as gw
-                gw.CoxNet(penalizer=0.05, l1_ratio=0.0).fit(y, lung[cols])
-                ```
+
+        lung = gw.load_dataset("lung")
+        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        cols = ["age", "sex", "ph.ecog"]
+        coxnet_ridge = gw.CoxNet(penalizer=0.05, l1_ratio=0.0).fit(y, lung[cols])
+        coxnet_ridge
+        ```
+
+        Fit a lasso-penalized Cox model (L1 penalty, sparse selection):
+
+        ```{python}
+        coxnet_lasso = gw.CoxNet(penalizer=0.05, l1_ratio=1.0).fit(y, lung[cols])
+        coxnet_lasso
+        ```
         """
         from ._surv import CensoringType
 
