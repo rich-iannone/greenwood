@@ -83,7 +83,7 @@ def test_predict_shapes_and_survival_range(data) -> None:  # type: ignore[no-unt
     model = CoxNet(penalizer=0.05, l1_ratio=0.5).fit(y, x)
     lp = model.predict(x, type="lp")
     assert lp.shape == (model.n_,)
-    surv = model.predict(x.iloc[:3], type="survival", times=[180, 365])
+    surv = model.predict(x.iloc[:3], type="survival", times=[180, 365], format="pandas")
     assert list(surv.columns) == ["time", "subject_1", "subject_2", "subject_3"]
     assert ((surv.iloc[:, 1:] >= 0) & (surv.iloc[:, 1:] <= 1)).all().all()
 
@@ -91,7 +91,7 @@ def test_predict_shapes_and_survival_range(data) -> None:  # type: ignore[no-unt
 def test_to_pandas_and_repr(data) -> None:  # type: ignore[no-untyped-def]
     y, x = data
     model = CoxNet(penalizer=0.1, l1_ratio=1.0).fit(y, x)
-    df = model.to_pandas()
+    df = model.to_frame(format="pandas")
     assert list(df.columns) == ["term", "estimate", "hazard_ratio"]
     text = repr(model)
     assert "elastic-net Cox" in text

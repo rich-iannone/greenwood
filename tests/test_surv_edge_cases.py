@@ -92,12 +92,12 @@ def test_to_backends() -> None:
     pa = pytest.importorskip("pyarrow")
     y = Surv.counting(start=[0, 1], stop=[5, 6], event=[1, 0], weights=[1.0, 2.0])
 
-    pandas_df = y.to_pandas()
+    pandas_df = y.to_frame(format="pandas")
     assert isinstance(pandas_df, pd.DataFrame)
     assert {"start", "stop", "status", "weight"} <= set(pandas_df.columns)
 
-    polars_df = y.to_polars()
+    polars_df = y.to_frame(format="polars")
     assert isinstance(polars_df, pl.DataFrame)
 
-    arrow_table = y.to_arrow()
+    arrow_table = y.to_frame(format="pyarrow")
     assert isinstance(arrow_table, pa.Table)

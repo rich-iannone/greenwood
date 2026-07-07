@@ -26,6 +26,7 @@ import numpy.typing as npt
 from scipy.optimize import minimize
 from scipy.stats import norm
 
+from ._backends import to_dataframe
 from ._cox import _design_matrix
 from ._parametric import _num_hessian
 
@@ -116,8 +117,8 @@ class RoystonParmar:
     -----
     Call `fit(surv, covariates)` with a right-censored `Surv` response and a covariate design
     (a dataframe, a 2-D array, or a formula string with `data`). Results are exposed as arrays
-    (`coef_`, `std_error_`, ...), the fitted `knots_`, and tidy frames via `to_pandas()`,
-    `to_polars()`, `to_arrow()`.
+    (`coef_`, `std_error_`, ...), the fitted `knots_`, and tidy frames via `to_frame()`
+    (optionally `format=`).
 
     Examples
     --------
@@ -285,10 +286,11 @@ class RoystonParmar:
             return -float(ll.sum())
 
         # Initialize the spline from a least-squares fit of log(Nelson-Aalen) on the basis.
-        na = NelsonAalen().fit(surv).to_pandas()
-        pos = na["estimate"].to_numpy() > 0
-        b_init, _ = _rcs_basis(np.log(na["time"].to_numpy()[pos]), knots)
-        gamma0, *_ = np.linalg.lstsq(b_init, np.log(na["estimate"].to_numpy()[pos]), rcond=None)
+        na = NelsonAalen().fit(surv)
+        na_time, na_cumhaz = na.time_, na.cumhaz_
+        pos = na_cumhaz > 0
+        b_init, _ = _rcs_basis(np.log(na_time[pos]), knots)
+        gamma0, *_ = np.linalg.lstsq(b_init, np.log(na_cumhaz[pos]), rcond=None)
         x0 = np.concatenate([gamma0, np.zeros(n_cov)])
 
         result = minimize(neg_loglik, x0, method="BFGS", options={"gtol": 1e-7, "maxiter": 2000})
@@ -321,7 +323,14 @@ class RoystonParmar:
         lp = float(x_row @ beta) if beta.size else 0.0
         return basis @ gamma + lp, deriv @ gamma
 
-    def predict(self, newdata: Any = None, *, type: str = "survival", times: Any = None) -> Any:
+    def predict(
+        self,
+        newdata: Any = None,
+        *,
+        type: str = "survival",
+        times: Any = None,
+        format: str | None = None,
+    ) -> Any:
         """Predict survival probability, hazard, or cumulative hazard from the fitted model.
 
         Generates predictions from a fitted Royston-Parmar flexible parametric model. Pass
@@ -362,6 +371,10 @@ class RoystonParmar:
         times
             Query times at which to evaluate curves. An array-like of floats. Required unless
             a default grid is used. If None, may raise an error or use a default grid.
+        format
+            Output format for the returned frame: `None` (default), `"pandas"`, `"polars"`,
+            or `"pyarrow"`. When `None`, a backend is auto-detected (Polars, then Pandas,
+            then PyArrow).
 
         Returns
         -------
@@ -415,14 +428,12 @@ class RoystonParmar:
         rp.predict(type="survival", times=[180, 365])
         ```
         """
-        import pandas as pd
-
         if newdata is None:
             x = np.zeros((1, max(self.coef_.size - self._n_spline, 0)))
         else:
             x, _ = _design_matrix(newdata)
         query = np.atleast_1d(np.asarray(times, dtype=float))
-        columns: dict[str, Array] = {}
+        columns: dict[str, Array] = {"time": query}
         for i in range(x.shape[0]):
             eta, sprime = self._eta(query, x[i])
             cumhaz = np.exp(eta)
@@ -436,9 +447,7 @@ class RoystonParmar:
                 raise ValueError(
                     f"Unknown predict type {type!r}; use 'survival', 'hazard', or 'cumhaz'."
                 )
-        frame = pd.DataFrame(columns)
-        frame.insert(0, "time", query)
-        return frame
+        return to_dataframe(columns, format=format)
 
     def _coefficient_columns(self) -> dict[str, Any]:
         return {
@@ -451,104 +460,42 @@ class RoystonParmar:
             "conf_high": self.conf_high_,
         }
 
-    def to_pandas(self) -> Any:
-        """Return the coefficient table as a pandas DataFrame.
+    def to_frame(self, *, format: str | None = None) -> Any:
+        """Return the coefficient table as a DataFrame.
 
-        This method exports one row per spline or covariate term with coefficient
-        estimates, standard errors, Wald statistics, p-values, and confidence limits.
+        Exports one row per spline or covariate term with coefficient estimates, standard
+        errors, Wald statistics, p-values, and confidence limits.
+
+        Parameters
+        ----------
+        format
+            Output format: `None` (default), `"pandas"`, `"polars"`, or `"pyarrow"`. When
+            `None`, a backend is auto-detected (Polars, then Pandas, then PyArrow).
 
         Returns
         -------
-        pandas.DataFrame
-            A tidy DataFrame with columns `term`, `estimate`, `std_error`, `statistic`,
+        pandas.DataFrame, polars.DataFrame, or pyarrow.Table
+            A tidy table with columns `term`, `estimate`, `std_error`, `statistic`,
             `p_value`, `conf_low`, and `conf_high`.
 
         Raises
         ------
         ImportError
-            If pandas is not installed.
+            If the requested (or, when auto-detecting, any) DataFrame library is not
+            installed.
 
         Examples
         --------
-        Export the fitted Royston-Parmar coefficients to pandas:
+        Export the fitted Royston-Parmar coefficients:
 
         ```{python}
-        rp.to_pandas()
+        rp.to_frame()
         ```
-        """
-        try:
-            import pandas as pd
-        except ImportError as e:
-            raise ImportError(
-                "pandas is required for to_pandas(). Install it with: pip install pandas"
-            ) from e
 
-        return pd.DataFrame(self._coefficient_columns())
-
-    def to_polars(self) -> Any:
-        """Return the coefficient table as a Polars DataFrame.
-
-        This method exports one row per spline or covariate term with coefficient
-        estimates, standard errors, Wald statistics, p-values, and confidence limits.
-
-        Returns
-        -------
-        polars.DataFrame
-            A tidy DataFrame with columns `term`, `estimate`, `std_error`, `statistic`,
-            `p_value`, `conf_low`, and `conf_high`.
-
-        Raises
-        ------
-        ImportError
-            If polars is not installed.
-
-        Examples
-        --------
-        Export the fitted Royston-Parmar coefficients to Polars:
+        Request a specific backend with `format=`:
 
         ```{python}
-        rp.to_polars()
+        rp.to_frame(format="polars")
         ```
         """
-        try:
-            import polars as pl
-        except ImportError as e:
-            raise ImportError(
-                "polars is required for to_polars(). Install it with: pip install polars"
-            ) from e
-
-        return pl.DataFrame(self._coefficient_columns())
-
-    def to_arrow(self) -> Any:
-        """Return the coefficient table as a PyArrow Table.
-
-        This method exports one row per spline or covariate term with coefficient
-        estimates, standard errors, Wald statistics, p-values, and confidence limits.
-
-        Returns
-        -------
-        pyarrow.Table
-            A table with columns `term`, `estimate`, `std_error`, `statistic`, `p_value`,
-            `conf_low`, and `conf_high`.
-
-        Raises
-        ------
-        ImportError
-            If pyarrow is not installed.
-
-        Examples
-        --------
-        Export the fitted Royston-Parmar coefficients to Arrow:
-
-        ```{python}
-        rp.to_arrow()
-        ```
-        """
-        try:
-            import pyarrow as pa
-        except ImportError as e:
-            raise ImportError(
-                "pyarrow is required for to_arrow(). Install it with: pip install pyarrow"
-            ) from e
-
-        return pa.table(self._coefficient_columns())
+        return to_dataframe(self._coefficient_columns(), format=format)

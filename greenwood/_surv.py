@@ -33,6 +33,8 @@ import numpy as np
 import numpy.typing as npt
 from typing_extensions import Self
 
+from ._backends import to_dataframe
+
 __all__ = ["Surv", "CensoringType"]
 
 Array = npt.NDArray[Any]
@@ -916,148 +918,7 @@ class Surv:
 
     # -- interop --------------------------------------------------------------
 
-    def to_pandas(self) -> Any:
-        """Return the response as a Pandas DataFrame (one row per observation).
-
-        This method exports the `Surv` object to a tidy Pandas DataFrame format, where
-        each row represents one observation. The DataFrame includes the `stop` and
-        `status` columns, plus optional columns for `start` (entry time in counting
-        process), `lower` (lower bound for interval censoring), and `weight` (case
-        weights). This format is convenient for inspection, export to CSV or other
-        file formats, or integration with other Pandas workflows.
-
-        Returns
-        -------
-        pandas.DataFrame
-            A tidy DataFrame with one row per observation, including columns for `stop`,
-            `status`, and optional `start`, `lower`, `weight` columns.
-
-        Raises
-        ------
-        ImportError
-            If Pandas is not installed.
-
-        Examples
-        --------
-        Export to Pandas DataFrame. Each row represents one observation with its
-        event time and status:
-
-        ```{python}
-        y.to_pandas()
-        ```
-
-        The resulting DataFrame can be saved to CSV, used with Pandas functions, or
-        integrated into standard data science workflows.
-        """
-        try:
-            import pandas as pd
-        except ImportError as e:
-            raise ImportError(
-                "Pandas is required for to_pandas(). Install it with: pip install pandas"
-            ) from e
-
-        cols: dict[str, Array] = {}
-        if self.start is not None:
-            cols["start"] = self.start
-        if self.lower is not None:
-            cols["lower"] = self.lower
-        cols["stop"] = self.stop
-        cols["status"] = self.status
-        if self.weights is not None:
-            cols["weight"] = self.weights
-        return pd.DataFrame(cols)
-
-    def to_polars(self) -> Any:
-        """Return the response as a Polars DataFrame (one row per observation).
-
-        This method exports the `Surv` object to a tidy Polars DataFrame format, where
-        each row represents one observation. Polars provides superior performance and
-        memory efficiency compared to Pandas for larger datasets. The DataFrame includes
-        the `stop` and `status` columns, plus optional columns for `start` (entry time
-        in counting process), `lower` (lower bound for interval censoring), and `weight`
-        (case weights). This format is ideal for efficient data manipulation and
-        integration with Polars-based workflows.
-
-        Returns
-        -------
-        polars.DataFrame
-            A tidy DataFrame with one row per observation, including columns for `stop`,
-            `status`, and optional `start`, `lower`, `weight` columns.
-
-        Raises
-        ------
-        ImportError
-            If Polars is not installed.
-
-        Examples
-        --------
-        Export to Polars DataFrame for high-performance data processing:
-
-        ```{python}
-        y.to_polars()
-        ```
-
-        Polars DataFrames are efficient and support lazy evaluation, making them ideal
-        for larger datasets and complex transformations.
-        """
-        try:
-            import polars as pl
-        except ImportError as e:
-            raise ImportError(
-                "Polars is required for to_polars(). Install it with: pip install polars"
-            ) from e
-
-        cols: dict[str, Array] = {}
-        if self.start is not None:
-            cols["start"] = self.start
-        if self.lower is not None:
-            cols["lower"] = self.lower
-        cols["stop"] = self.stop
-        cols["status"] = self.status
-        if self.weights is not None:
-            cols["weight"] = self.weights
-        return pl.DataFrame(cols)
-
-    def to_arrow(self) -> Any:
-        """Return the response as a PyArrow Table (one row per observation).
-
-        This method exports the `Surv` object to a PyArrow Table, a columnar data structure
-        designed for efficient data interchange and analytics. PyArrow Tables are ideal
-        for integration with tools that work with the Apache Arrow memory format, including
-        Polars, DuckDB, and many other data processing libraries. The table includes the
-        `stop` and `status` columns, plus optional columns for `start` (entry time in
-        counting process), `lower` (lower bound for interval censoring), and `weight`
-        (case weights).
-
-        Returns
-        -------
-        pyarrow.Table
-            A table with one row per observation, including columns for `stop`,
-            `status`, and optional `start`, `lower`, `weight` columns.
-
-        Raises
-        ------
-        ImportError
-            If PyArrow is not installed.
-
-        Examples
-        --------
-        Export to PyArrow Table for interoperability with Arrow-based tools:
-
-        ```{python}
-        y.to_arrow()
-        ```
-
-        PyArrow Tables are the standard format for efficient data interchange between
-        different tools and libraries in the modern data stack.
-        """
-        try:
-            import pyarrow as pa
-        except ImportError as e:
-            raise ImportError(
-                "PyArrow is required for to_arrow(). Install it with: pip install pyarrow"
-            ) from e
-
+    def _frame_columns(self) -> dict[str, Any]:
         cols: dict[str, Any] = {}
         if self.start is not None:
             cols["start"] = self.start
@@ -1067,7 +928,51 @@ class Surv:
         cols["status"] = self.status
         if self.weights is not None:
             cols["weight"] = self.weights
-        return pa.table(cols)
+        return cols
+
+    def to_frame(self, *, format: str | None = None) -> Any:
+        """Return the response as a DataFrame (one row per observation).
+
+        Exports the `Surv` object to a tidy table where each row represents one
+        observation. The table includes the `stop` and `status` columns, plus optional
+        columns for `start` (entry time in counting-process form), `lower` (lower bound
+        for interval censoring), and `weight` (case weights). This is convenient for
+        inspection, export to CSV, or integration with other DataFrame workflows.
+
+        Parameters
+        ----------
+        format
+            Output format: `None` (default), `"pandas"`, `"polars"`, or `"pyarrow"`. When
+            `None`, a backend is auto-detected (Polars, then Pandas, then PyArrow).
+
+        Returns
+        -------
+        pandas.DataFrame, polars.DataFrame, or pyarrow.Table
+            A tidy table with one row per observation, including columns for `stop`,
+            `status`, and optional `start`, `lower`, `weight` columns.
+
+        Raises
+        ------
+        ImportError
+            If the requested (or, when auto-detecting, any) DataFrame library is not
+            installed.
+
+        Examples
+        --------
+        Export the response. Each row represents one observation with its event time
+        and status:
+
+        ```{python}
+        y.to_frame()
+        ```
+
+        Request a specific backend with `format=`:
+
+        ```{python}
+        y.to_frame(format="polars")
+        ```
+        """
+        return to_dataframe(self._frame_columns(), format=format)
 
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-ready mapping fully describing the response.

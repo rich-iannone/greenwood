@@ -56,5 +56,5 @@ def test_event_table_interval_not_supported() -> None:
 
 def test_event_table_to_pandas() -> None:
     y = Surv.right([4, 5], [1, 1])
-    df = event_table(y).to_pandas()
+    df = event_table(y).to_frame(format="pandas")
     assert list(df.columns) == ["time", "n_risk", "n_event", "n_censor"]

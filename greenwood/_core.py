@@ -20,6 +20,8 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import numpy.typing as npt
 
+from ._backends import to_dataframe
+
 if TYPE_CHECKING:
     from ._surv import Surv
 
@@ -39,8 +41,7 @@ class EventTable:
     Examples
     --------
     An `EventTable` is produced by `event_table`. Build one from the bundled `lung`
-    dataset and view it as a frame with `to_pandas`. The table built here is reused by
-    the export-method examples below.
+    dataset and view it as a frame with `to_frame`.
 
     ```{python}
     import greenwood as gw
@@ -48,7 +49,7 @@ class EventTable:
     lung = gw.load_dataset("lung")
     y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
     et = gw.event_table(y)
-    et.to_pandas()
+    et.to_frame()
     ```
     """
 
@@ -71,107 +72,45 @@ class EventTable:
         cols["n_censor"] = self.n_censor
         return cols
 
-    def to_pandas(self) -> Any:
-        """Return the tabulation as a pandas DataFrame.
+    def to_frame(self, *, format: str | None = None) -> Any:
+        """Return the tabulation as a DataFrame.
 
-        This method exports the event-table rows to pandas with one row per unique exit
-        time and columns for the risk set, events, censorings, and optional strata labels.
+        Exports the event-table rows with one row per unique exit time and columns for the
+        risk set, events, censorings, and optional strata labels.
 
-        Returns
-        -------
-        pandas.DataFrame
-            A tidy DataFrame containing `time`, `n_risk`, `n_event`, `n_censor`, and
-            optionally `strata`.
-
-        Raises
-        ------
-        ImportError
-            If pandas is not installed.
-
-        Examples
-        --------
-        Convert the event table to pandas for inspection or downstream analysis:
-
-        ```{python}
-        et.to_pandas()
-        ```
-        """
-        try:
-            import pandas as pd
-        except ImportError as e:
-            raise ImportError(
-                "pandas is required for to_pandas(). Install it with: pip install pandas"
-            ) from e
-
-        return pd.DataFrame(self._table_columns())
-
-    def to_polars(self) -> Any:
-        """Return the tabulation as a Polars DataFrame.
-
-        This method exports the event-table rows to Polars with one row per unique exit
-        time and columns for the risk set, events, censorings, and optional strata labels.
+        Parameters
+        ----------
+        format
+            Output format: `None` (default), `"pandas"`, `"polars"`, or `"pyarrow"`. When
+            `None`, a backend is auto-detected (Polars, then Pandas, then PyArrow).
 
         Returns
         -------
-        polars.DataFrame
-            A tidy DataFrame containing `time`, `n_risk`, `n_event`, `n_censor`, and
-            optionally `strata`.
-
-        Raises
-        ------
-        ImportError
-            If polars is not installed.
-
-        Examples
-        --------
-        Convert the event table to Polars for fast columnar processing:
-
-        ```{python}
-        et.to_polars()
-        ```
-        """
-        try:
-            import polars as pl
-        except ImportError as e:
-            raise ImportError(
-                "polars is required for to_polars(). Install it with: pip install polars"
-            ) from e
-
-        return pl.DataFrame(self._table_columns())
-
-    def to_arrow(self) -> Any:
-        """Return the tabulation as a PyArrow Table.
-
-        This method exports the event-table rows to an Arrow table, preserving the same
-        columns used in the pandas and Polars exports for efficient interoperability.
-
-        Returns
-        -------
-        pyarrow.Table
-            A table containing `time`, `n_risk`, `n_event`, `n_censor`, and optionally
+        pandas.DataFrame, polars.DataFrame, or pyarrow.Table
+            A tidy table containing `time`, `n_risk`, `n_event`, `n_censor`, and optionally
             `strata`.
 
         Raises
         ------
         ImportError
-            If pyarrow is not installed.
+            If the requested (or, when auto-detecting, any) DataFrame library is not
+            installed.
 
         Examples
         --------
-        Convert the event table to Arrow for interchange with Arrow-based tools:
+        Convert the event table for inspection or downstream analysis:
 
         ```{python}
-        et.to_arrow()
+        et.to_frame()
+        ```
+
+        Request a specific backend with `format=`:
+
+        ```{python}
+        et.to_frame(format="polars")
         ```
         """
-        try:
-            import pyarrow as pa
-        except ImportError as e:
-            raise ImportError(
-                "pyarrow is required for to_arrow(). Install it with: pip install pyarrow"
-            ) from e
-
-        return pa.table(self._table_columns())
+        return to_dataframe(self._table_columns(), format=format)
 
 
 def _tabulate_block(
@@ -249,7 +188,7 @@ def event_table(surv: Surv, *, group: Any = None, weights: Any = None) -> EventT
         - `n_censor`: Weighted number of censored subjects at each time.
         - `strata` (if grouped): Stratum label for each row.
 
-        Access columns via `.to_pandas()`, `.to_polars()`, `.to_arrow()`, or iterate directly.
+        Access columns via `.to_frame()` (optionally `format=`), or iterate directly.
 
     Notes
     -----
@@ -283,7 +222,7 @@ def event_table(surv: Surv, *, group: Any = None, weights: Any = None) -> EventT
     lung = gw.load_dataset("lung")
     y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
     et = gw.event_table(y)
-    et.to_pandas().head(10)
+    et.to_frame().head(10)
     ```
 
     The first row shows the first event time: how many subjects were at risk, how many
@@ -294,7 +233,7 @@ def event_table(surv: Surv, *, group: Any = None, weights: Any = None) -> EventT
 
     ```{python}
     et_sex = gw.event_table(y, group=lung["sex"])
-    et_sex.to_pandas().head(15)
+    et_sex.to_frame().head(15)
     ```
 
     Now each unique time appears twice (once per stratum) with a `strata` column indicating
@@ -307,7 +246,7 @@ def event_table(surv: Surv, *, group: Any = None, weights: Any = None) -> EventT
     ```{python}
     import numpy as np
     et = gw.event_table(y)
-    df = et.to_pandas()
+    df = et.to_frame(format="pandas")
     # Kaplan-Meier survival at each time
     df["surv"] = np.cumprod(1 - df["n_event"] / df["n_risk"])
     df[["time", "n_risk", "n_event", "surv"]].head(10)

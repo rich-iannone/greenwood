@@ -194,7 +194,7 @@ def test_pairwise_logrank_matches_r() -> None:
     y = Surv.right(df["time"], event=df["status"])
     fixture = load_fixture("pairwise_logrank_veteran")
     for correction, key in [("holm", "holm"), ("bh", "bh"), ("bonferroni", "bonferroni")]:
-        pw = gw.pairwise_logrank_test(y, df["celltype"], correction=correction)
+        pw = gw.pairwise_logrank_test(y, df["celltype"], correction=correction, format="pandas")
         # Order rows by (group1, group2) to align with R's combn ordering.
         pw = pw.sort_values(["group1", "group2"]).reset_index(drop=True)
         assert_allclose_to_r(pw["p_value"].to_numpy(), fixture["p_value"], what="pairwise raw p")
@@ -215,7 +215,7 @@ def _check_cox(cox: gw.CoxPH, fixture: dict[str, Any], label: str) -> None:
     assert_allclose_to_r(cox.loglik_null_, fixture["loglik_null"], atol=1e-6, what=f"{label} ll0")
     assert_allclose_to_r(cox.loglik_, fixture["loglik"], atol=1e-6, what=f"{label} ll")
     # HR confidence limits (exponentiated scale).
-    tidy_exp = cox.to_pandas(exponentiate=True)
+    tidy_exp = cox.to_frame(format="pandas", exponentiate=True)
     assert_allclose_to_r(tidy_exp["conf_low"].to_numpy(), fixture["conf_low"], what=f"{label} lo")
     assert_allclose_to_r(tidy_exp["conf_high"].to_numpy(), fixture["conf_high"], what=f"{label} hi")
     # Global tests: LR and score are exact; R stores the Wald test rounded to 2 decimals.
@@ -424,7 +424,7 @@ def test_aalen_johansen_cif_matches_r() -> None:
     y = Surv.multistate(etime, event=event, states=("pcm", "death"))
     fixture = load_fixture("cif_mgus2")
 
-    table = gw.AalenJohansen().fit(y).to_pandas()
+    table = gw.AalenJohansen().fit(y).to_frame(format="pandas")
     pcm = table[table["cause"] == "pcm"].sort_values("time")
     death = table[table["cause"] == "death"].sort_values("time")
 
@@ -479,7 +479,7 @@ def test_multistate_occupancy_matches_r() -> None:
     t0, t1, frm, evt = _mgus2_illness_death()
     fixture = load_fixture("multistate_mgus2")
     ms = gw.MultiState().fit(t0, t1, frm, evt, states=("mgus", "pcm", "death"))
-    table = ms.to_pandas()
+    table = ms.to_frame(format="pandas")
     assert_allclose_to_r(table["time"].to_numpy(), fixture["time"], what="ms time")
     for state in ("mgus", "pcm", "death"):
         assert_allclose_to_r(table[state].to_numpy(), fixture[state], what=f"occupancy {state}")
@@ -512,7 +512,7 @@ def test_risk_table_numbers_match_r() -> None:
     df = gw.load_dataset("lung", backend="pandas")
     y = Surv.right(df["time"], event=(df["status"] == 2))
     km = gw.KaplanMeier().fit(y, by=df["sex"])
-    rtd = gw.viz.risk_table_data(km, times=fixture["times"])
+    rtd = gw.viz.risk_table_data(km, times=fixture["times"], format="pandas")
     for label, expected in fixture["n_risk"].items():
         sub = rtd[rtd["strata"] == label].sort_values("time")
         assert_allclose_to_r(sub["n_risk"].to_numpy(), expected, what=f"n_risk sex={label}")

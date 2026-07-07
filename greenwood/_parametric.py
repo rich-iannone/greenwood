@@ -21,6 +21,7 @@ import numpy.typing as npt
 from scipy.optimize import minimize
 from scipy.stats import logistic, norm
 
+from ._backends import to_dataframe
 from ._cox import _design_matrix
 
 if TYPE_CHECKING:
@@ -120,7 +121,7 @@ class AFT:
     Call `fit(surv, covariates)` with a right-censored `Surv` response and a covariate design
     (a 2-D array or a dataframe). An intercept is added automatically; rows with missing
     covariates are dropped. Results are exposed as arrays (`coef_`, `scale_`, `std_error_`,
-    `z_`, `p_value_`) and as tidy frames via `to_pandas()`, `to_polars()`, `to_arrow()`, and
+    `z_`, `p_value_`) and as tidy frames via `to_frame()` (optionally `format=`) and
     `greenwood.tidy`.
 
     Examples
@@ -308,6 +309,7 @@ class AFT:
         times: Any = None,
         p: Any = 0.5,
         conditional_after: Any = None,
+        format: str | None = None,
     ) -> Any:
         """Predict survival times, quantiles, or survival probabilities from the AFT model.
 
@@ -359,6 +361,10 @@ class AFT:
             = S(t) / S(c). Scalar (same conditioning time for all subjects) or array-like
             (one per subject). Default `None` (unconditional). Predictions before the landmark
             time return `1.0`.
+        format
+            Output format for the returned frame (`type="quantile"` or `"survival"`): `None`
+            (default), `"pandas"`, `"polars"`, or `"pyarrow"`. When `None`, a backend is
+            auto-detected (Polars, then Pandas, then PyArrow). Ignored for `type="lp"`.
 
         Returns
         -------
@@ -416,19 +422,13 @@ class AFT:
         if type == "lp":
             return mu
         if type == "quantile":
-            import pandas as pd
-
             p_arr = np.atleast_1d(np.asarray(p, dtype=float))
             w = _error_quantile(self.dist, p_arr)
             quantiles = np.exp(mu[:, None] + sigma * w[None, :])  # (n_subjects, n_p)
-            frame = pd.DataFrame(
-                {f"subject_{i + 1}": quantiles[i] for i in range(quantiles.shape[0])}
-            )
-            frame.insert(0, "p", p_arr)
-            return frame
+            cols: dict[str, Any] = {"p": p_arr}
+            cols.update({f"subject_{i + 1}": quantiles[i] for i in range(quantiles.shape[0])})
+            return to_dataframe(cols, format=format)
         if type == "survival":
-            import pandas as pd
-
             if times is None:
                 w = _error_quantile(self.dist, np.linspace(0.01, 0.99, 50))
                 query = np.unique(np.round(np.exp(mu.mean() + sigma * w), 6))
@@ -449,9 +449,9 @@ class AFT:
                 _, log_s_c = _log_density_survival(self.dist, zc)
                 log_s_c = np.where(c > 0, log_s_c, 0.0)  # S(c) = 1 for c <= 0
                 surv = np.exp(np.minimum(log_s - log_s_c[None, :], 0.0))  # ratio capped at 1
-            frame = pd.DataFrame({f"subject_{i + 1}": surv[:, i] for i in range(surv.shape[1])})
-            frame.insert(0, "time", query)
-            return frame
+            cols = {"time": query}
+            cols.update({f"subject_{i + 1}": surv[:, i] for i in range(surv.shape[1])})
+            return to_dataframe(cols, format=format)
         raise ValueError(f"Unknown predict type {type!r}; use 'lp', 'quantile', or 'survival'.")
 
     def _coefficient_columns(self) -> dict[str, Any]:
@@ -465,128 +465,63 @@ class AFT:
             "conf_high": self.conf_high_,
         }
 
-    def to_pandas(self) -> Any:
-        """Return the coefficient table as a pandas DataFrame.
+    def to_frame(self, *, format: str | None = None) -> Any:
+        """Return the coefficient table as a DataFrame.
 
-        This method exports one row per term, including the intercept, with coefficient
-        estimates, standard errors, Wald statistics, p-values, and confidence limits.
+        Exports one row per term, including the intercept, with coefficient estimates,
+        standard errors, Wald statistics, p-values, and confidence limits.
+
+        Parameters
+        ----------
+        format
+            Output format: `None` (default), `"pandas"`, `"polars"`, or `"pyarrow"`. When
+            `None`, a backend is auto-detected (Polars, then Pandas, then PyArrow).
 
         Returns
         -------
-        pandas.DataFrame
-            A tidy DataFrame with columns `term`, `estimate`, `std_error`, `statistic`,
+        pandas.DataFrame, polars.DataFrame, or pyarrow.Table
+            A tidy table with columns `term`, `estimate`, `std_error`, `statistic`,
             `p_value`, `conf_low`, and `conf_high`.
 
         Raises
         ------
         ImportError
-            If pandas is not installed.
+            If the requested (or, when auto-detecting, any) DataFrame library is not
+            installed.
 
         Examples
         --------
-        Export the fitted AFT coefficients to pandas:
+        Export the fitted AFT coefficients:
 
         ```{python}
-        aft.to_pandas()
+        aft.to_frame()
         ```
-        """
-        try:
-            import pandas as pd
-        except ImportError as e:
-            raise ImportError(
-                "pandas is required for to_pandas(). Install it with: pip install pandas"
-            ) from e
 
-        return pd.DataFrame(self._coefficient_columns())
-
-    def to_polars(self) -> Any:
-        """Return the coefficient table as a Polars DataFrame.
-
-        This method exports one row per term, including the intercept, with coefficient
-        estimates, standard errors, Wald statistics, p-values, and confidence limits.
-
-        Returns
-        -------
-        polars.DataFrame
-            A tidy DataFrame with columns `term`, `estimate`, `std_error`, `statistic`,
-            `p_value`, `conf_low`, and `conf_high`.
-
-        Raises
-        ------
-        ImportError
-            If polars is not installed.
-
-        Examples
-        --------
-        Export the fitted AFT coefficients to Polars:
+        Request a specific backend with `format=`:
 
         ```{python}
-        aft.to_polars()
+        aft.to_frame(format="polars")
         ```
         """
-        try:
-            import polars as pl
-        except ImportError as e:
-            raise ImportError(
-                "polars is required for to_polars(). Install it with: pip install polars"
-            ) from e
-
-        return pl.DataFrame(self._coefficient_columns())
-
-    def to_arrow(self) -> Any:
-        """Return the coefficient table as a PyArrow Table.
-
-        This method exports one row per term, including the intercept, with coefficient
-        estimates, standard errors, Wald statistics, p-values, and confidence limits.
-
-        Returns
-        -------
-        pyarrow.Table
-            A table with columns `term`, `estimate`, `std_error`, `statistic`, `p_value`,
-            `conf_low`, and `conf_high`.
-
-        Raises
-        ------
-        ImportError
-            If pyarrow is not installed.
-
-        Examples
-        --------
-        Export the fitted AFT coefficients to Arrow:
-
-        ```{python}
-        aft.to_arrow()
-        ```
-        """
-        try:
-            import pyarrow as pa
-        except ImportError as e:
-            raise ImportError(
-                "pyarrow is required for to_arrow(). Install it with: pip install pyarrow"
-            ) from e
-
-        return pa.table(self._coefficient_columns())
+        return to_dataframe(self._coefficient_columns(), format=format)
 
 
-def _tidy_aft(model: AFT, **_: Any) -> Any:
-    return model.to_pandas()
+def _tidy_aft(model: AFT, *, format: str | None = None, **_: Any) -> Any:
+    return model.to_frame(format=format)
 
 
-def _glance_aft(model: AFT, **_: Any) -> Any:
-    import pandas as pd
-
+def _glance_aft(model: AFT, *, format: str | None = None, **_: Any) -> Any:
     n_params = len(model.term_names_) + (0 if model.dist == "exponential" else 1)
-    return pd.DataFrame(
-        [
-            {
-                "dist": model.dist,
-                "n": model.n_,
-                "nevent": model.n_event_,
-                "scale": model.scale_,
-                "loglik": model.loglik_,
-                "aic": -2.0 * model.loglik_ + 2.0 * n_params,
-            }
-        ]
+    return to_dataframe(
+        {
+            "dist": [model.dist],
+            "n": [model.n_],
+            "nevent": [model.n_event_],
+            "scale": [model.scale_],
+            "loglik": [model.loglik_],
+            "aic": [-2.0 * model.loglik_ + 2.0 * n_params],
+        },
+        format=format,
     )
 
 

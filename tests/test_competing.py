@@ -16,7 +16,7 @@ def _simple_multistate() -> Surv:
 
 def test_cif_bounded_and_monotone() -> None:
     aj = AalenJohansen().fit(_simple_multistate())
-    table = aj.to_pandas()
+    table = aj.to_frame(format="pandas")
     for cause in ("pcm", "death"):
         cif = table[table["cause"] == cause].sort_values("time")["estimate"].to_numpy()
         assert np.all(np.diff(cif) >= -1e-12)  # non-decreasing
@@ -26,7 +26,7 @@ def test_cif_bounded_and_monotone() -> None:
 def test_cifs_sum_to_complement_of_survival() -> None:
     # At the last time, sum of CIFs across causes = 1 - overall survival.
     y = _simple_multistate()
-    table = AalenJohansen().fit(y).to_pandas()
+    table = AalenJohansen().fit(y).to_frame(format="pandas")
     last = table[table["time"] == table["time"].max()]
     total_cif = last["estimate"].sum()
     km = gw.KaplanMeier().fit(Surv.right(y.stop, event=y.event))
@@ -44,7 +44,7 @@ def test_invalid_conf_level() -> None:
 
 
 def test_to_pandas_columns() -> None:
-    table = AalenJohansen().fit(_simple_multistate()).to_pandas()
+    table = AalenJohansen().fit(_simple_multistate()).to_frame(format="pandas")
     assert list(table.columns) == [
         "cause",
         "time",
@@ -58,7 +58,7 @@ def test_to_pandas_columns() -> None:
 
 def test_grouped_has_strata_column() -> None:
     y = Surv.multistate([1, 2, 3, 4], event=[1, 2, 1, 2], states=("pcm", "death"))
-    table = AalenJohansen().fit(y, by=["a", "a", "b", "b"]).to_pandas()
+    table = AalenJohansen().fit(y, by=["a", "a", "b", "b"]).to_frame(format="pandas")
     assert "strata" in table.columns
     assert set(table["strata"]) == {"a", "b"}
 
@@ -109,7 +109,7 @@ def test_finegray_tidy_and_glance() -> None:
     fg = FineGray("pcm").fit(y, df[["age", "sex"]])
     tidy = gw.tidy(fg, exponentiate=True)
     np.testing.assert_allclose(tidy["estimate"].to_numpy(), fg.hazard_ratio_)
-    assert gw.glance(fg).iloc[0]["nevent"] > 0
+    assert gw.glance(fg, format="pandas").iloc[0]["nevent"] > 0
 
 
 def test_finegray_length_mismatch() -> None:
@@ -134,7 +134,7 @@ def test_multistate_illness_death_occupancy() -> None:
         event=["pcm", "death", "death"],
         states=("mgus", "pcm", "death"),
     )
-    table = ms.to_pandas()
+    table = ms.to_frame(format="pandas")
     # Occupancy probabilities sum to 1 at every time.
     row_sums = table[["mgus", "pcm", "death"]].sum(axis=1).to_numpy()
     np.testing.assert_allclose(row_sums, 1.0)
@@ -155,7 +155,7 @@ def test_multistate_predict_step_function() -> None:
     ms = MultiState().fit(
         start=[0, 0], stop=[2, 4], state=["a", "a"], event=["b", "b"], states=("a", "b")
     )
-    pred = ms.predict([0.0, 3.0, 5.0])
+    pred = ms.predict([0.0, 3.0, 5.0], format="pandas")
     assert list(pred.columns) == ["time", "a", "b"]
     np.testing.assert_allclose(pred[["a", "b"]].sum(axis=1).to_numpy(), 1.0)
 
@@ -165,4 +165,4 @@ def test_multistate_infers_states() -> None:
 
     ms = MultiState().fit(start=[0, 0], stop=[1, 2], state=["a", "a"], event=["b", None])
     assert ms.states_ == ("a", "b")
-    assert list(ms.to_pandas().columns) == ["time", "a", "b"]
+    assert list(ms.to_frame(format="pandas").columns) == ["time", "a", "b"]

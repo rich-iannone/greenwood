@@ -64,7 +64,7 @@ def test_tidy_and_glance_via_registry(lung_surv) -> None:  # type: ignore[no-unt
     model = AFT("weibull").fit(y, df[["age", "sex"]])
     tidy = gw.tidy(model)
     assert list(tidy["term"]) == ["(Intercept)", "age", "sex"]
-    glance = gw.glance(model)
+    glance = gw.glance(model, format="pandas")
     row = glance.iloc[0]
     assert row["dist"] == "weibull"
     assert row["nevent"] == 165
@@ -74,7 +74,7 @@ def test_tidy_and_glance_via_registry(lung_surv) -> None:  # type: ignore[no-unt
 def test_to_pandas_columns(lung_surv) -> None:  # type: ignore[no-untyped-def]
     df, y = lung_surv
     model = AFT().fit(y, df[["age", "sex"]])
-    assert list(model.to_pandas().columns) == [
+    assert list(model.to_frame(format="pandas").columns) == [
         "term",
         "estimate",
         "std_error",
@@ -133,7 +133,9 @@ def test_predict_lp_matches_design(lung_surv) -> None:  # type: ignore[no-untype
 def test_predict_survival_shape(lung_surv) -> None:  # type: ignore[no-untyped-def]
     df, y = lung_surv
     model = AFT("weibull").fit(y, df[["age", "sex"]])
-    surv = model.predict(df[["age", "sex"]].iloc[:4], type="survival", times=[100, 300, 500])
+    surv = model.predict(
+        df[["age", "sex"]].iloc[:4], type="survival", times=[100, 300, 500], format="pandas"
+    )
     assert list(surv.columns) == ["time", "subject_1", "subject_2", "subject_3", "subject_4"]
     assert len(surv) == 3
     assert ((surv.iloc[:, 1:] >= 0) & (surv.iloc[:, 1:] <= 1)).all().all()
@@ -148,14 +150,14 @@ def test_predict_conditional_after_identity(lung_surv) -> None:  # type: ignore[
     nd = df[["age", "sex"]].iloc[:2]
     times = [200, 400, 600]
     c = 150.0
-    s_t = model.predict(nd, type="survival", times=times)
-    s_c = model.predict(nd, type="survival", times=[c])
-    s_cond = model.predict(nd, type="survival", times=times, conditional_after=c)
+    s_t = model.predict(nd, type="survival", times=times, format="pandas")
+    s_c = model.predict(nd, type="survival", times=[c], format="pandas")
+    s_cond = model.predict(nd, type="survival", times=times, conditional_after=c, format="pandas")
     for col in ("subject_1", "subject_2"):
         np.testing.assert_allclose(
             s_cond[col].to_numpy() * float(s_c[col].iloc[0]), s_t[col].to_numpy(), atol=1e-12
         )
-    s0 = model.predict(nd, type="survival", times=times, conditional_after=0.0)
+    s0 = model.predict(nd, type="survival", times=times, conditional_after=0.0, format="pandas")
     np.testing.assert_allclose(
         s0[["subject_1", "subject_2"]].to_numpy(), s_t[["subject_1", "subject_2"]].to_numpy()
     )

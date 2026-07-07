@@ -17,6 +17,8 @@ import numpy as np
 import numpy.typing as npt
 from scipy.stats import chi2
 
+from ._backends import to_dataframe
+
 if TYPE_CHECKING:
     from ._surv import Surv
 
@@ -427,6 +429,7 @@ def pairwise_logrank_test(
     gamma: float = 0.0,
     strata: Any = None,
     correction: str = "holm",
+    format: str | None = None,
 ) -> Any:
     """Pairwise log-rank tests for all group pairs with multiple-comparison correction.
 
@@ -471,10 +474,13 @@ def pairwise_logrank_test(
           where m is the number of pairs.
         - `"none"`: No adjustment. Use only if you're testing a single pre-planned pair
           (though use `logrank_test` directly in that case).
+    format
+        Output format: `None` (default), `"pandas"`, `"polars"`, or `"pyarrow"`. When
+        `None`, a backend is auto-detected (Polars, then Pandas, then PyArrow).
 
     Returns
     -------
-    pandas.DataFrame
+    pandas.DataFrame, polars.DataFrame, or pyarrow.Table
         One row per pair of groups with columns:
 
         - `group1`, `group2`: The pair of group labels being compared.
@@ -520,6 +526,7 @@ def pairwise_logrank_test(
     Filter to significant pairs (adjusted p-value < 0.05):
 
     ```{python}
+    pairs = gw.pairwise_logrank_test(y, group=vet["celltype"], format="pandas")
     pairs[pairs["p_adjusted"] < 0.05]
     ```
 
@@ -536,8 +543,6 @@ def pairwise_logrank_test(
     gw.pairwise_logrank_test(y, group=vet["celltype"], correction="bh")
     ```
     """
-    import pandas as pd
-
     from ._surv import CensoringType, _to_1d_array
 
     if surv.type not in (CensoringType.RIGHT, CensoringType.COUNTING):
@@ -581,4 +586,5 @@ def pairwise_logrank_test(
 
     for row, p_adj in zip(rows, _p_adjust(raw_p, correction), strict=True):
         row["p_adjusted"] = p_adj
-    return pd.DataFrame(rows)
+    columns = {key: [row[key] for row in rows] for key in rows[0]}
+    return to_dataframe(columns, format=format)

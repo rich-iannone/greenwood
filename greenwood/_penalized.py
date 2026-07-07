@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import numpy.typing as npt
 
+from ._backends import to_dataframe
 from ._cox import _cox_terms, _design_matrix
 
 if TYPE_CHECKING:
@@ -290,7 +291,14 @@ class CoxNet:
             cumhaz[i] = total
         return self._event_times, cumhaz
 
-    def predict(self, newdata: Any = None, *, type: str = "lp", times: Any = None) -> Any:
+    def predict(
+        self,
+        newdata: Any = None,
+        *,
+        type: str = "lp",
+        times: Any = None,
+        format: str | None = None,
+    ) -> Any:
         """Predict log-hazard, risk, or survival probabilities from the penalized Cox model.
 
         Generates predictions from a fitted elastic-net penalized Cox model. Pass `newdata=None`
@@ -328,6 +336,10 @@ class CoxNet:
             Query times for `type="survival"` (ignored for other types). An array-like of
             floats. If `None` (the default), uses the event times from the training data
             (baseline cumulative hazard times).
+        format
+            Output format for the returned frame (`type="survival"`): `None` (default),
+            `"pandas"`, `"polars"`, or `"pyarrow"`. When `None`, a backend is auto-detected
+            (Polars, then Pandas, then PyArrow). Ignored for `type="lp"` and `type="risk"`.
 
         Returns
         -------
@@ -390,17 +402,15 @@ class CoxNet:
         if type == "risk":
             return np.exp(lp)
         if type == "survival":
-            import pandas as pd
-
             base_times, base_cumhaz = self._baseline()
             query = base_times if times is None else np.atleast_1d(np.asarray(times, dtype=float))
             idx = np.searchsorted(base_times, query, side="right") - 1
             h0 = np.where(idx >= 0, base_cumhaz[idx.clip(min=0)], 0.0)
             risk = np.exp(x @ self.coef_)
             surv = np.exp(-np.outer(h0, risk))
-            frame = pd.DataFrame({f"subject_{i + 1}": surv[:, i] for i in range(x.shape[0])})
-            frame.insert(0, "time", query)
-            return frame
+            columns: dict[str, Any] = {"time": query}
+            columns.update({f"subject_{i + 1}": surv[:, i] for i in range(x.shape[0])})
+            return to_dataframe(columns, format=format)
         raise ValueError(f"Unknown predict type {type!r}; use 'lp', 'risk', or 'survival'.")
 
     def _coefficient_columns(self) -> dict[str, Any]:
@@ -410,103 +420,41 @@ class CoxNet:
             "hazard_ratio": self.hazard_ratio_,
         }
 
-    def to_pandas(self) -> Any:
-        """Return the penalized coefficient table as a pandas DataFrame.
+    def to_frame(self, *, format: str | None = None) -> Any:
+        """Return the penalized coefficient table as a DataFrame.
 
-        This method exports one row per term with the penalized coefficient estimate and
-        its hazard ratio. Terms set to zero by the lasso remain in the table with zero
-        estimates.
+        Exports one row per term with the penalized coefficient estimate and its hazard
+        ratio. Terms set to zero by the lasso remain in the table with zero estimates.
+
+        Parameters
+        ----------
+        format
+            Output format: `None` (default), `"pandas"`, `"polars"`, or `"pyarrow"`. When
+            `None`, a backend is auto-detected (Polars, then Pandas, then PyArrow).
 
         Returns
         -------
-        pandas.DataFrame
-            A tidy DataFrame with columns `term`, `estimate`, and `hazard_ratio`.
+        pandas.DataFrame, polars.DataFrame, or pyarrow.Table
+            A tidy table with columns `term`, `estimate`, and `hazard_ratio`.
 
         Raises
         ------
         ImportError
-            If pandas is not installed.
+            If the requested (or, when auto-detecting, any) DataFrame library is not
+            installed.
 
         Examples
         --------
-        Export the fitted CoxNet coefficients to pandas:
+        Export the fitted CoxNet coefficients:
 
         ```{python}
-        coxnet.to_pandas()
+        coxnet.to_frame()
         ```
-        """
-        try:
-            import pandas as pd
-        except ImportError as e:
-            raise ImportError(
-                "pandas is required for to_pandas(). Install it with: pip install pandas"
-            ) from e
 
-        return pd.DataFrame(self._coefficient_columns())
-
-    def to_polars(self) -> Any:
-        """Return the penalized coefficient table as a Polars DataFrame.
-
-        This method exports one row per term with the penalized coefficient estimate and
-        its hazard ratio. Terms set to zero by the lasso remain in the table with zero
-        estimates.
-
-        Returns
-        -------
-        polars.DataFrame
-            A tidy DataFrame with columns `term`, `estimate`, and `hazard_ratio`.
-
-        Raises
-        ------
-        ImportError
-            If polars is not installed.
-
-        Examples
-        --------
-        Export the fitted CoxNet coefficients to Polars:
+        Request a specific backend with `format=`:
 
         ```{python}
-        coxnet.to_polars()
+        coxnet.to_frame(format="polars")
         ```
         """
-        try:
-            import polars as pl
-        except ImportError as e:
-            raise ImportError(
-                "polars is required for to_polars(). Install it with: pip install polars"
-            ) from e
-
-        return pl.DataFrame(self._coefficient_columns())
-
-    def to_arrow(self) -> Any:
-        """Return the penalized coefficient table as a PyArrow Table.
-
-        This method exports one row per term with the penalized coefficient estimate and
-        its hazard ratio for Arrow-based interoperability.
-
-        Returns
-        -------
-        pyarrow.Table
-            A table with columns `term`, `estimate`, and `hazard_ratio`.
-
-        Raises
-        ------
-        ImportError
-            If pyarrow is not installed.
-
-        Examples
-        --------
-        Export the fitted CoxNet coefficients to Arrow:
-
-        ```{python}
-        coxnet.to_arrow()
-        ```
-        """
-        try:
-            import pyarrow as pa
-        except ImportError as e:
-            raise ImportError(
-                "pyarrow is required for to_arrow(). Install it with: pip install pyarrow"
-            ) from e
-
-        return pa.table(self._coefficient_columns())
+        return to_dataframe(self._coefficient_columns(), format=format)

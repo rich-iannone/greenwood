@@ -58,9 +58,9 @@ def test_resolve_backend_fallback_and_error(monkeypatch) -> None:  # type: ignor
 
 def test_event_table_weights_grouped_and_backends(y, lung) -> None:
     et = event_table(y, weights=np.ones(y.n))
-    assert et.to_polars().shape[1] == 4
-    assert et.to_arrow().num_columns == 4
-    grouped = event_table(y, group=lung["sex"]).to_pandas()
+    assert et.to_frame(format="polars").shape[1] == 4
+    assert et.to_frame(format="pyarrow").num_columns == 4
+    grouped = event_table(y, group=lung["sex"]).to_frame(format="pandas")
     assert "strata" in grouped.columns
     with pytest.raises(NotImplementedError, match="event_table"):
         event_table(Surv.interval(lower=[1, 2], upper=[2, 3]))
@@ -72,13 +72,13 @@ def test_event_table_weights_grouped_and_backends(y, lung) -> None:
 def test_km_strata_predict_and_backends(y, lung) -> None:
     km = KaplanMeier().fit(y)
     assert km.strata_ is None  # ungrouped
-    assert km.to_polars().shape[0] > 0
-    assert km.to_arrow().num_rows > 0
+    assert km.to_frame(format="polars").shape[0] > 0
+    assert km.to_frame(format="pyarrow").num_rows > 0
     with pytest.raises(ValueError, match="survival' or 'cumhaz"):
         km.predict([100], what="nonsense")
     grouped = KaplanMeier().fit(y, by=lung["sex"])
     assert grouped.strata_ is not None
-    assert "strata" in grouped.to_pandas().columns
+    assert "strata" in grouped.to_frame(format="pandas").columns
     assert set(grouped.predict([100, 200])) == {1, 2}  # dict keyed by stratum
 
 
@@ -87,15 +87,15 @@ def test_nelson_aalen_variants(y, lung) -> None:
         NelsonAalen(conf_type="bad")
     with pytest.raises(ValueError, match="conf_level"):
         NelsonAalen(conf_level=2.0)
-    na_plain = NelsonAalen(conf_type="plain").fit(y).to_pandas()
+    na_plain = NelsonAalen(conf_type="plain").fit(y).to_frame(format="pandas")
     assert {"conf_low", "conf_high"} <= set(na_plain.columns)
     na = NelsonAalen().fit(y)
     assert na.strata_ is None
-    assert na.to_polars().shape[0] > 0
-    assert na.to_arrow().num_rows > 0
+    assert na.to_frame(format="polars").shape[0] > 0
+    assert na.to_frame(format="pyarrow").num_rows > 0
     grouped = NelsonAalen().fit(y, by=lung["sex"])
     assert grouped.strata_ is not None
-    assert "strata" in grouped.to_pandas().columns
+    assert "strata" in grouped.to_frame(format="pandas").columns
 
 
 # -- log-rank family -------------------------------------------------------------------
@@ -167,8 +167,8 @@ def test_royston_parmar_paths(y, lung) -> None:
         RoystonParmar().fit(Surv.right([1, 2, 3, 4], [0, 0, 0, 0]))
     rp = RoystonParmar(df=2).fit(y, lung[["age", "sex"]])
     nd = lung[["age", "sex"]].iloc[:1]
-    assert (rp.predict(nd, type="cumhaz", times=[180, 365]).iloc[:, 1] >= 0).all()
-    assert list(rp.to_pandas().columns)[0] == "term"
+    assert (rp.predict(nd, type="cumhaz", times=[180, 365], format="pandas").iloc[:, 1] >= 0).all()
+    assert list(rp.to_frame(format="pandas").columns)[0] == "term"
     with pytest.raises(ValueError, match="Unknown predict type"):
         rp.predict(nd, type="nonsense", times=[180])
 
@@ -238,7 +238,7 @@ def test_surv_left_and_interval_dataframe() -> None:
     left = Surv.left([3, 5, 7], event=[1, 0, 1])
     assert left.type.value == "left" and len(left) == 3
     iv = Surv.interval(lower=[1, 2, 3], upper=[2, 4, 6])
-    assert "lower" in iv.to_pandas().columns
+    assert "lower" in iv.to_frame(format="pandas").columns
 
 
 def test_calibration_before_first_event(y, lung) -> None:
@@ -291,8 +291,8 @@ def test_competing_backends_and_validation() -> None:
         [5, 6, 7, 8, 9, 10, 11, 12], event=[1, 2, 1, 2, 0, 1, 2, 1], states=("pcm", "death")
     )
     aj = AalenJohansen().fit(y_cr)
-    assert aj.to_polars().shape[0] > 0
-    assert aj.to_arrow().num_rows > 0
+    assert aj.to_frame(format="polars").shape[0] > 0
+    assert aj.to_frame(format="pyarrow").num_rows > 0
     with pytest.raises(ValueError, match="conf_level"):
         FineGray("pcm", conf_level=2.0)
 
@@ -303,8 +303,8 @@ def test_competing_backends_and_validation() -> None:
         event=["pcm", "death", "death", None, "pcm", "death"],
         states=("mgus", "pcm", "death"),
     )
-    assert ms.to_polars().shape[0] > 0
-    assert ms.to_arrow().num_rows > 0
+    assert ms.to_frame(format="polars").shape[0] > 0
+    assert ms.to_frame(format="pyarrow").num_rows > 0
 
 
 # -- Grouped tidy / repr paths ---------------------------------------------------------

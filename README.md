@@ -77,7 +77,7 @@ y = gw.Surv.right(df["time"], event=(df["status"] == 2))
 
 # Kaplan-Meier with stratification and detailed summaries
 km = gw.KaplanMeier(conf_type="log-log").fit(y, by=df["sex"])
-km.to_pandas()          # tidy: strata, time, n_risk, n_event, estimate, conf_low, conf_high
+km.to_frame()           # tidy: strata, time, n_risk, n_event, estimate, conf_low, conf_high
 km.median(ci=True)         # median survival with confidence limits, per stratum
 km.rmst(365, ci=True)      # restricted mean survival time up to 365 days
 km.predict([180, 365])     # survival probability at specific times
@@ -105,12 +105,12 @@ mg = gw.load_dataset("mgus2")
 etime = mg["ptime"].where(mg["pstat"] == 1, mg["futime"])
 cause = mg["pstat"].where(mg["pstat"] == 1, 2 * mg["death"])
 cr = Surv.multistate(etime, event=cause, states=("pcm", "death"))
-gw.AalenJohansen().fit(cr).to_pandas()
-gw.FineGray("pcm").fit(cr, mg[["age", "sex"]]).to_pandas()
+gw.AalenJohansen().fit(cr).to_frame()
+gw.FineGray("pcm").fit(cr, mg[["age", "sex"]]).to_frame()
 
 # Model performance and prediction
 gw.concordance_index(y, cox.predict(type="lp"))
-S = cox.predict(df[["age", "sex"]], type="survival", times=[180, 365]).iloc[:, 1:].to_numpy().T
+S = cox.predict(df[["age", "sex"]], type="survival", times=[180, 365], format="pandas").iloc[:, 1:].to_numpy().T
 gw.brier_score(y, S, times=[180, 365])
 ```
 

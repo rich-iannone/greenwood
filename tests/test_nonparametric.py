@@ -20,7 +20,7 @@ def test_km_censoring_holds_survival_flat() -> None:
     # A censor at t=2 does not drop survival, but reduces the risk set afterward.
     km = KaplanMeier().fit(Surv.right([1, 2, 3], [1, 0, 1]))
     # events only at t=1 and t=3; at t=1 S=1-1/3=2/3, at t=3 n=1 so S=0.
-    df = km.to_pandas()
+    df = km.to_frame(format="pandas")
     assert list(df["n_event"]) == [1, 0, 1]
     np.testing.assert_allclose(km.survival_, [2 / 3, 2 / 3, 0.0])
 
@@ -69,7 +69,7 @@ def test_km_invalid_conf_level() -> None:
 
 def test_km_to_pandas_columns() -> None:
     km = KaplanMeier().fit(Surv.right([1, 2], [1, 1]))
-    df = km.to_pandas()
+    df = km.to_frame(format="pandas")
     assert list(df.columns) == [
         "time",
         "n_risk",
@@ -84,7 +84,7 @@ def test_km_to_pandas_columns() -> None:
 
 def test_km_to_pandas_grouped_has_strata() -> None:
     km = KaplanMeier().fit(Surv.right([1, 2, 1, 2], [1, 1, 1, 1]), by=["a", "a", "b", "b"])
-    assert "strata" in km.to_pandas().columns
+    assert "strata" in km.to_frame(format="pandas").columns
 
 
 def test_nelson_aalen_cumhaz() -> None:
@@ -159,7 +159,7 @@ def test_km_tidy_and_glance_via_registry() -> None:
     km = KaplanMeier().fit(Surv.right([1, 2, 3, 4], [1, 1, 1, 1]))
     tidy_df = gw.tidy(km)
     assert "estimate" in tidy_df.columns
-    glance_df = gw.glance(km)
+    glance_df = gw.glance(km, format="pandas")
     assert float(glance_df["events"].iloc[0]) == 4.0
     assert float(glance_df["median"].iloc[0]) == 2.0
 

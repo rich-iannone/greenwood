@@ -18,6 +18,8 @@ import numpy as np
 import numpy.typing as npt
 from scipy.stats import norm
 
+from ._backends import to_dataframe
+
 if TYPE_CHECKING:
     from ._surv import Surv
 
@@ -124,7 +126,7 @@ class AalenJohansen:
     -----
     Call `fit(surv, by=...)` with a multi-state `Surv` response (built with
     `Surv.multistate`, where `event` codes are 0 for censoring and `1..K` for the competing
-    causes). Results are tidy frames via `to_pandas()`, `to_polars()`, `to_arrow()` with one row
+    causes). Results are tidy frames via `to_frame()` (optionally `format=`) with one row
     per stratum, cause, and time.
 
     Examples
@@ -165,18 +167,19 @@ class AalenJohansen:
             "",
             f"states: {states}",
         ]
-        df = self.to_pandas()
         if self._grouped:
-            n_strata = df["strata"].nunique()
-            head.append(f"strata: {n_strata}")
+            head.append(f"strata: {len(self._blocks)}")
             return "\n".join(head)
         from ._repr import align_table, num
 
-        head.append(f"n = {int(df['n_risk'].iloc[0])}")
+        # Single stratum: read the risk set and final CIF per cause off the fitted blocks.
+        block = next(iter(self._blocks.values()))
+        first_cause = self._causes[0]
+        head.append(f"n = {int(block[first_cause]['n_risk'][0])}")
         labels, rows = [], []
-        for cause, g in df.groupby("cause", sort=False):
-            labels.append(str(cause))
-            rows.append([num(g["estimate"].iloc[-1])])
+        for cause in self._causes:
+            labels.append(str(self.states_[cause - 1]))
+            rows.append([num(block[cause]["estimate"][-1])])
         table = align_table(["final CIF"], rows, labels)
         return "\n".join(head) + "\n\n" + table
 
@@ -188,7 +191,7 @@ class AalenJohansen:
         type), the Aalen-Johansen estimator accounts for competing events: subjects who
         experience a competing cause are removed from the risk set, preventing overly optimistic
         estimates of the probability of experiencing the target cause. Results are stored in
-        the fitted object; access them via `to_pandas()`, `to_polars()`, or `to_arrow()`.
+        the fitted object; access them via `to_frame()` (optionally `format=`).
 
         The Aalen-Johansen estimator generalizes both Kaplan-Meier and Nelson-Aalen to the
         competing-risks setting. For each cause j, it estimates F_j(t), the cumulative
@@ -212,7 +215,7 @@ class AalenJohansen:
         AalenJohansen
             The fitted estimator object itself (for method chaining) with cached cumulative
             incidence results (time arrays, CIF per cause, confidence bands) accessible via
-            `to_pandas()` and related methods.
+            `to_frame()` (optionally `format=`).
 
         Notes
         -----
@@ -309,109 +312,46 @@ class AalenJohansen:
             cols.pop("strata")
         return cols
 
-    def to_pandas(self) -> Any:
-        """Return cumulative-incidence estimates as a pandas DataFrame.
+    def to_frame(self, *, format: str | None = None) -> Any:
+        """Return cumulative-incidence estimates as a DataFrame.
 
-        This method exports the Aalen-Johansen fit with one row per cause and time point,
-        including the risk set, cumulative-incidence estimate, standard error, confidence
-        limits, and optional strata labels.
+        Exports the Aalen-Johansen fit with one row per cause and time point, including the
+        risk set, cumulative-incidence estimate, standard error, confidence limits, and
+        optional strata labels.
 
-        Returns
-        -------
-        pandas.DataFrame
-            A tidy DataFrame with columns `cause`, `time`, `n_risk`, `estimate`,
-            `std_error`, `conf_low`, `conf_high`, and optionally `strata`.
-
-        Raises
-        ------
-        ImportError
-            If pandas is not installed.
-
-        Examples
-        --------
-        Export the fitted cumulative-incidence functions to pandas:
-
-        ```{python}
-        aj.to_pandas()
-        ```
-        """
-        try:
-            import pandas as pd
-        except ImportError as e:
-            raise ImportError(
-                "pandas is required for to_pandas(). Install it with: pip install pandas"
-            ) from e
-
-        return pd.DataFrame(self._table_columns())
-
-    def to_polars(self) -> Any:
-        """Return cumulative-incidence estimates as a Polars DataFrame.
-
-        This method exports the Aalen-Johansen fit with one row per cause and time point,
-        including the risk set, cumulative-incidence estimate, standard error, confidence
-        limits, and optional strata labels.
+        Parameters
+        ----------
+        format
+            Output format: `None` (default), `"pandas"`, `"polars"`, or `"pyarrow"`. When
+            `None`, a backend is auto-detected (Polars, then Pandas, then PyArrow).
 
         Returns
         -------
-        polars.DataFrame
-            A tidy DataFrame with columns `cause`, `time`, `n_risk`, `estimate`,
-            `std_error`, `conf_low`, `conf_high`, and optionally `strata`.
-
-        Raises
-        ------
-        ImportError
-            If polars is not installed.
-
-        Examples
-        --------
-        Export the fitted cumulative-incidence functions to Polars:
-
-        ```{python}
-        aj.to_polars()
-        ```
-        """
-        try:
-            import polars as pl
-        except ImportError as e:
-            raise ImportError(
-                "polars is required for to_polars(). Install it with: pip install polars"
-            ) from e
-
-        return pl.DataFrame(self._table_columns())
-
-    def to_arrow(self) -> Any:
-        """Return cumulative-incidence estimates as a PyArrow Table.
-
-        This method exports the Aalen-Johansen fit to Arrow, preserving the same columns
-        as the pandas and Polars exports for efficient interchange.
-
-        Returns
-        -------
-        pyarrow.Table
-            A table with columns `cause`, `time`, `n_risk`, `estimate`, `std_error`,
+        pandas.DataFrame, polars.DataFrame, or pyarrow.Table
+            A tidy table with columns `cause`, `time`, `n_risk`, `estimate`, `std_error`,
             `conf_low`, `conf_high`, and optionally `strata`.
 
         Raises
         ------
         ImportError
-            If pyarrow is not installed.
+            If the requested (or, when auto-detecting, any) DataFrame library is not
+            installed.
 
         Examples
         --------
-        Export the fitted cumulative-incidence functions to Arrow:
+        Export the fitted cumulative-incidence functions:
 
         ```{python}
-        aj.to_arrow()
+        aj.to_frame()
+        ```
+
+        Request a specific backend with `format=`:
+
+        ```{python}
+        aj.to_frame(format="polars")
         ```
         """
-        try:
-            import pyarrow as pa
-        except ImportError as e:
-            raise ImportError(
-                "pyarrow is required for to_arrow(). Install it with: pip install pyarrow"
-            ) from e
-
-        return pa.table(self._table_columns())
+        return to_dataframe(self._table_columns(), format=format)
 
 
 class FineGray:
@@ -456,8 +396,8 @@ class FineGray:
     -----
     Call `fit(surv, covariates)` with a multi-state `Surv` response (built with
     `Surv.multistate()`) and specify the target `cause`. The model uses weighted Cox-like
-    optimization with robust standard errors. Results can be tidy frames via `to_pandas()`,
-    `to_polars()`, `to_arrow()`.
+    optimization with robust standard errors. Results can be tidy frames via `to_frame()`
+    (optionally `format=`).
 
     Examples
     --------
@@ -739,149 +679,70 @@ class FineGray:
             "conf_high": high,
         }
 
-    def to_pandas(self, *, exponentiate: bool = False) -> Any:
-        """Return the Fine-Gray coefficient table as a pandas DataFrame.
+    def to_frame(self, *, format: str | None = None, exponentiate: bool = False) -> Any:
+        """Return the Fine-Gray coefficient table as a DataFrame.
 
-        This method exports one row per term with coefficient estimates, robust standard
-        errors, test statistics, p-values, and confidence limits. Set
-        `exponentiate=True` to return subdistribution hazard ratios and exponentiated
-        confidence limits.
+        Exports one row per term with coefficient estimates, robust standard errors, test
+        statistics, p-values, and confidence limits. Set `exponentiate=True` to return
+        subdistribution hazard ratios and exponentiated confidence limits.
 
         Parameters
         ----------
-        exponentiate : bool, default False
+        format
+            Output format: `None` (default), `"pandas"`, `"polars"`, or `"pyarrow"`. When
+            `None`, a backend is auto-detected (Polars, then Pandas, then PyArrow).
+        exponentiate
             Whether to return subdistribution hazard ratios instead of log-scale
-            coefficients.
+            coefficients. Default False.
 
         Returns
         -------
-        pandas.DataFrame
-            A tidy DataFrame with columns `term`, `estimate`, `std_error`, `statistic`,
+        pandas.DataFrame, polars.DataFrame, or pyarrow.Table
+            A tidy table with columns `term`, `estimate`, `std_error`, `statistic`,
             `p_value`, `conf_low`, and `conf_high`.
 
         Raises
         ------
         ImportError
-            If pandas is not installed.
+            If the requested (or, when auto-detecting, any) DataFrame library is not
+            installed.
 
         Examples
         --------
-        Export the fitted coefficient table to pandas:
+        Export the fitted coefficient table:
 
         ```{python}
-        fg.to_pandas()
+        fg.to_frame()
         ```
 
         To report subdistribution hazard ratios instead of coefficients:
 
         ```{python}
-        fg.to_pandas(exponentiate=True)
+        fg.to_frame(exponentiate=True)
         ```
-        """
-        try:
-            import pandas as pd
-        except ImportError as e:
-            raise ImportError(
-                "pandas is required for to_pandas(). Install it with: pip install pandas"
-            ) from e
 
-        return pd.DataFrame(self._coefficient_columns(exponentiate=exponentiate))
-
-    def to_polars(self, *, exponentiate: bool = False) -> Any:
-        """Return the Fine-Gray coefficient table as a Polars DataFrame.
-
-        This method exports one row per term with coefficient estimates, robust standard
-        errors, test statistics, p-values, and confidence limits. Set
-        `exponentiate=True` to return subdistribution hazard ratios and exponentiated
-        confidence limits.
-
-        Parameters
-        ----------
-        exponentiate : bool, default False
-            Whether to return subdistribution hazard ratios instead of log-scale
-            coefficients.
-
-        Returns
-        -------
-        polars.DataFrame
-            A tidy DataFrame with columns `term`, `estimate`, `std_error`, `statistic`,
-            `p_value`, `conf_low`, and `conf_high`.
-
-        Raises
-        ------
-        ImportError
-            If polars is not installed.
-
-        Examples
-        --------
-        Export the fitted coefficient table to Polars:
+        Request a specific backend with `format=`:
 
         ```{python}
-        fg.to_polars()
+        fg.to_frame(format="polars")
         ```
         """
-        try:
-            import polars as pl
-        except ImportError as e:
-            raise ImportError(
-                "polars is required for to_polars(). Install it with: pip install polars"
-            ) from e
-
-        return pl.DataFrame(self._coefficient_columns(exponentiate=exponentiate))
-
-    def to_arrow(self, *, exponentiate: bool = False) -> Any:
-        """Return the Fine-Gray coefficient table as a PyArrow Table.
-
-        This method exports one row per term with coefficient estimates, robust standard
-        errors, test statistics, p-values, and confidence limits. Set
-        `exponentiate=True` to return subdistribution hazard ratios and exponentiated
-        confidence limits.
-
-        Parameters
-        ----------
-        exponentiate : bool, default False
-            Whether to return subdistribution hazard ratios instead of log-scale
-            coefficients.
-
-        Returns
-        -------
-        pyarrow.Table
-            A table with columns `term`, `estimate`, `std_error`, `statistic`, `p_value`,
-            `conf_low`, and `conf_high`.
-
-        Raises
-        ------
-        ImportError
-            If pyarrow is not installed.
-
-        Examples
-        --------
-        Export the fitted coefficient table to Arrow:
-
-        ```{python}
-        fg.to_arrow()
-        ```
-        """
-        try:
-            import pyarrow as pa
-        except ImportError as e:
-            raise ImportError(
-                "pyarrow is required for to_arrow(). Install it with: pip install pyarrow"
-            ) from e
-
-        return pa.table(self._coefficient_columns(exponentiate=exponentiate))
+        return to_dataframe(self._coefficient_columns(exponentiate=exponentiate), format=format)
 
 
 def _register_finegray() -> None:
     from .summaries import register_glance, register_tidier
 
-    def _tidy(model: FineGray, *, exponentiate: bool = False, **_: Any) -> Any:
-        return model.to_pandas(exponentiate=exponentiate)
+    def _tidy(
+        model: FineGray, *, exponentiate: bool = False, format: str | None = None, **_: Any
+    ) -> Any:
+        return model.to_frame(format=format, exponentiate=exponentiate)
 
-    def _glance(model: FineGray, **_: Any) -> Any:
-        import pandas as pd
-
-        return pd.DataFrame([{"n": model.n_, "nevent": model.n_event_, "loglik": model.loglik_}])
+    def _glance(model: FineGray, *, format: str | None = None, **_: Any) -> Any:
+        return to_dataframe(
+            {"n": [model.n_], "nevent": [model.n_event_], "loglik": [model.loglik_]},
+            format=format,
+        )
 
     register_tidier("greenwood._competing.FineGray", _tidy)
     register_glance("greenwood._competing.FineGray", _glance)
@@ -933,7 +794,7 @@ class MultiState:
     rows = [(a, b, s, e) for a, b, s, e in zip(start, stop, state, event) if b > a]
     start, stop, state, event = map(list, zip(*rows))
     ms = gw.MultiState().fit(start, stop, state, event, states=("mgus", "pcm", "death"))
-    ms.to_pandas()
+    ms.to_frame()
     ```
 
     The `ms` object fit here, along with the interval arrays, is reused by the method examples
@@ -1008,8 +869,8 @@ class MultiState:
         -------
         MultiState
             The fitted estimator object itself (for method chaining) with cached results
-            (`states_`, `time_`, `occupancy_`, `transition_`) accessible via `to_pandas()`
-            and related methods. Occupancy probabilities and transition probabilities can
+            (`states_`, `time_`, `occupancy_`, `transition_`) accessible via `to_frame()`
+            (optionally `format=`). Occupancy probabilities and transition probabilities can
             be queried at any time via `predict()`.
 
         Notes
@@ -1116,7 +977,7 @@ class MultiState:
         self._p0 = p0
         return self
 
-    def predict(self, times: Any) -> Any:
+    def predict(self, times: Any, *, format: str | None = None) -> Any:
         """State occupancy probabilities at specified times.
 
         Evaluates the state occupancy probabilities (probability of being in each state) at
@@ -1129,13 +990,15 @@ class MultiState:
             Time points at which to evaluate state occupancy. Can be a scalar or array-like of
             floats. Values before the first transition time use the initial distribution;
             values after the last transition time use the final distribution.
+        format
+            Output format: `None` (default), `"pandas"`, `"polars"`, or `"pyarrow"`. When
+            `None`, a backend is auto-detected (Polars, then Pandas, then PyArrow).
 
         Returns
         -------
-        DataFrame
-            A DataFrame with a `time` column and one column per state, containing occupancy
-            probabilities (values between 0 and 1) at each query time. Row indices match the
-            input times.
+        pandas.DataFrame, polars.DataFrame, or pyarrow.Table
+            A table with a `time` column and one column per state, containing occupancy
+            probabilities (values between 0 and 1) at each query time.
 
         Examples
         --------
@@ -1162,14 +1025,12 @@ class MultiState:
         ms.predict([60, 120, 240])
         ```
         """
-        import pandas as pd
-
         query = np.atleast_1d(np.asarray(times, dtype=float))
         idx = np.searchsorted(self.time_, query, side="right") - 1
         out = np.where(idx[:, None] >= 0, self.occupancy_[idx.clip(min=0)], self._p0[None, :])
-        frame = pd.DataFrame({str(s): out[:, j] for j, s in enumerate(self.states_)})
-        frame.insert(0, "time", query)
-        return frame
+        cols: dict[str, Any] = {"time": query}
+        cols.update({str(s): out[:, j] for j, s in enumerate(self.states_)})
+        return to_dataframe(cols, format=format)
 
     def _table_columns(self) -> dict[str, Array]:
         cols: dict[str, Array] = {"time": self.time_}
@@ -1177,101 +1038,41 @@ class MultiState:
             cols[str(state)] = self.occupancy_[:, j]
         return cols
 
-    def to_pandas(self) -> Any:
-        """Return occupancy probabilities over time as a pandas DataFrame.
+    def to_frame(self, *, format: str | None = None) -> Any:
+        """Return occupancy probabilities over time as a DataFrame.
 
-        This method exports one row per distinct time and one column per state, where each
-        state column contains its occupancy probability at that time.
+        Exports one row per distinct time and one column per state, where each state column
+        contains its occupancy probability at that time.
+
+        Parameters
+        ----------
+        format
+            Output format: `None` (default), `"pandas"`, `"polars"`, or `"pyarrow"`. When
+            `None`, a backend is auto-detected (Polars, then Pandas, then PyArrow).
 
         Returns
         -------
-        pandas.DataFrame
-            A tidy DataFrame with a `time` column and one probability column per state.
+        pandas.DataFrame, polars.DataFrame, or pyarrow.Table
+            A tidy table with a `time` column and one probability column per state.
 
         Raises
         ------
         ImportError
-            If pandas is not installed.
+            If the requested (or, when auto-detecting, any) DataFrame library is not
+            installed.
 
         Examples
         --------
-        Export the state-occupancy probabilities to pandas:
+        Export the state-occupancy probabilities:
 
         ```{python}
-        ms.to_pandas()
+        ms.to_frame()
         ```
-        """
-        try:
-            import pandas as pd
-        except ImportError as e:
-            raise ImportError(
-                "pandas is required for to_pandas(). Install it with: pip install pandas"
-            ) from e
 
-        return pd.DataFrame(self._table_columns())
-
-    def to_polars(self) -> Any:
-        """Return occupancy probabilities over time as a Polars DataFrame.
-
-        This method exports one row per distinct time and one column per state, where each
-        state column contains its occupancy probability at that time.
-
-        Returns
-        -------
-        polars.DataFrame
-            A tidy DataFrame with a `time` column and one probability column per state.
-
-        Raises
-        ------
-        ImportError
-            If polars is not installed.
-
-        Examples
-        --------
-        Export the state-occupancy probabilities to Polars:
+        Request a specific backend with `format=`:
 
         ```{python}
-        ms.to_polars()
+        ms.to_frame(format="polars")
         ```
         """
-        try:
-            import polars as pl
-        except ImportError as e:
-            raise ImportError(
-                "polars is required for to_polars(). Install it with: pip install polars"
-            ) from e
-
-        return pl.DataFrame(self._table_columns())
-
-    def to_arrow(self) -> Any:
-        """Return occupancy probabilities over time as a PyArrow Table.
-
-        This method exports one row per distinct time and one column per state to Arrow
-        for efficient interchange with Arrow-based tools.
-
-        Returns
-        -------
-        pyarrow.Table
-            A table with a `time` column and one probability column per state.
-
-        Raises
-        ------
-        ImportError
-            If pyarrow is not installed.
-
-        Examples
-        --------
-        Export the state-occupancy probabilities to Arrow:
-
-        ```{python}
-        ms.to_arrow()
-        ```
-        """
-        try:
-            import pyarrow as pa
-        except ImportError as e:
-            raise ImportError(
-                "pyarrow is required for to_arrow(). Install it with: pip install pyarrow"
-            ) from e
-
-        return pa.table(self._table_columns())
+        return to_dataframe(self._table_columns(), format=format)

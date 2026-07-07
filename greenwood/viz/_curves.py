@@ -13,6 +13,8 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import numpy.typing as npt
 
+from .._backends import to_dataframe
+
 if TYPE_CHECKING:
     from .._nonparametric import KaplanMeier
 
@@ -101,8 +103,18 @@ def _n_at_risk(block: Any, times: Array) -> Array:
     return out
 
 
-def risk_table_data(km: KaplanMeier, times: Any = None) -> Any:
+def risk_table_data(km: KaplanMeier, times: Any = None, *, format: str | None = None) -> Any:
     """Return a tidy frame of the number at risk per stratum at each of `times`.
+
+    Parameters
+    ----------
+    km
+        A fitted `KaplanMeier` estimator.
+    times
+        Query times for the numbers-at-risk table. Defaults to an automatic grid.
+    format
+        Output format: `None` (default), `"pandas"`, `"polars"`, or `"pyarrow"`. When
+        `None`, a backend is auto-detected (Polars, then Pandas, then PyArrow).
 
     Examples
     --------
@@ -120,15 +132,17 @@ def risk_table_data(km: KaplanMeier, times: Any = None) -> Any:
     gw.viz.risk_table_data(km, times=[0, 250, 500, 750, 1000])
     ```
     """
-    import pandas as pd
-
     query = np.asarray(_default_times(km) if times is None else times, dtype=float)
-    rows: list[dict[str, Any]] = []
+    strata: list[str] = []
+    time_col: list[float] = []
+    n_risk: list[float] = []
     for block in km._blocks:
         counts = _n_at_risk(block, query)
         for t, n in zip(query, counts, strict=True):
-            rows.append({"strata": _strata_label(block), "time": float(t), "n_risk": float(n)})
-    return pd.DataFrame(rows)
+            strata.append(_strata_label(block))
+            time_col.append(float(t))
+            n_risk.append(float(n))
+    return to_dataframe({"strata": strata, "time": time_col, "n_risk": n_risk}, format=format)
 
 
 def theme_survival() -> Any:
@@ -292,7 +306,9 @@ def plot_survival(
 def _risk_table_plot(km: KaplanMeier, *, times: Any = None, xlab: str = "Time") -> Any:
     """A compact numbers-at-risk table as a plotnine plot (x aligned with the curve)."""
     p9 = _require_plotnine()
-    data = risk_table_data(km, times=times)
+    # plotnine consumes pandas, so build the risk-table frame in pandas regardless of
+    # which DataFrame libraries happen to be installed.
+    data = risk_table_data(km, times=times, format="pandas")
     # Show whole counts as integers (e.g. 90, not 90.0); keep weighted counts as-is.
     data["label"] = [f"{v:g}" for v in data["n_risk"]]
     grouped = km._grouped

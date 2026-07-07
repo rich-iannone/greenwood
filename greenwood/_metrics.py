@@ -381,14 +381,12 @@ def integrated_brier_score(surv: Surv, survival_prob: Any, times: Any) -> float:
 
 def _survival_at(km: Any, time: float) -> tuple[float, float, float]:
     """Read a Kaplan-Meier estimate and its confidence limits at a single time."""
-    # Always convert KaplanMeier to pandas first (to_pandas() method)
-    frame = km.to_pandas()
-    grid = frame["time"].to_numpy()
+    # Read straight off the fitted arrays, so no DataFrame library is required here.
+    grid = km.time_
     idx = int(np.searchsorted(grid, time, side="right")) - 1
     if idx < 0:
         return 1.0, 1.0, 1.0
-    row = frame.iloc[idx]
-    return float(row["estimate"]), float(row["conf_low"]), float(row["conf_high"])
+    return float(km.survival_[idx]), float(km.conf_low_[idx]), float(km.conf_high_[idx])
 
 
 def calibration(
@@ -455,7 +453,7 @@ def calibration(
     gw.calibration(y, predicted, 365.0, n_bins=5)
     ```
     """
-    from ._cox import _to_dataframe
+    from ._backends import to_dataframe
     from ._nonparametric import KaplanMeier
     from ._resample import _subset_surv
 
@@ -487,7 +485,7 @@ def calibration(
                 "observed_upper": upper,
             }
         )
-    return _to_dataframe(
+    return to_dataframe(
         {col: [row[col] for row in rows] for col in rows[0]}
         if rows
         else {
