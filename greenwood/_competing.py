@@ -114,6 +114,13 @@ class AalenJohansen:
     conf_level
         Confidence level for the (Wald) confidence intervals (default 0.95).
 
+    Returns
+    -------
+    Not applicable at instantiation. Call `fit()` to produce a fitted estimator with
+    cached results about cumulative incidence for each competing cause (`states_`, and
+    internal cache), accessible as tidy DataFrames via `to_pandas()`, `to_polars()`,
+    `to_arrow()`.
+
     Notes
     -----
     Call `fit(surv, by=...)` with a multi-state `Surv` response (built with
@@ -437,6 +444,20 @@ class FineGray:
         The target cause-of-interest label from the multi-state `Surv` response.
     conf_level
         Confidence level for coefficient intervals (default 0.95).
+
+    Returns
+    -------
+    Not applicable at instantiation. Call `fit()` to produce a fitted estimator with
+    cached results (`coef_`, `hazard_ratio_`, `std_error_`, `z_`, `p_value_`, `conf_low_`,
+    `conf_high_`), accessible as arrays or exported to DataFrames via `tidy()` or
+    `to_pandas()`/`to_polars()`/`to_arrow()`.
+
+    Notes
+    -----
+    Call `fit(surv, covariates)` with a multi-state `Surv` response (built with
+    `Surv.multistate()`) and specify the target `cause`. The model uses weighted Cox-like
+    optimization with robust standard errors. Results can be tidy frames via `to_pandas()`,
+    `to_polars()`, `to_arrow()`.
 
     Examples
     --------
@@ -877,6 +898,12 @@ class MultiState:
     occupancy probabilities over time. Occupancy probabilities are validated to tolerance
     against R's `survfit` multi-state `pstate`. (Competing risks and Kaplan-Meier are special
     cases handled by `AalenJohansen` and `KaplanMeier`.)
+
+    Returns
+    -------
+    Not applicable at instantiation. Call `fit()` to produce a fitted estimator with
+    cached results (`states_`, `time_`, `occupancy_`, and internal transition matrices),
+    accessible as tidy DataFrames via `to_pandas()`, `to_polars()`, `to_arrow()`.
 
     Examples
     --------

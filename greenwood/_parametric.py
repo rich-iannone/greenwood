@@ -108,6 +108,13 @@ class AFT:
     conf_level
         Confidence level for coefficient intervals (default is `0.95`).
 
+    Returns
+    -------
+    Not applicable at instantiation. Call `fit()` to produce a fitted estimator with
+    cached results (`coef_`, `scale_`, `std_error_`, `z_`, `p_value_`, `conf_low_`,
+    `conf_high_`, `loglik_`, `aic_`, `bic_`), accessible as arrays or exported to DataFrames
+    via `tidy()` or `to_pandas()`/`to_polars()`/`to_arrow()`.
+
     Notes
     -----
     Call `fit(surv, covariates)` with a right-censored `Surv` response and a covariate design

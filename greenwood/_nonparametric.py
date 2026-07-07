@@ -235,6 +235,12 @@ class KaplanMeier:
     conf_level
         Confidence level for the interval (default 0.95).
 
+    Returns
+    -------
+    Not applicable at instantiation. Call `fit()` to produce a fitted estimator with
+    cached results (`time_`, `surv_`, `std_error_`, `conf_low_`, `conf_high_`, `n_risk_`,
+    `n_event_`, `n_censor_`), accessible as aligned arrays or exported to DataFrames.
+
     Notes
     -----
     Call `fit` with a `Surv` response. Results are exposed as aligned arrays (`time_`,
@@ -875,6 +881,19 @@ class NelsonAalen:
         Confidence-interval transform: `"plain"` (default for Nelson-Aalen) or `"log"`.
     conf_level
         Confidence level for the interval (default 0.95).
+
+    Returns
+    -------
+    Not applicable at instantiation. Call `fit()` to produce a fitted estimator with
+    cached results (`time_`, `cumulative_hazard_`, `std_error_`, `conf_low_`, `conf_high_`,
+    `n_risk_`, `n_event_`, `n_censor_`), accessible as aligned arrays or exported to
+    DataFrames.
+
+    Notes
+    -----
+    Call `fit()` with a `Surv` response. Results are exposed as aligned arrays, as tidy
+    frames via `to_pandas()`, `to_polars()`, `to_arrow()`, and through the `predict()`,
+    `quantile()`, and other methods.
 
     Examples
     --------

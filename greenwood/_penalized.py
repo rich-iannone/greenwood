@@ -71,6 +71,13 @@ class CoxNet:
     max_iter, tol
         Maximum FISTA iterations and the relative-change convergence tolerance.
 
+    Returns
+    -------
+    Not applicable at instantiation. Call `fit()` to produce a fitted estimator with
+    cached results (`coef_`, `std_error_`, `n_features_in_`, `feature_names_in_`),
+    accessible as arrays or exported to DataFrames via `to_pandas()`/`to_polars()`/
+    `to_arrow()`.
+
     Notes
     -----
     Call `fit(surv, covariates)` with a right-censored or counting-process `Surv` response.
