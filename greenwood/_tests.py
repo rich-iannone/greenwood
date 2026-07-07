@@ -27,25 +27,45 @@ Array = npt.NDArray[Any]
 
 @dataclass(frozen=True)
 class TestResult:
-    """The outcome of a group comparison test.
+    """The outcome of a log-rank group comparison test.
+
+    This class stores the results of `logrank_test` or `pairwise_logrank_test` in a
+    structured format. Access test statistics, significance (p-value), and per-group
+    observed vs. expected event counts.
 
     Attributes
     ----------
     statistic
-        The chi-square test statistic.
+        The chi-square test statistic. Larger values indicate stronger evidence against the
+        null hypothesis of equal survival across groups.
     df
-        Degrees of freedom (number of groups minus one).
+        Degrees of freedom for the chi-square distribution (number of groups minus one for
+        `logrank_test`, always 1 for pairwise tests).
     p_value
-        Upper-tail chi-square p-value.
+        Upper-tail chi-square p-value. The probability of observing a chi-square statistic
+        this large or larger under the null hypothesis of equal survival. Small p-values
+        (typically p < 0.05) indicate significant differences between groups.
     method
-        Human-readable description of the test and its weights.
-    observed, expected
-        Weighted observed and expected event counts per group, keyed by group label.
+        Human-readable description of the test method and its configuration, e.g.,
+        "Log-rank test", "Stratified log-rank test", "G-rho test (rho=1, gamma=0)".
+    observed
+        Dictionary mapping each group label to its observed (actual) weighted event count.
+        Useful for understanding which groups contribute more events.
+    expected
+        Dictionary mapping each group label to its expected event count under the null
+        hypothesis of equal survival. Comparison of observed vs. expected reveals which
+        groups have more or fewer events than expected.
+
+    Notes
+    -----
+    For a significant result (p_value < 0.05), examine the `observed` and `expected`
+    dictionaries to see which groups experienced more or fewer events than expected. Groups
+    with observed > expected have worse (shorter) survival; groups with observed < expected
+    have better (longer) survival.
 
     Examples
     --------
-    A `TestResult` is what `logrank_test` returns. Store it and read off its attributes: the
-    chi-square `statistic`, the `p_value`, and the per-group `observed` weighted event counts.
+    Run a log-rank test and examine results:
 
     ```{python}
     import greenwood as gw
@@ -53,16 +73,37 @@ class TestResult:
     lung = gw.load_dataset("lung")
     y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
     result = gw.logrank_test(y, group=lung["sex"])
+    result
+    ```
 
+    Access individual components. The chi-square statistic:
+
+    ```{python}
     result.statistic
     ```
+
+    The p-value for significance:
 
     ```{python}
     result.p_value
     ```
 
+    Observed event counts per group (actual events in data):
+
     ```{python}
     result.observed
+    ```
+
+    Expected event counts per group (under null hypothesis):
+
+    ```{python}
+    result.expected
+    ```
+
+    Test description:
+
+    ```{python}
+    result.method
     ```
     """
 
@@ -195,45 +236,112 @@ def _logrank_statistic(
 def logrank_test(
     surv: Surv, group: Any, *, rho: float = 0.0, gamma: float = 0.0, strata: Any = None
 ) -> TestResult:
-    """Compare survival across groups with the weighted log-rank (G-rho) test.
+    """Compare survival across groups using the weighted log-rank (G-rho) test.
+
+    Tests whether survival curves differ significantly across two or more groups using a
+    chi-square test based on weighted event counts. The test is flexible: with default weights
+    (Fleming-Harrington rho=0, gamma=0), it gives equal weight to all event times (standard
+    log-rank). With rho=1, gamma=0 (Peto-Peto), it emphasizes early events where more subjects
+    are at risk. Other rho/gamma combinations allow custom emphasis on different phases of
+    follow-up.
+
+    The test compares observed vs. expected event counts under the null hypothesis of equal
+    survival. A large chi-square statistic indicates the groups differ; p-values are
+    interpreted as the probability of seeing such a statistic or larger if survival is truly
+    equal.
+
+    **Stratification**: Optionally stratify by a nuisance variable (e.g., site, gender) to
+    compute the test within each stratum, then combine results. This controls for confounding
+    while testing group differences.
 
     Parameters
     ----------
     surv
-        A `Surv` response (right-censored or counting-process).
+        A `Surv` response object representing censored survival times. Supports right-censored
+        data (standard time-to-event) or counting-process format (interval-based data with
+        entry/exit times). Constructed with `Surv.right()`, `Surv.counting()`, or
+        `Surv.multistate()`.
     group
-        Group labels, one per observation (any Narwhals series, array, or sequence).
+        Group labels, one per observation. Can be a Narwhals series (Polars/Pandas), 1-D
+        array, or Python sequence. Labels can be strings, integers, or other hashable types.
+        Must have the same length as `surv`.
     rho, gamma
-        Fleming-Harrington weight exponents on the pooled survival `S(t-)`. Defaults
-        `(0, 0)` give the standard log-rank test; `(1, 0)` gives Peto-Peto.
+        Fleming-Harrington weight exponents applied to the pooled Kaplan-Meier survival
+        `S(t-)` at each event time. The weight is `S(t-)^rho * (1-S(t-))^gamma`.
+
+        - `rho=0, gamma=0` (default): Standard log-rank test. Equal weight across all times.
+        - `rho=1, gamma=0`: Peto-Peto (Wilcoxon) test. Emphasizes early events.
+        - `rho=0, gamma=1`: Tarone-Ware. Alternative early-event emphasis.
+        - Other (rho, gamma): Flexible emphasis. Higher values emphasize the chosen phase.
+
     strata
-        Optional stratifying labels. When given, the test is computed within each stratum
-        and combined, matching R `survdiff(... + strata(s))`. Use this to control for a
-        nuisance variable while comparing `group`.
+        Optional stratifying factor, one per observation. Same length as `surv`. When
+        provided, the test is computed separately within each stratum, then combined
+        (stratified test). Use to control for confounding or variable that affects baseline
+        hazard but not group differences. Example: stratify by site to account for
+        site-specific differences in survival while testing an overall group effect.
 
     Returns
     -------
     TestResult
-        Statistic, degrees of freedom, p-value, and per-group observed/expected counts.
+        A result object with attributes:
+
+        - `statistic`: Chi-square test statistic.
+        - `df`: Degrees of freedom (number of groups minus one).
+        - `p_value`: Upper-tail chi-square p-value. Small values indicate survival curves differ.
+        - `method`: Description of the test (e.g., "Log-rank test", "Stratified log-rank test",
+          "G-rho test (rho=1, gamma=0)").
+        - `observed`: Dictionary mapping group labels to observed weighted event counts.
+        - `expected`: Dictionary mapping group labels to expected event counts under null.
+
+    Notes
+    -----
+    The log-rank test uses the hypergeometric variance for the chi-square statistic, matching
+    R's `survival::survdiff`. The pooled Kaplan-Meier survivor curve from all groups combined
+    is used to compute the Fleming-Harrington weights, ensuring the test is consistently
+    weighted regardless of group sample sizes.
+
+    Counting-process data (with entry times) are fully supported, allowing stratification and
+    left-truncation (delayed entry).
 
     Examples
     --------
-    Compare survival between the two sexes in the bundled `lung` dataset. Printing the result
-    shows the chi-square `statistic`, the degrees of freedom `df` (here 1, one fewer than the
-    number of groups), and the upper-tail `p_value`; a small p-value is evidence that the
-    survival curves differ.
+    Test whether survival differs between the two sexes in the bundled `lung` dataset:
 
     ```{python}
     import greenwood as gw
 
     lung = gw.load_dataset("lung")
     y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-    gw.logrank_test(y, group=lung["sex"])
+    result = gw.logrank_test(y, group=lung["sex"])
+    result
     ```
 
-    Pass `rho=1` for the Peto-Peto (Wilcoxon) weighting, which puts more weight on early event
-    times, and `strata=` to run a stratified test that controls for a nuisance variable while
-    comparing `group`.
+    Extract individual components from the result:
+
+    ```{python}
+    result.statistic  # Chi-square statistic
+    ```
+
+    ```{python}
+    result.p_value  # P-value for significance
+    ```
+
+    ```{python}
+    result.observed  # Observed event counts per group
+    ```
+
+    Use the Peto-Peto (Wilcoxon) weighted test to emphasize differences in early survival:
+
+    ```{python}
+    gw.logrank_test(y, group=lung["sex"], rho=1, gamma=0)
+    ```
+
+    Run a stratified test to control for institution (if available in data):
+
+    ```{python}
+    # gw.logrank_test(y, group=lung["sex"], strata=lung["institution"])
+    ```
     """
     from ._surv import CensoringType, _to_1d_array
 
@@ -320,42 +428,113 @@ def pairwise_logrank_test(
     strata: Any = None,
     correction: str = "holm",
 ) -> Any:
-    """Log-rank test for every pair of groups, with a multiple-comparison correction.
+    """Pairwise log-rank tests for all group pairs with multiple-comparison correction.
 
-    Runs the (optionally stratified) log-rank test on each pair of `group` levels and adjusts
-    the p-values across the pairs. This mirrors R's `pairwise_survdiff`.
+    Runs the log-rank test on every pair of groups, then adjusts p-values to control for
+    multiple testing. This answers the question: "Which pairs of groups have significantly
+    different survival?" when you have more than two groups.
+
+    After the global log-rank test (via `logrank_test`) indicates groups differ, this
+    pairwise test reveals which pairs are significantly different and by how much. P-values
+    are adjusted across all pairs using a chosen correction method to control the false
+    discovery rate or family-wise error rate.
+
+    **Typical workflow**: First run `logrank_test` to test overall group differences. If
+    significant, use `pairwise_logrank_test` to identify which pairs differ. The adjusted
+    p-values account for testing multiple pairs from the same data.
 
     Parameters
     ----------
-    surv, group, rho, gamma, strata
-        As in `logrank_test`.
+    surv
+        A `Surv` response object representing censored survival times. Supports right-censored
+        data or counting-process format. Constructed with `Surv.right()`, `Surv.counting()`,
+        or `Surv.multistate()`.
+    group
+        Group labels, one per observation. Can be a Narwhals series, 1-D array, or Python
+        sequence. Must have at least 3 unique levels (to create multiple pairs). Must have
+        the same length as `surv`.
+    rho, gamma
+        Fleming-Harrington weight exponents for the log-rank test (same as `logrank_test`).
+        Default `(0, 0)` gives standard log-rank; `(1, 0)` gives Peto-Peto (emphasizes early
+        events).
+    strata
+        Optional stratifying factor. When provided, each pairwise test is stratified by this
+        factor (computed within each stratum, then combined). Use to control for confounding.
     correction
-        Multiple-comparison adjustment across the pairwise tests: `"holm"` (default), `"bh"`
-        (Benjamini-Hochberg), `"bonferroni"`, or `"none"`.
+        Multiple-comparison adjustment method applied across all pairwise p-values:
+
+        - `"holm"` (default): Controls family-wise error rate. Conservative; recommended for
+          small numbers of pairs (fewer than ~10).
+        - `"bh"`: Benjamini-Hochberg false-discovery rate. Less conservative; recommended for
+          many pairs. Allows more false positives but focuses on their rate.
+        - `"bonferroni"`: Bonferroni correction. Very conservative; adjusted p = raw p × m,
+          where m is the number of pairs.
+        - `"none"`: No adjustment. Use only if you're testing a single pre-planned pair
+          (though use `logrank_test` directly in that case).
 
     Returns
     -------
-    A pandas DataFrame with one row per pair: `group1`, `group2`, `statistic`, `p_value`,
-    and `p_adjusted`.
+    pandas.DataFrame
+        One row per pair of groups with columns:
+
+        - `group1`, `group2`: The pair of group labels being compared.
+        - `statistic`: Chi-square test statistic for the pair.
+        - `p_value`: Raw (unadjusted) log-rank p-value for the pair.
+        - `p_adjusted`: Adjusted p-value after multiple-comparison correction. Use this for
+          significance testing (e.g., p_adjusted < 0.05).
+
+    Notes
+    -----
+    The number of pairs tested is C(k, 2) = k(k-1)/2, where k is the number of groups. For
+    k=3, that's 3 pairs; for k=5, that's 10 pairs. Larger numbers of pairs can reduce power
+    per comparison (wider adjusted confidence intervals), so keep the number of groups
+    reasonable when possible.
+
+    The adjustment method affects stringency: Holm controls false discovery more strictly
+    (lower type-I error, higher type-II error), while Benjamini-Hochberg is more permissive
+    (higher type-I error rate overall, but controls the proportion of false discoveries).
 
     Examples
     --------
-    The `veteran` dataset has four cell types, so a single log-rank test only tells you the
-    groups differ somewhere. The pairwise test compares every pair of cell types and returns a
-    DataFrame with one row per pair, carrying the raw `p_value` and the multiplicity-adjusted
-    `p_adjusted`.
+    Test pairwise survival differences among the four cell types in the `veteran` dataset.
+    A global log-rank test first shows that cell types differ overall, but doesn't say which
+    pairs differ:
 
     ```{python}
     import greenwood as gw
 
     vet = gw.load_dataset("veteran")
     y = gw.Surv.right(vet["time"], event=vet["status"])
-    gw.pairwise_logrank_test(y, group=vet["celltype"])
+    gw.logrank_test(y, group=vet["celltype"])
     ```
 
-    The `p_adjusted` column controls the family-wise error rate across the pairs. The
-    adjustment is set by `correction=`, which defaults to `"holm"`; other choices are `"bh"`
-    (Benjamini-Hochberg), `"bonferroni"`, and `"none"`.
+    The pairwise test compares all six pairs of cell types and returns a DataFrame with the
+    test statistic, raw p-value, and adjusted p-value for each pair. Use `p_adjusted` for
+    significance testing:
+
+    ```{python}
+    pairs = gw.pairwise_logrank_test(y, group=vet["celltype"])
+    pairs
+    ```
+
+    Filter to significant pairs (adjusted p-value < 0.05):
+
+    ```{python}
+    pairs[pairs["p_adjusted"] < 0.05]
+    ```
+
+    Use the Peto-Peto (Wilcoxon) weighting to emphasize early survival differences:
+
+    ```{python}
+    gw.pairwise_logrank_test(y, group=vet["celltype"], rho=1)
+    ```
+
+    Use Benjamini-Hochberg adjustment (less conservative) if you're interested in which pairs
+    show evidence of differences (false-discovery rate control rather than family-wise error):
+
+    ```{python}
+    gw.pairwise_logrank_test(y, group=vet["celltype"], correction="bh")
+    ```
     """
     import pandas as pd
 
