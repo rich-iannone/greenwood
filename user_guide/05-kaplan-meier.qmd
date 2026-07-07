@@ -23,7 +23,7 @@ Every example here uses the bundled `lung` dataset and the `Surv` response intro
 ```{python}
 import greenwood as gw
 
-lung = gw.load_dataset("lung")
+lung = gw.load_dataset("lung", backend="polars")
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 y
 ```
@@ -39,6 +39,11 @@ You fit the estimator by calling `fit` with a response. The `KaplanMeier` object
 familiar fit-then-inspect pattern, so we fit it first and set it aside.
 
 ```{python}
+import greenwood as gw
+
+lung = gw.load_dataset("lung", backend="polars")
+y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+
 km = gw.KaplanMeier().fit(y)
 km
 ```
@@ -48,7 +53,7 @@ The fitted `km` object holds the whole curve internally. The most direct way to 
 few rows.
 
 ```{python}
-km.to_frame(format="pandas")
+km.to_frame(format="polars")
 ```
 
 Each row corresponds to a distinct observed time. The columns tell a complete story:
@@ -85,6 +90,11 @@ You set the transform when you construct the estimator, so we fit a second `Kapl
 `conf_type="log-log"` and keep it separate from the default fit above.
 
 ```{python}
+import greenwood as gw
+
+lung = gw.load_dataset("lung", backend="polars")
+y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+
 km_loglog = gw.KaplanMeier(conf_type="log-log").fit(y)
 km_loglog
 ```
@@ -93,7 +103,7 @@ Pulling out just the estimate and its interval limits lets you compare this fit 
 default one. We select those columns to keep the table narrow.
 
 ```{python}
-km_loglog.to_frame(format="pandas")[["time", "estimate", "conf_low", "conf_high"]]
+km_loglog.to_frame(format="polars")[["time", "estimate", "conf_low", "conf_high"]]
 ```
 
 The point estimates are identical across transforms; only the interval limits differ. Choose
@@ -152,6 +162,12 @@ Choose the transform before fitting and report which you used.
 ## Median survival and quantiles
 
 ```{python}
+import greenwood as gw
+
+lung = gw.load_dataset("lung", backend="polars")
+y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+km = gw.KaplanMeier().fit(y)
+
 km.median(ci=True)
 ```
 
@@ -178,6 +194,12 @@ as the average event-free time over the first `tau` units, and it is a good summ
 survival curves cross, which makes hazard ratios hard to interpret.
 
 ```{python}
+import greenwood as gw
+
+lung = gw.load_dataset("lung", backend="polars")
+y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+km = gw.KaplanMeier().fit(y)
+
 km.rmst(365, ci=True)
 ```
 
@@ -194,6 +216,12 @@ is the area under the conditional survival curve from `s` to `tau`, divided by t
 subjects still event-free at `s`. Setting `s=0` recovers the restricted mean survival time.
 
 ```{python}
+import greenwood as gw
+
+lung = gw.load_dataset("lung", backend="polars")
+y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+km = gw.KaplanMeier().fit(y)
+
 km.rmrl(180, 730, ci=True)
 ```
 
@@ -208,6 +236,11 @@ Passing a grouping variable to `by` fits a separate curve within each stratum, w
 starting point for any subgroup comparison. The tidy output gains a `strata` column.
 
 ```{python}
+import greenwood as gw
+
+lung = gw.load_dataset("lung", backend="polars")
+y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+
 km_sex = gw.KaplanMeier().fit(y, by=lung["sex"])
 km_sex
 ```
@@ -258,6 +291,11 @@ The estimator follows the same fit-then-inspect pattern as `KaplanMeier`, so we 
 own step.
 
 ```{python}
+import greenwood as gw
+
+lung = gw.load_dataset("lung", backend="polars")
+y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+
 na = gw.NelsonAalen().fit(y)
 na
 ```
@@ -267,7 +305,7 @@ Reading `na` with `to_frame()` gives the same table layout as before, but now th
 survival, it starts at 0 and climbs as events accumulate.
 
 ```{python}
-na.to_frame(format="pyarrow")
+na.to_frame(format="polars")
 ```
 
 ## Next steps

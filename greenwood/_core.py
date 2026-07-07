@@ -41,15 +41,15 @@ class EventTable:
     Examples
     --------
     An `EventTable` is produced by `event_table`. Build one from the bundled `lung`
-    dataset and view it as a frame with `to_frame`.
+    dataset and view it as a Polars frame with `to_frame`.
 
     ```{python}
     import greenwood as gw
 
-    lung = gw.load_dataset("lung")
+    lung = gw.load_dataset("lung", backend="polars")
     y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
     et = gw.event_table(y)
-    et.to_frame()
+    et.to_frame(format="polars")
     ```
     """
 
@@ -98,16 +98,22 @@ class EventTable:
 
         Examples
         --------
-        Convert the event table for inspection or downstream analysis:
+        Build an event table from the bundled `lung` dataset and convert it to a Polars
+        frame for inspection or downstream analysis:
 
         ```{python}
-        et.to_frame()
+        import greenwood as gw
+
+        lung = gw.load_dataset("lung", backend="polars")
+        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        et = gw.event_table(y)
+        et.to_frame(format="polars")
         ```
 
-        Request a specific backend with `format=`:
+        Request a different backend with `format=`:
 
         ```{python}
-        et.to_frame(format="polars")
+        et.to_frame(format="pandas")
         ```
         """
         return to_dataframe(self._table_columns(), format=format)
@@ -219,10 +225,10 @@ def event_table(surv: Surv, *, group: Any = None, weights: Any = None) -> EventT
     ```{python}
     import greenwood as gw
 
-    lung = gw.load_dataset("lung")
+    lung = gw.load_dataset("lung", backend="polars")
     y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
     et = gw.event_table(y)
-    et.to_frame().head(10)
+    et.to_frame(format="polars").head(10)
     ```
 
     The first row shows the first event time: how many subjects were at risk, how many
@@ -233,7 +239,7 @@ def event_table(surv: Surv, *, group: Any = None, weights: Any = None) -> EventT
 
     ```{python}
     et_sex = gw.event_table(y, group=lung["sex"])
-    et_sex.to_frame().head(15)
+    et_sex.to_frame(format="polars").head(15)
     ```
 
     Now each unique time appears twice (once per stratum) with a `strata` column indicating

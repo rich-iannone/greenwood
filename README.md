@@ -50,7 +50,7 @@ Here's a simple example that loads survival data, estimates a survival curve, an
 import greenwood as gw
 
 # Load the data and represent it as a survival object
-lung = gw.load_dataset("lung")
+lung = gw.load_dataset("lung", backend="polars")
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 
 # Estimate the Kaplan-Meier survival curve
@@ -72,12 +72,12 @@ Here's a comprehensive example showcasing more of Greenwood's capabilities:
 ```python
 import greenwood as gw
 
-df = gw.load_dataset("lung")
+df = gw.load_dataset("lung", backend="polars")
 y = gw.Surv.right(df["time"], event=(df["status"] == 2))
 
 # Kaplan-Meier with stratification and detailed summaries
 km = gw.KaplanMeier(conf_type="log-log").fit(y, by=df["sex"])
-km.to_frame()           # tidy: strata, time, n_risk, n_event, estimate, conf_low, conf_high
+km.to_frame(format="polars")  # tidy: strata, time, n_risk, n_event, estimate, conf_low, conf_high
 km.median(ci=True)         # median survival with confidence limits, per stratum
 km.rmst(365, ci=True)      # restricted mean survival time up to 365 days
 km.predict([180, 365])     # survival probability at specific times
@@ -91,22 +91,23 @@ gw.plot_survival(km, risk_table=True)
 
 # Cox proportional hazards regression
 cox = gw.CoxPH().fit(y, df[["age", "sex"]])
-gw.tidy(cox, exponentiate=True)         # hazard ratios with confidence intervals
+gw.tidy(cox, exponentiate=True, format="polars")  # hazard ratios with confidence intervals
 cox.cox_zph()                                # proportional-hazards test
 cox.concordance()                            # C-statistic
-cox.predict(df[["age", "sex"]].head(), type="survival", times=[180, 365])
+cox.predict(df[["age", "sex"]].head(), type="survival", times=[180, 365], format="polars")
 
 # Parametric accelerated failure time models
 aft = gw.AFT("weibull").fit(y, df[["age", "sex"]])
-gw.tidy(aft)                            # coefficients on the log-time scale
+gw.tidy(aft, format="polars")           # coefficients on the log-time scale
 
 # Competing risks: cumulative incidence per cause
-mg = gw.load_dataset("mgus2")
+# (mgus2 loaded with pandas here for the Series `.where` construction below)
+mg = gw.load_dataset("mgus2", backend="pandas")
 etime = mg["ptime"].where(mg["pstat"] == 1, mg["futime"])
 cause = mg["pstat"].where(mg["pstat"] == 1, 2 * mg["death"])
-cr = Surv.multistate(etime, event=cause, states=("pcm", "death"))
-gw.AalenJohansen().fit(cr).to_frame()
-gw.FineGray("pcm").fit(cr, mg[["age", "sex"]]).to_frame()
+cr = gw.Surv.multistate(etime, event=cause, states=("pcm", "death"))
+gw.AalenJohansen().fit(cr).to_frame(format="polars")
+gw.FineGray("pcm").fit(cr, mg[["age", "sex"]]).to_frame(format="polars")
 
 # Model performance and prediction
 gw.concordance_index(y, cox.predict(type="lp"))

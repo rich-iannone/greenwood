@@ -125,11 +125,11 @@ def risk_table_data(km: KaplanMeier, times: Any = None, *, format: str | None = 
     ```{python}
     import greenwood as gw
 
-    lung = gw.load_dataset("lung")
+    lung = gw.load_dataset("lung", backend="polars")
     y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
     km = gw.KaplanMeier().fit(y, by=lung["sex"])
 
-    gw.viz.risk_table_data(km, times=[0, 250, 500, 750, 1000])
+    gw.viz.risk_table_data(km, times=[0, 250, 500, 750, 1000], format="polars")
     ```
     """
     query = np.asarray(_default_times(km) if times is None else times, dtype=float)
@@ -233,7 +233,7 @@ def plot_survival(
     ```{python}
     import greenwood as gw
 
-    lung = gw.load_dataset("lung")
+    lung = gw.load_dataset("lung", backend="polars")
     y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
     km = gw.KaplanMeier().fit(y, by=lung["sex"])
 
@@ -340,7 +340,7 @@ def risk_table(km: KaplanMeier, times: Any = None) -> Any:
     ```{python}
     import greenwood as gw
 
-    lung = gw.load_dataset("lung")
+    lung = gw.load_dataset("lung", backend="polars")
     y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
     km = gw.KaplanMeier().fit(y, by=lung["sex"])
 

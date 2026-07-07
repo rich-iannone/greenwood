@@ -24,7 +24,7 @@ Plotnine is an optional dependency. If you installed Greenwood with the `viz` ex
 ```{python}
 import greenwood as gw
 
-lung = gw.load_dataset("lung")
+lung = gw.load_dataset("lung", backend="polars")
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 y
 ```
@@ -60,6 +60,12 @@ The main entry point is `plot_survival`. Given a fitted `KaplanMeier`, it draws 
 curve for each stratum, a shaded confidence ribbon, and a tick mark at each censoring time.
 
 ```{python}
+import greenwood as gw
+
+lung = gw.load_dataset("lung", backend="polars")
+y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+km = gw.KaplanMeier(conf_type="log-log").fit(y, by=lung["sex"])
+
 gw.plot_survival(km)
 ```
 
@@ -83,6 +89,12 @@ and the table makes that visible. Pass `risk_table=True` to stack an aligned tab
 the curve.
 
 ```{python}
+import greenwood as gw
+
+lung = gw.load_dataset("lung", backend="polars")
+y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+km = gw.KaplanMeier(conf_type="log-log").fit(y, by=lung["sex"])
+
 gw.plot_survival(km, risk_table=True)
 ```
 
@@ -97,7 +109,7 @@ If you only need the numbers, `risk_table_data` returns them as a tidy frame, wh
 render however you like, including through Great Tables.
 
 ```{python}
-gw.viz.risk_table_data(km, times=[0, 250, 500, 750, 1000])
+gw.viz.risk_table_data(km, times=[0, 250, 500, 750, 1000], format="polars")
 ```
 
 To draw just the aligned table as its own plot, without a curve above it, use `risk_table`. It
@@ -114,7 +126,12 @@ Because the result is a plotnine object, you refine it by adding layers and them
 a grammar-of-graphics library rather than a fixed plotting routine.
 
 ```{python}
+import greenwood as gw
 from plotnine import labs, theme_bw
+
+lung = gw.load_dataset("lung", backend="polars")
+y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+km = gw.KaplanMeier(conf_type="log-log").fit(y, by=lung["sex"])
 
 (
     gw.plot_survival(km)

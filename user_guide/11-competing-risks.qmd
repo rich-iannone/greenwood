@@ -36,7 +36,7 @@ and a cause code that is 0 for censored, 1 for progression, and 2 for death.
 import numpy as np
 import greenwood as gw
 
-mg = gw.load_dataset("mgus2")
+mg = gw.load_dataset("mgus2", backend="polars")
 etime = np.where(mg["pstat"] == 1, mg["ptime"], mg["futime"])
 cause = np.where(mg["pstat"] == 1, 1, 2 * mg["death"])   # 0 censor, 1 pcm, 2 death
 ```
@@ -81,6 +81,14 @@ The Aalen-Johansen estimator computes it. You fit it to the multi-state response
 returns a curve for every cause.
 
 ```{python}
+import numpy as np
+import greenwood as gw
+
+mg = gw.load_dataset("mgus2", backend="polars")
+etime = np.where(mg["pstat"] == 1, mg["ptime"], mg["futime"])
+cause = np.where(mg["pstat"] == 1, 1, 2 * mg["death"])   # 0 censor, 1 pcm, 2 death
+y = gw.Surv.multistate(etime, event=cause, states=("pcm", "death"))
+
 aj = gw.AalenJohansen().fit(y)
 aj
 ```
@@ -131,6 +139,14 @@ subdistribution hazard, constructed so that its coefficients describe the effect
 covariates on the cumulative incidence itself, which is usually what you want to report.
 
 ```{python}
+import numpy as np
+import greenwood as gw
+
+mg = gw.load_dataset("mgus2", backend="polars")
+etime = np.where(mg["pstat"] == 1, mg["ptime"], mg["futime"])
+cause = np.where(mg["pstat"] == 1, 1, 2 * mg["death"])   # 0 censor, 1 pcm, 2 death
+y = gw.Surv.multistate(etime, event=cause, states=("pcm", "death"))
+
 fg = gw.FineGray("pcm").fit(y, mg[["age", "sex"]])
 fg
 ```
@@ -140,7 +156,7 @@ tidy it into a coefficient table, asking for exponentiated estimates so the numb
 hazard-ratio scale rather than the log scale.
 
 ```{python}
-gw.tidy(fg, exponentiate=True)
+gw.tidy(fg, exponentiate=True, format="polars")
 ```
 
 The exponentiated coefficients are subdistribution hazard ratios. A value above 1 means the

@@ -22,7 +22,7 @@ tests it reports.
 ```{python}
 import greenwood as gw
 
-lung = gw.load_dataset("lung")
+lung = gw.load_dataset("lung", backend="polars")
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 y
 ```
@@ -52,6 +52,11 @@ into indicator variables automatically. Rows with missing covariate values are d
 in a standard complete-case analysis.
 
 ```{python}
+import greenwood as gw
+
+lung = gw.load_dataset("lung", backend="polars")
+y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+
 cox = gw.CoxPH().fit(y, lung[["age", "sex", "ph.ecog"]])
 ```
 
@@ -107,7 +112,13 @@ To interpret the model you exponentiate the coefficients, which turns log hazard
 hazard ratios. Greenwood does this for you through the tidy layer.
 
 ```{python}
-gw.tidy(cox, exponentiate=True)
+import greenwood as gw
+
+lung = gw.load_dataset("lung", backend="polars")
+y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+cox = gw.CoxPH().fit(y, lung[["age", "sex", "ph.ecog"]])
+
+gw.tidy(cox, exponentiate=True, format="polars")
 ```
 
 A hazard ratio above 1 means the covariate increases the hazard, and a value below 1 means
@@ -131,7 +142,13 @@ log-likelihood, the AIC, and the likelihood-ratio test of the null hypothesis th
 coefficients are zero.
 
 ```{python}
-gw.glance(cox)
+import greenwood as gw
+
+lung = gw.load_dataset("lung", backend="polars")
+y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+cox = gw.CoxPH().fit(y, lung[["age", "sex", "ph.ecog"]])
+
+gw.glance(cox, format="polars")
 ```
 
 The model reports three classical global tests, all of which assess whether the covariates
@@ -152,6 +169,11 @@ also the default in R. The Breslow approximation is available and is faster but 
 accurate when ties are common.
 
 ```{python}
+import greenwood as gw
+
+lung = gw.load_dataset("lung", backend="polars")
+y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+
 gw.CoxPH(ties="breslow").fit(y, lung[["age", "sex"]]).to_frame(format="polars")[["term", "estimate"]]
 ```
 
@@ -306,8 +328,13 @@ model may be misspecified, or when observations are not independent (e.g., repea
 family data), use the sandwich (robust) variance estimator by setting `robust=True`:
 
 ```{python}
+import greenwood as gw
+
+lung = gw.load_dataset("lung", backend="polars")
+y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+
 cox_robust = gw.CoxPH().fit(y, lung[["age", "sex"]], robust=True)
-gw.tidy(cox_robust)
+gw.tidy(cox_robust, format="polars")
 ```
 
 The standard errors adjust upward (more conservative) if there is overdispersion, or
@@ -322,9 +349,9 @@ lung_with_cluster = lung.with_columns(
     family=((pl.int_range(len(lung)) % 10) + 1)
 )
 
-cox_cluster = gw.CoxPH().fit(y, lung_with_cluster[["age", "sex"]], 
+cox_cluster = gw.CoxPH().fit(y, lung_with_cluster[["age", "sex"]],
                               robust=True, cluster=lung_with_cluster["family"])
-gw.tidy(cox_cluster)
+gw.tidy(cox_cluster, format="polars")
 ```
 
 Clustered sandwich standard errors are wider than model-based ones, reflecting the loss of
@@ -360,6 +387,11 @@ argument sets the overall strength, and `l1_ratio` mixes the lasso (`1.0`) and r
 penalties.
 
 ```{python}
+import greenwood as gw
+
+lung = gw.load_dataset("lung", backend="polars")
+y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+
 cols = ["age", "sex", "ph.ecog", "ph.karno", "wt.loss"]
 lasso = gw.CoxNet(penalizer=0.05, l1_ratio=1.0).fit(y, lung[cols])
 lasso

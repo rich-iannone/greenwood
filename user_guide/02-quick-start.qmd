@@ -25,7 +25,7 @@ patients with advanced lung cancer.
 ```{python}
 import greenwood as gw
 
-lung = gw.load_dataset("lung")
+lung = gw.load_dataset("lung", backend="polars")
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 y
 ```
@@ -40,6 +40,11 @@ The Kaplan-Meier estimator turns those times into a survival curve, the probabil
 surviving past each point in time. Printing the fitted estimator reports the median survival.
 
 ```{python}
+import greenwood as gw
+
+lung = gw.load_dataset("lung", backend="polars")
+y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+
 km = gw.KaplanMeier().fit(y)
 km
 ```
@@ -53,6 +58,12 @@ after it give a 95 percent confidence interval for that median, 285 to 363 days.
 wherever a patient was censored.
 
 ```{python}
+import greenwood as gw
+
+lung = gw.load_dataset("lung", backend="polars")
+y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+km = gw.KaplanMeier().fit(y)
+
 gw.plot_survival(km)
 ```
 
@@ -66,6 +77,11 @@ To ask how a characteristic changes the risk of death, fit a Cox proportional ha
 Here we include `age` and `sex`. Printing the model shows a coefficient table.
 
 ```{python}
+import greenwood as gw
+
+lung = gw.load_dataset("lung", backend="polars")
+y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+
 cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
 cox
 ```

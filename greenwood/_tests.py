@@ -72,7 +72,7 @@ class TestResult:
     ```{python}
     import greenwood as gw
 
-    lung = gw.load_dataset("lung")
+    lung = gw.load_dataset("lung", backend="polars")
     y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
     result = gw.logrank_test(y, group=lung["sex"])
     result
@@ -313,7 +313,7 @@ def logrank_test(
     ```{python}
     import greenwood as gw
 
-    lung = gw.load_dataset("lung")
+    lung = gw.load_dataset("lung", backend="polars")
     y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
     result = gw.logrank_test(y, group=lung["sex"])
     result
@@ -509,21 +509,22 @@ def pairwise_logrank_test(
     ```{python}
     import greenwood as gw
 
-    vet = gw.load_dataset("veteran")
+    vet = gw.load_dataset("veteran", backend="polars")
     y = gw.Surv.right(vet["time"], event=vet["status"])
     gw.logrank_test(y, group=vet["celltype"])
     ```
 
-    The pairwise test compares all six pairs of cell types and returns a DataFrame with the
-    test statistic, raw p-value, and adjusted p-value for each pair. Use `p_adjusted` for
-    significance testing:
+    The pairwise test compares all six pairs of cell types and returns a table with the
+    test statistic, raw p-value, and adjusted p-value for each pair. Pass `format=` to
+    choose the backend (here, Polars); use `p_adjusted` for significance testing:
 
     ```{python}
-    pairs = gw.pairwise_logrank_test(y, group=vet["celltype"])
+    pairs = gw.pairwise_logrank_test(y, group=vet["celltype"], format="polars")
     pairs
     ```
 
-    Filter to significant pairs (adjusted p-value < 0.05):
+    Filter to significant pairs (adjusted p-value < 0.05). Request `format="pandas"` here so
+    we can use boolean-mask filtering:
 
     ```{python}
     pairs = gw.pairwise_logrank_test(y, group=vet["celltype"], format="pandas")
@@ -533,14 +534,14 @@ def pairwise_logrank_test(
     Use the Peto-Peto (Wilcoxon) weighting to emphasize early survival differences:
 
     ```{python}
-    gw.pairwise_logrank_test(y, group=vet["celltype"], rho=1)
+    gw.pairwise_logrank_test(y, group=vet["celltype"], rho=1, format="polars")
     ```
 
     Use Benjamini-Hochberg adjustment (less conservative) if you're interested in which pairs
     show evidence of differences (false-discovery rate control rather than family-wise error):
 
     ```{python}
-    gw.pairwise_logrank_test(y, group=vet["celltype"], correction="bh")
+    gw.pairwise_logrank_test(y, group=vet["celltype"], correction="bh", format="polars")
     ```
     """
     from ._surv import CensoringType, _to_1d_array

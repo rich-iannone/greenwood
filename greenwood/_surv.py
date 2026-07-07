@@ -499,6 +499,7 @@ class Surv:
         Here we have 3 subjects with different levels of observation precision:
 
         ```{python}
+        import greenwood as gw
         import numpy as np
 
         y = gw.Surv.interval(lower=[1, 2, 3], upper=[2, np.inf, 5])
@@ -959,17 +960,20 @@ class Surv:
 
         Examples
         --------
-        Export the response. Each row represents one observation with its event time
-        and status:
+        Build a right-censored response and export it as a Polars frame. Each row
+        represents one observation with its event time and status:
 
         ```{python}
-        y.to_frame()
+        import greenwood as gw
+
+        y = gw.Surv.right(time=[5, 6, 4, 9], event=[1, 0, 1, 0])
+        y.to_frame(format="polars")
         ```
 
-        Request a specific backend with `format=`:
+        Request a different backend with `format=`:
 
         ```{python}
-        y.to_frame(format="polars")
+        y.to_frame(format="pandas")
         ```
         """
         return to_dataframe(self._frame_columns(), format=format)
@@ -992,10 +996,13 @@ class Surv:
         Examples
         --------
         The mapping structure varies by censoring type, but always includes `type`,
-        `stop`, and `status`. Unused fields are `None`. Here we convert `y` to a
-        dictionary:
+        `stop`, and `status`. Unused fields are `None`. Here we build a response and
+        convert it to a dictionary:
 
         ```{python}
+        import greenwood as gw
+
+        y = gw.Surv.right(time=[5, 6, 4, 9], event=[1, 0, 1, 0])
         y.to_dict()
         ```
 
@@ -1038,11 +1045,12 @@ class Surv:
         Examples
         --------
         Rebuild an equivalent response from its dictionary representation. Here we
-        serialize `y` and immediately deserialize it:
+        serialize a response and immediately deserialize it:
 
         ```{python}
         import greenwood as gw
 
+        y = gw.Surv.right(time=[5, 6, 4, 9], event=[1, 0, 1, 0])
         reconstructed = gw.Surv.from_dict(y.to_dict())
         print("Objects equal:", y.to_dict() == reconstructed.to_dict())
         ```
@@ -1087,10 +1095,13 @@ class Surv:
 
         Examples
         --------
-        Serialize to JSON. By default, output is indented for readability. Here we show
-        just the first 120 characters of compact JSON:
+        Serialize to JSON. By default, output is indented for readability. Here we build
+        a response and show just the first 120 characters of compact JSON:
 
         ```{python}
+        import greenwood as gw
+
+        y = gw.Surv.right(time=[5, 6, 4, 9], event=[1, 0, 1, 0])
         json_compact = y.to_json(indent=None)
         print(json_compact[:120])
         ```
@@ -1121,9 +1132,13 @@ class Surv:
 
         Examples
         --------
-        Deserialize from JSON. Round-trip through `to_json()` and back:
+        Deserialize from JSON. Build a response, then round-trip through `to_json()`
+        and back:
 
         ```{python}
+        import greenwood as gw
+
+        y = gw.Surv.right(time=[5, 6, 4, 9], event=[1, 0, 1, 0])
         json_text = y.to_json()
         restored = gw.Surv.from_json(json_text)
         print("Round-trip successful:", y.to_json() == restored.to_json())

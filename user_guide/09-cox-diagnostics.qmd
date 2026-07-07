@@ -24,7 +24,7 @@ time with an event indicator, and it is the target every model on this page is f
 ```{python}
 import greenwood as gw
 
-lung = gw.load_dataset("lung")
+lung = gw.load_dataset("lung", backend="polars")
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 y
 ```
@@ -49,6 +49,12 @@ Calling `cox_zph` returns a `ZPHResult`, an object that bundles the test statist
 Displaying it directly gives a compact summary of the test.
 
 ```{python}
+import greenwood as gw
+
+lung = gw.load_dataset("lung", backend="polars")
+y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+
 zph = cox.cox_zph()
 zph
 ```
@@ -57,7 +63,7 @@ For the full per-covariate breakdown, call `to_frame()` on that result. This is 
 you will read most often.
 
 ```{python}
-zph.to_frame(format="pandas")
+zph.to_frame(format="polars")
 ```
 
 The table has one row per covariate plus a `GLOBAL` row that tests all covariates jointly.
@@ -83,6 +89,12 @@ The martingale residuals come back as a NumPy array with one entry per subject. 
 of them, so we look at the first five rather than the whole array.
 
 ```{python}
+import greenwood as gw
+
+lung = gw.load_dataset("lung", backend="polars")
+y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+
 cox.residuals("martingale")[:5]
 ```
 
@@ -90,7 +102,7 @@ The Schoenfeld residuals come back as a DataFrame instead, with one row per even
 column per covariate.
 
 ```{python}
-cox.residuals("schoenfeld")
+cox.residuals("schoenfeld", format="polars")
 ```
 
 ## Baseline hazard and predicted survival
@@ -100,7 +112,13 @@ after fitting. The baseline cumulative hazard, and the survival curve derived fr
 describe a reference subject.
 
 ```{python}
-cox.baseline_hazard()
+import greenwood as gw
+
+lung = gw.load_dataset("lung", backend="polars")
+y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+
+cox.baseline_hazard(format="polars")
 ```
 
 More useful in practice is predicting the survival curve for specific covariate values.
@@ -119,7 +137,7 @@ Given that new data and a set of times, `predict` returns the estimated survival
 for each subject.
 
 ```{python}
-cox.predict(newdata, type="survival", times=[180, 365, 730])
+cox.predict(newdata, type="survival", times=[180, 365, 730], format="polars")
 ```
 
 Each column is a subject from `newdata`, and each row is a requested time. The `type="lp"`
@@ -133,7 +151,7 @@ hazard and matching R's `survfit` (which combines baseline-hazard and coefficien
 uncertainty).
 
 ```{python}
-cox.predict(newdata, type="survival", times=[180, 365, 730], ci=True)
+cox.predict(newdata, type="survival", times=[180, 365, 730], ci=True, format="polars")
 ```
 
 You can also predict conditional on a subject having already survived some time, which is
@@ -141,7 +159,7 @@ useful for updating a prognosis partway through follow-up. With `conditional_aft
 returned probabilities are `P(T > t | T > 180) = S(t) / S(180)`.
 
 ```{python}
-cox.predict(newdata, type="survival", times=[365, 730], conditional_after=180)
+cox.predict(newdata, type="survival", times=[365, 730], conditional_after=180, format="polars")
 ```
 
 ## Stratification
@@ -153,6 +171,11 @@ You pass the stratifying variable to `strata`. Here we stratify by `sex` while k
 and `ph.ecog` as covariates.
 
 ```{python}
+import greenwood as gw
+
+lung = gw.load_dataset("lung", backend="polars")
+y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+
 stratified = gw.CoxPH().fit(y, lung[["age", "ph.ecog"]], strata=lung["sex"])
 ```
 
@@ -160,7 +183,7 @@ As with any fitted model, we can print `stratified` for a summary, or read its c
 table as data with `to_frame()`.
 
 ```{python}
-stratified.to_frame(format="pyarrow")
+stratified.to_frame(format="polars")
 ```
 
 Notice that the stratifying variable, `sex`, does not appear as a coefficient. Its effect is
@@ -174,6 +197,11 @@ small. The robust, or sandwich, variance corrects for this. Set `robust=True` fo
 Lin-Wei sandwich estimator, and pass `cluster` to group correlated observations.
 
 ```{python}
+import greenwood as gw
+
+lung = gw.load_dataset("lung", backend="polars")
+y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+
 robust = gw.CoxPH().fit(y, lung[["age", "sex"]], robust=True)
 robust.to_frame(format="polars")[["term", "std_error"]]
 ```
@@ -190,6 +218,12 @@ of subjects, the one who failed first had the higher predicted risk. A value of 
 better than chance and 1.0 is perfect discrimination.
 
 ```{python}
+import greenwood as gw
+
+lung = gw.load_dataset("lung", backend="polars")
+y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+
 cox.concordance()
 ```
 

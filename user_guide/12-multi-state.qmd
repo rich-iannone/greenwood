@@ -42,7 +42,7 @@ as the absorbing state.
 ```{python}
 import greenwood as gw
 
-mg = gw.load_dataset("mgus2")
+mg = gw.load_dataset("mgus2", backend="polars")
 
 start, stop, state, event = [], [], [], []
 for i in range(len(mg)):
@@ -95,6 +95,29 @@ matrices and reports, at each time, the probability of occupying each state. Thi
 multi-state generalization of the survival curve.
 
 ```{python}
+import greenwood as gw
+
+mg = gw.load_dataset("mgus2", backend="polars")
+
+start, stop, state, event = [], [], [], []
+for i in range(len(mg)):
+    pt, ft = mg["ptime"][i], mg["futime"][i]
+    progressed, died = mg["pstat"][i] == 1, mg["death"][i] == 1
+    if progressed and pt < ft:
+        start += [0, pt]
+        stop += [pt, ft]
+        state += ["mgus", "pcm"]
+        event += ["pcm", "death" if died else None]
+    else:
+        start += [0]
+        stop += [ft]
+        state += ["mgus"]
+        event += ["death" if died else ("pcm" if progressed else None)]
+
+# Keep only positive-length intervals.
+rows = [(a, b, s, e) for a, b, s, e in zip(start, stop, state, event) if b > a]
+start, stop, state, event = map(list, zip(*rows))
+
 ms = gw.MultiState().fit(start, stop, state, event, states=("mgus", "pcm", "death"))
 ```
 
@@ -114,7 +137,7 @@ state. Early on, almost everyone is in the initial `mgus` state; over time, mass
 You can read the occupancy probabilities at specific times with `predict`.
 
 ```{python}
-ms.predict([60, 120, 240])
+ms.predict([60, 120, 240], format="polars")
 ```
 
 The full transition-probability matrices, giving the probability of moving from each state to

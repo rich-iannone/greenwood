@@ -257,17 +257,17 @@ class KaplanMeier:
     ```{python}
     import greenwood as gw
 
-    lung = gw.load_dataset("lung")
+    lung = gw.load_dataset("lung", backend="polars")
     y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
     km = gw.KaplanMeier().fit(y)
     km
     ```
 
-    The full step function, one row per event time, is available with `to_frame`. The
-    `km` object fit here is reused by the method examples below.
+    The full step function, one row per event time, is available with `to_frame`; pass
+    `format=` to choose the backend (here, Polars):
 
     ```{python}
-    km.to_frame()
+    km.to_frame(format="polars")
     ```
     """
 
@@ -367,7 +367,7 @@ class KaplanMeier:
         ```{python}
         import greenwood as gw
 
-        lung = gw.load_dataset("lung")
+        lung = gw.load_dataset("lung", backend="polars")
         y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
         km = gw.KaplanMeier().fit(y)
         km
@@ -462,9 +462,14 @@ class KaplanMeier:
         --------
         Any quantile of the survival distribution is available. Here is the first-quartile
         survival time (the time by which a quarter of subjects have had the event), with its
-        confidence limits (reusing the `km` fit above):
+        confidence limits:
 
         ```{python}
+        import greenwood as gw
+
+        lung = gw.load_dataset("lung", backend="polars")
+        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        km = gw.KaplanMeier().fit(y)
         km.quantile(0.25, ci=True)
         ```
         """
@@ -514,9 +519,14 @@ class KaplanMeier:
         Examples
         --------
         The median is the time at which the survival curve first drops to 0.5. Pass
-        `ci=True` for its confidence limits (reusing the `km` fit above):
+        `ci=True` for its confidence limits:
 
         ```{python}
+        import greenwood as gw
+
+        lung = gw.load_dataset("lung", backend="polars")
+        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        km = gw.KaplanMeier().fit(y)
         km.median(ci=True)
         ```
         """
@@ -561,9 +571,14 @@ class KaplanMeier:
         --------
         The restricted mean survival time is the average survival time over a fixed window,
         computed as the area under the curve up to `tau`. Here it is over the first 365 days,
-        with its confidence limits (reusing the `km` fit above):
+        with its confidence limits:
 
         ```{python}
+        import greenwood as gw
+
+        lung = gw.load_dataset("lung", backend="polars")
+        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        km = gw.KaplanMeier().fit(y)
         km.rmst(365, ci=True)
         ```
         """
@@ -623,9 +638,14 @@ class KaplanMeier:
         --------
         Restricted mean residual life is the expected additional survival time for subjects
         who have already survived to a landmark. Here it is at 180 days, over the window out
-        to 730 days, with confidence limits (reusing the `km` fit above):
+        to 730 days, with confidence limits:
 
         ```{python}
+        import greenwood as gw
+
+        lung = gw.load_dataset("lung", backend="polars")
+        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        km = gw.KaplanMeier().fit(y)
         km.rmrl(180, 730, ci=True)
         ```
         """
@@ -683,10 +703,14 @@ class KaplanMeier:
         Examples
         --------
         Read the survival probability off the curve at any set of times. Here are the
-        estimated survival probabilities at 180, 365, and 730 days (reusing the `km` fit
-        above):
+        estimated survival probabilities at 180, 365, and 730 days:
 
         ```{python}
+        import greenwood as gw
+
+        lung = gw.load_dataset("lung", backend="polars")
+        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        km = gw.KaplanMeier().fit(y)
         km.predict([180, 365, 730])
         ```
 
@@ -755,16 +779,22 @@ class KaplanMeier:
 
         Examples
         --------
-        Export the fitted Kaplan-Meier curve:
+        Fit a Kaplan-Meier estimator on the bundled `lung` dataset, then export the fitted
+        curve as a Polars frame:
 
         ```{python}
-        km.to_frame()
+        import greenwood as gw
+
+        lung = gw.load_dataset("lung", backend="polars")
+        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        km = gw.KaplanMeier().fit(y)
+        km.to_frame(format="polars")
         ```
 
-        Request a specific backend with `format=`:
+        Pass a different `format=` for pandas or PyArrow output:
 
         ```{python}
-        km.to_frame(format="polars")
+        km.to_frame(format="pandas")
         ```
         """
         return to_dataframe(self._table_columns(), format=format)
@@ -835,13 +865,11 @@ class NelsonAalen:
     ```{python}
     import greenwood as gw
 
-    lung = gw.load_dataset("lung")
+    lung = gw.load_dataset("lung", backend="polars")
     y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
     na = gw.NelsonAalen().fit(y)
     na
     ```
-
-    The `na` object fit here is reused by the method examples below.
     """
 
     def __init__(self, *, conf_type: str = "log", conf_level: float = 0.95) -> None:
@@ -929,7 +957,7 @@ class NelsonAalen:
         ```{python}
         import greenwood as gw
 
-        lung = gw.load_dataset("lung")
+        lung = gw.load_dataset("lung", backend="polars")
         y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
         na = gw.NelsonAalen().fit(y)
         na
@@ -1023,16 +1051,22 @@ class NelsonAalen:
 
         Examples
         --------
-        Export the fitted Nelson-Aalen curve:
+        Fit a Nelson-Aalen estimator on the bundled `lung` dataset, then export the fitted
+        cumulative-hazard curve as a Polars frame:
 
         ```{python}
-        na.to_frame()
+        import greenwood as gw
+
+        lung = gw.load_dataset("lung", backend="polars")
+        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        na = gw.NelsonAalen().fit(y)
+        na.to_frame(format="polars")
         ```
 
-        Request a specific backend with `format=`:
+        Pass a different `format=` for pandas or PyArrow output:
 
         ```{python}
-        na.to_frame(format="polars")
+        na.to_frame(format="pandas")
         ```
         """
         return to_dataframe(self._table_columns(), format=format)

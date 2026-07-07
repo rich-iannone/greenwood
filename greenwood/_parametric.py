@@ -133,13 +133,11 @@ class AFT:
     ```{python}
     import greenwood as gw
 
-    lung = gw.load_dataset("lung")
+    lung = gw.load_dataset("lung", backend="polars")
     y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
     aft = gw.AFT("weibull").fit(y, lung[["age", "sex"]])
     aft
     ```
-
-    The `aft` object fit here is reused by the method examples below.
     """
 
     def __init__(self, dist: str = "weibull", *, conf_level: float = 0.95) -> None:
@@ -226,7 +224,7 @@ class AFT:
         ```{python}
         import greenwood as gw
 
-        lung = gw.load_dataset("lung")
+        lung = gw.load_dataset("lung", backend="polars")
         y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
         aft = gw.AFT(dist="lognormal").fit(y, lung[["age", "sex"]])
         aft
@@ -388,31 +386,40 @@ class AFT:
 
         Examples
         --------
-        Predict the linear predictor (log-time location) for the first two subjects:
+        Fit a Weibull AFT model on the bundled `lung` dataset, then predict the linear
+        predictor (log-time location) for the first two subjects:
 
         ```{python}
+        import greenwood as gw
+
+        lung = gw.load_dataset("lung", backend="polars")
+        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        aft = gw.AFT("weibull").fit(y, lung[["age", "sex"]])
+
         aft.predict(lung[["age", "sex"]][:2], type="lp")
         ```
 
         Predicted survival-time quantiles for the first two subjects at the lower quartile,
-        median, and upper quartile:
+        median, and upper quartile (a table, so pass `format=`):
 
         ```{python}
-        aft.predict(lung[["age", "sex"]][:2], type="quantile", p=[0.25, 0.5, 0.75])
+        aft.predict(lung[["age", "sex"]][:2], type="quantile", p=[0.25, 0.5, 0.75],
+                    format="polars")
         ```
 
         Read survival probabilities off the fitted curves at chosen times. Here are the
         estimates at 180 and 365 days for those same two subjects:
 
         ```{python}
-        aft.predict(lung[["age", "sex"]][:2], type="survival", times=[180, 365])
+        aft.predict(lung[["age", "sex"]][:2], type="survival", times=[180, 365],
+                    format="polars")
         ```
 
         Predict conditional survival given already having survived to 100 days:
 
         ```{python}
         aft.predict(lung[["age", "sex"]][:2], type="survival", times=[180, 365],
-                    conditional_after=100)
+                    conditional_after=100, format="polars")
         ```
         """
         x = self._design(newdata)
@@ -491,16 +498,23 @@ class AFT:
 
         Examples
         --------
-        Export the fitted AFT coefficients:
+        Fit a Weibull AFT model on the bundled `lung` dataset, then export its coefficient
+        table as a Polars frame:
 
         ```{python}
-        aft.to_frame()
+        import greenwood as gw
+
+        lung = gw.load_dataset("lung", backend="polars")
+        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        aft = gw.AFT("weibull").fit(y, lung[["age", "sex"]])
+
+        aft.to_frame(format="polars")
         ```
 
-        Request a specific backend with `format=`:
+        Request a different backend with `format=`:
 
         ```{python}
-        aft.to_frame(format="polars")
+        aft.to_frame(format="pandas")
         ```
         """
         return to_dataframe(self._coefficient_columns(), format=format)

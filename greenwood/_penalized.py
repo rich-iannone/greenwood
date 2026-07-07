@@ -95,14 +95,12 @@ class CoxNet:
     ```{python}
     import greenwood as gw
 
-    lung = gw.load_dataset("lung")
+    lung = gw.load_dataset("lung", backend="polars")
     y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
     cols = ["age", "sex", "ph.ecog", "ph.karno", "wt.loss"]
     coxnet = gw.CoxNet(penalizer=0.05, l1_ratio=1.0).fit(y, lung[cols])
     coxnet
     ```
-
-    The `coxnet` object fit here is reused by the method examples below.
     """
 
     def __init__(
@@ -194,7 +192,7 @@ class CoxNet:
         ```{python}
         import greenwood as gw
 
-        lung = gw.load_dataset("lung")
+        lung = gw.load_dataset("lung", backend="polars")
         y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
         cols = ["age", "sex", "ph.ecog", "ph.karno", "wt.loss"]
         coxnet_ridge = gw.CoxNet(penalizer=0.05, l1_ratio=0.0).fit(y, lung[cols])
@@ -374,7 +372,7 @@ class CoxNet:
         ```{python}
         import greenwood as gw
 
-        lung = gw.load_dataset("lung")
+        lung = gw.load_dataset("lung", backend="polars")
         y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
         cols = ["age", "sex", "ph.ecog", "ph.karno", "wt.loss"]
         coxnet = gw.CoxNet(penalizer=0.05, l1_ratio=1.0).fit(y, lung[cols])
@@ -389,10 +387,10 @@ class CoxNet:
         ```
 
         Pass `type="survival"` for predicted survival curves at specified times or at the
-        event times from training data:
+        event times from training data; pass `format=` to choose the backend (here, Polars):
 
         ```{python}
-        coxnet.predict(lung[cols][:2], type="survival", times=[180, 365])
+        coxnet.predict(lung[cols][:2], type="survival", times=[180, 365], format="polars")
         ```
         """
         x = self._x if newdata is None else _design_matrix(newdata)[0]
@@ -445,16 +443,22 @@ class CoxNet:
 
         Examples
         --------
-        Export the fitted CoxNet coefficients:
+        Fit a lasso-penalized Cox model and export the coefficient table as a Polars frame:
 
         ```{python}
-        coxnet.to_frame()
+        import greenwood as gw
+
+        lung = gw.load_dataset("lung", backend="polars")
+        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        cols = ["age", "sex", "ph.ecog", "ph.karno", "wt.loss"]
+        coxnet = gw.CoxNet(penalizer=0.05, l1_ratio=1.0).fit(y, lung[cols])
+        coxnet.to_frame(format="polars")
         ```
 
-        Request a specific backend with `format=`:
+        Request a different backend with `format=`:
 
         ```{python}
-        coxnet.to_frame(format="polars")
+        coxnet.to_frame(format="pandas")
         ```
         """
         return to_dataframe(self._coefficient_columns(), format=format)

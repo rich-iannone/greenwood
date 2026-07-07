@@ -129,13 +129,11 @@ class RoystonParmar:
     ```{python}
     import greenwood as gw
 
-    lung = gw.load_dataset("lung")
+    lung = gw.load_dataset("lung", backend="polars")
     y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
     rp = gw.RoystonParmar(df=3).fit(y, lung[["age", "sex"]])
     rp
     ```
-
-    The `rp` object fit here is reused by the method examples below.
     """
 
     def __init__(self, df: int = 3, *, conf_level: float = 0.95) -> None:
@@ -219,7 +217,7 @@ class RoystonParmar:
         ```{python}
         import greenwood as gw
 
-        lung = gw.load_dataset("lung")
+        lung = gw.load_dataset("lung", backend="polars")
         y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
         rp = gw.RoystonParmar(df=3).fit(y, lung[["age", "sex"]])
         rp
@@ -404,28 +402,40 @@ class RoystonParmar:
         Examples
         --------
         Read predicted survival probabilities off the fitted curves at chosen times. Here are
-        the estimates at 180 and 365 days for the first two subjects:
+        the estimates at 180 and 365 days for the first two subjects; pass `format=` to choose
+        the backend (here, Polars):
 
         ```{python}
-        rp.predict(lung[["age", "sex"]][:2], type="survival", times=[180, 365])
+        import greenwood as gw
+
+        lung = gw.load_dataset("lung", backend="polars")
+        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        rp = gw.RoystonParmar(df=3).fit(y, lung[["age", "sex"]])
+        rp.predict(
+            lung[["age", "sex"]][:2], type="survival", times=[180, 365], format="polars"
+        )
         ```
 
         Predict the instantaneous hazard (force of mortality) at those same times:
 
         ```{python}
-        rp.predict(lung[["age", "sex"]][:2], type="hazard", times=[180, 365])
+        rp.predict(
+            lung[["age", "sex"]][:2], type="hazard", times=[180, 365], format="polars"
+        )
         ```
 
         Predict cumulative hazard (total risk accumulated by time t):
 
         ```{python}
-        rp.predict(lung[["age", "sex"]][:2], type="cumhaz", times=[180, 365])
+        rp.predict(
+            lung[["age", "sex"]][:2], type="cumhaz", times=[180, 365], format="polars"
+        )
         ```
 
         Predict for a baseline subject (covariates all zero):
 
         ```{python}
-        rp.predict(type="survival", times=[180, 365])
+        rp.predict(type="survival", times=[180, 365], format="polars")
         ```
         """
         if newdata is None:
@@ -486,16 +496,21 @@ class RoystonParmar:
 
         Examples
         --------
-        Export the fitted Royston-Parmar coefficients:
+        Fit a Royston-Parmar model and export the coefficient table as a Polars frame:
 
         ```{python}
-        rp.to_frame()
+        import greenwood as gw
+
+        lung = gw.load_dataset("lung", backend="polars")
+        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        rp = gw.RoystonParmar(df=3).fit(y, lung[["age", "sex"]])
+        rp.to_frame(format="polars")
         ```
 
-        Request a specific backend with `format=`:
+        Request a different backend with `format=`:
 
         ```{python}
-        rp.to_frame(format="polars")
+        rp.to_frame(format="pandas")
         ```
         """
         return to_dataframe(self._coefficient_columns(), format=format)

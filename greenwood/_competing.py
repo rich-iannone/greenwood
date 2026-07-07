@@ -138,19 +138,15 @@ class AalenJohansen:
     fitted object reports the final cumulative incidence for each cause.
 
     ```{python}
-    import numpy as np
     import greenwood as gw
 
-    mg = gw.load_dataset("mgus2")
-    etime = np.where(mg["pstat"] == 1, mg["ptime"], mg["futime"])
-    cause = np.where(mg["pstat"] == 1, 1, 2 * mg["death"])
-    y = gw.Surv.multistate(etime, event=cause, states=("pcm", "death"))
-    aj = gw.AalenJohansen().fit(y)
+    mg = gw.load_dataset("mgus2", backend="pandas")
+    etime = mg["ptime"].where(mg["pstat"] == 1, mg["futime"])
+    cause = mg["pstat"].where(mg["pstat"] == 1, 2 * mg["death"])
+    cr = gw.Surv.multistate(etime, event=cause, states=("pcm", "death"))
+    aj = gw.AalenJohansen().fit(cr)
     aj
     ```
-
-    The `aj` object fit here, along with the `y` response, is reused by the method examples
-    below.
     """
 
     def __init__(self, *, conf_level: float = 0.95) -> None:
@@ -233,21 +229,20 @@ class AalenJohansen:
         subjects can experience plasma-cell malignancy (pcm) or death:
 
         ```{python}
-        import numpy as np
         import greenwood as gw
 
-        mg = gw.load_dataset("mgus2")
-        etime = np.where(mg["pstat"] == 1, mg["ptime"], mg["futime"])
-        cause = np.where(mg["pstat"] == 1, 1, 2 * mg["death"])
-        y = gw.Surv.multistate(etime, event=cause, states=("pcm", "death"))
-        aj = gw.AalenJohansen().fit(y)
+        mg = gw.load_dataset("mgus2", backend="pandas")
+        etime = mg["ptime"].where(mg["pstat"] == 1, mg["futime"])
+        cause = mg["pstat"].where(mg["pstat"] == 1, 2 * mg["death"])
+        cr = gw.Surv.multistate(etime, event=cause, states=("pcm", "death"))
+        aj = gw.AalenJohansen().fit(cr)
         aj
         ```
 
         Fit stratified cumulative incidence functions by sex to compare risk accumulation:
 
         ```{python}
-        aj_stratified = gw.AalenJohansen().fit(y, by=mg["sex"])
+        aj_stratified = gw.AalenJohansen().fit(cr, by=mg["sex"])
         aj_stratified
         ```
         """
@@ -339,16 +334,24 @@ class AalenJohansen:
 
         Examples
         --------
-        Export the fitted cumulative-incidence functions:
+        Fit the estimator on the competing-risks `mgus2` data and export the cumulative-
+        incidence functions as a Polars frame:
 
         ```{python}
-        aj.to_frame()
+        import greenwood as gw
+
+        mg = gw.load_dataset("mgus2", backend="pandas")
+        etime = mg["ptime"].where(mg["pstat"] == 1, mg["futime"])
+        cause = mg["pstat"].where(mg["pstat"] == 1, 2 * mg["death"])
+        cr = gw.Surv.multistate(etime, event=cause, states=("pcm", "death"))
+        aj = gw.AalenJohansen().fit(cr)
+        aj.to_frame(format="polars")
         ```
 
-        Request a specific backend with `format=`:
+        Request a different backend with `format=`:
 
         ```{python}
-        aj.to_frame(format="polars")
+        aj.to_frame(format="pandas")
         ```
         """
         return to_dataframe(self._table_columns(), format=format)
@@ -407,25 +410,22 @@ class FineGray:
     subdistribution-hazard coefficient table.
 
     ```{python}
-    import numpy as np
     import greenwood as gw
 
-    mg = gw.load_dataset("mgus2")
-    etime = np.where(mg["pstat"] == 1, mg["ptime"], mg["futime"])
-    cause = np.where(mg["pstat"] == 1, 1, 2 * mg["death"])
-    y = gw.Surv.multistate(etime, event=cause, states=("pcm", "death"))
-    fg = gw.FineGray("pcm").fit(y, mg[["age", "sex"]])
+    mg = gw.load_dataset("mgus2", backend="pandas")
+    etime = mg["ptime"].where(mg["pstat"] == 1, mg["futime"])
+    cause = mg["pstat"].where(mg["pstat"] == 1, 2 * mg["death"])
+    cr = gw.Surv.multistate(etime, event=cause, states=("pcm", "death"))
+    fg = gw.FineGray("pcm").fit(cr, mg[["age", "sex"]])
     fg
     ```
 
     Passing `exponentiate=True` to `tidy` reports the subdistribution hazard ratios (with
-    their confidence limits) instead of the log-scale coefficients. The `fg` object fit here
-    is reused by the method examples below.
+    their confidence limits) instead of the log-scale coefficients; pass `format=` to choose
+    the backend (here, Polars):
 
     ```{python}
-    import greenwood as gw
-
-    gw.tidy(fg, exponentiate=True)
+    gw.tidy(fg, exponentiate=True, format="polars")
     ```
     """
 
@@ -511,21 +511,21 @@ class FineGray:
         incidence of plasma-cell malignancy (pcm) as a function of age and sex:
 
         ```{python}
-        import numpy as np
         import greenwood as gw
 
-        mg = gw.load_dataset("mgus2")
-        etime = np.where(mg["pstat"] == 1, mg["ptime"], mg["futime"])
-        cause = np.where(mg["pstat"] == 1, 1, 2 * mg["death"])
-        y = gw.Surv.multistate(etime, event=cause, states=("pcm", "death"))
-        fg = gw.FineGray("pcm").fit(y, mg[["age", "sex"]])
+        mg = gw.load_dataset("mgus2", backend="pandas")
+        etime = mg["ptime"].where(mg["pstat"] == 1, mg["futime"])
+        cause = mg["pstat"].where(mg["pstat"] == 1, 2 * mg["death"])
+        cr = gw.Surv.multistate(etime, event=cause, states=("pcm", "death"))
+        fg = gw.FineGray("pcm").fit(cr, mg[["age", "sex"]])
         fg
         ```
 
-        Extract hazard ratios with exponentiation for interpretation:
+        Extract hazard ratios with exponentiation for interpretation; pass `format=` to
+        choose the backend (here, Polars):
 
         ```{python}
-        gw.tidy(fg, exponentiate=True)
+        gw.tidy(fg, exponentiate=True, format="polars")
         ```
         """
         from ._cox import _design_matrix
@@ -709,22 +709,24 @@ class FineGray:
 
         Examples
         --------
-        Export the fitted coefficient table:
+        Fit a Fine-Gray model on the competing-risks `mgus2` data and export the coefficient
+        table as a Polars frame:
 
         ```{python}
-        fg.to_frame()
+        import greenwood as gw
+
+        mg = gw.load_dataset("mgus2", backend="pandas")
+        etime = mg["ptime"].where(mg["pstat"] == 1, mg["futime"])
+        cause = mg["pstat"].where(mg["pstat"] == 1, 2 * mg["death"])
+        cr = gw.Surv.multistate(etime, event=cause, states=("pcm", "death"))
+        fg = gw.FineGray("pcm").fit(cr, mg[["age", "sex"]])
+        fg.to_frame(format="polars")
         ```
 
         To report subdistribution hazard ratios instead of coefficients:
 
         ```{python}
-        fg.to_frame(exponentiate=True)
-        ```
-
-        Request a specific backend with `format=`:
-
-        ```{python}
-        fg.to_frame(format="polars")
+        fg.to_frame(format="polars", exponentiate=True)
         ```
         """
         return to_dataframe(self._coefficient_columns(exponentiate=exponentiate), format=format)
@@ -780,7 +782,7 @@ class MultiState:
     ```{python}
     import greenwood as gw
 
-    mg = gw.load_dataset("mgus2")
+    mg = gw.load_dataset("mgus2", backend="pandas")
     start, stop, state, event = [], [], [], []
     for i in range(len(mg)):
         pt, ft = mg["ptime"][i], mg["futime"][i]
@@ -794,11 +796,8 @@ class MultiState:
     rows = [(a, b, s, e) for a, b, s, e in zip(start, stop, state, event) if b > a]
     start, stop, state, event = map(list, zip(*rows))
     ms = gw.MultiState().fit(start, stop, state, event, states=("mgus", "pcm", "death"))
-    ms.to_frame()
+    ms.to_frame(format="polars")
     ```
-
-    The `ms` object fit here, along with the interval arrays, is reused by the method examples
-    below.
     """
 
     def __repr__(self) -> str:
@@ -899,9 +898,8 @@ class MultiState:
 
         ```{python}
         import greenwood as gw
-        import numpy as np
 
-        mg = gw.load_dataset("mgus2")
+        mg = gw.load_dataset("mgus2", backend="pandas")
         start, stop, state, event = [], [], [], []
         for i in range(len(mg)):
             pt, ft = mg["ptime"][i], mg["futime"][i]
@@ -918,10 +916,11 @@ class MultiState:
         ms
         ```
 
-        Query occupancy probabilities at specific follow-up times (60, 120, and 240 months):
+        Query occupancy probabilities at specific follow-up times (60, 120, and 240 months);
+        pass `format=` to choose the backend (here, Polars):
 
         ```{python}
-        ms.predict([60, 120, 240])
+        ms.predict([60, 120, 240], format="polars")
         ```
         """
         from ._surv import _to_1d_array
@@ -1008,7 +1007,7 @@ class MultiState:
         ```{python}
         import greenwood as gw
 
-        mg = gw.load_dataset("mgus2")
+        mg = gw.load_dataset("mgus2", backend="pandas")
         start, stop, state, event = [], [], [], []
         for i in range(len(mg)):
             pt, ft = mg["ptime"][i], mg["futime"][i]
@@ -1022,7 +1021,7 @@ class MultiState:
         rows = [(a, b, s, e) for a, b, s, e in zip(start, stop, state, event) if b > a]
         start, stop, state, event = map(list, zip(*rows))
         ms = gw.MultiState().fit(start, stop, state, event, states=("mgus", "pcm", "death"))
-        ms.predict([60, 120, 240])
+        ms.predict([60, 120, 240], format="polars")
         ```
         """
         query = np.atleast_1d(np.asarray(times, dtype=float))
@@ -1063,16 +1062,33 @@ class MultiState:
 
         Examples
         --------
-        Export the state-occupancy probabilities:
+        Fit a multi-state model on the `mgus2` cohort and export the state-occupancy
+        probabilities as a Polars frame:
 
         ```{python}
-        ms.to_frame()
+        import greenwood as gw
+
+        mg = gw.load_dataset("mgus2", backend="pandas")
+        start, stop, state, event = [], [], [], []
+        for i in range(len(mg)):
+            pt, ft = mg["ptime"][i], mg["futime"][i]
+            progressed, died = mg["pstat"][i] == 1, mg["death"][i] == 1
+            if progressed and pt < ft:
+                start += [0, pt]; stop += [pt, ft]; state += ["mgus", "pcm"]
+                event += ["pcm", "death" if died else None]
+            else:
+                start += [0]; stop += [ft]; state += ["mgus"]
+                event += ["death" if died else ("pcm" if progressed else None)]
+        rows = [(a, b, s, e) for a, b, s, e in zip(start, stop, state, event) if b > a]
+        start, stop, state, event = map(list, zip(*rows))
+        ms = gw.MultiState().fit(start, stop, state, event, states=("mgus", "pcm", "death"))
+        ms.to_frame(format="polars")
         ```
 
-        Request a specific backend with `format=`:
+        Request a different backend with `format=`:
 
         ```{python}
-        ms.to_frame(format="polars")
+        ms.to_frame(format="pandas")
         ```
         """
         return to_dataframe(self._table_columns(), format=format)

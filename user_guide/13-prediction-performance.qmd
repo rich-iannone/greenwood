@@ -24,7 +24,7 @@ predictions we will judge.
 ```{python}
 import greenwood as gw
 
-lung = gw.load_dataset("lung")
+lung = gw.load_dataset("lung", backend="polars")
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 y
 ```
@@ -51,6 +51,12 @@ for `type="lp"` returns one number per subject, where a larger value means highe
 risk.
 
 ```{python}
+import greenwood as gw
+
+lung = gw.load_dataset("lung", backend="polars")
+y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+
 risk = cox.predict(type="lp")
 risk[:8]
 ```
@@ -92,6 +98,12 @@ To compute it you supply predicted survival probabilities for each subject at ea
 time. Start by asking the Cox model for survival curves at three fixed times.
 
 ```{python}
+import greenwood as gw
+
+lung = gw.load_dataset("lung", backend="polars")
+y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+
 times = [180, 365, 540]
 surv = cox.predict(lung[["age", "sex"]], type="survival", times=times, format="polars")
 surv.shape
@@ -139,6 +151,11 @@ you: it fits a fresh copy of the model on each set of training folds and scores 
 predictions on the held-out fold. Pass an unfitted model, the response, and the covariates.
 
 ```{python}
+import greenwood as gw
+
+lung = gw.load_dataset("lung", backend="polars")
+y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+
 gw.cross_validate(gw.CoxPH(), y, lung[["age", "sex"]], k=5, metric="concordance", seed=1)
 ```
 
@@ -157,11 +174,17 @@ a horizon, then compares the mean prediction in each bin against the observed su
 Kaplan-Meier estimate for that bin.
 
 ```{python}
+import greenwood as gw
+
+lung = gw.load_dataset("lung", backend="polars")
+y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+
 surv_at_year = cox.predict(
     lung[["age", "sex"]], type="survival", times=[365.0], format="polars"
 )
 predicted = surv_at_year.slice(0, 1).drop("time").to_numpy().flatten()
-gw.calibration(y, predicted, 365.0, n_bins=5)
+gw.calibration(y, predicted, 365.0, n_bins=5, format="polars")
 ```
 
 Each row is a bin, from the lowest predicted survival to the highest. A well-calibrated model

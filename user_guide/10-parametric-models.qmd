@@ -26,7 +26,7 @@ against.
 ```{python}
 import greenwood as gw
 
-lung = gw.load_dataset("lung")
+lung = gw.load_dataset("lung", backend="polars")
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 y
 ```
@@ -46,16 +46,21 @@ location of the survival distribution, not just relative effects.
 You fit one by naming a distribution. The Weibull is the default and the most common choice.
 
 ```{python}
+import greenwood as gw
+
+lung = gw.load_dataset("lung", backend="polars")
+y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+
 aft = gw.AFT("weibull").fit(y, lung[["age", "sex"]])
 aft
 ```
 
 Printing the fitted model gives a summary in the style of R's `survreg`: the coefficient
 table, the scale parameter, the sample size, and the log-likelihood. For the coefficients as
-data, pass the model to `gw.tidy`, which returns a DataFrame.
+data, pass the model to `gw.tidy`, which returns a tidy frame.
 
 ```{python}
-gw.tidy(aft)
+gw.tidy(aft, format="polars")
 ```
 
 The coefficients are on the log-time scale. A positive coefficient lengthens survival time,
@@ -73,6 +78,11 @@ Greenwood supports four parametric distributions, each giving a different hazard
 - **Log-logistic**: Similar to log-normal but with heavier tails.
 
 ```{python}
+import greenwood as gw
+
+lung = gw.load_dataset("lung", backend="polars")
+y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+
 for dist in ("exponential", "weibull", "lognormal", "loglogistic"):
     model = gw.AFT(dist).fit(y, lung[["age", "sex"]])
     print(f"{dist:20s} loglik={model.loglik_:10.3f} scale={model.scale_:.4f}")
@@ -102,7 +112,11 @@ Each call to `gw.glance` returns a one-row DataFrame of model-level summaries fo
 single fit. We can compare all four distributions systematically:
 
 ```{python}
+import greenwood as gw
 import pandas as pd
+
+lung = gw.load_dataset("lung", backend="polars")
+y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 
 comparisons = []
 for dist in ("exponential", "weibull", "lognormal", "loglogistic"):
@@ -146,8 +160,15 @@ time and extrapolate beyond the observed follow-up. We predict for two new subje
 50-year-old and a 70-year-old, both with `sex` coded 1.
 
 ```{python}
+import greenwood as gw
+import pandas as pd
+
+lung = gw.load_dataset("lung", backend="polars")
+y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+aft = gw.AFT("weibull").fit(y, lung[["age", "sex"]])
+
 newdata = pd.DataFrame({"age": [50, 70], "sex": [1, 1]})
-aft.predict(newdata, type="quantile", p=[0.25, 0.5, 0.75])
+aft.predict(newdata, type="quantile", p=[0.25, 0.5, 0.75], format="polars")
 ```
 
 With `type="quantile"` the model returns survival-time quantiles: each column is a subject and
@@ -157,7 +178,7 @@ time, and the older subject's is shorter, as expected. These quantiles match R's
 For the survival curve itself, use `type="survival"` with the times you want.
 
 ```{python}
-aft.predict(newdata, type="survival", times=[180, 365, 730])
+aft.predict(newdata, type="survival", times=[180, 365, 730], format="polars")
 ```
 
 Each column is a subject and each row a requested time, giving the estimated probability of
@@ -172,6 +193,11 @@ so the baseline shape is estimated from the data rather than assumed. The flexib
 by `df`, the number of spline degrees of freedom.
 
 ```{python}
+import greenwood as gw
+
+lung = gw.load_dataset("lung", backend="polars")
+y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+
 rp = gw.RoystonParmar(df=3).fit(y, lung[["age", "sex"]])
 rp.to_frame(format="polars")
 ```
@@ -208,7 +234,10 @@ defaults. Choose based on the trade-off between fit and complexity:
 Prediction works as for the AFT model, with survival, hazard, or cumulative hazard curves.
 
 ```{python}
-rp.predict(newdata, type="survival", times=[180, 365, 730])
+import pandas as pd
+
+newdata = pd.DataFrame({"age": [50, 70], "sex": [1, 1]})
+rp.predict(newdata, type="survival", times=[180, 365, 730], format="polars")
 ```
 
 ## Next steps
