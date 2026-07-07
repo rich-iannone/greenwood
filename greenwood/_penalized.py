@@ -325,12 +325,12 @@ class CoxNet:
 
         Returns
         -------
-        - `type="lp"`: Array of shape (n_subjects,) containing centered log-hazard values.
-        - `type="risk"`: Array of shape (n_subjects,) containing relative risk values (all
-          positive).
-        - `type="survival"`: DataFrame with columns `time` (query times) and `subject_1`,
-          `subject_2`, etc. (survival probabilities at each time). Column names can be
-          customized if `newdata` has a row index.
+        If `type="lp"` an array of shape (n_subjects,) is returned, containing centered
+        log-hazard values. If `type="risk"` an array of shape (n_subjects,) is returned,
+        containing relative risk values (all positive). If `type="survival"` a DataFrame is
+        returned with columns `time` (query times) and `subject_1`, `subject_2`, etc.
+        (survival probabilities at each time). Column names can be customized if `newdata`
+        has a row index.
 
         Raises
         ------
