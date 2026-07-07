@@ -1,6 +1,26 @@
-# Greenwood
+<p align="center">
+<a href="https://rich-iannone.github.io/greenwood/">
+<img src="https://rich-iannone.github.io/greenwood/assets/logo.png" alt="Greenwood" width="350">
+</a>
+</p>
+<p align="center">Modern survival analysis for Python: Narwhals-native, R-validated, beautifully visualized.</p>
+<p align="center">
+<a href="https://pypi.org/project/greenwood/"><img src="https://img.shields.io/pypi/v/greenwood?logo=python&logoColor=white&color=orange" alt="PyPI"></a>
+<a href="https://pypi.org/project/greenwood/"><img src="https://img.shields.io/pypi/pyversions/greenwood.svg" alt="Python versions"></a>
+<a href="https://pypistats.org/packages/greenwood"><img src="https://img.shields.io/pypi/dm/greenwood" alt="Downloads"></a>
+<a href="https://choosealicense.com/licenses/mit/"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="MIT License"></a>
+<a href="https://github.com/rich-iannone/greenwood/actions/workflows/ci.yml"><img src="https://github.com/rich-iannone/greenwood/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
+</p>
+<p align="center">
+<a href="https://www.repostatus.org/#active"><img src="https://www.repostatus.org/badges/latest/active.svg" alt="Repo Status"></a>
+</p>
+<p align="center">
+<a href="https://rich-iannone.github.io/greenwood/"><img src="https://img.shields.io/badge/docs-project_website-blue.svg" alt="Documentation"></a>
+<a href="https://github.com/rich-iannone/greenwood/graphs/contributors"><img src="https://img.shields.io/github/contributors/rich-iannone/greenwood" alt="Contributors"></a>
+<a href="https://www.contributor-covenant.org/version/3/0/"><img src="https://img.shields.io/badge/Contributor%20Covenant-v3.0%20adopted-ff69b4.svg" alt="Contributor Covenant"></a>
+</p>
 
-**Modern survival analysis for Python: Narwhals-native, R-validated, beautifully visualized.**
+---
 
 ## What is Greenwood?
 
