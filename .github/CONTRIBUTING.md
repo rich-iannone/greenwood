@@ -46,5 +46,4 @@ curated explicitly in `__init__.py`.
 - For new/changed statistics, add or update R-parity fixtures.
 - Update docs (docstrings, `user_guide/`) alongside code.
 
-By contributing you agree that your contributions are licensed under the MIT License, and
-you agree to abide by the [Code of Conduct](CODE_OF_CONDUCT.md).
+By contributing you agree that your contributions are licensed under the MIT License.
