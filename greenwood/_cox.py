@@ -290,52 +290,55 @@ def _to_dataframe(data: dict[str, Any], format: str | None = None) -> Any:
        The data in the requested format.
     """
     if format is None:
-       # Try Polars first (most efficient), then pandas, then pyarrow
-       try:
-           import polars as pl  # pyright: ignore[reportMissingImports]
-           return pl.DataFrame(data)
-       except ImportError:
-           try:
-               import pandas as pd
-               return pd.DataFrame(data)
-           except ImportError:
-               try:
-                   import pyarrow as pa
-                   return pa.table(data)
-               except ImportError as e:
-                   raise ImportError(
-                       "No DataFrame library found. Install one of: pandas, polars, or pyarrow"
-                   ) from e
+        # Try Polars first (most efficient), then pandas, then pyarrow
+        try:
+            import polars as pl  # pyright: ignore[reportMissingImports]
+
+            return pl.DataFrame(data)
+        except ImportError:
+            try:
+                import pandas as pd
+
+                return pd.DataFrame(data)
+            except ImportError:
+                try:
+                    import pyarrow as pa
+
+                    return pa.table(data)
+                except ImportError as e:
+                    raise ImportError(
+                        "No DataFrame library found. Install one of: pandas, polars, or pyarrow"
+                    ) from e
 
     if format == "pandas":
-       try:
-           import pandas as pd
-       except ImportError as e:
-           raise ImportError(
-               "pandas is required for format='pandas'. Install it with: pip install pandas"
-           ) from e
-       return pd.DataFrame(data)
+        try:
+            import pandas as pd
+        except ImportError as e:
+            raise ImportError(
+                "pandas is required for format='pandas'. Install it with: pip install pandas"
+            ) from e
+        return pd.DataFrame(data)
 
     if format == "polars":
-       try:
-           import polars as pl  # pyright: ignore[reportMissingImports]
-       except ImportError as e:
-           raise ImportError(
-               "polars is required for format='polars'. Install it with: pip install polars"
-           ) from e
-       return pl.DataFrame(data)
+        try:
+            import polars as pl  # pyright: ignore[reportMissingImports]
+        except ImportError as e:
+            raise ImportError(
+                "polars is required for format='polars'. Install it with: pip install polars"
+            ) from e
+        return pl.DataFrame(data)
 
     if format == "pyarrow":
-       try:
-           import pyarrow as pa
-       except ImportError as e:
-           raise ImportError(
-               "pyarrow is required for format='pyarrow'. Install it with: pip install pyarrow"
-           ) from e
-       return pa.table(data)
+        try:
+            import pyarrow as pa
+        except ImportError as e:
+            raise ImportError(
+                "pyarrow is required for format='pyarrow'. Install it with: pip install pyarrow"
+            ) from e
+        return pa.table(data)
 
     raise ValueError(
-       f"Unknown format {format!r}; use 'pandas', 'polars', 'pyarrow', or None for auto-detect"
+        f"Unknown format {format!r}; use 'pandas', 'polars', 'pyarrow', or None for auto-detect"
     )
 
 
@@ -773,7 +776,7 @@ class CoxPH:
         -------
         pandas.DataFrame, polars.DataFrame, or pyarrow.Table
             A DataFrame with one row per event time containing:
-            
+
             - `time`: Event times at which the baseline hazard is evaluated.
             - `cumhaz`: Cumulative baseline hazard H₀(t) at each time.
             - `survival`: Baseline survival probability S₀(t) = exp(-H₀(t)).
@@ -1037,7 +1040,7 @@ class CoxPH:
             - `"pandas"`: returns pandas.DataFrame.
             - `"polars"`: returns polars.DataFrame.
             - `"pyarrow"`: returns pyarrow.Table.
-            
+
             Returns an array for `type="martingale"`.
 
         Returns
