@@ -1,6 +1,6 @@
 # Greenwood
 
-**Modern survival analysis for Python: Narwhals-native, R-validated, plotnine-visualized.**
+**Modern survival analysis for Python: Narwhals-native, R-validated, beautifully visualized.**
 
 ## What is Greenwood?
 
@@ -10,7 +10,7 @@ Greenwood is a Python library for survival analysis, the statistical study of ti
 
 - it works with your dataframe library: Pandas, Polars, PyArrow, or anything supported by [Narwhals](https://narwhals-dev.github.io/narwhals/)
 - it is rigorously validated, where every statistic is tested to tolerance against R's gold-standard `survival` package
-- you get beautiful visualizations that are built on [plotnine](https://plotnine.org/) (for publication-quality survival curves)
+- you get beautiful, interactive survival visualizations, with a choice of plotting backends so you can use whichever you prefer
 - you also get publication-ready tables through integration with the [Great Tables](https://posit-co.github.io/great-tables/) library
 - batteries are included: from simple Kaplan-Meier curves to Cox proportional hazards, competing risks, and beyond
 
@@ -21,7 +21,7 @@ Descriptive statistics:
 - **`Surv` response object**: Handle right-, left-, and interval-censored data; counting-process form; left truncation; weights; and multi-state endpoints with built-in validation.
 - **Kaplan-Meier estimation** (`KaplanMeier`): Survival curves with Greenwood confidence intervals, median/quantile survival, restricted mean survival time, and step-function predictions.
 - **Nelson-Aalen estimator** (`NelsonAalen`): Cumulative hazard curves.
-- **Visualization** (`plot_survival`): Publication-ready curves with confidence ribbons, censoring marks, and aligned at-risk tables.
+- **Visualization** (`plot_survival`): Interactive survival curves with confidence bands, censoring marks, and aligned at-risk tables, with a choice of plotting backends.
 
 Hypothesis testing:
 
