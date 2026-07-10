@@ -23,6 +23,7 @@ tests it reports.
 import greenwood as gw
 
 lung = gw.load_dataset("lung", backend="polars")
+
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 y
 ```
@@ -55,8 +56,8 @@ in a standard complete-case analysis.
 import greenwood as gw
 
 lung = gw.load_dataset("lung", backend="polars")
-y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 
+y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 cox = gw.CoxPH().fit(y, lung[["age", "sex", "ph.ecog"]])
 ```
 
@@ -112,9 +113,8 @@ To interpret the model you exponentiate the coefficients, which turns log hazard
 hazard ratios. Greenwood does this for you through the tidy layer.
 
 ```{python}
-import greenwood as gw
-
 lung = gw.load_dataset("lung", backend="polars")
+
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 cox = gw.CoxPH().fit(y, lung[["age", "sex", "ph.ecog"]])
 
@@ -129,6 +129,7 @@ and 2 in this dataset, a hazard ratio below 1 means the higher-coded group has l
 
 ::: {.callout-note}
 ## Hazard ratio, not risk ratio
+
 A hazard ratio compares instantaneous rates among those still at risk, not the probability of
 the event over the whole study. The two are related but not identical, and the difference
 matters when events are common. Report hazard ratios as such, and consider an absolute
@@ -142,9 +143,8 @@ log-likelihood, the AIC, and the likelihood-ratio test of the null hypothesis th
 coefficients are zero.
 
 ```{python}
-import greenwood as gw
-
 lung = gw.load_dataset("lung", backend="polars")
+
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 cox = gw.CoxPH().fit(y, lung[["age", "sex", "ph.ecog"]])
 
@@ -169,9 +169,8 @@ also the default in R. The Breslow approximation is available and is faster but 
 accurate when ties are common.
 
 ```{python}
-import greenwood as gw
-
 lung = gw.load_dataset("lung", backend="polars")
+
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 
 gw.CoxPH(ties="breslow").fit(y, lung[["age", "sex"]]).to_frame(format="polars")[["term", "estimate"]]
@@ -186,13 +185,13 @@ is the right choice.
 Greenwood's support for both Efron and Breslow tie-handling methods gives you flexibility
 that is useful in several situations:
 
-- **Matching textbook examples**: If you're learning from a textbook that uses SAS (which
-  defaults to Breslow), you can use `ties="breslow"` to get results that match exactly.
-- **Comparing across tools**: If you're validating results across R, SAS, and Python, you
-  can switch the tie method in Greenwood to match any tool's output with a single parameter
-  change, rather than rewriting your analysis in a different language.
-- **Sensitivity analysis**: You can easily compare whether your results change substantially
-  between the two methods, which is a good diagnostic when ties are very common.
+- matching textbook examples: if you're learning from a textbook that uses SAS (which
+defaults to Breslow), you can use `ties="breslow"` to get results that match exactly.
+- comparing across tools: if you're validating results across R, SAS, and Python, you
+can switch the tie method in Greenwood to match any tool's output with a single parameter
+change, rather than rewriting your analysis in a different language.
+- sensitivity analysis: you can easily compare whether your results change substantially
+between the two methods, which is a good diagnostic when ties are very common.
 
 Most analyses will stick with the default Efron method (which matches R), but this flexibility
 means you're never locked into one approach.
@@ -210,8 +209,6 @@ We build a small illustrative dataset where a treatment switches on for some sub
 response is a `gw.Surv.counting` object rather than `gw.Surv.right`.
 
 ```{python}
-import pandas as pd
-
 intervals = pd.DataFrame(
     {
         "subject": [1, 1, 2, 3, 3, 4, 5, 5],
@@ -221,6 +218,7 @@ intervals = pd.DataFrame(
         "treated": [0, 1, 0, 0, 1, 0, 0, 1],
     }
 )
+
 intervals
 ```
 
@@ -228,7 +226,6 @@ Subject 1, for example, is untreated over `(0, 4]` and treated over `(4, 10]`, w
 at day 10. We pass the interval endpoints to `gw.Surv.counting` and fit as usual.
 
 ```{python}
-
 y_tv = gw.Surv.counting(start=intervals["start"], stop=intervals["stop"], event=intervals["event"])
 
 gw.CoxPH().fit(y_tv, intervals[["treated"]]).to_frame(format="polars")[["term", "estimate", "p_value"]]
@@ -240,6 +237,7 @@ Greenwood matches it to tolerance.
 
 ::: {.callout-note}
 ## One row per interval, not per subject
+
 The only change from an ordinary Cox fit is the data layout: a subject with a covariate that
 changes `k` times contributes `k + 1` rows, and the event indicator is 1 only on the interval
 where the event occurred. Left truncation and delayed entry use the same counting-process
@@ -267,8 +265,6 @@ subtract each subject's entry date from their start/stop times.
 **Pandas**:
 
 ```{python}
-import pandas as pd
-
 # Example data in calendar time (subjects enroll at different dates)
 df = pd.DataFrame({
     'subject': [1, 1, 2, 2, 3, 3],
@@ -328,12 +324,12 @@ model may be misspecified, or when observations are not independent (e.g., repea
 family data), use the sandwich (robust) variance estimator by setting `robust=True`:
 
 ```{python}
-import greenwood as gw
-
 lung = gw.load_dataset("lung", backend="polars")
+
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 
 cox_robust = gw.CoxPH().fit(y, lung[["age", "sex"]], robust=True)
+
 gw.tidy(cox_robust, format="polars")
 ```
 
@@ -344,13 +340,13 @@ within-cluster dependence:
 
 ```{python}
 # Simulated example: suppose subjects cluster by family
-import polars as pl
 lung_with_cluster = lung.with_columns(
     family=((pl.int_range(len(lung)) % 10) + 1)
 )
 
 cox_cluster = gw.CoxPH().fit(y, lung_with_cluster[["age", "sex"]],
                               robust=True, cluster=lung_with_cluster["family"])
+
 gw.tidy(cox_cluster, format="polars")
 ```
 
@@ -387,12 +383,12 @@ argument sets the overall strength, and `l1_ratio` mixes the lasso (`1.0`) and r
 penalties.
 
 ```{python}
-import greenwood as gw
-
 lung = gw.load_dataset("lung", backend="polars")
+
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 
 cols = ["age", "sex", "ph.ecog", "ph.karno", "wt.loss"]
+
 lasso = gw.CoxNet(penalizer=0.05, l1_ratio=1.0).fit(y, lung[cols])
 lasso
 ```
@@ -414,6 +410,7 @@ for lam in [0.02, 0.05, 0.1]:
 
 ::: {.callout-note}
 ## Standardization
+
 `CoxNet` standardizes covariates to unit variance before applying the penalty, as glmnet
 does, so that the penalty treats variables on comparable scales. Coefficients are returned on
 the original scale, so you read and use them exactly as you would from `CoxPH`.
@@ -424,9 +421,9 @@ the original scale, so you read and use them exactly as you would from `CoxPH`.
 You can now fit a Cox model, read hazard ratios, and assess overall fit.
 
 - [Cox model diagnostics](09-cox-diagnostics.qmd) checks the proportional hazards
-  assumption, computes residuals, predicts survival curves, and adds robust variance and
-  stratification.
+assumption, computes residuals, predicts survival curves, and adds robust variance and
+stratification.
 - [Parametric survival models](10-parametric-models.qmd) offers an alternative modeling
-  approach when you are willing to specify the shape of the survival distribution.
+approach when you are willing to specify the shape of the survival distribution.
 - [Prediction performance](13-prediction-performance.qmd) evaluates how well a fitted model
-  discriminates and calibrates.
+discriminates and calibrates.
