@@ -66,3 +66,69 @@ def test_invalid_arguments(lung, y) -> None:
 def test_concordance_requires_cox_or_aft(lung, y) -> None:
     with pytest.raises(TypeError, match="CoxPH, CoxNet, or AFT"):
         cross_validate(gw.KaplanMeier(), y, lung[["age", "sex"]])
+
+
+def test_stratified_kfold_balances_events(lung, y) -> None:
+    """Stratified k-fold should balance event representation across folds."""
+    from greenwood._resample import _stratified_kfold_indices
+
+    overall_event_rate = y.event.mean()
+    folds = _stratified_kfold_indices(y, k=5, seed=42)
+
+    # Check each fold has similar event representation
+    fold_event_rates = []
+    for fold_idx in folds:
+        fold_events = y.event[fold_idx]
+        fold_rate = fold_events.mean()
+        fold_event_rates.append(fold_rate)
+
+    # Event rates across folds should be similar (within 15% tolerance)
+    min_rate = min(fold_event_rates)
+    max_rate = max(fold_event_rates)
+    tolerance = 0.15
+    assert max_rate - min_rate < tolerance, (
+        f"Event rate imbalance: {fold_event_rates}, overall rate {overall_event_rate}"
+    )
+
+
+def test_stratified_vs_random_kfold(lung, y) -> None:
+    """Stratified k-fold should produce different (more balanced) folds than random."""
+    from greenwood._resample import _stratified_kfold_indices
+
+    stratified = _stratified_kfold_indices(y, k=5, seed=42)
+    random_perm = np.random.default_rng(42).permutation(y.n)
+    random_folds = np.array_split(random_perm, 5)
+
+    # Stratified should have more balanced event rates
+    strat_rates = [y.event[f].mean() for f in stratified]
+    random_rates = [y.event[f].mean() for f in random_folds]
+
+    strat_spread = max(strat_rates) - min(strat_rates)
+    random_spread = max(random_rates) - min(random_rates)
+
+    # Stratified should typically have less spread (more balanced)
+    assert strat_spread <= random_spread + 0.05
+
+
+def test_stratified_kfold_reproducible(lung, y) -> None:
+    """Stratified k-fold with same seed should produce same folds."""
+    from greenwood._resample import _stratified_kfold_indices
+
+    folds1 = _stratified_kfold_indices(y, k=5, seed=123)
+    folds2 = _stratified_kfold_indices(y, k=5, seed=123)
+
+    for f1, f2 in zip(folds1, folds2):
+        np.testing.assert_array_equal(f1, f2)
+
+
+def test_cross_validate_stratified_parameter(lung, y) -> None:
+    """cross_validate should support stratified=True and stratified=False."""
+    # Both should work without errors
+    r_strat = cross_validate(gw.CoxPH(), y, lung[["age", "sex"]], stratified=True, seed=10)
+    r_random = cross_validate(gw.CoxPH(), y, lung[["age", "sex"]], stratified=False, seed=10)
+
+    assert len(r_strat["scores"]) == 5
+    assert len(r_random["scores"]) == 5
+    # Results may be different due to different fold assignments, but both valid
+    assert all(0.4 < s < 1.0 for s in r_strat["scores"])
+    assert all(0.4 < s < 1.0 for s in r_random["scores"])
