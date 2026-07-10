@@ -838,89 +838,69 @@ class CoxPH:
                 # Log-log transform: Y = log(-log(S)) = log(H)
                 # Only numerically stable when SE on log scale is small
                 log_s = -cumhaz_arr
-                
+
                 # Compute SE for log-log transform
                 with np.errstate(divide="ignore", invalid="ignore"):
                     denom = np.abs(cumhaz_arr * np.log(survival_arr))
-                    se_logl = np.where(
-                        denom > 1e-10,
-                        se_cumhaz / denom,
-                        np.inf
-                    )
-                
+                    se_logl = np.where(denom > 1e-10, se_cumhaz / denom, np.inf)
+
                 # Use log-log only where SE < 2 (stable region)
                 logl_usable = np.isfinite(se_logl) & (se_logl < 2.0)
-                
+
                 # Compute log-log CIs where stable
                 with np.errstate(divide="ignore", invalid="ignore"):
                     logl = np.log(-log_s)
                     logl_lower = logl - z * se_logl
                     logl_upper = logl + z * se_logl
-                
+
                 # Back-transform with overflow protection
                 max_exp_arg = 700.0
                 logl_lower_clipped = np.clip(logl_lower, -max_exp_arg, max_exp_arg)
                 logl_upper_clipped = np.clip(logl_upper, -max_exp_arg, max_exp_arg)
-                
+
                 with np.errstate(over="ignore", invalid="ignore"):
                     exp_logl_lower = np.exp(logl_lower_clipped)
                     exp_logl_upper = np.exp(logl_upper_clipped)
-                    
+
                     cumhaz_lower_logl = exp_logl_lower
                     cumhaz_upper_logl = exp_logl_upper
                     survival_lower_logl = np.exp(-exp_logl_upper)
                     survival_upper_logl = np.exp(-exp_logl_lower)
-                
+
                 # Plain Wald CIs as fallback for unstable regions
                 cumhaz_lower_plain = np.maximum(cumhaz_arr - z * se_cumhaz, 0.0)
                 cumhaz_upper_plain = cumhaz_arr + z * se_cumhaz
                 se_survival_plain = np.clip(survival_arr * se_cumhaz, 0, survival_arr)
                 survival_lower_plain = np.maximum(survival_arr - z * se_survival_plain, 0.0)
                 survival_upper_plain = np.minimum(survival_arr + z * se_survival_plain, 1.0)
-                
+
                 # Blend: log-log where stable, plain elsewhere
-                cumhaz_lower = np.where(
-                    logl_usable,
-                    cumhaz_lower_logl,
-                    cumhaz_lower_plain
-                )
-                cumhaz_upper = np.where(
-                    logl_usable,
-                    cumhaz_upper_logl,
-                    cumhaz_upper_plain
-                )
-                survival_lower = np.where(
-                    logl_usable,
-                    survival_lower_logl,
-                    survival_lower_plain
-                )
-                survival_upper = np.where(
-                    logl_usable,
-                    survival_upper_logl,
-                    survival_upper_plain
-                )
-                
+                cumhaz_lower = np.where(logl_usable, cumhaz_lower_logl, cumhaz_lower_plain)
+                cumhaz_upper = np.where(logl_usable, cumhaz_upper_logl, cumhaz_upper_plain)
+                survival_lower = np.where(logl_usable, survival_lower_logl, survival_lower_plain)
+                survival_upper = np.where(logl_usable, survival_upper_logl, survival_upper_plain)
+
                 # Clamp bounds to reasonable ranges and enforce monotonicity
                 # Cumulative hazard can validly be 0, so only clamp to 0 (non-negative)
                 cumhaz_lower = np.maximum(cumhaz_lower, 0.0)
                 cumhaz_upper = np.maximum(cumhaz_upper, cumhaz_arr)
-                
+
                 # Enforce monotonicity: bounds must not decrease
                 # But respect stratum boundaries: only enforce within each stratum
                 if self._strata_labels is None:
                     # Non-stratified: enforce globally
                     for i in range(1, len(cumhaz_lower)):
-                        cumhaz_lower[i] = np.maximum(cumhaz_lower[i], cumhaz_lower[i-1])
-                        cumhaz_upper[i] = np.maximum(cumhaz_upper[i], cumhaz_upper[i-1])
+                        cumhaz_lower[i] = np.maximum(cumhaz_lower[i], cumhaz_lower[i - 1])
+                        cumhaz_upper[i] = np.maximum(cumhaz_upper[i], cumhaz_upper[i - 1])
                 else:
                     # Stratified: only enforce within strata
                     strata_arr = np.asarray(strata_list)
                     for i in range(1, len(cumhaz_lower)):
                         # Only compare within same stratum
-                        if strata_arr[i] == strata_arr[i-1]:
-                            cumhaz_lower[i] = np.maximum(cumhaz_lower[i], cumhaz_lower[i-1])
-                            cumhaz_upper[i] = np.maximum(cumhaz_upper[i], cumhaz_upper[i-1])
-                
+                        if strata_arr[i] == strata_arr[i - 1]:
+                            cumhaz_lower[i] = np.maximum(cumhaz_lower[i], cumhaz_lower[i - 1])
+                            cumhaz_upper[i] = np.maximum(cumhaz_upper[i], cumhaz_upper[i - 1])
+
                 survival_lower = np.maximum(survival_lower, 1e-15)
                 survival_upper = np.minimum(survival_upper, 1.0 - 1e-15)
             else:  # conf_type == "plain"

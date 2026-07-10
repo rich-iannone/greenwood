@@ -170,12 +170,14 @@ def test_aft_predict_survival_ci_narrower_at_high_event_times(lung_surv) -> None
 
     # At high survival, log-log transform stretches the scale, so CI can be wider
     # At low survival, it compresses, so CI can be narrower
-    width_early = pred.loc[pred["time"] == 100, "subject_1_upper"].values[0] - pred.loc[
-        pred["time"] == 100, "subject_1_lower"
-    ].values[0]
-    width_late = pred.loc[pred["time"] == 800, "subject_1_upper"].values[0] - pred.loc[
-        pred["time"] == 800, "subject_1_lower"
-    ].values[0]
+    width_early = (
+        pred.loc[pred["time"] == 100, "subject_1_upper"].values[0]
+        - pred.loc[pred["time"] == 100, "subject_1_lower"].values[0]
+    )
+    width_late = (
+        pred.loc[pred["time"] == 800, "subject_1_upper"].values[0]
+        - pred.loc[pred["time"] == 800, "subject_1_lower"].values[0]
+    )
 
     # Both should be positive and valid
     assert width_early > 0
