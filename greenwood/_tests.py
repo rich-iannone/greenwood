@@ -670,37 +670,37 @@ def trend_test(
 
     Examples
     --------
-    Test for linear trend in survival across disease stages (1, 2, 3, 4):
+    Test for linear trend in survival across ordered cell types:
 
     ```{python}
     import greenwood as gw
 
-    colon = gw.load_dataset("colon", backend="polars")
-    y = gw.Surv.right(colon["time"], event=colon["status"])
+    vet = gw.load_dataset("veteran", backend="polars")
+    y = gw.Surv.right(vet["time"], event=vet["status"])
     
-    # Default: stages 1,2,3,4 get scores 0,1,2,3
-    result = gw.trend_test(y, group=colon["stage"])
+    # Default: cell types are sorted and assigned scores 0,1,2,3
+    result = gw.trend_test(y, group=vet["celltype"])
     result
     ```
 
-    Use custom scores to give different weight to stage transitions:
+    Use custom scores to give different weight to cell type severity:
 
     ```{python}
-    # Scores: 0, 1, 3, 5 (early vs late stages weighted differently)
-    scores = {1: 0, 2: 1, 3: 3, 4: 5}
-    gw.trend_test(y, group=colon["stage"], scores=scores)
+    # Scores: adeno and large are low-risk (0,1), smallcell and squamous are high-risk (3,4)
+    scores = {"adeno": 0, "large": 1, "smallcell": 3, "squamous": 4}
+    gw.trend_test(y, group=vet["celltype"], scores=scores)
     ```
 
     Use Peto-Peto weighting for early-event emphasis:
 
     ```{python}
-    gw.trend_test(y, group=colon["stage"], rho=1, gamma=0)
+    gw.trend_test(y, group=vet["celltype"], rho=1, gamma=0)
     ```
 
-    Stratified by center/institution to control for site effects:
+    Stratified by treatment to control for treatment effects:
 
     ```{python}
-    # gw.trend_test(y, group=colon["stage"], strata=colon["institution"])
+    gw.trend_test(y, group=vet["celltype"], strata=vet["trt"])
     ```
     """
     from ._surv import CensoringType, _to_1d_array
