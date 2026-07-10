@@ -300,6 +300,67 @@ class AFT:
         design, _ = _design_matrix(newdata)
         return np.column_stack([np.ones(design.shape[0]), design])
 
+    def _survival_pdf(self, z: Array) -> Array:
+        """PDF of the standardized error distribution at z-values.
+
+        Parameters
+        ----------
+        z
+            Standardized values where z = (log(t) - mu) / sigma.
+            Can be any shape.
+
+        Returns
+        -------
+        Array
+            PDF values, same shape as input.
+        """
+        if self.dist in ("weibull", "exponential"):  # minimum extreme value
+            return np.exp(z - np.exp(z))
+        if self.dist == "lognormal":
+            return norm.pdf(z)
+        # loglogistic
+        return logistic.pdf(z)
+
+    def _survival_se(self, x: Array, times: Array) -> Array:
+        r"""Standard error of survival predictions via delta-method.
+
+        Computes SE of $S(t|x)$ using the delta-method, propagating coefficient uncertainty
+        through the survival function. The derivative of survival w.r.t. the linear predictor
+        (mu = X @ beta) is:
+
+        $$\frac{\partial S}{\partial \mu} = -f_\varepsilon(z) \cdot \frac{1}{\sigma}$$
+
+        where f_varepsilon is the PDF of the error distribution and z = (log(t) - mu) / sigma.
+
+        Parameters
+        ----------
+        x
+            Design matrix (n_subjects, n_features). Typically includes intercept.
+        times
+            Query times (n_times,).
+
+        Returns
+        -------
+        Array
+            Standard errors of survival predictions, shape (n_times, n_subjects).
+        """
+        mu = x @ self.coef_  # (n_subjects,)
+        sigma = self.scale_
+        z = (np.log(times)[:, None] - mu[None, :]) / sigma  # (n_times, n_subjects)
+
+        # Derivative of survival w.r.t. mu: dS/dmu = -f(z) / sigma
+        pdf_z = self._survival_pdf(z)
+        ds_dmu = -pdf_z / sigma  # (n_times, n_subjects)
+
+        # SE(mu) for each subject: sqrt(diag(x @ vcov @ x.T))
+        vcov = self.vcov_
+        se_mu_sq = np.sum(x[:, :, None] * vcov[None, :, :] * x[:, None, :], axis=1).T  # (n_subjects,)
+        se_mu = np.sqrt(np.clip(se_mu_sq, 0.0, None))
+
+        # SE(S) = |dS/dmu| * SE(mu)
+        se_s = np.abs(ds_dmu) * se_mu[None, :]  # (n_times, n_subjects)
+        return se_s
+
     def predict(
         self,
         newdata: Any = None,
