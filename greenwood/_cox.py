@@ -845,10 +845,20 @@ class CoxPH:
                 )
                 logl_lower = np.log(-log_s) - z * se_logl
                 logl_upper = np.log(-log_s) + z * se_logl
-                cumhaz_lower = -np.exp(-np.exp(logl_lower))
-                cumhaz_upper = -np.exp(-np.exp(logl_upper))
-                survival_lower = np.exp(-np.exp(logl_upper))  # note: upper on log scale -> lower on orig
-                survival_upper = np.exp(-np.exp(logl_lower))
+                # Clip log-log values to avoid overflow in exp(exp(logl))
+                # If exp(logl) > 700, then exp(-exp(logl)) ≈ 0, so clip at log(700) ≈ 6.55
+                logl_lower = np.clip(logl_lower, -np.inf, np.log(700.0))
+                logl_upper = np.clip(logl_upper, -np.inf, np.log(700.0))
+                with np.errstate(over="ignore"):
+                    cumhaz_lower = -np.exp(-np.exp(logl_lower))
+                    cumhaz_upper = -np.exp(-np.exp(logl_upper))
+                    survival_lower = np.exp(-np.exp(logl_upper))  # note: upper on log scale -> lower on orig
+                    survival_upper = np.exp(-np.exp(logl_lower))
+                # Clip to valid ranges for numerical stability
+                cumhaz_lower = np.clip(cumhaz_lower, 0.0, None)
+                cumhaz_upper = np.clip(cumhaz_upper, 0.0, None)
+                survival_lower = np.clip(survival_lower, 0.0, 1.0)
+                survival_upper = np.clip(survival_upper, 0.0, 1.0)
             else:  # conf_type == "plain"
                 cumhaz_lower = cumhaz_arr - z * se_cumhaz
                 cumhaz_upper = cumhaz_arr + z * se_cumhaz
