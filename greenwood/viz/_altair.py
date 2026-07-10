@@ -22,7 +22,7 @@ from ._shared import _risk_table_columns, _strata_label
 if TYPE_CHECKING:
     from .._nonparametric import KaplanMeier
 
-__all__ = ["plot_survival", "risk_table"]
+__all__ = ["survival_plot", "plot_survival"]
 
 _SOLID = "#20558A"
 _VALID_CI = "isValid(datum.conf_low) && isValid(datum.conf_high)"
@@ -127,7 +127,105 @@ def _x_scale(alt: Any, km: KaplanMeier) -> Any:
     return alt.Scale(domain=[0.0, _max_time(km)], nice=False, padding=16)
 
 
-def plot_survival(
+def survival_plot(
+    km: KaplanMeier,
+    *,
+    conf_int: bool = True,
+    censor_marks: bool = True,
+    risk_table: bool = False,
+    times: Any = None,
+    xlab: str = "Time",
+    ylab: str = "Survival probability",
+    width: int = 500,
+    height: int = 300,
+    backend: str = "altair",
+) -> Any:
+    """Plot Kaplan-Meier survival curve(s).
+
+    Renders one or more Kaplan-Meier survival curves as a publication-ready visualization.
+    By default uses interactive Altair (Vega-Lite) charts with optional plotnine (ggplot2)
+    support. Each curve shows the proportion of subjects surviving (event-free) over time as a
+    right-continuous step function, with an optional shaded confidence band and censoring
+    marks. Stratified fits produce one colored curve per group with a legend.
+
+    Parameters
+    ----------
+    km
+        A fitted `KaplanMeier` object, unstratified (single curve) or stratified.
+    conf_int
+        If `True` (default), draw the point-wise confidence band.
+    censor_marks
+        If `True` (default), mark censoring times with `+` symbols on the curve.
+    risk_table
+        If `True`, return a visualization stacking the curve over an aligned
+        numbers-at-risk table. If `False` (default), return only the curve.
+    times
+        Query times for the numbers-at-risk table (used only if `risk_table=True`). Defaults
+        to six evenly spaced, rounded times from 0 to the maximum observed follow-up time.
+    xlab, ylab
+        Axis labels (defaults `"Time"` and `"Survival probability"`).
+    width, height
+        Plot dimensions (in pixels for Altair, inches for plotnine; defaults 500x300 pixels).
+    backend
+        Plotting backend: `"altair"` (default, interactive Vega-Lite) or `"plotnine"`
+        (ggplot2-style). Requires the corresponding extra: `pip install greenwood[altair]`
+        or `pip install greenwood[plotnine]`.
+
+    Returns
+    -------
+    An Altair `alt.LayerChart` or `alt.VConcatChart` (if `backend="altair"`), or a plotnine
+    `ggplot` object (if `backend="plotnine"`).
+
+    Examples
+    --------
+    ```{python}
+    import greenwood as gw
+
+    lung = gw.load_dataset("lung", backend="polars")
+    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+    km = gw.KaplanMeier().fit(y, by=lung["sex"])
+
+    # Interactive Altair (default)
+    gw.survival_plot(km, risk_table=True)
+
+    # ggplot2-style (if plotnine is installed)
+    gw.survival_plot(km, backend="plotnine", risk_table=True)
+    ```
+    """
+    if backend == "altair":
+        return _plot_survival_altair(
+            km,
+            conf_int=conf_int,
+            censor_marks=censor_marks,
+            risk_table=risk_table,
+            times=times,
+            xlab=xlab,
+            ylab=ylab,
+            width=width,
+            height=height,
+        )
+    elif backend == "plotnine":
+        # Import from _curves module
+        from . import _curves
+
+        return _curves.plot_survival(
+            km,
+            conf_int=conf_int,
+            censor_marks=censor_marks,
+            risk_table=risk_table,
+            times=times,
+            xlab=xlab,
+            ylab=ylab,
+        )
+    else:
+        raise ValueError(f"backend must be 'altair' or 'plotnine', got {backend!r}")
+
+
+# Backward compatibility alias
+plot_survival = survival_plot
+
+
+def _plot_survival_altair(
     km: KaplanMeier,
     *,
     conf_int: bool = True,
@@ -139,54 +237,7 @@ def plot_survival(
     width: int = 500,
     height: int = 300,
 ) -> Any:
-    """Plot Kaplan-Meier survival curve(s) with Altair.
-
-    Renders one or more Kaplan-Meier survival curves as an interactive Vega-Lite chart. Each
-    curve shows the proportion of subjects surviving (event-free) over time as a
-    right-continuous step function, with an optional shaded confidence band and censoring
-    marks. Stratified fits produce one colored curve per group with a legend.
-
-    The result is a composable Altair object: layer, facet, or restyle it with Altair's API,
-    and it renders interactively (tooltips and zoom) in notebooks and browsers. Pass
-    `risk_table=True` to stack an aligned numbers-at-risk table beneath the curve (the x-axis
-    scale is shared). Requires Altair (install with `pip install greenwood[altair]`).
-
-    Parameters
-    ----------
-    km
-        A fitted `KaplanMeier` object, unstratified (single curve) or stratified.
-    conf_int
-        If `True` (default), draw the point-wise confidence band as a shaded step area.
-    censor_marks
-        If `True` (default), mark censoring times with `+` symbols on the curve.
-    risk_table
-        If `True`, return an `alt.VConcatChart` stacking the curve over an aligned
-        numbers-at-risk table. If `False` (default), return only the curve.
-    times
-        Query times for the numbers-at-risk table (used only if `risk_table=True`). Defaults
-        to six evenly spaced, rounded times from 0 to the maximum observed follow-up time.
-    xlab, ylab
-        Axis labels (defaults `"Time"` and `"Survival probability"`).
-    width, height
-        Curve dimensions in pixels (defaults 500 x 300).
-
-    Returns
-    -------
-    An `alt.LayerChart` (or an `alt.VConcatChart` combining the curve and table if
-    `risk_table=True`).
-
-    Examples
-    --------
-    ```{python}
-    import greenwood as gw
-
-    lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-    km = gw.KaplanMeier().fit(y, by=lung["sex"])
-
-    gw.viz.altair.plot_survival(km, risk_table=True)
-    ```
-    """
+    """Internal Altair implementation of plot_survival."""
     alt = _require_altair()
 
     steps = to_dataframe(_step_columns(km))
@@ -310,19 +361,4 @@ def _risk_table_chart(
     )
 
 
-def risk_table(km: KaplanMeier, times: Any = None) -> Any:
-    """Return the numbers-at-risk table as a standalone Altair chart.
 
-    Examples
-    --------
-    ```{python}
-    import greenwood as gw
-
-    lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-    km = gw.KaplanMeier().fit(y, by=lung["sex"])
-
-    gw.viz.altair.risk_table(km, times=[0, 250, 500, 750, 1000])
-    ```
-    """
-    return _risk_table_chart(km, times=times)
