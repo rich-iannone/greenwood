@@ -88,12 +88,17 @@ reference:
         members: true
 
   - title: Group comparisons
-    desc: The log-rank test, trend tests for ordered groups, and the G-rho (Fleming-Harrington) family.
+    desc: The log-rank test, trend tests for ordered groups, the G-rho (Fleming-Harrington) family, and restricted mean survival time (RMST) comparisons.
     contents:
       - logrank_test
       - trend_test
       - pairwise_logrank_test
       - name: TestResult
+        members: true
+      - rmst_test
+      - rmst_diff
+      - pairwise_rmst_test
+      - name: RMSTResult
         members: true
       - logrank_n_events
       - logrank_power
