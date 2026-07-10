@@ -222,3 +222,4 @@ great-docs/
 /*.md
 !README.md
 !ROADMAP.md
+.DS_Store
