@@ -111,6 +111,6 @@ def test_step_interpolation(km_overall: gw.KaplanMeier) -> None:
 
 def test_standalone_risk_table(km_grouped: gw.KaplanMeier) -> None:
     gt = pytest.importorskip("great_tables")
-    
+
     table = gw.risk_table(km_grouped, times=[0, 250, 500])
     assert isinstance(table, gt.GT)
