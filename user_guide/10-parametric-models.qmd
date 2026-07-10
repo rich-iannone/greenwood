@@ -241,6 +241,60 @@ newdata = pd.DataFrame({"age": [50, 70], "sex": [1, 1]})
 rp.predict(newdata, type="survival", times=[180, 365, 730], format="polars")
 ```
 
+## Survival predictions with confidence intervals
+
+When predicting survival probabilities from an AFT model, you can also compute confidence
+intervals that quantify uncertainty in the predictions. This is especially valuable when
+making personalized survival predictions for clinical use.
+
+Confidence intervals are computed via the delta-method, which propagates coefficient
+uncertainty through the survival function. Wider intervals indicate greater model uncertainty,
+often due to covariate values that are far from the training data mean.
+
+Pass `ci=True` to get confidence bounds alongside the survival probability:
+
+```{python}
+lung = gw.load_dataset("lung", backend="polars")
+
+y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+
+aft = gw.AFT("weibull").fit(y, lung[["age", "sex"]])
+
+# Predict survival for two subjects with confidence intervals
+newdata = pd.DataFrame({"age": [50, 70], "sex": [1, 2]})
+
+predictions = aft.predict(
+    newdata, type="survival", times=[180, 365, 730],
+    ci=True, conf_type="log-log", format="polars"
+)
+
+predictions
+```
+
+The returned frame includes one column per subject with point estimates and confidence bounds:
+
+- `subject_1`: survival probability for subject 1
+- `subject_1_lower`, `subject_1_upper`: lower and upper confidence interval bounds for subject 1
+- (same pattern for subject 2, etc.)
+
+The `conf_type=` parameter controls the confidence interval transform, just as with baseline
+hazard confidence intervals:
+
+- `"log-log"` (default): Uses a log-log transformation that ensures bounds respect the
+survival probability constraint (between 0 and 1). Recommended.
+- `"plain"`: Wald confidence intervals without transformation. Simpler but may produce
+invalid bounds (survival < 0 or > 1).
+
+Confidence intervals are valuable for:
+
+- clinical decision-making: quantifying uncertainty in individual prognoses
+- study planning: assessing how precisely your model can predict for new subjects
+- model diagnostics: detecting when predictions are made far from the training data
+(wider intervals indicate extrapolation)
+
+The width of the confidence interval grows as covariate values move further from the training
+mean, reflecting increased model uncertainty in extrapolated regions.
+
 ## Next steps
 
 You can now fit, compare, and predict from parametric survival models.
