@@ -528,6 +528,10 @@ class AFT:
             if conditional_after is None:
                 surv = np.exp(log_s)
             else:
+                if ci:
+                    raise NotImplementedError(
+                        "Confidence intervals are not supported with conditional_after."
+                    )
                 c = np.asarray(conditional_after, dtype=float)
                 if c.ndim == 0:
                     c = np.full(mu.shape[0], float(c))
@@ -539,7 +543,33 @@ class AFT:
                 log_s_c = np.where(c > 0, log_s_c, 0.0)  # S(c) = 1 for c <= 0
                 surv = np.exp(np.minimum(log_s - log_s_c[None, :], 0.0))  # ratio capped at 1
             cols = {"time": query}
-            cols.update({f"subject_{i + 1}": surv[:, i] for i in range(surv.shape[1])})
+            if ci:
+                se_s = self._survival_se(x, query)  # (n_times, n_subjects)
+                z_val = float(norm.ppf(1.0 - (1.0 - self.conf_level) / 2.0))
+
+                if conf_type == "log-log":
+                    # Log-log transform: Y = log(-log(S))
+                    # SE(Y) = SE(S) / |S * log(S)|
+                    with np.errstate(divide="ignore", invalid="ignore"):
+                        log_surv = np.log(surv)
+                        se_logl = se_s / np.abs(surv * log_surv)  # (n_times, n_subjects)
+                        se_logl = np.where(np.isfinite(se_logl), se_logl, 0.0)  # handle 0 or 1
+                        logl = np.log(-log_surv)
+                        logl = np.where(np.isfinite(logl), logl, 0.0)
+                        logl_lower = logl - z_val * se_logl
+                        logl_upper = logl + z_val * se_logl
+                        surv_lower = np.exp(-np.exp(logl_upper))  # note: upper on log scale -> lower
+                        surv_upper = np.exp(-np.exp(logl_lower))
+                else:  # conf_type == "plain"
+                    surv_lower = surv - z_val * se_s
+                    surv_upper = surv + z_val * se_s
+
+                for i in range(surv.shape[1]):
+                    cols[f"subject_{i + 1}"] = surv[:, i]
+                    cols[f"subject_{i + 1}_lower"] = surv_lower[:, i]
+                    cols[f"subject_{i + 1}_upper"] = surv_upper[:, i]
+            else:
+                cols.update({f"subject_{i + 1}": surv[:, i] for i in range(surv.shape[1])})
             return to_dataframe(cols, format=format)
         raise ValueError(f"Unknown predict type {type!r}; use 'lp', 'quantile', or 'survival'.")
 
