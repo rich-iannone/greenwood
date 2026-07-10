@@ -899,7 +899,8 @@ class CoxPH:
                 )
                 
                 # Clamp bounds to reasonable ranges and enforce monotonicity
-                cumhaz_lower = np.maximum(cumhaz_lower, 1e-15)
+                # Cumulative hazard can validly be 0, so only clamp to 0 (non-negative)
+                cumhaz_lower = np.maximum(cumhaz_lower, 0.0)
                 cumhaz_upper = np.maximum(cumhaz_upper, cumhaz_arr)
                 
                 # Enforce monotonicity: bounds must not decrease
