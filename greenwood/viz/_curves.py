@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from ._shared import _strata_label, risk_table_data
+from ._shared import _strata_label, get_risk_table_frame
 
 if TYPE_CHECKING:
     from .._nonparametric import KaplanMeier
@@ -239,7 +239,7 @@ def _risk_table_plot(km: KaplanMeier, *, times: Any = None, xlab: str = "Time") 
     p9 = _require_plotnine()
     # plotnine consumes pandas, so build the risk-table frame in pandas regardless of
     # which DataFrame libraries happen to be installed.
-    data = risk_table_data(km, times=times, format="pandas")
+    data = get_risk_table_frame(km, times=times, format="pandas")
     # Show whole counts as integers (e.g. 90, not 90.0); keep weighted counts as-is.
     data["label"] = [f"{v:g}" for v in data["n_risk"]]
     grouped = km._grouped

@@ -74,7 +74,7 @@ def test_risk_table_plot_returns_ggplot(km_grouped: gw.KaplanMeier) -> None:
 
 
 def test_risk_table_data_shape(km_grouped: gw.KaplanMeier) -> None:
-    rtd = gw.viz.risk_table_data(km_grouped, times=[0, 250, 500])
+    rtd = gw.get_risk_table_frame(km_grouped, times=[0, 250, 500])
     assert list(rtd.columns) == ["strata", "time", "n_risk"]
     assert set(rtd["strata"]) == {"1", "2"}
     assert len(rtd) == 6

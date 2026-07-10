@@ -497,7 +497,7 @@ def test_brier_score_matches_r() -> None:
 
 
 def test_concordance_index_matches_r() -> None:
-    # concordance_index of the Cox linear predictor equals the model's concordance.
+    # concordance_index() of the Cox linear predictor equals the model's concordance.
     df = gw.load_dataset("lung", backend="pandas")
     y = Surv.right(df["time"], event=(df["status"] == 2))
     fixture = load_fixture("cox_diag_efron")
@@ -507,12 +507,12 @@ def test_concordance_index_matches_r() -> None:
 
 
 def test_risk_table_numbers_match_r() -> None:
-    # risk_table_data needs only numpy/pandas (no plotnine), so it runs here.
+    # get_risk_table_frame() needs only numpy/pandas (no plotnine), so it runs here.
     fixture = load_fixture("risk_table_lung_sex")
     df = gw.load_dataset("lung", backend="pandas")
     y = Surv.right(df["time"], event=(df["status"] == 2))
     km = gw.KaplanMeier().fit(y, by=df["sex"])
-    rtd = gw.viz.risk_table_data(km, times=fixture["times"], format="pandas")
+    rtd = gw.get_risk_table_frame(km, times=fixture["times"], format="pandas")
     for label, expected in fixture["n_risk"].items():
         sub = rtd[rtd["strata"] == label].sort_values("time")
         assert_allclose_to_r(sub["n_risk"].to_numpy(), expected, what=f"n_risk sex={label}")

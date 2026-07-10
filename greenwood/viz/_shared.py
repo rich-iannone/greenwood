@@ -1,8 +1,8 @@
 """Backend-agnostic helpers shared by the Altair and plotnine visualization backends.
 
 These build plain arrays and dicts of columns from a fitted `KaplanMeier` — the numbers a
-survival plot is drawn from — without importing any plotting library. `risk_table_data` is the
-one public function here; it is re-exported as `greenwood.viz.risk_table_data`.
+survival plot is drawn from — without importing any plotting library. `get_risk_table_frame` is the
+one public function here; it is re-exported at the top level as `greenwood.get_risk_table_frame`.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ from .._backends import to_dataframe
 if TYPE_CHECKING:
     from .._nonparametric import KaplanMeier
 
-__all__ = ["risk_table_data"]
+__all__ = ["get_risk_table_frame"]
 
 Array = npt.NDArray[Any]
 
@@ -59,7 +59,7 @@ def _risk_table_columns(km: KaplanMeier, times: Any = None) -> dict[str, list[An
     return {"strata": strata, "time": time_col, "n_risk": n_risk}
 
 
-def risk_table_data(km: KaplanMeier, times: Any = None, *, format: str | None = None) -> Any:
+def get_risk_table_frame(km: KaplanMeier, times: Any = None, *, format: str | None = None) -> Any:
     """Return a tidy frame of the number at risk per stratum at each of `times`.
 
     Parameters
