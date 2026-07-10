@@ -320,8 +320,14 @@ def cif_plot(
         )
     )
 
-    chart = (
-        (lines + points).facet(column="event:N").properties(width=width, height=height, title=title)
-    )
+    # Combine lines and points, set width/height on the spec before faceting
+    spec = (lines + points).properties(width=width, height=height)
+
+    # Facet by event, optionally add title
+    chart = spec.facet(column="event:N")
+
+    # Add title if provided (use transform on the facet)
+    if title is not None:
+        chart = chart.properties(title=title)
 
     return chart
