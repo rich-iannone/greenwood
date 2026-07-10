@@ -22,7 +22,7 @@ from ._backends import to_dataframe
 if TYPE_CHECKING:
     from ._surv import Surv
 
-__all__ = ["logrank_test", "pairwise_logrank_test", "TestResult"]
+__all__ = ["logrank_test", "pairwise_logrank_test", "trend_test", "TestResult"]
 
 Array = npt.NDArray[Any]
 
@@ -589,3 +589,228 @@ def pairwise_logrank_test(
         row["p_adjusted"] = p_adj
     columns = {key: [row[key] for row in rows] for key in rows[0]}
     return to_dataframe(columns, format=format)
+
+
+def trend_test(
+    surv: Surv,
+    group: Any,
+    *,
+    scores: Array | None = None,
+    rho: float = 0.0,
+    gamma: float = 0.0,
+    strata: Any = None,
+) -> TestResult:
+    r"""Test for linear trend across ordered groups using the log-rank test family.
+
+    A trend test is a one-degree-of-freedom test for whether survival changes linearly
+    across ordered groups (e.g., disease stages I, II, III, IV or dose levels: low,
+    medium, high). It's more powerful than the multi-degree-of-freedom log-rank test when
+    groups are naturally ordered.
+
+    The test assigns numeric scores to each group (default: 0, 1, 2, ... for sorted order)
+    and tests whether a linear relationship exists between group score and survival. It can
+    be combined with Fleming-Harrington weights and stratification, just like `logrank_test`.
+
+    **When to use trend tests**: Use when groups are naturally ordered and you want a
+    higher-power test for a linear trend, rather than testing all possible differences.
+    For exploratory analysis without assuming order, use `logrank_test` instead.
+
+    Parameters
+    ----------
+    surv
+        A `Surv` response object representing censored survival times. Supports right-censored
+        data or counting-process format.
+    group
+        Group labels (typically ordered categories like 0, 1, 2, 3 for dose levels or stages).
+        Can be a Narwhals series, 1-D array, or Python sequence. Must have at least 2 groups.
+        Must have the same length as `surv`.
+    scores
+        Numeric scores assigned to each group to define the linear trend. If `None` (default),
+        groups are sorted lexicographically and assigned scores 0, 1, 2, ..., (k-1) where k
+        is the number of groups. Provide custom scores as a dictionary mapping group labels
+        to numeric values (e.g., `{1: 0, 2: 1, 3: 2}` for stage labels 1,2,3) to use
+        different scoring (e.g., unequal spacing). Scores can be any real numbers (including
+        negative).
+    rho, gamma
+        Fleming-Harrington weight exponents (same as `logrank_test`). Default (0, 0) gives
+        standard trend test; (1, 0) gives Peto-Peto (Wilcoxon) trend test.
+    strata
+        Optional stratifying factor. When provided, the trend test is computed separately
+        within each stratum, then combined (stratified trend test). Use to control for
+        confounding while testing a linear trend.
+
+    Returns
+    -------
+    TestResult
+        A result object with attributes:
+
+        - `statistic`: Chi-square test statistic (always 1 degree of freedom).
+        - `df`: Always 1 for trend tests.
+        - `p_value`: Upper-tail chi-square p-value.
+        - `method`: Description of the test, e.g., "Linear trend test", "Stratified linear
+          trend test", "G-rho trend test (rho=1, gamma=0)".
+        - `observed`: Dictionary mapping each group to observed event count (unweighted).
+        - `expected`: Dictionary mapping each group to expected event count under null.
+
+    Details
+    -------
+    The test uses a linear contrast with assigned scores:
+    - U = Σ(score[group_i] * (O[group_i] - E[group_i]))
+    - V = Σ(score[group_i]^2 * Var[group_i])
+    - χ² = U² / V ~ χ²(1)
+
+    This is equivalent to fitting a Cox model with group encoded as the numeric score and
+    testing whether the coefficient is zero using a score test.
+
+    Examples
+    --------
+    Test for linear trend in survival across disease stages (1, 2, 3, 4):
+
+    ```{python}
+    import greenwood as gw
+
+    colon = gw.load_dataset("colon", backend="polars")
+    y = gw.Surv.right(colon["time"], event=colon["status"])
+    
+    # Default: stages 1,2,3,4 get scores 0,1,2,3
+    result = gw.trend_test(y, group=colon["stage"])
+    result
+    ```
+
+    Use custom scores to give different weight to stage transitions:
+
+    ```{python}
+    # Scores: 0, 1, 3, 5 (early vs late stages weighted differently)
+    scores = {1: 0, 2: 1, 3: 3, 4: 5}
+    gw.trend_test(y, group=colon["stage"], scores=scores)
+    ```
+
+    Use Peto-Peto weighting for early-event emphasis:
+
+    ```{python}
+    gw.trend_test(y, group=colon["stage"], rho=1, gamma=0)
+    ```
+
+    Stratified by center/institution to control for site effects:
+
+    ```{python}
+    # gw.trend_test(y, group=colon["stage"], strata=colon["institution"])
+    ```
+    """
+    from ._surv import CensoringType, _to_1d_array
+
+    if surv.type not in (CensoringType.RIGHT, CensoringType.COUNTING):
+        raise NotImplementedError(
+            f"trend_test supports right-censored and counting-process responses, "
+            f"not {surv.type.value!r}."
+        )
+
+    labels_all = _to_1d_array(group, dtype=object)
+    if labels_all.shape[0] != surv.n:
+        raise ValueError("`group` must have the same length as the response.")
+
+    strata_arr = None
+    if strata is not None:
+        strata_arr = _to_1d_array(strata, dtype=object)
+        if strata_arr.shape[0] != surv.n:
+            raise ValueError("`strata` must have the same length as the response.")
+
+    entry = surv.entry
+    exit_ = surv.stop
+    event = surv.event
+    weight = surv.weights if surv.weights is not None else np.ones(surv.n)
+
+    groups = sorted(set(labels_all.tolist()), key=lambda v: (str(type(v)), v))
+    if len(groups) < 2:
+        raise ValueError("trend_test needs at least two groups.")
+    if np.count_nonzero(event) == 0:
+        raise ValueError("No events in the data; the test is undefined.")
+
+    # Get scores for each group
+    if scores is None:
+        # Default: assign 0, 1, 2, ..., k-1 to sorted groups
+        group_scores = {g: float(i) for i, g in enumerate(groups)}
+    else:
+        # Convert scores dict to numeric (or validate if array provided)
+        if isinstance(scores, dict):
+            group_scores = {g: float(scores[g]) for g in groups}
+        else:
+            # scores provided as array/list indexed by group order
+            scores_arr = np.asarray(scores, dtype=float)
+            if len(scores_arr) != len(groups):
+                raise ValueError(
+                    f"scores length ({len(scores_arr)}) must match number of groups ({len(groups)})"
+                )
+            group_scores = {g: scores_arr[i] for i, g in enumerate(groups)}
+
+    # Compute observed, expected, and variance for each group (like logrank_test)
+    observed_dict = {}
+    expected_dict = {}
+    var_diag = {}
+
+    # Get full statistics across all groups
+    observed_all, expected_all, var_all = _logrank_uv(
+        entry, exit_, event, weight, labels_all, groups, rho, gamma
+    )
+
+    if strata_arr is None:
+        # No stratification: use results directly
+        observed_dict = dict(zip(groups, observed_all.tolist(), strict=True))
+        expected_dict = dict(zip(groups, expected_all.tolist(), strict=True))
+        var_diag = {g: var_all[i, i] for i, g in enumerate(groups)}
+    else:
+        # Stratified: sum across strata
+        observed_all_strat = np.zeros(len(groups))
+        expected_all_strat = np.zeros(len(groups))
+        var_all_strat = np.zeros((len(groups), len(groups)))
+
+        for s in np.unique(strata_arr):
+            m = strata_arr == s
+            o, e, v = _logrank_uv(
+                entry[m], exit_[m], event[m], weight[m], labels_all[m], groups, rho, gamma
+            )
+            observed_all_strat += o
+            expected_all_strat += e
+            var_all_strat += v
+
+        observed_dict = dict(zip(groups, observed_all_strat.tolist(), strict=True))
+        expected_dict = dict(zip(groups, expected_all_strat.tolist(), strict=True))
+        var_diag = {g: var_all_strat[i, i] for i, g in enumerate(groups)}
+
+    # Compute trend statistic using contrast scores
+    # U = Σ score[g] * (O[g] - E[g])
+    # V = Σ score[g]^2 * Var[g,g]
+    u = sum(
+        group_scores[g] * (observed_dict[g] - expected_dict[g])
+        for g in groups
+    )
+    v = sum(
+        group_scores[g] ** 2 * var_diag[g]
+        for g in groups
+    )
+
+    if v <= 0:
+        raise ValueError(
+            "Variance is non-positive; cannot compute trend statistic. "
+            "Check for data issues (e.g., no events in some groups)."
+        )
+
+    statistic = float(u**2 / v)
+    df = 1
+
+    p_value = float(chi2.sf(statistic, df))
+
+    method = "Linear trend test"
+    if rho != 0.0 or gamma != 0.0:
+        method = f"G-rho trend test (rho={rho}, gamma={gamma})"
+    if strata is not None:
+        method = f"Stratified {method[0].lower()}{method[1:]}"
+
+    return TestResult(
+        statistic=statistic,
+        df=df,
+        p_value=p_value,
+        method=method,
+        observed=observed_dict,
+        expected=expected_dict,
+    )

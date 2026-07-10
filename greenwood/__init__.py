@@ -25,7 +25,7 @@ from ._penalized import CoxNet
 from ._power import logrank_n_events, logrank_power, logrank_sample_size
 from ._resample import cross_validate
 from ._surv import CensoringType, Surv
-from ._tests import TestResult, logrank_test, pairwise_logrank_test
+from ._tests import TestResult, logrank_test, pairwise_logrank_test, trend_test
 from .data import available_datasets, load_dataset
 from .summaries import augment, glance, tidy
 from .viz import plot_survival, risk_table
@@ -61,6 +61,7 @@ __all__ = [
     "integrated_brier_score",
     "logrank_test",
     "pairwise_logrank_test",
+    "trend_test",
     "TestResult",
     "plot_survival",
     "risk_table",
