@@ -11,15 +11,6 @@ public capability roadmap.
 
 Descriptive and exploratory features building on the core estimators.
 
-### Stratified and Trend Tests
-
-Hypothesis tests for grouped and ordered survival data.
-
-- Stratified log-rank tests across multiple strata
-- Trend tests for ordered groups (linear contrast)
-- Pairwise log-rank comparisons with multiplicity control
-- G-rho (Fleming-Harrington) family extensions for stratified data
-
 ### RMST Comparisons
 
 Restricted mean survival time analysis between groups.
