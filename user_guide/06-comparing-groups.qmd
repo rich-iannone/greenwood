@@ -23,6 +23,7 @@ We continue with the `lung` dataset, comparing survival between the two sexes.
 import greenwood as gw
 
 lung = gw.load_dataset("lung", backend="polars")
+
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 y
 ```
@@ -69,6 +70,7 @@ more it produces an overall test on the corresponding degrees of freedom.
 
 ::: {.callout-note}
 ## What the log-rank test does and does not tell you
+
 The test tells you whether the curves differ overall. It does not tell you by how much, at
 what times, or in which direction beyond the observed-versus-expected counts. Pair it with a
 Kaplan-Meier plot and with effect measures such as a hazard ratio from
@@ -92,6 +94,7 @@ above to see how much the emphasis on early event times matters here.
 
 ```{python}
 lung = gw.load_dataset("lung", backend="polars")
+
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 
 gw.logrank_test(y, group=lung["sex"], rho=1)
@@ -127,6 +130,7 @@ The log-rank test extends to any number of groups, giving one overall test. We s
 
 ```{python}
 vet = gw.load_dataset("veteran", backend="polars")
+
 y_vet = gw.Surv.right(vet["time"], event=vet["status"])
 
 gw.logrank_test(y_vet, group=vet["celltype"])
@@ -154,6 +158,7 @@ removes any cell-type imbalance from the comparison.
 
 ```{python}
 vet = gw.load_dataset("veteran", backend="polars")
+
 y_vet = gw.Surv.right(vet["time"], event=vet["status"])
 
 gw.logrank_test(y_vet, group=vet["trt"], strata=vet["celltype"])
@@ -181,6 +186,7 @@ survival differs across cell types in the `veteran` dataset, treating them as an
 
 ```{python}
 vet = gw.load_dataset("veteran", backend="polars")
+
 y = gw.Surv.right(vet["time"], event=vet["status"])
 
 # Test linear trend across ordered cell types
@@ -198,6 +204,7 @@ can specify custom scores. Scores must be numeric and reflect your belief about 
 
 ```{python}
 vet = gw.load_dataset("veteran", backend="polars")
+
 y = gw.Surv.right(vet["time"], event=vet["status"])
 
 # Custom scores: adeno and large get weight 1, smallcell and squamous get weight 3
@@ -216,6 +223,7 @@ is useful if you suspect early separation of the curves.
 
 ```{python}
 vet = gw.load_dataset("veteran", backend="polars")
+
 y = gw.Surv.right(vet["time"], event=vet["status"])
 
 # Peto-Peto trend test: weights early events more heavily
@@ -230,6 +238,7 @@ and then combines the results.
 
 ```{python}
 vet = gw.load_dataset("veteran", backend="polars")
+
 y = gw.Surv.right(vet["time"], event=vet["status"])
 
 # Test trend in celltype while controlling for treatment
@@ -276,6 +285,7 @@ gw.logrank_sample_size(hazard_ratio=0.5, prob_event=0.4, power=0.9)
 
 ::: {.callout-note}
 ## What the calculators assume
+
 These formulas assume proportional hazards, a two-group comparison, and (by default) a
 balanced, two-sided test at `alpha=0.05`. Use `allocation` for an unbalanced design and
 `sides=1` for a one-sided test. A balanced design needs the fewest events.
