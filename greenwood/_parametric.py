@@ -353,8 +353,10 @@ class AFT:
         ds_dmu = -pdf_z / sigma  # (n_times, n_subjects)
 
         # SE(mu) for each subject: sqrt(diag(x @ vcov @ x.T))
-        vcov = self.vcov_
-        se_mu_sq = np.sum(x[:, :, None] * vcov[None, :, :] * x[:, None, :], axis=1).T  # (n_subjects,)
+        # vcov_ includes scale parameter; extract only the coefficient part
+        n_coef = x.shape[1]
+        vcov_coef = self.vcov_[:n_coef, :n_coef]
+        se_mu_sq = np.diag(x @ vcov_coef @ x.T)  # (n_subjects,)
         se_mu = np.sqrt(np.clip(se_mu_sq, 0.0, None))
 
         # SE(S) = |dS/dmu| * SE(mu)
