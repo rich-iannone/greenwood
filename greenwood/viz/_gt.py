@@ -71,7 +71,8 @@ def risk_table(km: KaplanMeier, times: Any = None) -> Any:
         subtitle="Count of subjects at risk at each time point",
     )
 
-    # Format as integers (no decimals)
-    gt_table = gt_table.fmt_integer(columns=list(pivot_df.columns))
+    # Format as integers (no decimals) — exclude the strata column
+    numeric_columns = [col for col in pivot_df.columns if col != "strata"]
+    gt_table = gt_table.fmt_integer(columns=numeric_columns)
 
     return gt_table
