@@ -38,7 +38,6 @@ def test_plot_survival_returns_layer_chart(km_overall: gw.KaplanMeier) -> None:
 def test_altair_is_the_default_backend(km_overall: gw.KaplanMeier) -> None:
     # The top-level and `gw.viz` entry points default to Altair, not plotnine.
     assert gw.plot_survival is gw.viz.plot_survival is gw.viz.altair.plot_survival
-    assert gw.risk_table is gw.viz.risk_table is gw.viz.altair.risk_table
     assert isinstance(gw.plot_survival(km_overall), alt.LayerChart)
 
 
@@ -111,6 +110,7 @@ def test_step_interpolation(km_overall: gw.KaplanMeier) -> None:
 
 
 def test_standalone_risk_table(km_grouped: gw.KaplanMeier) -> None:
-    chart = gw.viz.altair.risk_table(km_grouped, times=[0, 250, 500])
-    assert isinstance(chart, alt.Chart)
-    chart.to_dict()
+    gt = pytest.importorskip("great_tables")
+    
+    table = gw.risk_table(km_grouped, times=[0, 250, 500])
+    assert isinstance(table, gt.GT)
