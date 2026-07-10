@@ -26,6 +26,7 @@ Altair is an optional dependency. If you installed Greenwood with the `altair` e
 import greenwood as gw
 
 lung = gw.load_dataset("lung", backend="polars")
+
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 y
 ```
@@ -61,9 +62,8 @@ The main entry point is `plot_survival`. Given a fitted `KaplanMeier`, it draws 
 curve for each stratum, a shaded confidence band, and a small notch at each censoring time.
 
 ```{python}
-import greenwood as gw
-
 lung = gw.load_dataset("lung", backend="polars")
+
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 km = gw.KaplanMeier(conf_type="log-log").fit(y, by=lung["sex"])
 
@@ -130,6 +130,7 @@ gw.plot_survival(km).properties(
 
 ::: {.callout-note}
 ## The plot is a chart object, not an image
+
 `plot_survival` returns an Altair chart (an `alt.LayerChart`, or an `alt.VConcatChart` when
 `risk_table=True`). It renders interactively in notebooks and browsers, and you keep composing
 it with Altair's API. Nothing about the figure is locked down.
@@ -137,6 +138,7 @@ it with Altair's API. Nothing about the figure is locked down.
 
 ::: {.callout-tip}
 ## Saving figures
+
 Call `save` on the returned chart. Use `chart.save("survival.html")` for the interactive
 version, or `chart.save("survival.png")` (also `.svg`, `.pdf`) for a static image — static
 export uses `vl-convert`, which ships with the `altair` extra.
