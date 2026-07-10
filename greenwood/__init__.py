@@ -1,12 +1,11 @@
 """Greenwood: modern survival analysis for Python.
 
-Narwhals-native, validated against R's `survival`, visualized with Altair (or plotnine), and
-a first-class citizen of the Great Tables ecosystem.
+Narwhals-native, validated against R's `survival`, visualized with Altair and Great Tables.
 
 This release provides the `Surv` response object, the risk-set / event-table kernel, the
 non-parametric estimators (`KaplanMeier`, `NelsonAalen`), group comparison tests
-(`logrank_test`), and interactive visualization (`plot_survival` with aligned risk tables).
-Regression and parametric models arrive in later releases (see `ROADMAP.md`).
+(`logrank_test()`), and interactive visualization (`plot_survival()` with aligned risk
+tables).
 """
 
 from __future__ import annotations
@@ -29,7 +28,14 @@ from ._surv import CensoringType, Surv
 from ._tests import TestResult, logrank_test, pairwise_logrank_test, trend_test
 from .data import available_datasets, load_dataset
 from .summaries import augment, glance, tidy
-from .viz import plot_survival, risk_table
+from .viz import (
+    plot_survival,
+    risk_table,
+    get_risk_table_frame,
+    forest_plot,
+    cif_plot,
+    survival_plot,
+)
 
 try:
     __version__ = version("greenwood")
@@ -68,8 +74,12 @@ __all__ = [
     "rmst_diff",
     "pairwise_rmst_test",
     "RMSTResult",
+    "survival_plot",
     "plot_survival",
     "risk_table",
+    "get_risk_table_frame",
+    "forest_plot",
+    "cif_plot",
     "load_dataset",
     "available_datasets",
     "tidy",
