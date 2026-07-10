@@ -38,6 +38,61 @@ def _subset_surv(surv: Surv, idx: Array) -> Surv:
     )
 
 
+def _stratified_kfold_indices(surv: Surv, k: int, seed: int | None = None) -> list[Array]:
+    """Create k-fold indices stratified by event status.
+
+    For survival data, stratification ensures each fold has approximately the same
+    proportion of events and censored observations as the overall dataset. This is
+    critical for imbalanced survival data (e.g., rare events) to prevent singular
+    matrix errors and biased CV estimates.
+
+    Parameters
+    ----------
+    surv
+        A Surv response object containing event indicators.
+    k
+        Number of folds.
+    seed
+        Random seed for reproducibility.
+
+    Returns
+    -------
+    list of arrays
+        k arrays, each containing row indices for a fold. Folds are stratified by
+        event status (censored vs. event).
+    """
+    rng = np.random.default_rng(seed)
+    n = surv.n
+
+    # For multi-state (multiple events), stratify by event type; for binary (event/censoring),
+    # stratify by event indicator.
+    if surv.event.dtype == object or (
+        hasattr(surv.event, "dtype") and surv.event.dtype.kind in ("U", "O")
+    ):
+        # Categorical events: stratify by event type
+        stratify_by = surv.event
+    else:
+        # Binary event indicator: stratify by event status
+        stratify_by = surv.event
+
+    # Group indices by stratum
+    unique_strata = np.unique(stratify_by)
+    stratum_indices = {s: np.where(stratify_by == s)[0] for s in unique_strata}
+
+    # For each stratum, shuffle and split into k folds
+    fold_lists = [[] for _ in range(k)]
+    for stratum_idx in unique_strata:
+        indices = stratum_indices[stratum_idx]
+        shuffled = rng.permutation(indices)
+        stratum_folds = np.array_split(shuffled, k)
+        for fold_idx, fold_indices in enumerate(stratum_folds):
+            fold_lists[fold_idx].extend(fold_indices)
+
+    # Shuffle within each fold to break any remaining structure
+    folds = [rng.permutation(np.array(f)) for f in fold_lists]
+    return folds
+
+
 def _risk_score(model: Any, x: Array) -> Array:
     """A risk score where larger means higher risk (earlier event), for concordance."""
     from ._cox import CoxPH
@@ -65,6 +120,7 @@ def cross_validate(
     k: int = 5,
     metric: str = "concordance",
     times: Any = None,
+    stratified: bool = True,
     seed: int | None = None,
 ) -> dict[str, Any]:
     r"""Evaluate a survival model's out-of-sample performance using k-fold cross-validation.
@@ -116,6 +172,11 @@ def cross_validate(
         For `metric="brier"`, evaluation time points (1-D array-like, length $\ge 2$). The Brier
         score is computed at each time, then integrated (time-averaged). Example:
         `times=[365, 730, 1095]` for 1, 2, 3-year predictions.
+    stratified
+        If `True` (default), use stratified k-fold ensuring balanced event/censoring
+        representation across folds. This prevents singular matrix errors and biased CV
+        estimates on imbalanced survival data (rare events). If `False`, use simple random
+        k-fold shuffling.
     seed
         Random seed for fold shuffling, ensures reproducibility. If `None`, results may vary
         between runs. Use a fixed seed for consistent comparisons.
@@ -135,9 +196,15 @@ def cross_validate(
 
     Details
     -------
-    **How folds work**: Subjects are randomly shuffled and split into k roughly equal-sized
-    groups. On iteration i, fold i is held out for testing, while the other k-1 folds are
-    combined for training. This repeats k times until each fold has served as test data once.
+    **How folds work**: By default (`stratified=True`), subjects are grouped by event status
+    (censored vs. event, or multiple event types), then randomly shuffled within each stratum
+    and split into k roughly equal-sized groups. This ensures each fold has approximately the
+    same proportion of events and censored observations as the overall dataset. This is crucial
+    for imbalanced data (e.g., rare events) to prevent singular matrix errors and ensures
+    unbiased cross-validation estimates.
+
+    If `stratified=False`, subjects are simply shuffled and split randomly, which may lead to
+    folds with very different event rates and can destabilize model fitting on sparse data.
 
     **Completeness**: Subjects with missing covariates are dropped before folding. This
     ensures all folds use the same cleaned data, avoiding alignment issues.
@@ -234,7 +301,11 @@ def cross_validate(
         if len(brier_times) < 2:
             raise ValueError("metric='brier' requires `times` with at least two time points.")
 
-    folds = np.array_split(np.random.default_rng(seed).permutation(surv.n), k)
+    folds = (
+        _stratified_kfold_indices(surv, k, seed)
+        if stratified
+        else np.array_split(np.random.default_rng(seed).permutation(surv.n), k)
+    )
     scores: list[float] = []
     for i in range(k):
         test = folds[i]
