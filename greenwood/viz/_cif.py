@@ -6,7 +6,7 @@ comparison of cumulative incidence between groups or for different event types.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -159,7 +159,7 @@ def _cif_plot_data(
         group_label = group_names.get(group_key, str(group_key))
         for event_idx, event_name in enumerate(event_names):
             cif_values = group_cif[:, event_idx]
-            for t, cif_val in zip(time_array, cif_values):
+            for t, cif_val in zip(time_array, cif_values, strict=True):
                 data_list.append(
                     {
                         "time": float(t),
@@ -287,12 +287,14 @@ def cif_plot(
 
     try:
         import altair as alt
-    except ImportError:
-        raise ImportError("altair required; install with `pip install greenwood[altair]`.")
+    except ImportError as exc:
+        raise ImportError(
+            "altair required; install with `pip install greenwood[altair]`."
+        ) from exc
 
     data = cif_data["data"]
     # Convert to dict format for to_dataframe (transpose the list of dicts)
-    data_dict = {k: [d[k] for d in data] for k in data[0].keys()}
+    data_dict = {k: [d[k] for d in data] for k in data[0]}
     # to_dataframe returns pandas/polars/pyarrow; Altair accepts all via Narwhals
     df = to_dataframe(data_dict)
 

@@ -117,7 +117,7 @@ def test_stratified_kfold_reproducible(lung, y) -> None:
     folds1 = _stratified_kfold_indices(y, k=5, seed=123)
     folds2 = _stratified_kfold_indices(y, k=5, seed=123)
 
-    for f1, f2 in zip(folds1, folds2):
+    for f1, f2 in zip(folds1, folds2, strict=True):
         np.testing.assert_array_equal(f1, f2)
 
 

@@ -62,7 +62,6 @@ def _stratified_kfold_indices(surv: Surv, k: int, seed: int | None = None) -> li
         event status (censored vs. event).
     """
     rng = np.random.default_rng(seed)
-    n = surv.n
 
     # For multi-state (multiple events), stratify by event type; for binary (event/censoring),
     # stratify by event indicator.

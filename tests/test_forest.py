@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import numpy as np
 import pytest
 
 from greenwood.viz._forest import _forest_plot_data, forest_plot

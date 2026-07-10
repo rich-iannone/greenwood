@@ -174,7 +174,7 @@ def _forest_plot_data(
             "ci_upper": float(ci_u),
         }
         for lbl, est, ci_l, ci_u in zip(
-            labels_list, est_display, ci_lower_display, ci_upper_display
+            labels_list, est_display, ci_lower_display, ci_upper_display, strict=True
         )
     ]
 
@@ -285,12 +285,14 @@ def forest_plot(
 
     try:
         import altair as alt
-    except ImportError:
-        raise ImportError("altair required; install with `pip install greenwood[altair]`.")
+    except ImportError as exc:
+        raise ImportError(
+            "altair required; install with `pip install greenwood[altair]`."
+        ) from exc
 
     data_list = forest_data["data"]
     # Convert to dict format for to_dataframe (transpose the list of dicts)
-    data_dict = {k: [d[k] for d in data_list] for k in data_list[0].keys()}
+    data_dict = {k: [d[k] for d in data_list] for k in data_list[0]}
     # to_dataframe returns pandas/polars/pyarrow; Altair accepts all via Narwhals
     df = to_dataframe(data_dict)
 

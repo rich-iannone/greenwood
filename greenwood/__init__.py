@@ -17,7 +17,12 @@ from ._competing import AalenJohansen, FineGray, MultiState
 from ._core import EventTable, event_table
 from ._cox import CoxPH, ZPHResult
 from ._flexible import RoystonParmar
-from ._metrics import brier_score, calibration, concordance_index, integrated_brier_score
+from ._metrics import (
+    brier_score,
+    calibration,
+    concordance_index,
+    integrated_brier_score,
+)
 from ._nonparametric import KaplanMeier, NelsonAalen
 from ._parametric import AFT
 from ._penalized import CoxNet
@@ -29,11 +34,11 @@ from ._tests import TestResult, logrank_test, pairwise_logrank_test, trend_test
 from .data import available_datasets, load_dataset
 from .summaries import augment, glance, tidy
 from .viz import (
+    cif_plot,
+    forest_plot,
+    get_risk_table_frame,
     plot_survival,
     risk_table,
-    get_risk_table_frame,
-    forest_plot,
-    cif_plot,
     survival_plot,
 )
 
