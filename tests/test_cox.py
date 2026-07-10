@@ -423,3 +423,27 @@ def test_right_censored_data_no_warning() -> None:
         CoxPH().fit(surv, df[["x"]])
         our_warnings = [x for x in w if "start time" in str(x.message).lower()]
         assert len(our_warnings) == 0, "Right-censored data should not warn about start times"
+
+
+def test_weight_invariance(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    """Coefficients should be invariant to uniform weight scaling."""
+    df, y = lung_surv
+    
+    # Fit unweighted model
+    cox_unweighted = CoxPH().fit(y, df[["age", "sex"]])
+    coef_unweighted = cox_unweighted.coef_
+    
+    # Fit with uniform weights of 1 (should be identical to unweighted)
+    y_weight1 = Surv.right(df["time"], event=(df["status"] == 2), weights=np.ones(len(df)))
+    cox_weight1 = CoxPH().fit(y_weight1, df[["age", "sex"]])
+    np.testing.assert_allclose(cox_weight1.coef_, coef_unweighted, rtol=1e-10)
+    
+    # Fit with uniform weights of 2 (should be identical to unweighted)
+    y_weight2 = Surv.right(df["time"], event=(df["status"] == 2), weights=2.0 * np.ones(len(df)))
+    cox_weight2 = CoxPH().fit(y_weight2, df[["age", "sex"]])
+    np.testing.assert_allclose(cox_weight2.coef_, coef_unweighted, rtol=1e-10)
+    
+    # Fit with uniform weights of 5 (should be identical to unweighted)
+    y_weight5 = Surv.right(df["time"], event=(df["status"] == 2), weights=5.0 * np.ones(len(df)))
+    cox_weight5 = CoxPH().fit(y_weight5, df[["age", "sex"]])
+    np.testing.assert_allclose(cox_weight5.coef_, coef_unweighted, rtol=1e-10)
