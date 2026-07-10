@@ -145,8 +145,6 @@ Narwhals, so you can pass pandas or Polars columns directly. The bundled `lung` 
 from the North Central Cancer Treatment Group, is a good example.
 
 ```{python}
-import greenwood as gw
-
 lung = gw.load_dataset("lung", backend="polars")
 lung
 ```
@@ -215,8 +213,6 @@ can write it to a file or send it over the wire. Here is the serialized form of 
 response, truncated to its first stretch so you can see the shape of it.
 
 ```{python}
-import greenwood as gw
-
 lung = gw.load_dataset("lung", backend="polars")
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 
@@ -257,8 +253,6 @@ table is what Kaplan-Meier, the log-rank test, and Cox all build on, and you can
 directly with `event_table`. It matches R's `survfit` tabulation.
 
 ```{python}
-import greenwood as gw
-
 lung = gw.load_dataset("lung", backend="polars")
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 
