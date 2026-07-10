@@ -24,6 +24,7 @@ from ._parametric import AFT
 from ._penalized import CoxNet
 from ._power import logrank_n_events, logrank_power, logrank_sample_size
 from ._resample import cross_validate
+from ._rmst import RMSTResult, pairwise_rmst_test, rmst_diff, rmst_test
 from ._surv import CensoringType, Surv
 from ._tests import TestResult, logrank_test, pairwise_logrank_test, trend_test
 from .data import available_datasets, load_dataset
@@ -63,6 +64,10 @@ __all__ = [
     "pairwise_logrank_test",
     "trend_test",
     "TestResult",
+    "rmst_test",
+    "rmst_diff",
+    "pairwise_rmst_test",
+    "RMSTResult",
     "plot_survival",
     "risk_table",
     "load_dataset",
