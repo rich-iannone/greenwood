@@ -751,8 +751,10 @@ class CoxPH:
             - `time`: Event times at which the baseline hazard is evaluated.
             - `cumhaz`: Cumulative baseline hazard $H_0(t)$ at each time.
             - `survival`: Baseline survival probability $S_0(t) = \exp(-H_0(t))$.
-            - `cumhaz_lower`, `cumhaz_upper` (if `ci=True`): Confidence bounds for cumulative hazard.
-            - `survival_lower`, `survival_upper` (if `ci=True`): Confidence bounds for survival.
+            - `cumhaz_lower`, `cumhaz_upper` (if `ci=True`): Confidence bounds for
+              cumulative hazard.
+            - `survival_lower`, `survival_upper` (if `ci=True`): Confidence bounds
+              for survival.
             - `strata` (if stratified): Stratum label, one baseline hazard per stratum.
 
         Details

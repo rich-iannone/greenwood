@@ -560,7 +560,8 @@ class AFT:
                         logl = np.where(np.isfinite(logl), logl, 0.0)
                         logl_lower = logl - z_val * se_logl
                         logl_upper = logl + z_val * se_logl
-                        surv_lower = np.exp(-np.exp(logl_upper))  # note: upper on log scale -> lower
+                        # note: upper on log scale -> lower survival
+                        surv_lower = np.exp(-np.exp(logl_upper))
                         surv_upper = np.exp(-np.exp(logl_lower))
                 else:  # conf_type == "plain"
                     surv_lower = surv - z_val * se_s

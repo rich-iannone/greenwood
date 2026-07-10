@@ -159,7 +159,14 @@ def test_aft_predict_survival_ci_narrower_at_high_event_times(lung_surv) -> None
     nd = df[["age", "sex"]].iloc[:1]
 
     # Use early time (high survival) and late time (low survival)
-    pred = aft.predict(nd, type="survival", times=[100, 800], ci=True, conf_type="log-log", format="pandas")
+    pred = aft.predict(
+        nd,
+        type="survival",
+        times=[100, 800],
+        ci=True,
+        conf_type="log-log",
+        format="pandas",
+    )
 
     # At high survival, log-log transform stretches the scale, so CI can be wider
     # At low survival, it compresses, so CI can be narrower
@@ -211,7 +218,14 @@ def test_aft_predict_survival_ci_edge_case_high_survival(lung_surv) -> None:  # 
     nd = df[["age", "sex"]].iloc[:1]
 
     # Query at t=1 (very early)
-    pred = aft.predict(nd, type="survival", times=[1.0], ci=True, conf_type="log-log", format="pandas")
+    pred = aft.predict(
+        nd,
+        type="survival",
+        times=[1.0],
+        ci=True,
+        conf_type="log-log",
+        format="pandas",
+    )
 
     s = float(pred["subject_1"].iloc[0])
     assert s > 0.9  # should be high
@@ -227,12 +241,19 @@ def test_aft_predict_survival_ci_edge_case_low_survival(lung_surv) -> None:  # t
     nd = df[["age", "sex"]].iloc[:1]
 
     # Query at very late time
-    pred = aft.predict(nd, type="survival", times=[2000.0], ci=True, conf_type="log-log", format="pandas")
+    pred = aft.predict(
+        nd,
+        type="survival",
+        times=[2000.0],
+        ci=True,
+        conf_type="log-log",
+        format="pandas",
+    )
 
     s = float(pred["subject_1"].iloc[0])
     assert s < 0.1  # should be low
     # Bounds should respect (0, 1)
-    assert 0 < pred["subject_1_lower"].iloc[0]
+    assert pred["subject_1_lower"].iloc[0] > 0
     assert pred["subject_1_upper"].iloc[0] < 1
     # And bracket the estimate
     assert s >= pred["subject_1_lower"].iloc[0]
