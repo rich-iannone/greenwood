@@ -691,10 +691,18 @@ def trend_test(
     gw.trend_test(y, group=vet["celltype"], scores=scores)
     ```
 
-    Use Peto-Peto weighting for early-event emphasis:
+    Use Peto-Peto weighting to emphasize early differences:
 
     ```{python}
+    # Peto-Peto: rho=1 gives more weight to early event times
     gw.trend_test(y, group=vet["celltype"], rho=1, gamma=0)
+    ```
+
+    Use Tarone-Ware weighting to emphasize late differences (gamma=1):
+
+    ```{python}
+    # Tarone-Ware: gamma=1 gives more weight to late event times
+    gw.trend_test(y, group=vet["celltype"], rho=0, gamma=1)
     ```
 
     Stratified by treatment to control for treatment effects:
