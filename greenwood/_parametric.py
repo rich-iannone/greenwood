@@ -369,6 +369,8 @@ class AFT:
         times: Any = None,
         p: Any = 0.5,
         conditional_after: Any = None,
+        ci: bool = False,
+        conf_type: str = "log-log",
         format: str | None = None,
     ) -> Any:
         r"""Predict survival times, quantiles, or survival probabilities from the AFT model.
