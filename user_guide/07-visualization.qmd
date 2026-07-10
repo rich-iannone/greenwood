@@ -77,6 +77,27 @@ interactive, you can hover a curve to read the survival probability at a time, a
 scroll to zoom. Curves that separate and stay apart suggest a real group difference, which you
 would confirm with a log-rank test from [Comparing groups](06-comparing-groups.qmd).
 
+::: {.callout-tip}
+## Plotting Cox model baseline hazard with confidence intervals
+
+If you have fit a `CoxPH` model, you can extract the baseline hazard with confidence intervals
+and plot it to visualize the estimated survival trajectory for a reference subject:
+
+```{python}
+cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+baseline = cox.baseline_hazard(ci=True, format="polars")
+
+# Convert to a format suitable for Altair plotting
+# The 'survival' column is S_0(t) and 'survival_lower'/'survival_upper' are the CI bounds
+baseline
+```
+
+The `survival` column represents the baseline survival probability (for a reference subject
+with all covariates at their mean values), and the `survival_lower` and `survival_upper` columns
+give the 95% confidence band. You can plot this as a curve with a confidence band using Altair,
+or integrate it into Great Tables for a publication-ready figure.
+:::
+
 You can turn individual elements off. Removing the band and the censoring marks produces a
 cleaner curve for a slide or a small figure.
 
