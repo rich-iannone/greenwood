@@ -25,6 +25,7 @@ time with an event indicator, and it is the target every model on this page is f
 import greenwood as gw
 
 lung = gw.load_dataset("lung", backend="polars")
+
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 y
 ```
@@ -49,9 +50,8 @@ Calling `cox_zph` returns a `ZPHResult`, an object that bundles the test statist
 Displaying it directly gives a compact summary of the test.
 
 ```{python}
-import greenwood as gw
-
 lung = gw.load_dataset("lung", backend="polars")
+
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
 
@@ -72,6 +72,7 @@ The test uses a time transform, which defaults to `"identity"`; `"log"` is also 
 
 ::: {.callout-warning}
 ## A non-significant test is not proof
+
 Failing to reject the proportional hazards assumption does not prove it holds, especially in
 small samples. Complement the test by plotting scaled Schoenfeld residuals or by fitting
 time-stratified models when you have reason to suspect a time-varying effect.
@@ -89,9 +90,8 @@ The martingale residuals come back as a NumPy array with one entry per subject. 
 of them, so we look at the first five rather than the whole array.
 
 ```{python}
-import greenwood as gw
-
 lung = gw.load_dataset("lung", backend="polars")
+
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
 
@@ -112,9 +112,8 @@ after fitting. The baseline cumulative hazard, and the survival curve derived fr
 describe a reference subject.
 
 ```{python}
-import greenwood as gw
-
 lung = gw.load_dataset("lung", backend="polars")
+
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
 
@@ -171,9 +170,8 @@ You pass the stratifying variable to `strata`. Here we stratify by `sex` while k
 and `ph.ecog` as covariates.
 
 ```{python}
-import greenwood as gw
-
 lung = gw.load_dataset("lung", backend="polars")
+
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 
 stratified = gw.CoxPH().fit(y, lung[["age", "ph.ecog"]], strata=lung["sex"])
@@ -197,12 +195,12 @@ small. The robust, or sandwich, variance corrects for this. Set `robust=True` fo
 Lin-Wei sandwich estimator, and pass `cluster` to group correlated observations.
 
 ```{python}
-import greenwood as gw
-
 lung = gw.load_dataset("lung", backend="polars")
+
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 
 robust = gw.CoxPH().fit(y, lung[["age", "sex"]], robust=True)
+
 robust.to_frame(format="polars")[["term", "std_error"]]
 ```
 
@@ -218,9 +216,8 @@ of subjects, the one who failed first had the higher predicted risk. A value of 
 better than chance and 1.0 is perfect discrimination.
 
 ```{python}
-import greenwood as gw
-
 lung = gw.load_dataset("lung", backend="polars")
+
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
 
@@ -232,8 +229,8 @@ cox.concordance()
 You can now validate a Cox model and use it to predict.
 
 - [Prediction performance](13-prediction-performance.qmd) extends discrimination and adds
-  the Brier score for calibration, including for external risk scores.
+the Brier score for calibration, including for external risk scores.
 - [Parametric survival models](10-parametric-models.qmd) provide an alternative when the
-  proportional hazards assumption is untenable.
+proportional hazards assumption is untenable.
 - Revisit [Cox regression](08-cox-regression.qmd) for the modeling basics if any of this is
-  unfamiliar.
+unfamiliar.
