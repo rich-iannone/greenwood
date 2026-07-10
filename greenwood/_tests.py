@@ -633,11 +633,12 @@ def trend_test(
         negative).
     rho
         Fleming-Harrington weight exponent applied to the pooled survival probability.
-        Default 0 gives a standard trend test with equal weight across all times.
+        The default of `0` gives a standard trend test with equal weight across all times.
     gamma
         Fleming-Harrington weight exponent applied to (1 - pooled survival probability).
-        Default 0; combined with `rho=1` gives Peto-Peto (Wilcoxon) trend test emphasizing
-        early events. See `logrank_test` for more details on Fleming-Harrington weighting.
+        The default of `0`; combined with `rho=1` gives Peto-Peto (Wilcoxon) trend test
+        emphasizing early events. See `logrank_test` for more details on Fleming-Harrington
+        weighting.
     strata
         Optional stratifying factor. When provided, the trend test is computed separately
         within each stratum, then combined (stratified trend test). Use to control for
@@ -648,20 +649,21 @@ def trend_test(
     TestResult
         A result object with attributes:
 
-        - `statistic`: Chi-square test statistic (always 1 degree of freedom).
-        - `df`: Always 1 for trend tests.
-        - `p_value`: Upper-tail chi-square p-value.
-        - `method`: Description of the test, e.g., "Linear trend test", "Stratified linear
+        - `statistic`: chi-square test statistic (always 1 degree of freedom).
+        - `df`: always `1` for trend tests.
+        - `p_value`: upper-tail chi-square p-value.
+        - `method`: description of the test, e.g., "Linear trend test", "Stratified linear
           trend test", "G-rho trend test (rho=1, gamma=0)".
-        - `observed`: Dictionary mapping each group to observed event count (unweighted).
-        - `expected`: Dictionary mapping each group to expected event count under null.
+        - `observed`: dictionary mapping each group to observed event count (unweighted).
+        - `expected`: dictionary mapping each group to expected event count under null.
 
     Details
     -------
     The test uses a linear contrast with assigned scores:
-    - U = Σ(score[group_i] * (O[group_i] - E[group_i]))
-    - V = Σ(score[group_i]^2 * Var[group_i])
-    - χ² = U² / V ~ χ²(1)
+
+    - $U = \sum_i \text{score}[i] \cdot (O[i] - E[i])$
+    - $V = \sum_i \text{score}[i]^2 \cdot \text{Var}[i]$
+    - $\chi^2 = U^2 / V \sim \chi^2(1)$
 
     This is equivalent to fitting a Cox model with group encoded as the numeric score and
     testing whether the coefficient is zero using a score test.
