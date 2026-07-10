@@ -170,6 +170,98 @@ The statistic is pooled across the strata, matching R's `survdiff` with a `strat
 Stratification is the test-level counterpart to a stratified Cox model, where each stratum
 has its own baseline hazard.
 
+## Testing for trend in ordered groups
+
+When your groups are naturally ordered—disease stages (I, II, III, IV), dose levels (low,
+medium, high), or educational attainment (primary, secondary, tertiary)—a general log-rank
+test asks the right question but doesn't use the information about ordering. A trend test is
+more powerful because it looks specifically for a linear relationship across the ordered levels.
+
+The trend test compares a linear contrast across groups to see if survival changes systematically
+with group ordering. It produces a one-degree-of-freedom chi-square test, which is more powerful
+than the multi-degree-of-freedom log-rank test when groups are truly ordered.
+
+### Default scoring
+
+By default, groups are sorted and assigned scores 0, 1, 2, ..., (k-1). Here we test whether
+survival differs across cell types in the `veteran` dataset, treating them as an ordered grouping.
+
+```{python}
+import greenwood as gw
+
+vet = gw.load_dataset("veteran", backend="polars")
+y = gw.Surv.right(vet["time"], event=vet["status"])
+
+# Test linear trend across ordered cell types
+gw.trend_test(y, group=vet["celltype"])
+```
+
+The result is a `TestResult` with `df=1`, indicating a one-degree-of-freedom test. The
+`observed` and `expected` event counts per group reveal which groups contribute most to the
+trend, and the p-value tells you if the trend is statistically significant.
+
+### Custom scoring
+
+If the ordering is not uniform—for instance, some groups have very different prognoses—you
+can specify custom scores. Scores must be numeric and reflect your belief about the ordering.
+
+```{python}
+import greenwood as gw
+
+vet = gw.load_dataset("veteran", backend="polars")
+y = gw.Surv.right(vet["time"], event=vet["status"])
+
+# Custom scores: adeno and large get weight 1, smallcell and squamous get weight 3
+scores = {"adeno": 1, "large": 1, "smallcell": 3, "squamous": 3}
+gw.trend_test(y, group=vet["celltype"], scores=scores)
+```
+
+Different scores can change the test statistic, reflecting your scientific hypothesis about
+how the groups are ordered.
+
+### Weighted trend tests
+
+Like the log-rank test, the trend test can use Fleming-Harrington weights to emphasize early
+or late differences. With `rho=1`, the Peto-Peto variant emphasizes early event times, which
+is useful if you suspect early separation of the curves.
+
+```{python}
+import greenwood as gw
+
+vet = gw.load_dataset("veteran", backend="polars")
+y = gw.Surv.right(vet["time"], event=vet["status"])
+
+# Peto-Peto trend test: weights early events more heavily
+gw.trend_test(y, group=vet["celltype"], rho=1)
+```
+
+### Stratified trend tests
+
+You can also stratify a trend test to control for confounders while still testing for linear
+trend across ordered groups. The stratified test computes the trend separately in each stratum
+and then combines the results.
+
+```{python}
+import greenwood as gw
+
+vet = gw.load_dataset("veteran", backend="polars")
+y = gw.Surv.right(vet["time"], event=vet["status"])
+
+# Test trend in celltype while controlling for treatment
+gw.trend_test(y, group=vet["celltype"], strata=vet["trt"])
+```
+
+::: {.callout-note}
+## When to use trend tests vs. pairwise tests
+
+- **Use `trend_test()`** when groups are ordered and you care about detecting a linear trend.
+  It's more powerful for this specific hypothesis.
+- **Use `pairwise_logrank_test()`** when you want to know which specific pairs of unordered
+  groups differ. It tests all pairwise differences, not a linear trend.
+- **Use `logrank_test()`** for an overall test of differences without assuming any structure
+  on the groups.
+:::
+
 ## Study design: sample size and power
 
 The log-rank test also answers a planning question asked before any data are collected: how
