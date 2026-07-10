@@ -631,9 +631,13 @@ def trend_test(
         to numeric values (e.g., `{1: 0, 2: 1, 3: 2}` for stage labels 1,2,3) to use
         different scoring (e.g., unequal spacing). Scores can be any real numbers (including
         negative).
-    rho, gamma
-        Fleming-Harrington weight exponents (same as `logrank_test`). Default (0, 0) gives
-        standard trend test; (1, 0) gives Peto-Peto (Wilcoxon) trend test.
+    rho
+        Fleming-Harrington weight exponent applied to the pooled survival probability.
+        Default 0 gives a standard trend test with equal weight across all times.
+    gamma
+        Fleming-Harrington weight exponent applied to (1 - pooled survival probability).
+        Default 0; combined with `rho=1` gives Peto-Peto (Wilcoxon) trend test emphasizing
+        early events. See `logrank_test` for more details on Fleming-Harrington weighting.
     strata
         Optional stratifying factor. When provided, the trend test is computed separately
         within each stratum, then combined (stratified trend test). Use to control for
