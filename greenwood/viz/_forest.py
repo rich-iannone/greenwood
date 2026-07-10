@@ -327,6 +327,10 @@ def forest_plot(
         alt.Chart(ref_df).mark_rule(color="gray", strokeDash=[5, 5], opacity=0.5).encode(x="ref:Q")
     )
 
-    chart = (ci_lines + points + ref_line).properties(width=width, height=height, title=title)
+    # Build properties dict, only including title if not None (Altair validates title type)
+    props = {"width": width, "height": height}
+    if title is not None:
+        props["title"] = title
+    chart = (ci_lines + points + ref_line).properties(**props)
 
     return chart
