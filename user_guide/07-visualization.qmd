@@ -298,7 +298,6 @@ gw.cif_plot(
     time=times,
     cif=cif_by_group,
     event_names=["Disease", "Other causes"],
-).properties(
     title="Cumulative Incidence: Disease vs. Other Causes",
     width=700,
     height=400
