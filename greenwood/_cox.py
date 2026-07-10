@@ -835,30 +835,47 @@ class CoxPH:
             if conf_type == "log-log":
                 # Log-log transform: Y = log(-log(S))
                 # SE(Y) = SE(H) / (H * log(S)) for H > 0
-                # Handle edge cases: S near 0 or 1
+                # Handle edge cases: S near 0 or 1 with fallback to plain
                 log_s = -cumhaz_arr
                 se_log_s = se_cumhaz  # SE(log S) ≈ SE(H) for small H
+                
+                # Identify regions where log-log is numerically stable
+                # Stable when S is not too close to 0 or 1 (roughly 0.01 to 0.99)
+                log_stable = (survival_arr > 0.01) & (survival_arr < 0.99)
+                
                 se_logl = np.where(
-                    (cumhaz_arr > 0) & (survival_arr > 0) & (survival_arr < 1),
+                    log_stable & (cumhaz_arr > 0),
                     se_cumhaz / np.abs(cumhaz_arr * np.log(survival_arr)),
                     0.0,
                 )
                 logl_lower = np.log(-log_s) - z * se_logl
                 logl_upper = np.log(-log_s) + z * se_logl
-                # Clip log-log values to avoid overflow in exp(exp(logl))
-                # If exp(logl) > 700, then exp(-exp(logl)) ≈ 0, so clip at log(700) ≈ 6.55
-                logl_lower = np.clip(logl_lower, -np.inf, np.log(700.0))
-                logl_upper = np.clip(logl_upper, -np.inf, np.log(700.0))
-                with np.errstate(over="ignore"):
-                    cumhaz_lower = -np.exp(-np.exp(logl_lower))
-                    cumhaz_upper = -np.exp(-np.exp(logl_upper))
-                    survival_lower = np.exp(-np.exp(logl_upper))  # note: upper on log scale -> lower on orig
-                    survival_upper = np.exp(-np.exp(logl_lower))
-                # Clip to valid ranges for numerical stability
-                cumhaz_lower = np.clip(cumhaz_lower, 0.0, None)
-                cumhaz_upper = np.clip(cumhaz_upper, 0.0, None)
-                survival_lower = np.clip(survival_lower, 0.0, 1.0)
-                survival_upper = np.clip(survival_upper, 0.0, 1.0)
+                
+                # Back-transform from log-log scale
+                with np.errstate(over="ignore", invalid="ignore"):
+                    cumhaz_lower_logl = -np.exp(-np.exp(logl_lower))
+                    cumhaz_upper_logl = -np.exp(-np.exp(logl_upper))
+                    survival_lower_logl = np.exp(-np.exp(logl_upper))  # note: upper on log scale -> lower on orig
+                    survival_upper_logl = np.exp(-np.exp(logl_lower))
+                
+                # Clip to valid ranges
+                cumhaz_lower_logl = np.clip(cumhaz_lower_logl, 0.0, None)
+                cumhaz_upper_logl = np.clip(cumhaz_upper_logl, 0.0, None)
+                survival_lower_logl = np.clip(survival_lower_logl, 0.0, 1.0)
+                survival_upper_logl = np.clip(survival_upper_logl, 0.0, 1.0)
+                
+                # For boundary regions (S near 0 or 1), use plain CIs instead
+                cumhaz_lower_plain = cumhaz_arr - z * se_cumhaz
+                cumhaz_upper_plain = cumhaz_arr + z * se_cumhaz
+                se_survival_plain = survival_arr * se_cumhaz
+                survival_lower_plain = survival_arr - z * se_survival_plain
+                survival_upper_plain = survival_arr + z * se_survival_plain
+                
+                # Blend: use log-log where stable, plain at boundaries
+                cumhaz_lower = np.where(log_stable, cumhaz_lower_logl, np.clip(cumhaz_lower_plain, 0.0, None))
+                cumhaz_upper = np.where(log_stable, cumhaz_upper_logl, np.clip(cumhaz_upper_plain, 0.0, None))
+                survival_lower = np.where(log_stable, survival_lower_logl, np.clip(survival_lower_plain, 0.0, 1.0))
+                survival_upper = np.where(log_stable, survival_upper_logl, np.clip(survival_upper_plain, 0.0, 1.0))
             else:  # conf_type == "plain"
                 cumhaz_lower = cumhaz_arr - z * se_cumhaz
                 cumhaz_upper = cumhaz_arr + z * se_cumhaz
