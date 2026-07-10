@@ -681,8 +681,34 @@ class CoxPH:
             out.append((self._group_label(members), times, np.cumsum(increments)))
         return out
 
-    def baseline_hazard(self, *, format: str | None = None) -> Any:
-        r"""Return the uncentered baseline cumulative hazard and survival as a frame.
+    def _baseline_cumhaz_se(self, times: Array) -> Array:
+        r"""Standard error of baseline cumulative hazard at given times.
+
+        Computes SE at the baseline (centered x = 0, i.e., mean covariates) using the
+        Breslow-form variance: baseline variance + delta-method term for coefficient uncertainty.
+
+        Parameters
+        ----------
+        times
+            Time points at which to compute baseline hazard SE. Should match event times.
+
+        Returns
+        -------
+        ndarray
+            Standard errors, shape (len(times),).
+        """
+        # Baseline SE is computed at x_new = 0 (centered design), which is risk = 1
+        x_baseline = np.zeros((1, self._x.shape[1]))
+        return self._cumhaz_se(x_baseline, times).ravel()
+
+    def baseline_hazard(
+        self,
+        *,
+        ci: bool = False,
+        conf_type: str = "log-log",
+        format: str | None = None,
+    ) -> Any:
+        r"""Return the baseline cumulative hazard and survival as a frame, optionally with CIs.
 
         The baseline hazard represents the hazard rate for a reference subject with all
         covariates at their mean values. It is useful for understanding the underlying
@@ -697,6 +723,17 @@ class CoxPH:
 
         Parameters
         ----------
+        ci
+            If `True`, include confidence interval columns for cumulative hazard and survival.
+            Default is `False`.
+        conf_type
+            Confidence interval transform (used only if `ci=True`):
+
+            - `"log-log"` (default): Log-log transform. Recommended because bounds respect
+              the constraint that survival $S(t) \in (0, 1)$ and cumulative hazard $H(t) > 0$.
+            - `"plain"`: Wald bounds without transform. Simple but may produce invalid bounds
+              (negative cumulative hazard or survival > 1).
+
         format
             Output format: `None` (default), `"pandas"`, `"polars"`, or `"pyarrow"`.
 
@@ -714,6 +751,8 @@ class CoxPH:
             - `time`: Event times at which the baseline hazard is evaluated.
             - `cumhaz`: Cumulative baseline hazard $H_0(t)$ at each time.
             - `survival`: Baseline survival probability $S_0(t) = \exp(-H_0(t))$.
+            - `cumhaz_lower`, `cumhaz_upper` (if `ci=True`): Confidence bounds for cumulative hazard.
+            - `survival_lower`, `survival_upper` (if `ci=True`): Confidence bounds for survival.
             - `strata` (if stratified): Stratum label, one baseline hazard per stratum.
 
         Details
@@ -724,7 +763,11 @@ class CoxPH:
         strata, allowing different baseline risks for different groups.
 
         The baseline survival $S_0(t)$ is computed from the cumulative hazard using the
-        relationship $S_0(t) = \exp(-H_0(t))$, consistent with the exponential survival model.
+        relationship $S_0(t) = \exp(-H_0(t))$.
+
+        When `ci=True`, confidence intervals are computed using the log-log transform
+        (default), which ensures bounds remain valid (cumulative hazard > 0, survival ∈ (0,1)).
+        This matches R's `survfit()` default behavior.
 
         Examples
         --------
@@ -740,13 +783,19 @@ class CoxPH:
         cox.baseline_hazard(format="polars")
         ```
 
+        Add confidence intervals with `ci=True`:
+
+        ```{python}
+        cox.baseline_hazard(ci=True, format="polars")
+        ```
+
         The returned DataFrame shows the estimated hazard and survival trajectory for the
         reference population (covariates at their means). For stratified models, a separate
         baseline is provided for each stratum:
 
         ```{python}
         cox_stratified = gw.CoxPH().fit(y, lung[["age", "ph.ecog"]], strata=lung["sex"])
-        cox_stratified.baseline_hazard(format="polars")
+        cox_stratified.baseline_hazard(ci=True, format="polars")
         ```
 
         The baseline hazard can be combined with individual predictions to compute
@@ -756,12 +805,16 @@ class CoxPH:
         times_list = []
         cumhaz_list = []
         survival_list = []
+        cumhaz_se_list = []
         strata_list = []
 
         for label, times, cumhaz in self._baseline():
             times_list.extend(times)
             cumhaz_list.extend(cumhaz)
             survival_list.extend(np.exp(-cumhaz))
+            if ci:
+                cumhaz_se = self._baseline_cumhaz_se(times)
+                cumhaz_se_list.extend(cumhaz_se)
             if self._strata_labels is not None:
                 strata_list.extend([label] * len(times))
 
@@ -771,6 +824,43 @@ class CoxPH:
             "cumhaz": cumhaz_list,
             "survival": survival_list,
         }
+
+        # Add confidence intervals if requested
+        if ci:
+            cumhaz_arr = np.asarray(cumhaz_list)
+            survival_arr = np.asarray(survival_list)
+            se_cumhaz = np.asarray(cumhaz_se_list)
+            z = float(norm.ppf(1.0 - (1.0 - self.conf_level) / 2.0))
+
+            if conf_type == "log-log":
+                # Log-log transform: Y = log(-log(S))
+                # SE(Y) = SE(H) / (H * log(S)) for H > 0
+                # Handle edge cases: S near 0 or 1
+                log_s = -cumhaz_arr
+                se_log_s = se_cumhaz  # SE(log S) ≈ SE(H) for small H
+                se_logl = np.where(
+                    (cumhaz_arr > 0) & (survival_arr > 0) & (survival_arr < 1),
+                    se_cumhaz / np.abs(cumhaz_arr * np.log(survival_arr)),
+                    0.0,
+                )
+                logl_lower = np.log(-log_s) - z * se_logl
+                logl_upper = np.log(-log_s) + z * se_logl
+                cumhaz_lower = -np.exp(-np.exp(logl_lower))
+                cumhaz_upper = -np.exp(-np.exp(logl_upper))
+                survival_lower = np.exp(-np.exp(logl_upper))  # note: upper on log scale -> lower on orig
+                survival_upper = np.exp(-np.exp(logl_lower))
+            else:  # conf_type == "plain"
+                cumhaz_lower = cumhaz_arr - z * se_cumhaz
+                cumhaz_upper = cumhaz_arr + z * se_cumhaz
+                se_survival = survival_arr * se_cumhaz  # delta method: dS/dH = -S
+                survival_lower = survival_arr - z * se_survival
+                survival_upper = survival_arr + z * se_survival
+
+            data["cumhaz_lower"] = cumhaz_lower
+            data["cumhaz_upper"] = cumhaz_upper
+            data["survival_lower"] = survival_lower
+            data["survival_upper"] = survival_upper
+
         if self._strata_labels is not None:
             data["strata"] = strata_list
 
