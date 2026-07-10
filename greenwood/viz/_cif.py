@@ -288,9 +288,7 @@ def cif_plot(
     try:
         import altair as alt
     except ImportError as exc:
-        raise ImportError(
-            "altair required; install with `pip install greenwood[altair]`."
-        ) from exc
+        raise ImportError("altair required; install with `pip install greenwood[altair]`.") from exc
 
     data = cif_data["data"]
     # Convert to dict format for to_dataframe (transpose the list of dicts)
