@@ -261,41 +261,51 @@ def _cox_terms(
         ev = event[members]
         ws = weight[members]
         eta = xs @ beta
-        risk_score = np.exp(eta) * ws
 
         for t in event_times:
             at_risk = (es < t) & (xx >= t)
             dying = (xx == t) & ev
 
             rx = xs[at_risk]
-            rr = risk_score[at_risk]
-            s0 = rr.sum()
-            s1 = rx.T @ rr
-            s2 = (rx * rr[:, None]).T @ rx
+            rw = ws[at_risk]
+            reta = eta[at_risk]
+            
+            # Use log-sum-exp trick for numerical stability: subtract max eta to prevent overflow
+            max_eta_risk = reta.max() if len(reta) > 0 else 0.0
+            risk_score = np.exp(reta - max_eta_risk)
+            
+            s0 = (risk_score * rw).sum()
+            s1 = rx.T @ (risk_score * rw)
+            s2 = (rx * (risk_score * rw)[:, None]).T @ rx
 
             w_d = ws[dying]
-            loglik += float((w_d * eta[dying]).sum())
+            deta = eta[dying]
+            loglik += float((w_d * deta).sum())
             grad += (xs[dying] * w_d[:, None]).sum(axis=0)
 
             if ties == "breslow":
                 d_weight = float(w_d.sum())
+                # When using log-sum-exp shift: log(shifted_s0) = log(s0 / exp(max_eta))
+                # So log(original_s0) = log(s0) + max_eta_risk
+                loglik -= d_weight * (max_eta_risk + np.log(s0))
                 z1 = s1 / s0
-                loglik -= d_weight * np.log(s0)
                 grad -= d_weight * z1
                 info += d_weight * (s2 / s0 - np.outer(z1, z1))
             else:  # efron
                 dx = xs[dying]
-                dr = risk_score[dying]
-                d0 = dr.sum()
-                d1 = dx.T @ dr
-                d2 = (dx * dr[:, None]).T @ dx
+                dr_eta = deta
+                dr = np.exp(dr_eta - max_eta_risk)
+                dw = w_d
+                d0 = (dr * dw).sum()
+                d1 = dx.T @ (dr * dw)
+                d2 = (dx * (dr * dw)[:, None]).T @ dx
                 m = int(dying.sum())
                 for tie in range(m):
                     f = tie / m
                     denom = s0 - f * d0
                     z1 = (s1 - f * d1) / denom
                     z2 = (s2 - f * d2) / denom
-                    loglik -= float(np.log(denom))
+                    loglik -= float(max_eta_risk + np.log(denom))
                     grad -= z1
                     info += z2 - np.outer(z1, z1)
 
@@ -506,6 +516,11 @@ class CoxPH:
             event[keep],
             weight[keep],
         )
+        
+        # Normalize weights by their mean to improve numerical stability and ensure
+        # scale-invariance: uniform weight scaling should not change coefficients.
+        weight = weight / weight.mean()
+        
         if strata_labels is not None:
             strata_labels = strata_labels[keep]
         if cluster_labels is not None:
