@@ -79,7 +79,19 @@ dev = [
     "altair>=6",
     "vl-convert-python>=1.9",
 ]
-docs = ["jupyter", "nbclient", "nbformat", "pandas>=2.0", "polars>=1.0", "pyarrow>=15", "altair>=6", "vl-convert-python>=1.9", "plotnine>=0.13", "formulaic>=1.0"]
+docs = [
+    "jupyter",
+    "nbclient",
+    "nbformat",
+    "pandas>=2.0",
+    "polars>=1.0",
+    "pyarrow>=15",
+    "altair>=6",
+    "vl-convert-python>=1.9",
+    "plotnine>=0.13",
+    "formulaic>=1.0",
+    "great-tables>=0.22"
+]
 
 [project.urls]
 Homepage = "https://github.com/rich-iannone/greenwood"
