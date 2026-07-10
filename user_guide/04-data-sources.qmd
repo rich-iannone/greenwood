@@ -61,6 +61,7 @@ Python list. Greenwood treats them all the same.
 import greenwood as gw
 
 lung = gw.load_dataset("lung", backend="polars")
+
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 y
 ```
@@ -90,10 +91,9 @@ raises a clear error if neither is. When you want a specific type, name it with 
 argument.
 
 ```{python}
-import greenwood as gw
-
 lung_pd = gw.load_dataset("lung", backend="pandas")
 lung_pl = gw.load_dataset("lung", backend="polars")
+
 type(lung_pd).__module__.split(".")[0], type(lung_pl).__module__.split(".")[0]
 ```
 
@@ -132,10 +132,9 @@ or `"pyarrow"`) to choose the backend; when you leave it off, Greenwood auto-det
 inspect, filter, join, or pass on to a plotting or table library.
 
 ```{python}
-import greenwood as gw
-
 lung = gw.load_dataset("lung", backend="polars")
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+
 cox = gw.CoxPH().fit(y, lung[["age", "sex", "ph.ecog"]])
 
 gw.glance(cox, format="polars")
@@ -152,8 +151,6 @@ datasets drawn from R's `survival` package. Load any of them by name with
 `gw.load_dataset`, and list them with `gw.available_datasets()`.
 
 ```{python}
-import greenwood as gw
-
 gw.available_datasets()
 ```
 
