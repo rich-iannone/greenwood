@@ -392,7 +392,7 @@ class AFT:
         3. **Survival** (`type="survival"`): survival probabilities $S(t \mid x)$ at specified
            times, returned as a DataFrame for easy visualization. Optionally condition on already
            having survived to a landmark time (`conditional_after`) for landmark-based
-           predictions.
+           predictions. With `ci=True`, confidence intervals are included.
 
         Parameters
         ----------
@@ -423,6 +423,17 @@ class AFT:
             $P(T > t \mid T > c) = S(t) / S(c)$. Scalar (same conditioning time for all
             subjects) or array-like (one per subject). Default `None` (unconditional).
             Predictions before the landmark time return `1.0`.
+        ci
+            If `True` (survival only), include confidence intervals (`_lower` and `_upper`
+            columns per subject). Default is `False`. Not supported with `conditional_after`.
+        conf_type
+            Confidence interval transform (used only if `ci=True` and `type="survival"`):
+
+            - `"log-log"` (default): Log-log transform. Bounds respect the constraint that
+              survival $S(t) \in (0, 1)$. Recommended.
+            - `"plain"`: Wald bounds without transform. Simple but may produce invalid bounds
+              (survival < 0 or > 1).
+
         format
             Output format for the returned frame (`type="quantile"` or `"survival"`): `None`
             (default), `"pandas"`, `"polars"`, or `"pyarrow"`. When `None`, a backend is
@@ -435,8 +446,8 @@ class AFT:
             If `type="quantile"`: a DataFrame with columns `p` (failure probabilities) and
             `subject_1`, `subject_2`, etc. containing survival times at each p.
             If `type="survival"`: a DataFrame with columns `time` (query times) and
-            `subject_1`, `subject_2`, etc. containing survival probabilities at each time.
-            Column names match the input row index if `newdata` has a row index.
+            `subject_1`, `subject_2`, etc. containing survival probabilities at each time,
+            optionally with `_lower` and `_upper` columns for confidence intervals.
 
         Details
         -------
@@ -484,6 +495,13 @@ class AFT:
         ```{python}
         aft.predict(lung[["age", "sex"]][:2], type="survival", times=[180, 365],
                     conditional_after=100, format="polars")
+        ```
+
+        Add confidence intervals with `ci=True`:
+
+        ```{python}
+        aft.predict(lung[["age", "sex"]][:2], type="survival", times=[180, 365],
+                    ci=True, format="polars")
         ```
         """
         x = self._design(newdata)
