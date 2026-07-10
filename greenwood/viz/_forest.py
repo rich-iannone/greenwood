@@ -273,6 +273,10 @@ def forest_plot(
     if backend != "altair":
         raise ValueError(f"backend must be 'altair', got {backend!r}")
 
+    # Validate estimates is provided and not None
+    if estimates is None:
+        raise ValueError("estimates must be provided and cannot be None")
+
     # Prepare data internally
     forest_data = _forest_plot_data(
         estimates=estimates,
@@ -328,7 +332,7 @@ def forest_plot(
     )
 
     # Build properties dict, only including title if not None (Altair validates title type)
-    props = {"width": width, "height": height}
+    props: dict[str, int | str] = {"width": width, "height": height}
     if title is not None:
         props["title"] = title
     chart = (ci_lines + points + ref_line).properties(**props)

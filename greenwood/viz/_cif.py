@@ -117,12 +117,16 @@ def _cif_plot_data(
     n_times = len(time_array)
 
     # Check CIF structure
+    cif_array: np.ndarray | None = None
     if isinstance(cif, dict):
         # Stratified by group
         if group is not None:
             raise ValueError("If cif is a dict, group parameter should not be provided.")
         groups = list(cif.keys())
         group_data_map = cif
+        # Extract shape from first group for n_events calculation
+        if cif:
+            cif_array = list(cif.values())[0]
     else:
         # Single group
         cif_array = np.asarray(cif, dtype=float)
@@ -133,13 +137,7 @@ def _cif_plot_data(
         groups = [None]
         group_data_map = {None: cif_array}
 
-    n_events = (
-        cif_array.shape[1]
-        if not isinstance(cif, dict)
-        else list(cif.values())[0].shape[1]
-        if cif
-        else 0
-    )
+    n_events = cif_array.shape[1] if cif_array is not None else 0
 
     if event_names is None:
         event_names = [f"Event {i + 1}" for i in range(n_events)]
