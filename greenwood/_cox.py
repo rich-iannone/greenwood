@@ -269,11 +269,11 @@ def _cox_terms(
             rx = xs[at_risk]
             rw = ws[at_risk]
             reta = eta[at_risk]
-            
+
             # Use log-sum-exp trick for numerical stability: subtract max eta to prevent overflow
             max_eta_risk = reta.max() if len(reta) > 0 else 0.0
             risk_score = np.exp(reta - max_eta_risk)
-            
+
             s0 = (risk_score * rw).sum()
             s1 = rx.T @ (risk_score * rw)
             s2 = (rx * (risk_score * rw)[:, None]).T @ rx
@@ -516,11 +516,11 @@ class CoxPH:
             event[keep],
             weight[keep],
         )
-        
+
         # Normalize weights by their mean to improve numerical stability and ensure
         # scale-invariance: uniform weight scaling should not change coefficients.
         weight = weight / weight.mean()
-        
+
         if strata_labels is not None:
             strata_labels = strata_labels[keep]
         if cluster_labels is not None:
