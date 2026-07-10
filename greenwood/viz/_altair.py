@@ -359,6 +359,3 @@ def _risk_table_chart(
         )
         .properties(width=width, height=20 * max(1, len(km._blocks)))
     )
-
-
-
