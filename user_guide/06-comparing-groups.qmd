@@ -149,6 +149,109 @@ that accounts for the multiple comparisons. The default correction is Holm's; pa
 `correction="bh"` for Benjamini-Hochberg, `"bonferroni"`, or `"none"`. Read significance from
 the adjusted column, not the raw one.
 
+## Restricted mean survival time (RMST) comparisons
+
+While the log-rank test tells you whether groups differ, it does not tell you by how much.
+The restricted mean survival time (RMST) is an intuitive effect measure: the expected
+survival time over a fixed time window `tau`, computed as the area under the survival curve.
+For example, 1-year RMST is the average survival time during the first year. Unlike hazard
+ratios, RMST is on the survival time scale, making it easy to interpret and explain to
+non-technical audiences.
+
+### Two-group RMST comparison
+
+Compare RMST between two groups with confidence intervals and hypothesis tests using
+`rmst_test()`. Here we compare 1-year RMST between the two sexes in the `lung` dataset.
+
+```{python}
+lung = gw.load_dataset("lung", backend="polars")
+
+y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+
+# Compare 1-year RMST between groups
+result = gw.rmst_test(y, tau=365, group=lung["sex"])
+result
+```
+
+The result shows the RMST for each group, their difference, standard error, 95% confidence
+interval, and a two-sided p-value testing equality. A positive difference means group 1 has
+higher RMST (longer average survival).
+
+You can extract specific components:
+
+```{python}
+print(f"RMST difference: {result.estimate:.1f} days")
+print(f"95% CI: [{result.lower_ci:.1f}, {result.upper_ci:.1f}]")
+print(f"P-value: {result.p_value:.4f}")
+```
+
+### Alternative estimands
+
+By default, `rmst_test()` returns the RMST difference. You can also compute the ratio or
+percentage difference using the `estimand` parameter.
+
+**Ratio of RMSTs** (group 1 / group 2):
+
+```{python}
+result_ratio = gw.rmst_test(y, tau=365, group=lung["sex"], estimand="ratio")
+result_ratio.estimate  # Ratio
+```
+
+A ratio of `0.8` means group 1 has 80% of the RMST of group 2 (20% shorter average survival).
+
+**Percentage difference** ((group 1 - group 2) / group 2 × 100):
+
+```{python}
+result_pct = gw.rmst_test(y, tau=365, group=lung["sex"], estimand="percentage_difference")
+result_pct.estimate  # Percentage
+```
+
+All three estimands use the delta method to construct standard errors and confidence intervals,
+and support flexible confidence levels via the `conf_level=` parameter.
+
+### Pairwise RMST comparisons
+
+When you have three or more groups, use `pairwise_rmst_test()` to compare all pairs with
+multiple-comparison adjustment. Here we test which cell types in the `veteran` dataset differ
+in 1-year RMST.
+
+```{python}
+vet = gw.load_dataset("veteran", backend="polars")
+
+y_vet = gw.Surv.right(vet["time"], event=vet["status"])
+
+# Pairwise RMST differences with Holm adjustment
+pairs = gw.pairwise_rmst_test(y_vet, tau=365, group=vet["celltype"])
+pairs
+```
+
+Each row compares one pair of groups, showing the RMST estimates, difference, and both raw
+and adjusted p-values. The adjustment method (default: Holm) controls for multiple testing.
+Pass `correction="bh"` for Benjamini-Hochberg or `"bonferroni"` for Bonferroni correction.
+
+### Choosing the restriction time tau
+
+The choice of `tau` is critical: RMST at `tau=365` only includes follow-up through 1 year,
+while `tau=1825` extends to 5 years. Choose `tau` based on clinical relevance before looking
+at the data. Common choices are clinically meaningful milestones (1 year, 5 years, etc.).
+
+```{python}
+# Compare 5-year RMST instead
+result_5y = gw.rmst_test(y, tau=1825, group=lung["sex"])
+result_5y.estimate
+```
+
+::: {.callout-note}
+## RMST vs. log-rank: complementary tools
+
+- log-rank test: answers whether curves differ overall (yes/no).
+- RMST comparison: answers by how much they differ and how long the difference persists.
+
+Use both: run the log-rank test for significance, then estimate RMST difference for the
+magnitude and direction of the effect. They often agree, but RMST is easier to communicate
+to stakeholders unfamiliar with hazards.
+:::
+
 ## Stratified tests
 
 Sometimes you want to compare groups while controlling for a nuisance variable, so that the
