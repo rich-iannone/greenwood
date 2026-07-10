@@ -296,10 +296,17 @@ def rmst_test(
 
     # Compute estimate and SE based on estimand
     z_critical = norm.ppf(1.0 - (1.0 - conf_level) / 2.0)
+    
+    lower_ci: float
+    upper_ci: float
+    statistic: float
 
     if estimand == "difference":
         estimate = rmst1 - rmst2
         se = np.sqrt(se1**2 + se2**2)
+        lower_ci = estimate - z_critical * se
+        upper_ci = estimate + z_critical * se
+        statistic = estimate / se if se > 0 else np.inf
     elif estimand == "ratio":
         if rmst2 <= 0:
             raise ValueError("RMST2 must be positive for ratio estimand")
@@ -311,23 +318,20 @@ def rmst_test(
         log_estimate = np.log(estimate)
         log_lower = log_estimate - z_critical * se_log_ratio
         log_upper = log_estimate + z_critical * se_log_ratio
-        lower_ci = np.exp(log_lower)
-        upper_ci = np.exp(log_upper)
-        statistic = log_estimate / se_log_ratio
+        lower_ci = float(np.exp(log_lower))
+        upper_ci = float(np.exp(log_upper))
+        statistic = float(log_estimate / se_log_ratio)
     else:  # percentage_difference
         if rmst2 <= 0:
             raise ValueError("RMST2 must be positive for percentage_difference estimand")
         estimate = (rmst1 - rmst2) / rmst2 * 100.0
         # SE = (1/RMST2) * SE(RMST1 - RMST2) * 100
         se = np.sqrt(se1**2 + se2**2) / rmst2 * 100.0
-
-    # Compute CI and p-value for non-ratio estimands
-    if estimand != "ratio":
         lower_ci = estimate - z_critical * se
         upper_ci = estimate + z_critical * se
         statistic = estimate / se if se > 0 else np.inf
 
-    p_value = 2.0 * (1.0 - norm.cdf(np.abs(statistic)))
+    p_value = float(2.0 * (1.0 - norm.cdf(np.abs(statistic))))
 
     method = f"RMST {estimand} (tau={tau})"
     if strata is not None:
