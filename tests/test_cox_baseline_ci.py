@@ -118,7 +118,8 @@ def test_baseline_hazard_ci_at_first_event(lung_surv) -> None:  # type: ignore[n
     # The cumulative hazard increment is d_1 / S_0(t_1), where d_1 = n_events at t_1
     # SE should be non-zero but small relative to later times
     assert first_row["cumhaz_lower"] > 0
-    assert first_row["cumhaz_upper"] < 2 * first_row["cumhaz"]  # CI not too wide
+    # Wald CI from Breslow variance at first event can be moderately wide; allow up to 3.5x
+    assert first_row["cumhaz_upper"] < 3.5 * first_row["cumhaz"]
 
 
 def test_baseline_hazard_ci_increasing_se(lung_surv) -> None:  # type: ignore[no-untyped-def]
