@@ -677,7 +677,7 @@ def trend_test(
 
     vet = gw.load_dataset("veteran", backend="polars")
     y = gw.Surv.right(vet["time"], event=vet["status"])
-    
+
     # Default: cell types are sorted and assigned scores 0,1,2,3
     result = gw.trend_test(y, group=vet["celltype"])
     result
@@ -794,14 +794,8 @@ def trend_test(
     # Compute trend statistic using contrast scores
     # U = Σ score[g] * (O[g] - E[g])
     # V = Σ score[g]^2 * Var[g,g]
-    u = sum(
-        group_scores[g] * (observed_dict[g] - expected_dict[g])
-        for g in groups
-    )
-    v = sum(
-        group_scores[g] ** 2 * var_diag[g]
-        for g in groups
-    )
+    u = sum(group_scores[g] * (observed_dict[g] - expected_dict[g]) for g in groups)
+    v = sum(group_scores[g] ** 2 * var_diag[g] for g in groups)
 
     if v <= 0:
         raise ValueError(

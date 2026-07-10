@@ -129,10 +129,10 @@ def test_trend_default_scores_are_zero_one_two() -> None:
     # Group 'a': events at 1,2 | Group 'b': events at 3,4 | Group 'c': events at 5,6
     g = ["a", "a", "b", "b", "c", "c"]
     result_default = trend_test(y, g)
-    
+
     # Same data with explicit scores matching default
     result_explicit = trend_test(y, g, scores={"a": 0, "b": 1, "c": 2})
-    
+
     np.testing.assert_allclose(result_default.statistic, result_explicit.statistic)
     np.testing.assert_allclose(result_default.p_value, result_explicit.p_value)
 
@@ -142,13 +142,13 @@ def test_trend_custom_scores_are_scale_invariant() -> None:
     time = [1, 2, 3, 5, 6, 7]
     event = [1, 1, 1, 1, 1, 1]
     group = ["low", "low", "low", "high", "high", "high"]
-    
+
     # Linear scores: 0, 1
     result_linear = trend_test(Surv.right(time, event), group, scores={"low": 0, "high": 1})
-    
+
     # Scaled scores: 0, 10 (10x scaling)
     result_scaled = trend_test(Surv.right(time, event), group, scores={"low": 0, "high": 10})
-    
+
     # Chi-square should be identical (scale-invariant)
     np.testing.assert_allclose(result_scaled.statistic, result_linear.statistic, rtol=1e-10)
 
@@ -157,13 +157,13 @@ def test_trend_negative_scores_work() -> None:
     """Negative scores should work correctly."""
     y = Surv.right([1, 2, 3, 4, 5, 6], [1, 1, 1, 1, 1, 1])
     g = [1, 1, 2, 2, 3, 3]
-    
+
     # All positive scores
     result_pos = trend_test(y, g, scores={1: 0, 2: 1, 3: 2})
-    
+
     # Mix of negative and positive
     result_neg = trend_test(y, g, scores={1: -2, 2: -1, 3: 0})
-    
+
     # Both should give chi-square > 0 (some evidence of trend)
     assert result_pos.statistic > 0
     assert result_neg.statistic > 0
@@ -173,7 +173,7 @@ def test_trend_method_string_reflects_weights() -> None:
     """Method description should reflect weights and stratification."""
     y = Surv.right([1, 2, 3, 4, 5, 6], [1, 1, 1, 1, 1, 1])
     g = [0, 0, 1, 1, 2, 2]
-    
+
     assert trend_test(y, g).method == "Linear trend test"
     assert "rho=1" in trend_test(y, g, rho=1).method
     assert "Stratified" in trend_test(y, g, strata=[0, 0, 0, 0, 1, 1]).method
@@ -184,10 +184,10 @@ def test_trend_with_fleming_harrington_weights() -> None:
     time = [1, 2, 3, 10, 11, 12, 20, 21, 22]
     event = [1, 1, 1, 1, 1, 1, 1, 1, 1]
     group = [0, 0, 0, 1, 1, 1, 2, 2, 2]
-    
+
     result_default = trend_test(Surv.right(time, event), group)
     result_peto = trend_test(Surv.right(time, event), group, rho=1)  # Peto-Peto
-    
+
     # Different weights should give different statistics
     assert result_default.statistic != pytest.approx(result_peto.statistic)
 
@@ -198,10 +198,10 @@ def test_trend_stratified_reduces_to_unstratified() -> None:
     time = [1, 2, 3, 10, 11, 12]
     event = [1, 1, 1, 1, 1, 1]
     group = [0, 0, 0, 1, 1, 1]
-    
+
     result_unstrat = trend_test(Surv.right(time, event), group)
     result_strat = trend_test(Surv.right(time, event), group, strata=[0] * 6)
-    
+
     # Should be identical
     np.testing.assert_allclose(result_strat.statistic, result_unstrat.statistic)
     assert result_strat.method.startswith("Stratified")
@@ -235,7 +235,7 @@ def test_trend_scores_dict_validation() -> None:
     """Scores dict must contain all group labels."""
     y = Surv.right([1, 2, 3, 4], [1, 1, 1, 1])
     g = [0, 0, 1, 1]
-    
+
     # Missing group 1
     with pytest.raises(KeyError):
         trend_test(y, g, scores={0: 0})
@@ -245,7 +245,7 @@ def test_trend_scores_array_length_validation() -> None:
     """Scores array must have same length as number of groups."""
     y = Surv.right([1, 2, 3, 4], [1, 1, 1, 1])
     g = [0, 0, 1, 1]
-    
+
     # Wrong length
     with pytest.raises(ValueError, match="length"):
         trend_test(y, g, scores=[0, 1, 2])  # 3 scores but only 2 groups
@@ -256,7 +256,7 @@ def test_trend_observed_expected_in_result() -> None:
     y = Surv.right([1, 2, 3, 4, 5, 6], [1, 1, 1, 1, 1, 1])
     g = [0, 0, 1, 1, 2, 2]
     result = trend_test(y, g)
-    
+
     # Should have observed and expected for each group
     assert len(result.observed) == 3
     assert len(result.expected) == 3
@@ -266,15 +266,15 @@ def test_trend_observed_expected_in_result() -> None:
 def test_trend_always_df_1() -> None:
     """Trend test should always have df=1."""
     y = Surv.right([1, 2, 3, 4, 5, 6], [1, 1, 1, 1, 1, 1])
-    
+
     # 2 groups
     result2 = trend_test(y, [0, 0, 1, 1, 1, 1])
     assert result2.df == 1
-    
+
     # 3 groups
     result3 = trend_test(y, [0, 0, 1, 1, 2, 2])
     assert result3.df == 1
-    
+
     # 4 groups
     result4 = trend_test(y, [0, 1, 1, 2, 2, 3])
     assert result4.df == 1
@@ -282,12 +282,9 @@ def test_trend_always_df_1() -> None:
 
 def test_trend_with_right_censored_data() -> None:
     """Trend test with typical right-censored survival data."""
-    y = Surv.right(
-        [10, 20, 30, 15, 25, 35, 12, 22, 32],
-        event=[1, 0, 1, 1, 0, 0, 1, 1, 1]
-    )
+    y = Surv.right([10, 20, 30, 15, 25, 35, 12, 22, 32], event=[1, 0, 1, 1, 0, 0, 1, 1, 1])
     groups = [0, 0, 0, 1, 1, 1, 2, 2, 2]
-    
+
     result = trend_test(y, groups)
     assert result.df == 1
     assert result.p_value >= 0.0 and result.p_value <= 1.0
@@ -301,7 +298,7 @@ def test_trend_with_counting_process_data() -> None:
     event = [0, 1, 1, 1, 0, 1]
     y = Surv.counting(entry, exit, event)
     g = [0, 0, 1, 1, 2, 2]
-    
+
     result = trend_test(y, g)
     assert result.df == 1
     assert result.p_value >= 0.0 and result.p_value <= 1.0
@@ -310,12 +307,10 @@ def test_trend_with_counting_process_data() -> None:
 def test_trend_with_weighted_observations() -> None:
     """Trend test should handle weighted observations."""
     y = Surv.right(
-        time=[1, 2, 3, 4, 5, 6],
-        event=[1, 1, 1, 1, 1, 1],
-        weights=[0.5, 1.0, 1.5, 0.5, 1.0, 1.5]
+        time=[1, 2, 3, 4, 5, 6], event=[1, 1, 1, 1, 1, 1], weights=[0.5, 1.0, 1.5, 0.5, 1.0, 1.5]
     )
     g = [0, 0, 0, 1, 1, 1]
-    
+
     result = trend_test(y, g)
     assert result.df == 1
     assert result.statistic > 0
@@ -325,10 +320,10 @@ def test_trend_identical_to_logrank_for_two_groups() -> None:
     """Trend test with two groups should be similar in behavior to logrank."""
     y = Surv.right([1, 2, 3, 4, 5, 6], [1, 1, 1, 1, 1, 1])
     g = [0, 0, 0, 1, 1, 1]
-    
+
     trend_result = trend_test(y, g)
     logrank_result = logrank_test(y, g)
-    
+
     # Both should test the same difference with 1 df for trend, varies for logrank
     # For 2 groups, logrank has df=1, so results should be very similar
     assert trend_result.df == 1
