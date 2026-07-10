@@ -39,8 +39,6 @@ group, computes the events expected under the null hypothesis of no difference, 
 the observed-minus-expected discrepancies into a single chi-square statistic.
 
 ```{python}
-import greenwood as gw
-
 lung = gw.load_dataset("lung", backend="polars")
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 
@@ -93,8 +91,6 @@ the weighting has changed, so compare its statistic and p-value against the unwe
 above to see how much the emphasis on early event times matters here.
 
 ```{python}
-import greenwood as gw
-
 lung = gw.load_dataset("lung", backend="polars")
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 
@@ -130,10 +126,9 @@ The log-rank test extends to any number of groups, giving one overall test. We s
 `veteran` dataset, which records a cell type with four levels.
 
 ```{python}
-import greenwood as gw
-
 vet = gw.load_dataset("veteran", backend="polars")
 y_vet = gw.Surv.right(vet["time"], event=vet["status"])
+
 gw.logrank_test(y_vet, group=vet["celltype"])
 ```
 
@@ -158,8 +153,6 @@ log-rank does this. Here we compare the two treatments while stratifying by cell
 removes any cell-type imbalance from the comparison.
 
 ```{python}
-import greenwood as gw
-
 vet = gw.load_dataset("veteran", backend="polars")
 y_vet = gw.Surv.right(vet["time"], event=vet["status"])
 
@@ -173,8 +166,8 @@ has its own baseline hazard.
 ## Testing for trend in ordered groups
 
 When your groups are naturally ordered—disease stages (I, II, III, IV), dose levels (low,
-medium, high), or educational attainment (primary, secondary, tertiary)—a general log-rank
-test asks the right question but doesn't use the information about ordering. A trend test is
+medium, high), or educational attainment (primary, secondary, tertiary), a general log-rank
+test asks the right question but it doesn't use the information about ordering. A trend test is
 more powerful because it looks specifically for a linear relationship across the ordered levels.
 
 The trend test compares a linear contrast across groups to see if survival changes systematically
@@ -183,12 +176,10 @@ than the multi-degree-of-freedom log-rank test when groups are truly ordered.
 
 ### Default scoring
 
-By default, groups are sorted and assigned scores 0, 1, 2, ..., (k-1). Here we test whether
+By default, groups are sorted and assigned scores 0, 1, 2, ..., (*k* - 1). Here we test whether
 survival differs across cell types in the `veteran` dataset, treating them as an ordered grouping.
 
 ```{python}
-import greenwood as gw
-
 vet = gw.load_dataset("veteran", backend="polars")
 y = gw.Surv.right(vet["time"], event=vet["status"])
 
@@ -206,8 +197,6 @@ If the ordering is not uniform—for instance, some groups have very different p
 can specify custom scores. Scores must be numeric and reflect your belief about the ordering.
 
 ```{python}
-import greenwood as gw
-
 vet = gw.load_dataset("veteran", backend="polars")
 y = gw.Surv.right(vet["time"], event=vet["status"])
 
@@ -226,8 +215,6 @@ or late differences. With `rho=1`, the Peto-Peto variant emphasizes early event 
 is useful if you suspect early separation of the curves.
 
 ```{python}
-import greenwood as gw
-
 vet = gw.load_dataset("veteran", backend="polars")
 y = gw.Surv.right(vet["time"], event=vet["status"])
 
@@ -242,8 +229,6 @@ trend across ordered groups. The stratified test computes the trend separately i
 and then combines the results.
 
 ```{python}
-import greenwood as gw
-
 vet = gw.load_dataset("veteran", backend="polars")
 y = gw.Surv.right(vet["time"], event=vet["status"])
 
@@ -254,11 +239,11 @@ gw.trend_test(y, group=vet["celltype"], strata=vet["trt"])
 ::: {.callout-note}
 ## When to use trend tests vs. pairwise tests
 
-- **Use `trend_test()`** when groups are ordered and you care about detecting a linear trend.
+- use `trend_test()` when groups are ordered and you care about detecting a linear trend.
   It's more powerful for this specific hypothesis.
-- **Use `pairwise_logrank_test()`** when you want to know which specific pairs of unordered
+- use `pairwise_logrank_test()` when you want to know which specific pairs of unordered
   groups differ. It tests all pairwise differences, not a linear trend.
-- **Use `logrank_test()`** for an overall test of differences without assuming any structure
+- use `logrank_test()` for an overall test of differences without assuming any structure
   on the groups.
 :::
 
@@ -270,8 +255,6 @@ the number of events, so Greenwood provides Schoenfeld's calculators. To detect 
 ratio at a target power, `logrank_n_events` returns the events required.
 
 ```{python}
-import greenwood as gw
-
 gw.logrank_n_events(hazard_ratio=0.5, power=0.9, alpha=0.05)
 ```
 
