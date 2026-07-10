@@ -910,10 +910,10 @@ class CoxPH:
                 survival_lower = survival_arr - z * se_survival
                 survival_upper = survival_arr + z * se_survival
 
-            data["cumhaz_lower"] = cumhaz_lower
-            data["cumhaz_upper"] = cumhaz_upper
-            data["survival_lower"] = survival_lower
-            data["survival_upper"] = survival_upper
+            data["cumhaz_lower"] = cumhaz_lower.tolist()
+            data["cumhaz_upper"] = cumhaz_upper.tolist()
+            data["survival_lower"] = survival_lower.tolist()
+            data["survival_upper"] = survival_upper.tolist()
 
         if self._strata_labels is not None:
             data["strata"] = strata_list
