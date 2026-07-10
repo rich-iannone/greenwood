@@ -88,9 +88,10 @@ reference:
         members: true
 
   - title: Group comparisons
-    desc: The log-rank test and the G-rho (Fleming-Harrington) family.
+    desc: The log-rank test, trend tests for ordered groups, and the G-rho (Fleming-Harrington) family.
     contents:
       - logrank_test
+      - trend_test
       - pairwise_logrank_test
       - name: TestResult
         members: true
