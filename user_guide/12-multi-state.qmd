@@ -95,8 +95,6 @@ matrices and reports, at each time, the probability of occupying each state. Thi
 multi-state generalization of the survival curve.
 
 ```{python}
-import greenwood as gw
-
 mg = gw.load_dataset("mgus2", backend="polars")
 
 start, stop, state, event = [], [], [], []
@@ -146,6 +144,7 @@ attribute for users who need them.
 
 ::: {.callout-note}
 ## Occupancy versus transition probabilities
+
 Occupancy probabilities answer "what is the chance a subject is in state k at time t?". The
 transition matrix answers the more detailed "given a subject in state j at the start, what is
 the chance they are in state k at time t?". The occupancy probabilities are the initial-state
@@ -154,6 +153,7 @@ distribution multiplied through the transition matrix.
 
 ::: {.callout-tip}
 ## Competing risks is a special case
+
 A competing-risks model is a multi-state model with one initial state and several absorbing
 states and no intermediate transitions. If that is your situation, use
 [`AalenJohansen`](11-competing-risks.qmd) directly, which also gives standard errors for the
@@ -165,8 +165,8 @@ cumulative incidence.
 You can now estimate occupancy probabilities for general multi-state processes.
 
 - [Competing risks](11-competing-risks.qmd) covers the important special case with standard
-  errors and the Fine-Gray regression model.
+errors and the Fine-Gray regression model.
 - [Survival data](03-survival-data.qmd) explains the counting-process response that
-  underlies multi-state data.
+underlies multi-state data.
 - The [Quick start](02-quick-start.qmd) links every topic together if you want a map of the
-  whole package.
+whole package.
