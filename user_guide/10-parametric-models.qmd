@@ -27,6 +27,7 @@ against.
 import greenwood as gw
 
 lung = gw.load_dataset("lung", backend="polars")
+
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 y
 ```
@@ -46,9 +47,8 @@ location of the survival distribution, not just relative effects.
 You fit one by naming a distribution. The Weibull is the default and the most common choice.
 
 ```{python}
-import greenwood as gw
-
 lung = gw.load_dataset("lung", backend="polars")
+
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 
 aft = gw.AFT("weibull").fit(y, lung[["age", "sex"]])
@@ -72,15 +72,14 @@ comparing the two.
 
 Greenwood supports four parametric distributions, each giving a different hazard shape.
 
-- **Exponential**: Constant hazard (h(t) = λ). Simplest; often too restrictive.
-- **Weibull**: Monotonic hazard (increasing or decreasing). Default; most flexible while remaining parsimonious.
-- **Log-normal**: Hazard rises then falls; many peak early. Good for disease incidence.
-- **Log-logistic**: Similar to log-normal but with heavier tails.
+- exponential: Constant hazard (h(t) = λ). Simplest; often too restrictive.
+- Weibull: monotonic hazard (increasing or decreasing). Default; most flexible while remaining parsimonious.
+- log-normal: hazard rises then falls; many peak early. Good for disease incidence.
+- log-logistic: similar to log-normal but with heavier tails.
 
 ```{python}
-import greenwood as gw
-
 lung = gw.load_dataset("lung", backend="polars")
+
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 
 for dist in ("exponential", "weibull", "lognormal", "loglogistic"):
@@ -92,6 +91,8 @@ To compare and choose among distributions, use the AIC (available from `glance`)
 lower value indicates a better fit:
 
 ```{python}
+import pandas as pd
+
 results = []
 for dist in ("exponential", "weibull", "lognormal", "loglogistic"):
     model = gw.AFT(dist).fit(y, lung[["age", "sex"]])
@@ -99,8 +100,8 @@ for dist in ("exponential", "weibull", "lognormal", "loglogistic"):
     glance_result["distribution"] = dist
     results.append(glance_result)
 
-import pandas as pd
 comparison = pd.concat(results)[["distribution", "loglik", "aic"]]
+
 print(comparison.sort_values("aic"))
 ```
 
@@ -112,10 +113,8 @@ Each call to `gw.glance` returns a one-row DataFrame of model-level summaries fo
 single fit. We can compare all four distributions systematically:
 
 ```{python}
-import greenwood as gw
-import pandas as pd
-
 lung = gw.load_dataset("lung", backend="polars")
+
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 
 comparisons = []
@@ -126,6 +125,7 @@ for dist in ("exponential", "weibull", "lognormal", "loglogistic"):
     comparisons.append(result)
 
 comparison = pd.concat(comparisons)[["distribution", "loglik", "aic"]]
+
 print(comparison.sort_values("aic"))
 ```
 
@@ -133,13 +133,15 @@ Compare the models by reading the AIC column and preferring the lowest value. A 
 10 in AIC is substantial; differences of 2-3 are subtle and don't warrant changing models.
 
 **When to use each distribution:**
-- **Exponential**: Only if you're confident hazard is constant (rare).
-- **Weibull**: Safe default; fits many data types well.
-- **Log-normal/Log-logistic**: When you expect a hazard peak early in follow-up.
-- **Gompertz**: For aging-related or mortality data where hazard accelerates exponentially.
+
+- exponential: only if you're confident hazard is constant (rare).
+- Weibull: safe default that fits many data types well.
+- log-normal/log-logistic: When you expect a hazard peak early in follow-up.
+- Gompertz: for aging-related or mortality data where hazard accelerates exponentially.
 
 ::: {.callout-note}
 ## Parametric or Cox?
+
 Choose a parametric model when you need to extrapolate, want smooth hazard or quantile
 predictions, or have a distributional form suggested by theory. Choose the Cox model when
 you want to avoid distributional assumptions and care mainly about relative effects. Both are
@@ -148,6 +150,7 @@ valid; they answer slightly different questions.
 
 ::: {.callout-tip}
 ## Interpreting the acceleration factor
+
 Exponentiating an AFT coefficient gives a time-acceleration factor. A factor of 1.5 for a
 covariate means subjects with a one-unit-higher value survive 1.5 times as long on average,
 holding other covariates fixed.
@@ -160,14 +163,13 @@ time and extrapolate beyond the observed follow-up. We predict for two new subje
 50-year-old and a 70-year-old, both with `sex` coded 1.
 
 ```{python}
-import greenwood as gw
-import pandas as pd
-
 lung = gw.load_dataset("lung", backend="polars")
+
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 aft = gw.AFT("weibull").fit(y, lung[["age", "sex"]])
 
 newdata = pd.DataFrame({"age": [50, 70], "sex": [1, 1]})
+
 aft.predict(newdata, type="quantile", p=[0.25, 0.5, 0.75], format="polars")
 ```
 
@@ -193,12 +195,12 @@ so the baseline shape is estimated from the data rather than assumed. The flexib
 by `df`, the number of spline degrees of freedom.
 
 ```{python}
-import greenwood as gw
-
 lung = gw.load_dataset("lung", backend="polars")
+
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 
 rp = gw.RoystonParmar(df=3).fit(y, lung[["age", "sex"]])
+
 rp.to_frame(format="polars")
 ```
 
@@ -218,8 +220,8 @@ for df in (1, 2, 3, 4, 5):
     rp_df = gw.RoystonParmar(df=df).fit(y, lung[["age", "sex"]])
     results.append({"df": df, "loglik": rp_df.loglik_})
 
-import pandas as pd
 comparison = pd.DataFrame(results)
+
 print(comparison)
 ```
 
@@ -227,16 +229,15 @@ Notice that loglik generally improves up to `df=3`, after which gains diminish, 
 additional flexibility is not justified by the data. Two or three degrees of freedom are typical
 defaults. Choose based on the trade-off between fit and complexity:
 
-- **df=1**: Equivalent to Weibull; simplest.
-- **df=2-3**: Common choices; balance parsimony and fit.
-- **df=4+**: Use only if AIC clearly favors it and validation shows good extrapolation.
+- **df=1**: equivalent to Weibull; simplest.
+- **df=2-3**: common choices; balance parsimony and fit.
+- **df=4+**: use only if AIC clearly favors it and validation shows good extrapolation.
 
 Prediction works as for the AFT model, with survival, hazard, or cumulative hazard curves.
 
 ```{python}
-import pandas as pd
-
 newdata = pd.DataFrame({"age": [50, 70], "sex": [1, 1]})
+
 rp.predict(newdata, type="survival", times=[180, 365, 730], format="polars")
 ```
 
@@ -245,7 +246,7 @@ rp.predict(newdata, type="survival", times=[180, 365, 730], format="polars")
 You can now fit, compare, and predict from parametric survival models.
 
 - [Cox regression](08-cox-regression.qmd) is the semiparametric alternative, useful when you
-  prefer not to assume a distribution.
+prefer not to assume a distribution.
 - [Prediction performance](13-prediction-performance.qmd) evaluates any fitted model,
-  parametric or not.
+parametric or not.
 - [Competing risks](11-competing-risks.qmd) handles the case of more than one type of event.
