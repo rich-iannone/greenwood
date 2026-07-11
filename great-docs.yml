@@ -45,8 +45,6 @@ authors:
     orcid: 0000-0003-3925-190X
 
 # API Reference Structure
-# Sections for further estimators (CoxPH, ...), group tests, and visualization are
-# added as they land.
 reference:
   - title: The response
     desc: The Surv object, the spine of every analysis.
@@ -113,9 +111,11 @@ reference:
       - cross_validate
 
   - title: Visualization
-    desc: plotnine survival curves and aligned numbers-at-risk tables.
+    desc: Interactive survival curves, forest plots, and cumulative incidence visualizations with aligned numbers-at-risk tables.
     contents:
       - plot_survival
+      - forest_plot
+      - cif_plot
       - risk_table
 
   - title: Core kernel
