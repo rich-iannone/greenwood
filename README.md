@@ -41,21 +41,24 @@ Descriptive statistics:
 - **`Surv` response object**: Handle right-, left-, and interval-censored data; counting-process form; left truncation; weights; and multi-state endpoints with built-in validation.
 - **Kaplan-Meier estimation** (`KaplanMeier`): Survival curves with Greenwood confidence intervals, median/quantile survival, restricted mean survival time, and step-function predictions.
 - **Nelson-Aalen estimator** (`NelsonAalen`): Cumulative hazard curves.
-- **Visualization** (`plot_survival`): Interactive survival curves with confidence bands, censoring marks, and aligned at-risk tables, with a choice of plotting backends.
+- **Visualization** (`plot_survival()`, `forest_plot()`, `cif_plot()`): Interactive survival curves with confidence bands and censoring marks, publication-ready forest plots with aligned at-risk tables, and cumulative incidence plots for competing risks—all with a choice of plotting backends and Great Tables integration.
 
 Hypothesis testing:
 
-- **Log-rank tests** (`logrank_test`): Standard log-rank test and the G-rho (Fleming-Harrington) family for 2+ groups.
+- **Log-rank tests** (`logrank_test()`, `pairwise_logrank_test()`): Standard log-rank test and the G-rho (Fleming-Harrington) family for 2+ groups with p-value adjustment for multiple comparisons.
+- **Linear trend tests** (`trend_test()`): Test for linear trends across ordered groups with support for Fleming-Harrington weights and stratification.
+- **RMST comparisons** (`rmst_test()`, `pairwise_rmst_test()`, `rmst_diff()`): Restricted mean survival time hypothesis tests, pairwise comparisons, and difference estimation.
 
 Regression models:
 
-- **Cox proportional hazards** (`CoxPH`): Model covariates as hazard ratios with stratification, robust sandwich variance, clustering, baseline hazard prediction, and model diagnostics (residuals, proportional-hazards test, concordance).
-- **Accelerated failure time** (`AFT`): Parametric models (Weibull, exponential, log-normal, log-logistic) validated against R's `survreg`.
+- **Cox proportional hazards** (`CoxPH`): Model covariates as hazard ratios with stratification, robust sandwich variance, clustering, baseline hazard prediction with confidence intervals, and model diagnostics (residuals, proportional-hazards test, concordance).
+- **Accelerated failure time** (`AFT`): Parametric models (Weibull, exponential, log-normal, log-logistic) with survival prediction confidence intervals, validated against R's `survreg`.
 - **Competing risks**: Cumulative incidence functions (`AalenJohansen`), subdistribution hazards (`FineGray`), and multi-state transition probabilities.
 
 Model performance:
 
 - **Prediction metrics**: Concordance index (Harrell's C) and inverse-probability censoring weighted (IPCW) Brier score / integrated Brier score.
+- **Cross-validation** (`cross_validate()`): K-fold cross-validation with stratification support for balanced outcome distributions.
 
 Tidy & reproducible:
 
