@@ -3,50 +3,123 @@ title: Greenwood
 toc: false
 ---
 
-**Modern survival analysis for Python.**
+## Modern survival analysis for Python
 
-Greenwood is a time-to-event modeling library built in Python: it works on Pandas, Polars,
-PyArrow, and anything else [Narwhals](https://narwhals-dev.github.io/narwhals/) supports.
-It is validated to tolerance against R's `survival` package. It provides beautiful
-visualizations with Altair. It also makes use of the Great Tables library, allowing you to
-create publication-quality tables.
+Greenwood turns time-to-event data into estimates, tests, models, and figures. Whether you're tracking patient outcomes, equipment failure times, or any event that takes time to happen, Greenwood provides a complete, production-ready toolkit for survival analysis.
 
-## What's present
+Unlike many statistical libraries, Greenwood is built on [Narwhals](https://narwhals-dev.github.io/narwhals/) for backend-agnostic compute, validated to tolerance against R's gold-standard `survival` package, and visualized with publication-quality interactive plots and tables. It works with Pandas, Polars, PyArrow, or any dataframe library you prefer.
 
-This library centers on the `Surv` response object, which handles right, left, interval,
-and counting-process censoring (including left truncation and multi-state endpoints).
+## Why Greenwood?
 
-The core estimators are `KaplanMeier` (survival curves with Greenwood confidence
-intervals, medians, quantiles, and restricted mean survival time) and `NelsonAalen`
-(cumulative hazard). For group comparisons, the `logrank_test` implements the log-rank
-test and the G-rho/Fleming-Harrington family. You also get `CoxPH` for proportional
-hazards regression, with interactive curves and aligned risk tables.
+- **Works with your dataframe library**: Pandas, Polars, PyArrow, or any Narwhals-compatible frame—use the `format=` argument to control output types.
+- **Rigorously validated**: Every statistic is tested to tolerance against R's `survival` package, so results match what the field already trusts.
+- **Beautiful visualizations**: Interactive survival curves, forest plots, and cumulative incidence plots with a choice of plotting backends.
+- **Publication-ready tables**: Built-in integration with [Great Tables](https://posit-co.github.io/great-tables/) for production-quality reporting.
+- **Complete toolkit**: From simple Kaplan-Meier curves to Cox regression, competing risks, and multi-state models—everything you need, all validated.
 
-Every statistic is validated to tolerance against R's `survival` package. Parametric
-models, competing risks, and Cox model extensions will arrive in later releases. See
-the [project roadmap](https://rich-iannone.github.io/greenwood/roadmap.html).
+## The analytical pipeline
+
+Every Greenwood analysis follows a consistent workflow:
+
+1. **Represent the data** with `Surv`: Capture survival outcomes and censoring (right, left, interval, or counting-process form) in a validated response object.
+2. **Estimate and summarize**: Use `KaplanMeier` or `NelsonAalen` to describe the data, then compare groups with `logrank_test`, trend tests, or RMST comparisons.
+3. **Build and fit models**: Fit Cox proportional hazards, parametric AFT models, or competing-risks models to examine covariate effects.
+4. **Visualize and evaluate**: Create publication-quality plots with `plot_survival`, `forest_plot`, or `cif_plot`, and assess model performance with concordance, Brier scores, or cross-validation.
+5. **Report results**: Tidy model summaries and publication tables are built in via broom-compatible `tidy()` functions and Great Tables.
 
 ## A first look
 
-```python
+Here's a complete example: load survival data, estimate a curve, test for differences, and visualize.
+
+**Step 1: Represent the data with a Surv object**
+
+```{python}
 import greenwood as gw
 
-# Load a bundled dataset and build a response (lung codes 1 = censored, 2 = dead).
-df = gw.load_dataset("lung")
-y = gw.Surv.right(df["time"], event=(df["status"] == 2))
+# Load data and represent it as a survival object
+lung = gw.load_dataset("lung", backend="polars")
+y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+y
+```
 
-# Kaplan-Meier survival, stratified, with log-log confidence intervals.
-km = gw.KaplanMeier(conf_type="log-log").fit(y, by=df["sex"])
-km.to_frame(format="pandas").head()
+**Step 2: Estimate Kaplan-Meier survival curves, stratified by sex**
+
+```{python}
+# Fit stratified Kaplan-Meier with log-log confidence intervals
+km = gw.KaplanMeier(conf_type="log-log").fit(y, by=lung["sex"])
+
+# Get median survival per group with 95% confidence intervals
 km.median(ci=True)
+```
 
-# Compare groups with the log-rank test.
-gw.logrank_test(y, group=df["sex"])
+**Step 3: Compare survival between groups with a log-rank test**
 
-# Publication-quality curves with an aligned numbers-at-risk table.
+```{python}
+# Test for differences in survival between sexes
+test_result = gw.logrank_test(y, group=lung["sex"])
+test_result
+```
+
+**Step 4: Visualize with an interactive plot and at-risk table**
+
+```{python}
+# Create publication-quality survival curves
 gw.plot_survival(km, risk_table=True)
+```
 
-# Cox proportional hazards, with broom-style hazard ratios.
-cox = gw.CoxPH().fit(y, df[["age", "sex"]])
-gw.tidy(cox, exponentiate=True)
+**Step 5: Fit a Cox proportional hazards model**
+
+```{python}
+# Model covariate effects on hazard
+cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+
+# Get hazard ratios with confidence intervals
+gw.tidy(cox, exponentiate=True, format="polars")
+```
+
+
+## What's inside
+
+**Descriptive statistics**: Kaplan-Meier curves with Greenwood confidence intervals, restricted mean survival time (RMST), quantiles, and medians. Nelson-Aalen cumulative hazard. Event tables and risk sets.
+
+**Group comparisons**: Log-rank and Peto-Peto tests, Fleming-Harrington tests for weighted comparisons, linear trend tests across ordered groups, and RMST hypothesis tests with pairwise comparisons.
+
+**Regression models**: Cox proportional hazards with stratification, baseline hazard prediction with confidence intervals, and full diagnostics. Parametric accelerated failure time (AFT) models with Weibull, exponential, log-normal, and log-logistic distributions. Competing risks via Aalen-Johansen and Fine-Gray models. Multi-state transition probabilities.
+
+**Visualization**: Interactive survival curves with confidence bands, censoring marks, and aligned at-risk tables. Forest plots with hazard ratios. Cumulative incidence plots for competing risks. All plots are interactive and publication-ready.
+
+**Model evaluation**: Concordance index (Harrell's C-statistic), IPCW Brier scores, integrated Brier scores, and k-fold cross-validation with stratification support.
+
+**Built-in data**: Load bundled datasets (`lung`, `veteran`, `ovarian`, `pbc`, `colon`, `mgus2`) in any supported backend.
+
+## Next steps
+
+- **Installation**: Get started with `pip install greenwood` or see [Installation](user_guide/01-installation.qmd).
+- **Quick tour**: New to Greenwood? Start with the [Quick start](user_guide/02-quick-start.qmd) for a fast hands-on tour (5 min read).
+- **Learn survival analysis**: New to survival analysis? Begin with [Survival data and the Surv object](user_guide/03-survival-data.qmd) to understand censoring.
+- **Build models**: Jump to [Cox regression](user_guide/08-cox-regression.qmd) or [Parametric models](user_guide/10-parametric-models.qmd).
+- **Explore everything**: See the full [User Guide](user_guide/00-get-started.qmd) for comprehensive coverage of all features.
+- **API reference**: Browse the [Python API reference](reference/) for function signatures and detailed documentation.
+
+## Key features at a glance
+
+```{=html}
+<table style="width: 100%; border-collapse: collapse;">
+  <tr style="border-bottom: 2px solid #e1e4e8;">
+    <td style="padding: 12px 0;">✓ Narwhals-native for dataframe agility</td>
+    <td style="padding: 12px 0; text-align: right;">✓ R-validated for trustworthy results</td>
+  </tr>
+  <tr style="border-bottom: 1px solid #e1e4e8;">
+    <td style="padding: 12px 0;">✓ Interactive publication plots</td>
+    <td style="padding: 12px 0; text-align: right;">✓ Great Tables integration</td>
+  </tr>
+  <tr style="border-bottom: 1px solid #e1e4e8;">
+    <td style="padding: 12px 0;">✓ Complete toolkit (KM to competing risks)</td>
+    <td style="padding: 12px 0; text-align: right;">✓ Broom-compatible tidy outputs</td>
+  </tr>
+  <tr>
+    <td style="padding: 12px 0;">✓ Built-in datasets and R parity tests</td>
+    <td style="padding: 12px 0; text-align: right;">✓ Cross-validation with stratification</td>
+  </tr>
+</table>
 ```
