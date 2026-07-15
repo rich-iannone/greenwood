@@ -584,3 +584,110 @@ def plot_forest(
         raise ValueError(f"backend must be 'altair' or 'plotnine', got {backend!r}")
 
 
+def _plot_forest_altair(
+    df: Any,
+    *,
+    use_log: bool,
+    vline_x: float,
+    x_label: str,
+    title: str | None,
+    width: int,
+    height: int,
+) -> Any:
+    """Altair implementation of plot_forest."""
+    try:
+        import altair as alt
+    except ImportError as exc:
+        raise ImportError(
+            "plot_forest() with backend='altair' requires altair. "
+            "Install with `pip install greenwood[altair]`."
+        ) from exc
+
+    has_pvalue = "p_value" in df.columns
+
+    # Pre-log the estimates for display (Altair doesn't natively do log axes the same way)
+    display = df.copy()
+    if use_log:
+        display["est_display"] = np.log(display["estimate"])
+        display["ci_lower_display"] = np.log(display["ci_lower"])
+        display["ci_upper_display"] = np.log(display["ci_upper"])
+        ref_display = 0.0  # log(1)
+        # Build tick labels: powers of 2 spanning the data
+        all_vals = np.concatenate(
+            [display["ci_lower"].values, display["ci_upper"].values, [1.0]]
+        )
+        exp_range = np.log(all_vals[np.isfinite(all_vals) & (all_vals > 0)])
+        ticks_log = np.arange(np.floor(exp_range.min()), np.ceil(exp_range.max()) + 1, 0.5)
+        ticks_hr = np.exp(ticks_log)
+        axis_values = ticks_log.tolist()
+        axis_labels = [f"{v:.2g}" for v in ticks_hr]
+    else:
+        display["est_display"] = display["estimate"]
+        display["ci_lower_display"] = display["ci_lower"]
+        display["ci_upper_display"] = display["ci_upper"]
+        ref_display = vline_x
+        axis_values = None
+        axis_labels = None
+
+    # Format text columns for tooltip
+    display["hr_ci"] = [
+        f"{e:.2f} ({l:.2f}\u2013{u:.2f})"
+        for e, l, u in zip(display["estimate"], display["ci_lower"], display["ci_upper"])
+    ]
+    if has_pvalue:
+        display["p_fmt"] = [_fmt_pvalue(p) for p in display["p_value"]]
+
+    # Reverse row order so first term appears at top of chart
+    display = display.iloc[::-1].reset_index(drop=True)
+
+    tooltip_fields = ["term:N", "hr_ci:N"]
+    if has_pvalue:
+        tooltip_fields.append("p_fmt:N")
+
+    x_axis: alt.Axis
+    if axis_values is not None and axis_labels is not None:
+        x_axis = alt.Axis(
+            values=axis_values,
+            labelExpr="{"
+            + ", ".join(f'"{v:.3f}": "{l}"' for v, l in zip(axis_values, axis_labels))
+            + "}[format(datum.value, '.3f')]",
+        )
+    else:
+        x_axis = alt.Axis()
+
+    base = alt.Chart(display)
+
+    ci_bars = (
+        base.mark_rule(strokeWidth=1.5)
+        .encode(
+            y=alt.Y("term:N", sort=None, axis=alt.Axis(labelAngle=0), title=""),
+            x=alt.X("ci_lower_display:Q", title=x_label, axis=x_axis),
+            x2="ci_upper_display:Q",
+            tooltip=tooltip_fields,
+        )
+    )
+
+    points = (
+        base.mark_point(size=80, filled=True)
+        .encode(
+            y=alt.Y("term:N", sort=None),
+            x=alt.X("est_display:Q"),
+            color=alt.value("#20558A"),
+            tooltip=tooltip_fields,
+        )
+    )
+
+    ref_df = to_dataframe({"ref": [ref_display]})
+    ref_line = (
+        alt.Chart(ref_df)
+        .mark_rule(color="#888888", strokeDash=[4, 4], opacity=0.7)
+        .encode(x="ref:Q")
+    )
+
+    props: dict[str, Any] = {"width": width, "height": height}
+    if title:
+        props["title"] = title
+
+    return (ci_bars + points + ref_line).properties(**props)
+
+
