@@ -16,7 +16,7 @@ from .._backends import to_dataframe
 if TYPE_CHECKING:
     pass
 
-__all__ = ["forest_plot", "plot_forest", "theme_forest"]
+__all__ = ["plot_forest", "theme_forest"]
 
 Array = npt.NDArray[Any]
 
@@ -185,7 +185,7 @@ def _forest_plot_data(
     }
 
 
-def forest_plot(
+def _forest_plot(
     estimates: Array | None = None,
     ci_lower: Array | None = None,
     ci_upper: Array | None = None,
@@ -242,7 +242,7 @@ def forest_plot(
     --------
     Hazard ratios from a Cox model:
 
-    ```{python}
+    ```python
     import greenwood as gw
 
     # Hazard ratios and 95% CIs for three covariates
@@ -258,7 +258,7 @@ def forest_plot(
 
     RMST differences (linear scale):
 
-    ```{python}
+    ```python
     gw.forest_plot(
         estimates=[15.3, -8.5, 5.2],
         ci_lower=[2.1, -20.3, -5.1],
@@ -463,6 +463,7 @@ def theme_forest() -> Any:
 def plot_forest(
     result: Any,
     *,
+    scale: Literal["log", "linear"] | None = None,
     exponentiate: bool = True,
     title: str | None = None,
     term_labels: dict[str, str] | None = None,
@@ -474,19 +475,25 @@ def plot_forest(
     r"""Forest plot of hazard ratios (or other contrasts) with confidence intervals.
 
     Accepts a fitted `~greenwood.CoxPH` object or any tidy DataFrame that contains
-    `term`, `estimate`, `ci_lower` (or `conf_low`), and `ci_upper` (or `conf_high`)
-    columns. The latter supports subgroup forest plots where you already have the
-    summary estimates (e.g., from running Cox per subgroup and calling `~greenwood.tidy`
-    on each).
+    `term`, `estimate`, `ci_lower` (or `conf_low`), and `ci_upper` (or
+    `conf_high`) columns. The latter supports subgroup forest plots where you already
+    have the summary estimates (e.g., from running Cox per subgroup and calling
+    `~greenwood.tidy` on each).
 
     Parameters
     ----------
     result
         A fitted `CoxPH` result object, or a tidy DataFrame with one row per term.
+    scale
+        X-axis scale: `"log"` for hazard ratios (reference line at HR = 1) or
+        `"linear"` for differences (reference line at 0). When `None` (default),
+        the scale is inferred: `"log"` for a CoxPH object with `exponentiate=True`,
+        `"linear"` otherwise. Pass `scale="log"` explicitly when supplying a
+        DataFrame of hazard ratios.
     exponentiate
-        When *result* is a `CoxPH` object: if `True` (default) plot hazard ratios on a
-        log scale with a reference line at HR = 1; if `False` plot log-hazard coefficients
-        on a linear scale with a reference line at 0. Ignored when *result* is a DataFrame.
+        When *result* is a `CoxPH` object: if `True` (default) extract hazard ratios;
+        if `False` extract log-hazard coefficients. Ignored when *result* is a
+        DataFrame or when *scale* is set explicitly.
     title
         Plot title. Defaults to `None` (no title).
     term_labels
@@ -494,8 +501,8 @@ def plot_forest(
         `{"age": "Age (years)", "sex": "Female vs. Male"}`. Only the terms listed are
         renamed; others keep their original names.
     xlab
-        X-axis label. Defaults to `"Hazard Ratio"` when *exponentiate* is `True` and
-        `"log Hazard Ratio"` otherwise.
+        X-axis label. Defaults to `"Hazard Ratio"` for log scale and `"Estimate"`
+        for linear scale.
     backend
         Plotting backend: `"altair"` (default, interactive) or `"plotnine"`
         (composable ggplot2-style object).
@@ -519,7 +526,7 @@ def plot_forest(
 
     lung = gw.load_dataset("lung", backend="polars")
     y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-    cox = gw.CoxPH().fit(y, lung[["age", "sex", "ph_ecog"]])
+    cox = gw.CoxPH().fit(y, lung[["age", "sex", "ph.ecog"]])
 
     gw.plot_forest(cox)
     ```
@@ -529,38 +536,56 @@ def plot_forest(
     ```{python}
     gw.plot_forest(
         cox,
-        term_labels={"age": "Age (years)", "sex": "Female vs. Male", "ph_ecog": "ECOG PS"},
-        title="Cox Model — Lung Cancer",
+        term_labels={"age": "Age (years)", "sex": "Female vs. Male", "ph.ecog": "ECOG PS"},
+        title="Cox Model: Lung Cancer",
     )
     ```
 
-    Use a plotnine backend for a static, composable ggplot object:
-
-    ```{python}
-    gw.plot_forest(cox, backend="plotnine") + gw.theme_forest()
-    ```
-
-    Build a subgroup forest plot from a tidy DataFrame:
+    Build a subgroup forest plot from a tidy DataFrame. Pass `scale="log"` when the
+    estimates are hazard ratios:
 
     ```{python}
     import pandas as pd
 
     subgroups = pd.DataFrame({
-        "term": ["Age < 60", "Age ≥ 60", "Male", "Female"],
+        "term": ["Age < 60", "Age \u2265 60", "Male", "Female"],
         "estimate": [0.72, 0.91, 0.85, 0.68],
         "ci_lower": [0.51, 0.74, 0.68, 0.50],
         "ci_upper": [1.01, 1.12, 1.06, 0.92],
     })
-    gw.plot_forest(subgroups)
+    gw.plot_forest(subgroups, scale="log")
+    ```
+
+    For RMST differences or other linear-scale contrasts, omit `scale` (or pass
+    `scale="linear"` explicitly):
+
+    ```{python}
+    rmst = pd.DataFrame({
+        "term": ["Drug A vs Placebo", "Drug B vs Placebo"],
+        "estimate": [45, 25],
+        "ci_lower": [-10, -20],
+        "ci_upper": [95, 70],
+    })
+    gw.plot_forest(rmst)
+    ```
+
+    Use a plotnine backend for a static, composable ggplot object:
+
+    ```{python}
+    gw.plot_forest(cox, backend="plotnine")
     ```
     """
     df = _extract_forest_frame(result, exponentiate=exponentiate, term_labels=term_labels)
 
-    use_log = exponentiate and not (
-        hasattr(result, "__dataframe__") or isinstance(result, dict)
-    )
+    _is_cox = hasattr(result, "term_names_") and hasattr(result, "hazard_ratio_")
+    if scale is not None:
+        use_log = scale == "log"
+    elif _is_cox:
+        use_log = exponentiate
+    else:
+        use_log = False
     vline_x = 1.0 if use_log else 0.0
-    x_label = xlab or ("Hazard Ratio" if use_log else "log Hazard Ratio")
+    x_label = xlab or ("Hazard Ratio" if use_log else "Estimate")
 
     if backend == "altair":
         return _plot_forest_altair(
