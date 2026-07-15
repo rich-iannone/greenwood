@@ -354,3 +354,71 @@ def _fmt_pvalue(p: float) -> str:
     return f"{p:.2f}"
 
 
+def _extract_forest_frame(
+    result: Any,
+    *,
+    exponentiate: bool,
+    term_labels: dict[str, str] | None,
+) -> Any:
+    """Return a Pandas DataFrame with columns: term, estimate, ci_lower, ci_upper, p_value.
+
+    Accepts a fitted CoxPH object or a tidy DataFrame that already has the required columns
+    (`term`, `estimate`, `ci_lower`/`conf_low`, `ci_upper`/`conf_high`). When *result* is a
+    CoxPH object, *exponentiate* controls whether hazard ratios (`True`) or log-hazard
+    coefficients (`False`) are extracted. For DataFrames the columns are used as-is.
+    """
+    import pandas as pd
+
+    if hasattr(result, "term_names_") and hasattr(result, "hazard_ratio_"):
+        # CoxPH result object
+        terms = list(result.term_names_)
+        if exponentiate:
+            estimates = np.exp(result.coef_).tolist()
+            ci_lower = np.exp(result.conf_low_).tolist()
+            ci_upper = np.exp(result.conf_high_).tolist()
+        else:
+            estimates = result.coef_.tolist()
+            ci_lower = result.conf_low_.tolist()
+            ci_upper = result.conf_high_.tolist()
+        p_values = result.p_value_.tolist()
+        df = pd.DataFrame(
+            {
+                "term": terms,
+                "estimate": estimates,
+                "ci_lower": ci_lower,
+                "ci_upper": ci_upper,
+                "p_value": p_values,
+            }
+        )
+    elif hasattr(result, "__dataframe__") or isinstance(result, dict):
+        # Tidy DataFrame (pandas / polars / pyarrow) or plain dict
+        if isinstance(result, dict):
+            df = pd.DataFrame(result)
+        else:
+            try:
+                df = result.to_pandas()  # polars / pyarrow
+            except AttributeError:
+                df = pd.DataFrame(result)
+        # Normalise column names
+        df = df.rename(
+            columns={"conf_low": "ci_lower", "conf_high": "ci_upper", "std_error": "se"},
+            errors="ignore",
+        )
+        required = {"term", "estimate", "ci_lower", "ci_upper"}
+        missing = required - set(df.columns)
+        if missing:
+            raise ValueError(
+                f"DataFrame is missing required column(s): {sorted(missing)}. "
+                "Expected: term, estimate, ci_lower (or conf_low), ci_upper (or conf_high)."
+            )
+    else:
+        raise TypeError(
+            f"Expected a CoxPH result or a tidy DataFrame, got {type(result).__name__!r}."
+        )
+
+    if term_labels:
+        df["term"] = [term_labels.get(t, t) for t in df["term"]]
+
+    return df
+
+
