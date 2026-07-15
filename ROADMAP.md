@@ -25,7 +25,6 @@ Advanced predictions and conditional inference for accelerated failure time (AFT
 Visualization for grouped survival analyses.
 
 - Cumulative incidence function curves (competing risks by group)
-- Forest plots for stratified hazard ratios and RMST differences
 - Aligned at-risk tables for grouped curves
 
 ### Model Validation and Performance
