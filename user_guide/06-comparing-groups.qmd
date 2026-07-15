@@ -343,7 +343,7 @@ has its own baseline hazard.
 
 ## Testing for trend in ordered groups
 
-When your groups are naturally ordered—disease stages (I, II, III, IV), dose levels (low,
+When your groups are naturally ordered as disease stages (I, II, III, IV), dose levels (low,
 medium, high), or educational attainment (primary, secondary, tertiary), a general log-rank
 test asks the right question but it doesn't use the information about ordering. A trend test is
 more powerful because it looks specifically for a linear relationship across the ordered levels.
@@ -372,7 +372,7 @@ trend, and the p-value tells you if the trend is statistically significant.
 
 ### Custom scoring
 
-If the ordering is not uniform—for instance, some groups have very different prognoses—you
+If the ordering is not uniform (for instance, some groups have very different prognoses) you
 can specify custom scores. Scores must be numeric and reflect your belief about the ordering.
 
 ```{python}
