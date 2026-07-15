@@ -74,10 +74,10 @@ def _forest_plot_data(
     dict
         Dictionary with keys:
 
-        - `"data"`: A list of dicts, each with keys `"label"`, `"estimate"`, `"ci_lower"`,
+        - `"data"`: a list of dicts, each with keys `"label"`, `"estimate"`, `"ci_lower"`,
           `"ci_upper"` (useful for DataFrames or manual plotting).
-        - `"scale"`: The scale used (`"log"` or `"linear"`).
-        - `"reference_line"`: The reference value on the display scale.
+        - `"scale"`: the scale used (`"log"` or `"linear"`).
+        - `"reference_line"`: the reference value on the display scale.
 
     Details
     -------
