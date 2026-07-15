@@ -57,6 +57,91 @@ def _error_quantile(dist: str, p: Array) -> Array:
     return logistic.ppf(p)  # loglogistic
 
 
+def _mean_survival_aft(dist: str, mu: Array, sigma: float) -> Array:
+    r"""Closed-form $E[T]$ for each subject under the AFT distribution.
+
+    Returns `np.inf` for log-logistic when `sigma >= 1` (mean is undefined).
+    """
+    if dist in ("weibull", "exponential"):
+        return np.exp(mu) * _sp_gamma(1.0 + sigma)
+    if dist == "lognormal":
+        return np.exp(mu + 0.5 * sigma**2)
+    # loglogistic
+    if sigma < 1.0:
+        return np.exp(mu) * np.pi * sigma / np.sin(np.pi * sigma)
+    return np.full_like(mu, np.inf)
+
+
+def _tail_partial_moment(dist: str, mu: Array, sigma: float, t0: Array) -> Array:
+    r"""Compute $\int_{t_0}^\infty S(t)\,dt$ for each subject.
+
+    This is the *tail partial moment* starting at `t0`. When `t0 = 0` it
+    equals `E[T]`, and therefore `_mean_survival_aft` is a special case.
+
+    The key identities derived from this quantity are:
+
+    - $E[T - t_0 \mid T > t_0] = \text{tail}(t_0) / S(t_0)$
+    - $E[T \mid T > t_0] = t_0 + \text{tail}(t_0) / S(t_0)$
+    - $E[\min(T, \tau)] = E[T] - \text{tail}(\tau)$  (when $E[T] < \infty$)
+
+    Closed-form formulas by distribution:
+
+    - **Weibull / Exponential**:
+      $e^\mu \Gamma(1+\sigma) \cdot \bar{\Gamma}(\sigma,\, u_0)$
+      where $u_0 = (t_0 / e^\mu)^{1/\sigma}$ and $\bar{\Gamma}$ is the
+      regularized upper incomplete gamma function.
+    - **Log-normal**:
+      $e^{\mu+\sigma^2/2} \Phi(\sigma - z_0) - t_0 \Phi(-z_0)$
+      where $z_0 = (\log t_0 - \mu)/\sigma$.
+    - **Log-logistic** ($\sigma < 1$):
+      $E[T] \cdot I_{S(t_0)}(1-\sigma,\, \sigma)$
+      where $I_x$ is the regularized incomplete Beta function and
+      $S(t_0) = \operatorname{logistic.sf}(z_0)$.
+    - **Log-logistic** ($\sigma \ge 1$): numerical integration via
+      `scipy.integrate.quad`.
+    """
+    t0 = np.broadcast_to(np.asarray(t0, dtype=float), mu.shape).copy()
+
+    if dist in ("weibull", "exponential"):
+        lam = np.exp(mu)
+        u0 = (t0 / lam) ** (1.0 / sigma)
+        return lam * _sp_gamma(1.0 + sigma) * _sp_gammaincc(sigma, u0)
+
+    if dist == "lognormal":
+        # Avoid log(0) = -inf warnings; handle t0 = 0 as a special case
+        with np.errstate(divide="ignore", invalid="ignore"):
+            log_t0 = np.log(np.where(t0 > 0.0, t0, 1.0))
+        log_t0 = np.where(t0 > 0.0, log_t0, -np.inf)
+        z0 = (log_t0 - mu) / sigma
+        term1 = np.exp(mu + 0.5 * sigma**2) * norm.cdf(sigma - z0)
+        term2 = np.where(t0 > 0.0, t0 * norm.sf(z0), 0.0)
+        return term1 - term2
+
+    # loglogistic
+    with np.errstate(divide="ignore", invalid="ignore"):
+        log_t0 = np.log(np.where(t0 > 0.0, t0, 1.0))
+    log_t0 = np.where(t0 > 0.0, log_t0, -np.inf)
+    z0 = (log_t0 - mu) / sigma
+    s0 = logistic.sf(z0)  # S(t0) per subject
+    if sigma < 1.0:
+        e_t = np.exp(mu) * np.pi * sigma / np.sin(np.pi * sigma)
+        return e_t * _sp_betainc(1.0 - sigma, sigma, s0)
+    # sigma >= 1: no closed-form; per-subject numerical integration
+    from scipy.integrate import quad
+
+    out = np.empty_like(mu)
+    for i in range(mu.shape[0]):
+        mu_i = float(mu[i])
+        t0_i = float(t0[i])
+
+        def _sf(t: float, _mu: float = mu_i) -> float:
+            z = (np.log(t) - _mu) / sigma
+            return float(logistic.sf(z))
+
+        out[i], _ = quad(_sf, t0_i, np.inf, limit=200)
+    return out
+
+
 def _num_hessian(fn: Any, x: Array, rel_step: float = 1e-5) -> Array:
     """Central-difference Hessian of a scalar function at `x`."""
     n = x.shape[0]
