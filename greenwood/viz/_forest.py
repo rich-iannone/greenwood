@@ -675,8 +675,7 @@ def _plot_forest_altair(
             values=axis_values,
             labelExpr="{"
             + ", ".join(
-                f'"{v:.3f}": "{lbl}"'
-                for v, lbl in zip(axis_values, axis_labels, strict=True)
+                f'"{v:.3f}": "{lbl}"' for v, lbl in zip(axis_values, axis_labels, strict=True)
             )
             + "}[format(datum.value, '.3f')]",
         )
