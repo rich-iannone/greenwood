@@ -241,6 +241,76 @@ result_5y = gw.rmst_test(y, tau=1825, group=lung["sex"])
 result_5y.estimate
 ```
 
+### Stratified RMST comparisons
+
+When your two groups differ in the distribution of a confounding variable, a plain RMST
+comparison mixes the groups' true survival difference with the compositional imbalance.
+Stratification solves this: RMST is estimated separately within each stratum and the
+per-stratum differences are combined with inverse-variance weights before any test is
+computed.
+
+Pass `strata=` to `rmst_test()`. Here we compare 1-year RMST between the two sexes while
+controlling for ECOG performance status (`ph.ecog`), which reflects disease severity and
+is correlated with both sex and prognosis.
+
+```{python}
+import polars as pl
+
+lung = gw.load_dataset("lung", backend="polars")
+
+# Drop the small number of rows with missing ECOG score
+lung_clean = lung.filter(pl.col("ph.ecog").is_not_null())
+
+y = gw.Surv.right(lung_clean["time"], event=(lung_clean["status"] == 2))
+
+result_strat = gw.rmst_test(
+    y,
+    tau=365,
+    group=lung_clean["sex"],
+    strata=lung_clean["ph.ecog"],
+)
+result_strat
+```
+
+The result carries a `stratified=True` flag and the method string includes "Stratified" to
+make it clear which analysis was run. The `estimate` is the pooled RMST difference, and
+`se` reflects the combined uncertainty across all strata.
+
+```{python}
+print(f"Pooled RMST difference: {result_strat.estimate:.1f} days")
+print(f"95% CI: [{result_strat.lower_ci:.1f}, {result_strat.upper_ci:.1f}]")
+print(f"P-value: {result_strat.p_value:.4f}")
+print(f"Stratified: {result_strat.stratified}")
+```
+
+**How the pooling works.** Within each stratum $s$, the RMST difference
+$d_s = \text{RMST}_{1s} - \text{RMST}_{2s}$ and its variance
+$\sigma_s^2 = \text{SE}_{1s}^2 + \text{SE}_{2s}^2$ are computed from independent
+Kaplan-Meier curves. The combined estimate is:
+
+$$
+\hat{\Delta} = \frac{\sum_s w_s\, d_s}{\sum_s w_s}, \quad w_s = \frac{1}{\sigma_s^2},
+\quad \text{SE}(\hat{\Delta}) = \frac{1}{\sqrt{\sum_s w_s}}
+$$
+
+Strata in which one group is absent are silently skipped, so unbalanced designs are handled
+without any special handling.
+
+::: {.callout-tip}
+## Stratified RMST vs. stratified log-rank
+
+Both methods control for a confounder, but they answer different questions:
+
+- **Stratified log-rank**: is there a statistically significant difference in the
+  survival *curves*? No magnitude.
+- **Stratified RMST**: by how many days does survival differ on average within the
+  follow-up window, after adjusting for the stratification variable?
+
+Use the log-rank test when you need a significance test under proportional hazards; use
+stratified RMST when you want an interpretable effect size that does not require that
+assumption.
+:::
+
 ::: {.callout-note}
 ## RMST vs. log-rank: complementary tools
 
