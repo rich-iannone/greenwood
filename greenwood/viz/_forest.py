@@ -638,9 +638,7 @@ def _plot_forest_altair(
         display["ci_upper_display"] = np.log(display["ci_upper"])
         ref_display = 0.0  # log(1)
         # Build tick labels: powers of 2 spanning the data
-        all_vals = np.concatenate(
-            [display["ci_lower"].values, display["ci_upper"].values, [1.0]]
-        )
+        all_vals = np.concatenate([display["ci_lower"].values, display["ci_upper"].values, [1.0]])
         exp_range = np.log(all_vals[np.isfinite(all_vals) & (all_vals > 0)])
         ticks_log = np.arange(np.floor(exp_range.min()), np.ceil(exp_range.max()) + 1, 0.5)
         ticks_hr = np.exp(ticks_log)
@@ -682,24 +680,18 @@ def _plot_forest_altair(
 
     base = alt.Chart(display)
 
-    ci_bars = (
-        base.mark_rule(strokeWidth=1.5)
-        .encode(
-            y=alt.Y("term:N", sort=None, axis=alt.Axis(labelAngle=0), title=""),
-            x=alt.X("ci_lower_display:Q", title=x_label, axis=x_axis),
-            x2="ci_upper_display:Q",
-            tooltip=tooltip_fields,
-        )
+    ci_bars = base.mark_rule(strokeWidth=1.5).encode(
+        y=alt.Y("term:N", sort=None, axis=alt.Axis(labelAngle=0), title=""),
+        x=alt.X("ci_lower_display:Q", title=x_label, axis=x_axis),
+        x2="ci_upper_display:Q",
+        tooltip=tooltip_fields,
     )
 
-    points = (
-        base.mark_point(size=80, filled=True)
-        .encode(
-            y=alt.Y("term:N", sort=None),
-            x=alt.X("est_display:Q"),
-            color=alt.value("#20558A"),
-            tooltip=tooltip_fields,
-        )
+    points = base.mark_point(size=80, filled=True).encode(
+        y=alt.Y("term:N", sort=None),
+        x=alt.X("est_display:Q"),
+        color=alt.value("#20558A"),
+        tooltip=tooltip_fields,
     )
 
     ref_df = to_dataframe({"ref": [ref_display]})
@@ -738,7 +730,9 @@ def _plot_forest_plotnine(
     # Reverse order so first term is at top
     plot_df = df.iloc[::-1].reset_index(drop=True)
     # Make term an ordered categorical to lock the y-axis order
-    plot_df["term"] = pd.Categorical(plot_df["term"], categories=plot_df["term"].tolist(), ordered=True)
+    plot_df["term"] = pd.Categorical(
+        plot_df["term"], categories=plot_df["term"].tolist(), ordered=True
+    )
 
     plot = (
         p9.ggplot(plot_df, p9.aes(y="term", x="estimate"))
@@ -757,4 +751,3 @@ def _plot_forest_plotnine(
         plot = plot + p9.scale_x_log10()
 
     return plot
-
