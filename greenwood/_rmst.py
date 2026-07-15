@@ -342,6 +342,17 @@ def rmst_test(
     \frac{\mathrm{SE}_2^2}{\mathrm{RMST}_2^2}}
     $$
 
+    When `strata` is provided, per-group RMST values within each stratum are combined
+    using inverse-variance (Greenwood) weights:
+
+    $$
+    \widehat{\mathrm{RMST}}_k = \frac{\sum_s w_{ks}\, \mathrm{RMST}_{ks}}{\sum_s w_{ks}},
+    \quad w_{ks} = \frac{1}{\mathrm{SE}_{ks}^2}
+    $$
+
+    The stratified SE is $1 / \sqrt{\sum_s w_{ks}}$. The test statistic is then
+    computed from the pooled group-level estimates.
+
     Examples
     --------
     Test RMST difference between two treatment groups:
