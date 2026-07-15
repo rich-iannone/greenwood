@@ -142,7 +142,7 @@ gw.risk_table(km, times=[0, 250, 500, 750, 1000])
 
 ## Customizing the plot
 
-`plot_survival` returns an ordinary Altair chart, so you refine it with Altair's API. Chaining
+`plot_survival()` returns an ordinary Altair chart, so you refine it with Altair's API. Chaining
 `.properties` sets the title and dimensions, and you can keep layering or restyling from there.
 
 ```{python}
@@ -154,7 +154,7 @@ gw.plot_survival(km).properties(
 ::: {.callout-note}
 ## The plot is a chart object, not an image
 
-`plot_survival` returns an Altair chart (an `alt.LayerChart`, or an `alt.VConcatChart` when
+`plot_survival()` returns an Altair chart (an `alt.LayerChart`, or an `alt.VConcatChart` when
 `risk_table=True`). It renders interactively in notebooks and browsers, and you keep composing
 it with Altair's API. Nothing about the figure is locked down.
 :::
@@ -162,8 +162,8 @@ it with Altair's API. Nothing about the figure is locked down.
 ::: {.callout-tip}
 ## Saving figures
 
-Call `save` on the returned chart. Use `chart.save("survival.html")` for the interactive
-version, or `chart.save("survival.png")` (also `.svg`, `.pdf`) for a static image — static
+Call `save()` on the returned chart. Use `chart.save("survival.html")` for the interactive
+version, or `chart.save("survival.png")` (also `.svg`, `.pdf`) for a static image. Static
 export uses `vl-convert`, which ships with the `altair` extra.
 :::
 
@@ -181,10 +181,71 @@ The forest plot arranges estimates vertically, one per row, with the interval sh
 and the point estimate as a dot. A reference line (usually at 1 for ratios, 0 for differences)
 marks the boundary between protective and harmful effects.
 
-### Preparing forest plot data
+### Cox model forest plots with `plot_forest`
 
-To create a forest plot, pass point estimates with their confidence intervals directly to
-`forest_plot()`. The function handles log-transformation for ratios or linear scales for
+The easiest way to produce a forest plot from a fitted Cox model is `plot_forest()`. Pass the
+fitted `CoxPH` object directly; the function extracts hazard ratios, confidence intervals, and
+p-values automatically and draws an interactive Altair chart with a log-scaled x-axis and a
+dashed reference line at HR = 1.
+
+```{python}
+lung = gw.load_dataset("lung", backend="polars")
+
+y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+cox = gw.CoxPH().fit(y, lung[["age", "sex", "ph.ecog"]])
+
+gw.plot_forest(cox)
+```
+
+Hazard ratios below 1 indicate a reduced hazard relative to the reference (e.g. sex = 2,
+female, has a lower hazard than male), and the position of the CI relative to the reference
+line shows whether the effect is statistically distinguishable from zero at the chosen
+confidence level. The tooltip on each row shows the formatted "HR (lower–upper)" text and the
+p-value.
+
+### Renaming terms for display
+
+Column names from the data often need to be rewritten for a publication figure. Pass
+`term_labels=` as a dict mapping internal names to display labels. Only the terms you list are
+renamed; the rest keep their original names.
+
+```{python}
+gw.plot_forest(
+    cox,
+    term_labels={
+        "age": "Age (years)",
+        "sex": "Female vs. Male",
+        "ph.ecog": "ECOG PS (0–4)",
+    },
+    title="Cox model: NCCTG Lung Cancer",
+)
+```
+
+### Subgroup forest plots
+
+`plot_forest()` also accepts any tidy DataFrame with `term`, `estimate`, `ci_lower`, and
+`ci_upper` columns. This makes it straightforward to build subgroup forest plots where you
+have already assembled the estimates (for example, by fitting one Cox model per subgroup and
+calling `gw.tidy()` on each, then stacking the results).
+
+```{python}
+import pandas as pd
+
+subgroups = pd.DataFrame({
+    "term": ["Age < 60", "Age ≥ 60", "Male", "Female", "ECOG 0", "ECOG 1+"],
+    "estimate": [0.72, 0.91, 0.88, 0.68, 0.60, 0.95],
+    "ci_lower": [0.51, 0.74, 0.69, 0.50, 0.42, 0.78],
+    "ci_upper": [1.01, 1.12, 1.12, 0.92, 0.86, 1.16],
+})
+
+gw.plot_forest(subgroups, title="Subgroup Analysis")
+```
+
+### Preparing forest plot data manually
+
+To create a forest plot from raw arrays (useful for any estimates that do not come from a
+greenwood model), pass point estimates and confidence intervals directly to `forest_plot()`.
+The function handles log-transformation for ratios or leaves values on a linear scale for
 differences.
 
 **Hazard ratios (log scale):**
@@ -214,17 +275,7 @@ gw.forest_plot(
 )
 ```
 
-### Drawing the forest plot
-
-The examples above create interactive Altair charts directly. Each estimate is a row with a
-colored dot (the point estimate) and a line to the confidence interval bounds. The vertical
-reference line marks the null hypothesis (HR = 1 or difference = 0). If a confidence interval
-does not cross the reference line, the effect is statistically significant.
-
-### Customizing forest plots
-
-Like `survival_plot()`, `forest_plot()` returns an Altair chart, so you can refine it with
-Altair's API:
+Like `survival_plot()`, `forest_plot()` returns an Altair chart:
 
 ```{python}
 gw.forest_plot(
