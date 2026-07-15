@@ -1,8 +1,9 @@
 """Backend-agnostic helpers shared by the Altair and plotnine visualization backends.
 
-These build plain arrays and dicts of columns from a fitted `KaplanMeier` — the numbers a
-survival plot is drawn from — without importing any plotting library. `get_risk_table_frame` is the
-one public function here; it is re-exported at the top level as `greenwood.get_risk_table_frame`.
+These build plain arrays and dicts of columns from a fitted `KaplanMeier` (the numbers a
+survival plot is drawn from) without importing any plotting library. `get_risk_table_frame()`
+is the one public function here; it is re-exported at the top level as
+`greenwood.get_risk_table_frame`.
 """
 
 from __future__ import annotations
