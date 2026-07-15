@@ -37,9 +37,11 @@ from .viz import (
     cif_plot,
     forest_plot,
     get_risk_table_frame,
+    plot_forest,
     plot_survival,
     risk_table,
     survival_plot,
+    theme_forest,
 )
 
 try:
@@ -84,6 +86,8 @@ __all__ = [
     "risk_table",
     "get_risk_table_frame",
     "forest_plot",
+    "plot_forest",
+    "theme_forest",
     "cif_plot",
     "load_dataset",
     "available_datasets",
