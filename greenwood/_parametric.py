@@ -468,7 +468,7 @@ class AFT:
         (via `newdata`) and the type of prediction desired. Pass `newdata=None` to predict
         for the training data (fitted subjects).
 
-        Three prediction types are available:
+        Six prediction types are available:
 
         1. **Linear predictor** (`type="lp"`): the log-time location $X\beta$, showing how
            covariates shift the log-survival time distribution.
