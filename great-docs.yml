@@ -115,7 +115,6 @@ reference:
     contents:
       - plot_survival
       - plot_forest
-      - forest_plot
       - cif_plot
       - risk_table
 
