@@ -220,7 +220,7 @@ def _stratified_rmst_group_values(
 
 
 def _rmst_group_values(
-    surv: Surv, tau: float, group: Any, strata: Any | None = None
+    surv: Surv, tau: float, group: Any
 ) -> tuple[dict[Any, tuple[float, float]], list[Any]]:
     """Compute RMST and SE for each group.
 
