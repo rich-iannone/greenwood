@@ -15,7 +15,7 @@ from greenwood.viz._forest import (
 )
 
 # ---------------------------------------------------------------------------
-# plot_forest — helpers
+# plot_forest(): helpers
 # ---------------------------------------------------------------------------
 
 
@@ -36,7 +36,7 @@ def test_fmt_pvalue_large() -> None:
 
 
 # ---------------------------------------------------------------------------
-# plot_forest — _extract_forest_frame with CoxPH
+# plot_forest(): _extract_forest_frame with CoxPH
 # ---------------------------------------------------------------------------
 
 
@@ -135,7 +135,7 @@ def test_extract_from_invalid_type_raises() -> None:
 
 
 # ---------------------------------------------------------------------------
-# plot_forest — Altair backend (default)
+# plot_forest(): Altair backend (default)
 # ---------------------------------------------------------------------------
 
 
@@ -188,7 +188,7 @@ def test_plot_forest_altair_three_terms(three_term_cox: CoxPH) -> None:
 
 
 # ---------------------------------------------------------------------------
-# plot_forest — plotnine backend
+# plot_forest(): plotnine backend
 # ---------------------------------------------------------------------------
 
 
@@ -218,7 +218,7 @@ def test_plot_forest_plotnine_composable(lung_cox: CoxPH) -> None:
 
 
 # ---------------------------------------------------------------------------
-# plot_forest — invalid backend
+# plot_forest(): invalid backend
 # ---------------------------------------------------------------------------
 
 
@@ -228,7 +228,7 @@ def test_plot_forest_invalid_backend_raises(lung_cox: CoxPH) -> None:
 
 
 # ---------------------------------------------------------------------------
-# theme_forest
+# theme_forest()
 # ---------------------------------------------------------------------------
 
 
