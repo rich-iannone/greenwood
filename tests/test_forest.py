@@ -10,8 +10,8 @@ from greenwood import CoxPH, Surv
 from greenwood.viz._forest import (
     _extract_forest_frame,
     _fmt_pvalue,
-    _forest_plot_data,
     _forest_plot,
+    _forest_plot_data,
     plot_forest,
     theme_forest,
 )
@@ -308,7 +308,7 @@ def test_extract_from_invalid_type_raises() -> None:
 
 
 def test_plot_forest_returns_altair_chart(lung_cox: CoxPH) -> None:
-    altair = pytest.importorskip("altair")
+    pytest.importorskip("altair")
     chart = plot_forest(lung_cox)
     assert hasattr(chart, "to_dict")
 

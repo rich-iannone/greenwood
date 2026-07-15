@@ -654,8 +654,10 @@ def _plot_forest_altair(
 
     # Format text columns for tooltip
     display["hr_ci"] = [
-        f"{e:.2f} ({l:.2f}\u2013{u:.2f})"
-        for e, l, u in zip(display["estimate"], display["ci_lower"], display["ci_upper"])
+        f"{e:.2f} ({lo:.2f}\u2013{u:.2f})"
+        for e, lo, u in zip(
+            display["estimate"], display["ci_lower"], display["ci_upper"], strict=True
+        )
     ]
     if has_pvalue:
         display["p_fmt"] = [_fmt_pvalue(p) for p in display["p_value"]]
@@ -672,7 +674,10 @@ def _plot_forest_altair(
         x_axis = alt.Axis(
             values=axis_values,
             labelExpr="{"
-            + ", ".join(f'"{v:.3f}": "{l}"' for v, l in zip(axis_values, axis_labels))
+            + ", ".join(
+                f'"{v:.3f}": "{lbl}"'
+                for v, lbl in zip(axis_values, axis_labels, strict=True)
+            )
             + "}[format(datum.value, '.3f')]",
         )
     else:
