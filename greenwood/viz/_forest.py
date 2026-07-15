@@ -460,3 +460,127 @@ def theme_forest() -> Any:
     )
 
 
+def plot_forest(
+    result: Any,
+    *,
+    exponentiate: bool = True,
+    title: str | None = None,
+    term_labels: dict[str, str] | None = None,
+    xlab: str | None = None,
+    backend: Literal["altair", "plotnine"] = "altair",
+    width: int = 600,
+    height: int = 400,
+) -> Any:
+    r"""Forest plot of hazard ratios (or other contrasts) with confidence intervals.
+
+    Accepts a fitted `~greenwood.CoxPH` object or any tidy DataFrame that contains
+    `term`, `estimate`, `ci_lower` (or `conf_low`), and `ci_upper` (or `conf_high`)
+    columns. The latter supports subgroup forest plots where you already have the
+    summary estimates (e.g., from running Cox per subgroup and calling `~greenwood.tidy`
+    on each).
+
+    Parameters
+    ----------
+    result
+        A fitted `CoxPH` result object, or a tidy DataFrame with one row per term.
+    exponentiate
+        When *result* is a `CoxPH` object: if `True` (default) plot hazard ratios on a
+        log scale with a reference line at HR = 1; if `False` plot log-hazard coefficients
+        on a linear scale with a reference line at 0. Ignored when *result* is a DataFrame.
+    title
+        Plot title. Defaults to `None` (no title).
+    term_labels
+        Optional mapping from internal term names to display labels, e.g.
+        `{"age": "Age (years)", "sex": "Female vs. Male"}`. Only the terms listed are
+        renamed; others keep their original names.
+    xlab
+        X-axis label. Defaults to `"Hazard Ratio"` when *exponentiate* is `True` and
+        `"log Hazard Ratio"` otherwise.
+    backend
+        Plotting backend: `"altair"` (default, interactive) or `"plotnine"`
+        (composable ggplot2-style object).
+    width
+        Plot width in pixels (default 600). Altair only.
+    height
+        Plot height in pixels (default 400). Altair only.
+
+    Returns
+    -------
+    altair.Chart or plotnine.ggplot
+        A composable chart object. Add layers, scales, or themes using the `+` operator
+        (plotnine) or `.properties()` / `.interactive()` (Altair).
+
+    Examples
+    --------
+    Fit a Cox model and draw a forest plot of hazard ratios:
+
+    ```{python}
+    import greenwood as gw
+
+    lung = gw.load_dataset("lung", backend="polars")
+    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+    cox = gw.CoxPH().fit(y, lung[["age", "sex", "ph_ecog"]])
+
+    gw.plot_forest(cox)
+    ```
+
+    Rename terms for publication display:
+
+    ```{python}
+    gw.plot_forest(
+        cox,
+        term_labels={"age": "Age (years)", "sex": "Female vs. Male", "ph_ecog": "ECOG PS"},
+        title="Cox Model — Lung Cancer",
+    )
+    ```
+
+    Use a plotnine backend for a static, composable ggplot object:
+
+    ```{python}
+    gw.plot_forest(cox, backend="plotnine") + gw.theme_forest()
+    ```
+
+    Build a subgroup forest plot from a tidy DataFrame:
+
+    ```{python}
+    import pandas as pd
+
+    subgroups = pd.DataFrame({
+        "term": ["Age < 60", "Age ≥ 60", "Male", "Female"],
+        "estimate": [0.72, 0.91, 0.85, 0.68],
+        "ci_lower": [0.51, 0.74, 0.68, 0.50],
+        "ci_upper": [1.01, 1.12, 1.06, 0.92],
+    })
+    gw.plot_forest(subgroups)
+    ```
+    """
+    df = _extract_forest_frame(result, exponentiate=exponentiate, term_labels=term_labels)
+
+    use_log = exponentiate and not (
+        hasattr(result, "__dataframe__") or isinstance(result, dict)
+    )
+    vline_x = 1.0 if use_log else 0.0
+    x_label = xlab or ("Hazard Ratio" if use_log else "log Hazard Ratio")
+
+    if backend == "altair":
+        return _plot_forest_altair(
+            df,
+            use_log=use_log,
+            vline_x=vline_x,
+            x_label=x_label,
+            title=title,
+            width=width,
+            height=height,
+        )
+    elif backend == "plotnine":
+        return _plot_forest_plotnine(
+            df,
+            use_log=use_log,
+            vline_x=vline_x,
+            x_label=x_label,
+            title=title,
+        )
+    else:
+        raise ValueError(f"backend must be 'altair' or 'plotnine', got {backend!r}")
+
+
