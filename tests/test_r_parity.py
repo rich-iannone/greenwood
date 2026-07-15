@@ -157,9 +157,7 @@ def test_rmst_twogroup_matches_r() -> None:
     assert_allclose_to_r(result.se1, fix["se1"], what="rmst twogroup lung se1")
     assert_allclose_to_r(result.se2, fix["se2"], what="rmst twogroup lung se2")
     assert_allclose_to_r(result.estimate, fix["difference"], what="rmst twogroup lung difference")
-    assert_allclose_to_r(
-        result.se, fix["se_difference"], what="rmst twogroup lung se_difference"
-    )
+    assert_allclose_to_r(result.se, fix["se_difference"], what="rmst twogroup lung se_difference")
 
 
 def test_rmst_twogroup_stratified_matches_r() -> None:
@@ -183,9 +181,7 @@ def test_rmst_twogroup_stratified_matches_r() -> None:
     assert_allclose_to_r(
         result.statistic, fix["statistic"], atol=1e-6, what="stratified rmst z-statistic"
     )
-    assert_allclose_to_r(
-        result.p_value, fix["p_value"], atol=1e-6, what="stratified rmst p-value"
-    )
+    assert_allclose_to_r(result.p_value, fix["p_value"], atol=1e-6, what="stratified rmst p-value")
 
 
 # -- Log-rank / G-rho against survdiff ------------------------------------------
