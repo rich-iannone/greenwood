@@ -241,52 +241,33 @@ subgroups = pd.DataFrame({
 gw.plot_forest(subgroups, title="Subgroup Analysis")
 ```
 
-### Preparing forest plot data manually
+### Explicit scale control
 
-To create a forest plot from raw arrays (useful for any estimates that do not come from a
-greenwood model), pass point estimates and confidence intervals directly to `forest_plot()`.
-The function handles log-transformation for ratios or leaves values on a linear scale for
-differences.
-
-**Hazard ratios (log scale):**
+When passing a DataFrame, the scale defaults to linear. Pass `scale="log"` for a DataFrame
+of hazard ratios, or `scale="linear"` for RMST differences and other contrasts.
 
 ```{python}
-gw.forest_plot(
-    estimates=[0.82, 0.95, 1.0],
-    ci_lower=[0.68, 0.76, 0.85],
-    ci_upper=[0.99, 1.18, 1.18],
-    labels=["Drug A", "Drug B", "Reference"],
-    scale="log",
-    title="Hazard Ratios: Treatment vs. Reference"
-)
+# Hazard ratios in a DataFrame: use scale="log"
+import pandas as pd
+
+hr_df = pd.DataFrame({
+    "term": ["Drug A", "Drug B", "Reference"],
+    "estimate": [0.82, 0.95, 1.0],
+    "ci_lower": [0.68, 0.76, 0.85],
+    "ci_upper": [0.99, 1.18, 1.18],
+})
+gw.plot_forest(hr_df, scale="log", title="Hazard Ratios: Treatment vs. Reference")
 ```
 
-**RMST differences (linear scale):**
-
 ```{python}
-gw.forest_plot(
-    estimates=[45, 25, 0],
-    ci_lower=[-10, -20, -30],
-    ci_upper=[95, 70, 30],
-    labels=["Drug A", "Drug B", "Reference"],
-    scale="linear",
-    reference_line=0,
-    title="RMST Differences vs. Reference"
-)
-```
-
-Like `survival_plot()`, `forest_plot()` returns an Altair chart:
-
-```{python}
-gw.forest_plot(
-    estimates=[0.82, 0.95, 1.0],
-    ci_lower=[0.68, 0.76, 0.85],
-    ci_upper=[0.99, 1.18, 1.18],
-    labels=["Drug A", "Drug B", "Reference"],
-    scale="log",
-).properties(
-    title="Treatment Effect on Survival", width=500, height=300
-)
+# RMST differences: linear scale (the default for DataFrames)
+rmst_df = pd.DataFrame({
+    "term": ["Drug A", "Drug B"],
+    "estimate": [45, 25],
+    "ci_lower": [-10, -20],
+    "ci_upper": [95, 70],
+})
+gw.plot_forest(rmst_df, title="RMST Differences vs. Placebo")
 ```
 
 ## Cumulative incidence plots
