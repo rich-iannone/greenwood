@@ -138,6 +138,87 @@ def _subset_surv(surv: Surv, mask: npt.NDArray[np.bool_]) -> Surv:
     raise NotImplementedError(f"_subset_surv does not support Surv type {surv.type.value!r}")
 
 
+def _stratified_rmst_group_values(
+    surv: Surv,
+    tau: float,
+    group: Any,
+    strata: Any,
+    label1: Any,
+    label2: Any,
+) -> tuple[float, float, float, float]:
+    """Return inverse-variance-pooled (rmst1, se1, rmst2, se2) across strata.
+
+    Per-stratum differences are pooled with inverse-variance weights based on the
+    variance of the difference (`var_s = se1_s^2 + se2_s^2`). This matches the
+    standard stratified RMST estimator (e.g. survRM2):
+
+        w_s     = 1 / (se1_s^2 + se2_s^2)
+        W       = sum(w_s)
+        rmst1   = sum(w_s * rmst1_s) / W          (consistent display value)
+        rmst2   = sum(w_s * rmst2_s) / W          (consistent display value)
+        se_k    = sqrt(sum(w_s^2 * se_k_s^2)) / W (propagated SE)
+
+    Strata where either group is absent are skipped.
+    """
+    from ._surv import _to_1d_array
+
+    group_arr = _to_1d_array(group, dtype=object)
+    strata_arr = _to_1d_array(strata, dtype=object)
+    strata_levels = sorted(set(strata_arr.tolist()), key=lambda v: (str(type(v)), v))
+
+    rmst1_vals: list[float] = []
+    se1_vals: list[float] = []
+    rmst2_vals: list[float] = []
+    se2_vals: list[float] = []
+
+    for s in strata_levels:
+        s_mask = strata_arr == s
+        s_group = group_arr[s_mask]
+        present = set(s_group.tolist())
+        if label1 not in present or label2 not in present:
+            continue  # Skip strata that lack one of the two groups
+
+        surv_sub = _subset_surv(surv, s_mask)
+        rmst_dict, _ = _rmst_group_values(surv_sub, tau, s_group)
+
+        rmst1_s, se1_s = rmst_dict[label1]
+        rmst2_s, se2_s = rmst_dict[label2]
+
+        if se1_s <= 0 or se2_s <= 0:
+            continue  # Degenerate stratum (all events at one time point)
+
+        rmst1_vals.append(rmst1_s)
+        se1_vals.append(se1_s)
+        rmst2_vals.append(rmst2_s)
+        se2_vals.append(se2_s)
+
+    if not rmst1_vals:
+        raise ValueError(
+            "No usable strata found: each stratum must contain both group levels with "
+            "positive standard errors."
+        )
+
+    se1_arr = np.array(se1_vals)
+    se2_arr = np.array(se2_vals)
+    rmst1_arr = np.array(rmst1_vals)
+    rmst2_arr = np.array(rmst2_vals)
+
+    # Weights based on variance of the per-stratum difference
+    var_diff = se1_arr**2 + se2_arr**2
+    w = 1.0 / var_diff
+    W = float(w.sum())
+
+    # Pooled RMST display values (same weights for both groups → difference is consistent)
+    rmst1_pooled = float(np.dot(w, rmst1_arr) / W)
+    rmst2_pooled = float(np.dot(w, rmst2_arr) / W)
+
+    # Propagated SEs using the difference-based weights
+    se1_pooled = float(np.sqrt(np.dot(w**2, se1_arr**2)) / W)
+    se2_pooled = float(np.sqrt(np.dot(w**2, se2_arr**2)) / W)
+
+    return rmst1_pooled, se1_pooled, rmst2_pooled, se2_pooled
+
+
 def _rmst_group_values(
     surv: Surv, tau: float, group: Any, strata: Any | None = None
 ) -> tuple[dict[Any, tuple[float, float]], list[Any]]:
