@@ -423,3 +423,114 @@ def test_pairwise_rmst_test_invalid_correction() -> None:
 
     with pytest.raises(ValueError, match="Unknown correction"):
         pairwise_rmst_test(y, tau=15, group=group, correction="invalid")
+
+
+# -- Stratified RMST -----------------------------------------------------------
+
+
+def test_rmst_test_stratified_sets_flag() -> None:
+    """Passing strata sets stratified=True on the result."""
+    time = [1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8]
+    event = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+    group = ["a", "a", "a", "a", "b", "b", "b", "b", "a", "a", "a", "a", "b", "b", "b", "b"]
+    strata = ["x", "x", "x", "x", "x", "x", "x", "x", "y", "y", "y", "y", "y", "y", "y", "y"]
+    y = Surv.right(time, event)
+
+    result = rmst_test(y, tau=10, group=group, strata=strata)
+
+    assert result.stratified is True
+    assert "Stratified" in result.method
+
+
+def test_rmst_test_unstratified_flag_absent() -> None:
+    """Without strata, stratified flag is False."""
+    time = [1, 2, 3, 4, 5, 6, 7, 8]
+    event = [1, 1, 1, 1, 1, 1, 1, 1]
+    group = ["a", "a", "a", "a", "b", "b", "b", "b"]
+    y = Surv.right(time, event)
+
+    result = rmst_test(y, tau=10, group=group)
+
+    assert result.stratified is False
+
+
+def test_rmst_test_stratified_finite_output() -> None:
+    """Stratified RMST produces finite, valid statistics."""
+    time = [1, 2, 3, 4, 5, 6, 7, 8, 2, 3, 4, 5, 6, 7, 8, 9]
+    event = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+    group = ["a", "a", "a", "a", "b", "b", "b", "b", "a", "a", "a", "a", "b", "b", "b", "b"]
+    strata = ["s1", "s1", "s1", "s1", "s1", "s1", "s1", "s1",
+              "s2", "s2", "s2", "s2", "s2", "s2", "s2", "s2"]
+    y = Surv.right(time, event)
+
+    result = rmst_test(y, tau=10, group=group, strata=strata)
+
+    assert np.isfinite(result.estimate)
+    assert np.isfinite(result.se)
+    assert np.isfinite(result.statistic)
+    assert 0.0 <= result.p_value <= 1.0
+    assert result.lower_ci < result.upper_ci
+
+
+def test_rmst_test_stratified_wider_ci_than_within_stratum() -> None:
+    """Stratified RMST should produce valid CI bounds wider than zero."""
+    # Two strata where group b is slower in both
+    time = [1, 2, 1, 2, 5, 6, 5, 6, 3, 4, 3, 4, 7, 8, 7, 8]
+    event = [1] * 16
+    group = ["a", "a", "a", "a", "b", "b", "b", "b"] * 2
+    strata = ["s1"] * 8 + ["s2"] * 8
+    y = Surv.right(time, event)
+
+    result = rmst_test(y, tau=10, group=group, strata=strata)
+
+    assert result.lower_ci < result.estimate < result.upper_ci
+    assert result.se > 0
+
+
+def test_rmst_test_stratified_same_both_strata_near_zero() -> None:
+    """When both strata show identical groups, pooled difference is near zero."""
+    time = [1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4]
+    event = [1] * 16
+    group = ["a", "a", "a", "a", "b", "b", "b", "b"] * 2
+    strata = ["s1"] * 8 + ["s2"] * 8
+    y = Surv.right(time, event)
+
+    result = rmst_test(y, tau=10, group=group, strata=strata)
+
+    assert result.estimate == pytest.approx(0.0, abs=1e-9)
+    assert result.p_value == pytest.approx(1.0)
+
+
+def test_rmst_test_stratified_missing_group_in_stratum_skipped() -> None:
+    """Strata lacking one group are silently skipped."""
+    # Stratum s2 only has group "a" — should be skipped; result from s1 only.
+    time = [1, 2, 3, 4, 5, 6, 7, 8,   # s1: both groups
+            9, 10, 11, 12]              # s2: only group "a"
+    event = [1] * 12
+    group = ["a", "a", "a", "a", "b", "b", "b", "b",
+             "a", "a", "a", "a"]
+    strata = ["s1", "s1", "s1", "s1", "s1", "s1", "s1", "s1",
+              "s2", "s2", "s2", "s2"]
+    y = Surv.right(time, event)
+
+    result = rmst_test(y, tau=15, group=group, strata=strata)
+
+    # Result should come from s1 only (stratum s2 is skipped)
+    result_unstrat = rmst_test(
+        Surv.right(time[:8], event[:8]), tau=15, group=group[:8]
+    )
+    assert result.estimate == pytest.approx(result_unstrat.estimate)
+
+
+def test_rmst_test_stratified_no_valid_strata_raises() -> None:
+    """Raises when no stratum contains both groups."""
+    time = [1, 2, 3, 4, 5, 6, 7, 8]
+    event = [1] * 8
+    group = ["a", "a", "a", "a", "b", "b", "b", "b"]
+    # Each stratum has only one group
+    strata = ["s1", "s1", "s1", "s1", "s2", "s2", "s2", "s2"]
+    y = Surv.right(time, event)
+
+    with pytest.raises(ValueError, match="No usable strata"):
+        rmst_test(y, tau=10, group=group, strata=strata)
+
