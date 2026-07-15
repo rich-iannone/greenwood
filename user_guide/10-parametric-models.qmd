@@ -295,6 +295,147 @@ Confidence intervals are valuable for:
 The width of the confidence interval grows as covariate values move further from the training
 mean, reflecting increased model uncertainty in extrapolated regions.
 
+## Mean survival and expected remaining lifetime
+
+Survival curves and quantiles describe what happens at specific time points, but sometimes
+you want a single summary number for each subject: how long are they expected to survive
+overall? How much longer should a censored subject expect to live given they have already
+reached their last follow-up time? These questions are answered by mean survival predictions
+and conditional expectations.
+
+### Unconditional mean survival
+
+`type="mean"` returns the expected survival time $E[T]$ for each subject under the fitted
+distribution. Each distribution has a closed-form formula, so the calculation is exact and
+fast:
+
+- **Weibull/Exponential**: $E[T] = e^{\mu}\,\Gamma(1+\sigma)$
+- **Log-normal**: $E[T] = e^{\mu + \sigma^2/2}$
+- **Log-logistic** ($\sigma < 1$): $E[T] = e^{\mu}\,\pi\sigma / \sin(\pi\sigma)$
+
+where $\mu = X\beta$ is the log-time location for each subject and $\sigma$ is the scale
+parameter.
+
+```{python}
+lung = gw.load_dataset("lung", backend="polars")
+
+y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+aft = gw.AFT("lognormal").fit(y, lung[["age", "sex"]])
+
+newdata = pd.DataFrame({"age": [50, 70], "sex": [1, 1]})
+
+aft.predict(newdata, type="mean")
+```
+
+The returned array has one value per subject. The younger subject has a substantially higher
+expected survival time, as expected.
+
+::: {.callout-note}
+## Log-logistic mean only exists when $\sigma < 1$
+
+For log-logistic, the mean is only finite when $\sigma < 1$. When $\sigma \ge 1$ the
+distribution has a heavy enough right tail that the mean diverges. In that case
+`type="mean"` returns `np.inf`. Use `type="rmst"` with a finite restriction time as an
+alternative summary.
+:::
+
+### Conditional mean survival given landmark time
+
+In follow-up studies, subjects are often censored at different times. For a censored subject
+who has already survived to time $t_0$, the relevant question is not "how long will they
+survive in total?" but "how much longer can they expect to live?" This is the conditional
+mean $E[T \mid T > t_0]$, computed by passing `conditional_after`:
+
+```{python}
+# Conditional mean for subjects who have already survived 365 days
+aft.predict(newdata, type="mean", conditional_after=365)
+```
+
+Compare with the unconditional mean to see how much being alive at one year updates the
+prognosis. The conditioning time can also be a per-subject array. This is useful when each
+subject has a different follow-up time:
+
+```{python}
+import numpy as np
+
+# Each subject has reached their own last-known follow-up time
+landmark_times = np.array([200.0, 400.0])
+
+aft.predict(newdata, type="mean", conditional_after=landmark_times)
+```
+
+### Expected remaining lifetime
+
+`type="mean_remaining"` computes the expected remaining lifetime $E[T - t_0 \mid T > t_0]$
+directly. This is how much longer a subject is expected to survive past their landmark time:
+
+```{python}
+# How much longer do these subjects expect to survive past their last follow-up?
+remaining = aft.predict(newdata, type="mean_remaining", conditional_after=landmark_times)
+remaining
+```
+
+The relationship between the two quantities is exact:
+
+$$E[T \mid T > t_0] = t_0 + E[T - t_0 \mid T > t_0]$$
+
+so you can recover either from the other. The remaining-lifetime form is often more
+interpretable in a clinical setting: "given that you are alive today, you can expect
+approximately X more months."
+
+::: {.callout-tip}
+## The memoryless exponential
+
+Under an exponential (constant-hazard) model, $E[T - t_0 \mid T > t_0] = E[T]$ for
+all $t_0$. The expected remaining life never changes, regardless of how long the
+subject has already survived (the defining property of the exponential distribution).
+:::
+
+## Restricted mean survival time
+
+The restricted mean survival time (RMST) at horizon $\tau$ is the area under the survival
+curve from 0 to $\tau$:
+
+$$\text{RMST}(\tau) = E[\min(T, \tau)] = \int_0^\tau S(t)\,dt$$
+
+It answers the question "on average, how many days of event-free follow-up does a subject
+accumulate within the first $\tau$ days?" Unlike the mean, it is always finite regardless of
+the distribution's tail behaviour, and it avoids the need to extrapolate beyond the
+observation window.
+
+Use `type="rmst"` with the `tau` argument:
+
+```{python}
+# Restricted mean survival time within one year (365 days)
+aft.predict(newdata, type="rmst", tau=365)
+```
+
+The result is one RMST value per subject, reflecting how covariate differences shift the
+entire survival curve within the follow-up window.
+
+Because RMST is bounded by $\tau$, it is straightforward to compare predictions across
+subjects or models on an absolute scale (days, or whatever the time unit is). Comparing
+RMST values at several horizons also reveals how quickly a covariate effect unfolds:
+
+```{python}
+horizons = [180, 365, 730]
+
+for tau in horizons:
+    rmst = aft.predict(newdata, type="rmst", tau=tau)
+    print(f"tau={tau:4d}: subject_1={rmst[0]:.1f}  subject_2={rmst[1]:.1f}")
+```
+
+::: {.callout-note}
+## Subject-specific vs. group RMST
+
+The `type="rmst"` prediction from `AFT.predict()` gives a subject-specific RMST for
+covariate-adjusted predictions from a parametric model. Greenwood also provides
+`gw.rmst_test()` and `gw.rmst_diff()` for nonparametric group comparisons of RMST from
+Kaplan-Meier curves. The two approaches are complementary: parametric RMST leverages
+distributional assumptions for individual-level predictions; nonparametric RMST makes no
+assumptions and tests group-level differences.
+:::
+
 ## Next steps
 
 You can now fit, compare, and predict from parametric survival models.
