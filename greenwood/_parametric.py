@@ -702,7 +702,66 @@ class AFT:
             else:
                 cols.update({f"subject_{i + 1}": surv[:, i] for i in range(surv.shape[1])})
             return to_dataframe(cols, format=format)
-        raise ValueError(f"Unknown predict type {type!r}; use 'lp', 'quantile', or 'survival'.")
+        if type == "mean":
+            if conditional_after is None:
+                return _mean_survival_aft(self.dist, mu, sigma)
+            c = np.asarray(conditional_after, dtype=float)
+            if c.ndim == 0:
+                c = np.full(mu.shape[0], float(c))
+            if c.shape[0] != mu.shape[0]:
+                raise ValueError(
+                    "conditional_after must be a scalar or one value per subject."
+                )
+            with np.errstate(divide="ignore"):
+                zc = (np.log(np.where(c > 0.0, c, 1.0)) - mu) / sigma
+            _, log_s_c = _log_density_survival(self.dist, zc)
+            s_c = np.where(c > 0.0, np.exp(log_s_c), 1.0)
+            tail = _tail_partial_moment(self.dist, mu, sigma, c)
+            return c + tail / s_c
+        if type == "mean_remaining":
+            if conditional_after is None:
+                raise ValueError("type='mean_remaining' requires conditional_after.")
+            c = np.asarray(conditional_after, dtype=float)
+            if c.ndim == 0:
+                c = np.full(mu.shape[0], float(c))
+            if c.shape[0] != mu.shape[0]:
+                raise ValueError(
+                    "conditional_after must be a scalar or one value per subject."
+                )
+            with np.errstate(divide="ignore"):
+                zc = (np.log(np.where(c > 0.0, c, 1.0)) - mu) / sigma
+            _, log_s_c = _log_density_survival(self.dist, zc)
+            s_c = np.where(c > 0.0, np.exp(log_s_c), 1.0)
+            tail = _tail_partial_moment(self.dist, mu, sigma, c)
+            return tail / s_c
+        if type == "rmst":
+            if tau is None:
+                raise ValueError("type='rmst' requires tau.")
+            tau_val = float(tau)
+            if tau_val <= 0.0:
+                raise ValueError(f"tau must be positive, got {tau_val}.")
+            tau_arr = np.full_like(mu, tau_val)
+            if self.dist == "loglogistic" and sigma >= 1.0:
+                # E[T] = inf when sigma >= 1; integrate S from 0 to tau directly
+                from scipy.integrate import quad
+
+                out = np.empty_like(mu)
+                for i in range(mu.shape[0]):
+                    mu_i = float(mu[i])
+
+                    def _sf(t: float, _mu: float = mu_i) -> float:
+                        z = (np.log(t) - _mu) / sigma
+                        return float(logistic.sf(z))
+
+                    out[i], _ = quad(_sf, 0.0, tau_val, limit=200)
+                return out
+            return _mean_survival_aft(self.dist, mu, sigma) - _tail_partial_moment(
+                self.dist, mu, sigma, tau_arr
+            )
+        raise ValueError(
+            f"Unknown predict type {type!r}; use "
+            "'lp', 'quantile', 'survival', 'mean', 'mean_remaining', or 'rmst'."
+        )
 
     def _coefficient_columns(self) -> dict[str, Any]:
         return {
