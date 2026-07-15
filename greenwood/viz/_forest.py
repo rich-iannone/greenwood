@@ -338,3 +338,19 @@ def forest_plot(
     chart = (ci_lines + points + ref_line).properties(**props)
 
     return chart
+
+
+# ---------------------------------------------------------------------------
+# plot_forest — Cox-aware high-level wrapper
+# ---------------------------------------------------------------------------
+
+
+def _fmt_pvalue(p: float) -> str:
+    """Format a p-value for display in forest plot annotations."""
+    if p < 0.001:
+        return "<0.001"
+    if p < 0.01:
+        return f"{p:.3f}"
+    return f"{p:.2f}"
+
+
