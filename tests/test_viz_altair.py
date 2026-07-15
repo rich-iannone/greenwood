@@ -1,7 +1,7 @@
 """Tests for the Altair visualization backend.
 
 These need altair (the `altair` extra); the module is skipped when it is absent. No rendering
-engine is required — building the chart and serializing its Vega-Lite spec (`to_dict`)
+engine is required as building the chart and serializing its Vega-Lite spec (`to_dict`)
 validates it without pulling in Pandas or Matplotlib.
 """
 
