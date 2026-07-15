@@ -482,6 +482,19 @@ class AFT:
            having survived to a landmark time (`conditional_after`) for landmark-based
            predictions. With `ci=True`, confidence intervals are included.
 
+        4. **Mean** (`type="mean"`): the expected survival time $E[T]$ (unconditional) or the
+           conditional mean $E[T \mid T > t_0]$ when `conditional_after` is provided. Computed
+           via closed-form formulas for all distributions. Returns an array of shape
+           (n_subjects,).
+
+        5. **Mean remaining** (`type="mean_remaining"`): expected remaining lifetime
+           $E[T - t_0 \mid T > t_0]$ for subjects known to have survived past `t0`.
+           Requires `conditional_after`. Returns an array of shape (n_subjects,).
+
+        6. **RMST** (`type="rmst"`): restricted mean survival time $E[\min(T, \tau)]$ up to
+           the restriction time `tau`. Requires the `tau` argument. Returns an array of
+           shape (n_subjects,).
+
         Parameters
         ----------
         newdata
