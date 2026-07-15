@@ -114,7 +114,7 @@ reference:
     desc: Interactive survival curves, forest plots, and cumulative incidence visualizations with aligned numbers-at-risk tables.
     contents:
       - plot_survival
-      - forest_plot
+      - plot_forest
       - cif_plot
       - risk_table
 
