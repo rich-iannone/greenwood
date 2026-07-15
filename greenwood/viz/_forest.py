@@ -691,3 +691,45 @@ def _plot_forest_altair(
     return (ci_bars + points + ref_line).properties(**props)
 
 
+def _plot_forest_plotnine(
+    df: Any,
+    *,
+    use_log: bool,
+    vline_x: float,
+    x_label: str,
+    title: str | None,
+) -> Any:
+    """plotnine implementation of plot_forest."""
+    try:
+        import plotnine as p9
+    except ImportError as exc:
+        raise ImportError(
+            "plot_forest() with backend='plotnine' requires plotnine. "
+            "Install with `pip install greenwood[plotnine]`."
+        ) from exc
+
+    import pandas as pd
+
+    # Reverse order so first term is at top
+    plot_df = df.iloc[::-1].reset_index(drop=True)
+    # Make term an ordered categorical to lock the y-axis order
+    plot_df["term"] = pd.Categorical(plot_df["term"], categories=plot_df["term"].tolist(), ordered=True)
+
+    plot = (
+        p9.ggplot(plot_df, p9.aes(y="term", x="estimate"))
+        + p9.geom_errorbarh(
+            p9.aes(xmin="ci_lower", xmax="ci_upper"),
+            height=0.25,
+            color="#555555",
+        )
+        + p9.geom_point(size=3, color="#20558A")
+        + p9.geom_vline(xintercept=vline_x, linetype="dashed", color="#888888", alpha=0.8)
+        + p9.labs(x=x_label, y="", title=title or "")
+        + theme_forest()
+    )
+
+    if use_log:
+        plot = plot + p9.scale_x_log10()
+
+    return plot
+
