@@ -11,7 +11,7 @@ from greenwood.viz._forest import (
     _extract_forest_frame,
     _fmt_pvalue,
     _forest_plot_data,
-    forest_plot,
+    _forest_plot,
     plot_forest,
     theme_forest,
 )
@@ -146,7 +146,7 @@ def test_forest_plot_altair_basic() -> None:
     except ImportError:
         pytest.skip("altair not installed")
 
-    chart = forest_plot(
+    chart = _forest_plot(
         estimates=[0.85, 1.02],
         ci_lower=[0.71, 0.89],
         ci_upper=[1.01, 1.17],
@@ -160,7 +160,7 @@ def test_forest_plot_altair_basic() -> None:
 def test_forest_plot_backend_parameter() -> None:
     """Test forest_plot backend parameter validation."""
     with pytest.raises(ValueError, match="backend must be 'altair'"):
-        forest_plot(
+        _forest_plot(
             estimates=[0.85], ci_lower=[0.71], ci_upper=[1.01], scale="log", backend="invalid"
         )
 
@@ -174,7 +174,7 @@ def test_forest_plot_missing_altair_import() -> None:
 
     try:
         with pytest.raises(ImportError, match="altair"):
-            forest_plot(estimates=[0.85], ci_lower=[0.71], ci_upper=[1.01], scale="log")
+            _forest_plot(estimates=[0.85], ci_lower=[0.71], ci_upper=[1.01], scale="log")
     finally:
         if altair_backup is None:
             del sys.modules["altair"]
@@ -410,9 +410,25 @@ def test_theme_forest_returns_theme() -> None:
 # ---------------------------------------------------------------------------
 
 
+def test_plot_forest_altair_scale_log_dataframe(subgroup_df: pd.DataFrame) -> None:
+    """scale='log' on a DataFrame gives log-scale display."""
+    pytest.importorskip("altair")
+    chart = plot_forest(subgroup_df, scale="log")
+    assert hasattr(chart, "to_dict")
+    chart.to_dict()  # must not raise
+
+
+def test_plot_forest_altair_scale_linear_cox(lung_cox: CoxPH) -> None:
+    """scale='linear' overrides the CoxPH default of log."""
+    pytest.importorskip("altair")
+    chart = plot_forest(lung_cox, scale="linear")
+    assert hasattr(chart, "to_dict")
+
+
 def test_plot_forest_in_gw_namespace() -> None:
     assert hasattr(gw, "plot_forest")
     assert "plot_forest" in gw.__all__
+    assert not hasattr(gw, "forest_plot")  # consolidated into plot_forest
 
 
 def test_theme_forest_in_gw_namespace() -> None:
