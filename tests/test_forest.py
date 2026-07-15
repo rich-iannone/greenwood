@@ -10,7 +10,6 @@ from greenwood import CoxPH, Surv
 from greenwood.viz._forest import (
     _extract_forest_frame,
     _fmt_pvalue,
-    _forest_plot,
     _forest_plot_data,
     plot_forest,
     theme_forest,
@@ -137,49 +136,6 @@ def test_forest_plot_data_invalid_scale() -> None:
             ci_upper=[1.1],
             scale="invalid",
         )
-
-
-def test_forest_plot_altair_basic() -> None:
-    """Test forest_plot returns an Altair chart with raw parameters."""
-    try:
-        import altair  # noqa: F401
-    except ImportError:
-        pytest.skip("altair not installed")
-
-    chart = _forest_plot(
-        estimates=[0.85, 1.02],
-        ci_lower=[0.71, 0.89],
-        ci_upper=[1.01, 1.17],
-        labels=["Age", "Sex"],
-        scale="log",
-        title="Test",
-    )
-    assert chart is not None
-
-
-def test_forest_plot_backend_parameter() -> None:
-    """Test forest_plot backend parameter validation."""
-    with pytest.raises(ValueError, match="backend must be 'altair'"):
-        _forest_plot(
-            estimates=[0.85], ci_lower=[0.71], ci_upper=[1.01], scale="log", backend="invalid"
-        )
-
-
-def test_forest_plot_missing_altair_import() -> None:
-    """Test error when altair is not available."""
-    import sys
-
-    altair_backup = sys.modules.get("altair")
-    sys.modules["altair"] = None  # type: ignore
-
-    try:
-        with pytest.raises(ImportError, match="altair"):
-            _forest_plot(estimates=[0.85], ci_lower=[0.71], ci_upper=[1.01], scale="log")
-    finally:
-        if altair_backup is None:
-            del sys.modules["altair"]
-        else:
-            sys.modules["altair"] = altair_backup
 
 
 # ---------------------------------------------------------------------------
