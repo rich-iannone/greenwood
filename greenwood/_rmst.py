@@ -392,17 +392,16 @@ def rmst_test(
             "rmst_test supports two groups; use rmst_pairwise_test for multiple groups"
         )
 
-    if estimand not in {"difference", "ratio", "percentage_difference"}:
-        raise ValueError(
-            f"estimand must be 'difference', 'ratio', or 'percentage_difference', got {estimand!r}"
-        )
-
-    # Get RMST values and SEs for each group
-    rmst_dict, _ = _rmst_group_values(surv, tau, group, strata)
-
     label1, label2 = group_labels
     rmst1, se1 = rmst_dict[label1]
     rmst2, se2 = rmst_dict[label2]
+
+    # When strata are provided, replace per-group RMST values with the
+    # inverse-variance pooled estimates across strata.
+    if strata is not None:
+        rmst1, se1, rmst2, se2 = _stratified_rmst_group_values(
+            surv, tau, group, strata, label1, label2
+        )
 
     # Compute estimate and SE based on estimand
     z_critical = norm.ppf(1.0 - (1.0 - conf_level) / 2.0)
