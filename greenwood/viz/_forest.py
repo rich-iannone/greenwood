@@ -422,3 +422,41 @@ def _extract_forest_frame(
     return df
 
 
+def theme_forest() -> Any:
+    r"""A minimal plotnine theme for forest plots.
+
+    Returns a composable plotnine theme object suitable for forest plots of hazard ratios
+    or other contrasts. Horizontal grid lines are suppressed; the y-axis line is removed
+    so the term labels stand alone.
+
+    Returns
+    -------
+    plotnine.theme
+        A composable theme object. Add it to a `ggplot` with `+`.
+
+    Examples
+    --------
+    ```python
+    import greenwood as gw
+
+    lung = gw.load_dataset("lung", backend="polars")
+    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+    cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+
+    gw.plot_forest(cox, backend="plotnine") + gw.theme_forest()
+    ```
+    """
+    try:
+        import plotnine as p9
+    except ImportError as exc:  # pragma: no cover
+        raise ImportError(
+            "theme_forest() requires plotnine. Install with `pip install greenwood[plotnine]`."
+        ) from exc
+    return p9.theme_minimal() + p9.theme(
+        axis_line_y=p9.element_blank(),
+        panel_grid_minor=p9.element_blank(),
+        panel_grid_major_y=p9.element_blank(),
+        legend_position="none",
+    )
+
+
