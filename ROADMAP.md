@@ -11,15 +11,6 @@ public capability roadmap.
 
 Descriptive and exploratory features building on the core estimators.
 
-### RMST Comparisons
-
-Restricted mean survival time analysis between groups.
-
-- RMST differences with confidence intervals
-- Hypothesis tests for RMST equality
-- Ratio and percentage difference estimands
-- Stratified RMST comparisons
-
 ### AFT Model Extensions
 
 Advanced predictions and conditional inference for accelerated failure time (AFT) models.
