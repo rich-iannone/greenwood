@@ -306,7 +306,9 @@ def rmst_test(
         or `"percentage_difference"` ((RMST1 - RMST2) / RMST2 * 100).
     strata
         (Optional) Stratification variable for stratified RMST comparison. If provided,
-        RMST estimates are combined across strata before computing the test statistic.
+        per-group RMST estimates are computed separately within each stratum and then
+        combined using inverse-variance weights (Kaplan-Meier Greenwood variance).
+        Strata in which either group is absent are skipped.
     conf_level
         Confidence level for confidence intervals (the default is `0.95` for 95% CI).
 
