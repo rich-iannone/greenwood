@@ -127,6 +127,17 @@ class RMSTResult:
         )
 
 
+def _subset_surv(surv: Surv, mask: npt.NDArray[np.bool_]) -> Surv:
+    """Subset a Surv object by a boolean mask."""
+    from ._surv import Surv as _Surv
+
+    if surv.type.value == "right":
+        return _Surv.right(surv.stop[mask], surv.event[mask])
+    if surv.type.value == "counting":
+        return _Surv.counting(surv.entry[mask], surv.stop[mask], surv.event[mask])
+    raise NotImplementedError(f"_subset_surv does not support Surv type {surv.type.value!r}")
+
+
 def _rmst_group_values(
     surv: Surv, tau: float, group: Any, strata: Any | None = None
 ) -> tuple[dict[Any, tuple[float, float]], list[Any]]:
