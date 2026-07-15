@@ -16,7 +16,7 @@ from .._backends import to_dataframe
 if TYPE_CHECKING:
     pass
 
-__all__ = ["forest_plot"]
+__all__ = ["forest_plot", "plot_forest", "theme_forest"]
 
 Array = npt.NDArray[Any]
 
