@@ -614,6 +614,25 @@ class AFT:
         aft.predict(lung[["age", "sex"]][:2], type="survival", times=[180, 365],
                     ci=True, format="polars")
         ```
+
+        Unconditional mean survival time per subject:
+
+        ```{python}
+        aft.predict(lung[["age", "sex"]][:2], type="mean")
+        ```
+
+        Expected remaining lifetime given the subject has already survived 100 days:
+
+        ```{python}
+        aft.predict(lung[["age", "sex"]][:2], type="mean_remaining",
+                    conditional_after=100)
+        ```
+
+        Restricted mean survival time up to 365 days:
+
+        ```{python}
+        aft.predict(lung[["age", "sex"]][:2], type="rmst", tau=365)
+        ```
         """
         x = self._design(newdata)
         mu = x @ self.coef_
