@@ -554,6 +554,11 @@ class AFT:
             If `type="survival"`: a DataFrame with columns `time` (query times) and
             `subject_1`, `subject_2`, etc. containing survival probabilities at each time,
             optionally with `_lower` and `_upper` columns for confidence intervals.
+            If `type="mean"`: an array of shape (n_subjects,) with $E[T]$ or
+            $E[T \mid T > t_0]$.
+            If `type="mean_remaining"`: an array of shape (n_subjects,) with
+            $E[T - t_0 \mid T > t_0]$.
+            If `type="rmst"`: an array of shape (n_subjects,) with $E[\min(T, \tau)]$.
 
         Details
         -------
