@@ -222,8 +222,8 @@ def forest_plot(
           the reference line typically at 0.
 
     reference_line
-        Location of the reference line (e.g., 1 for HR on log scale, 0 for difference).
-        If `None`, defaults to 0 (which is log(1) for log scale).
+        Location of the reference line (e.g., `1` for HR on log scale, `0` for difference).
+        If `None`, defaults to `0` (which is log(1) for log scale).
     title
         Plot title. If `None`, no title.
     width
