@@ -19,7 +19,6 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import numpy.typing as npt
 from scipy.optimize import minimize
-from scipy.special import beta as _sp_beta
 from scipy.special import betainc as _sp_betainc
 from scipy.special import gamma as _sp_gamma
 from scipy.special import gammaincc as _sp_gammaincc
