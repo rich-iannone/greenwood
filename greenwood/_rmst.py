@@ -373,8 +373,13 @@ def rmst_test(
     result_ratio = gw.rmst_test(y, tau=365, group=lung["sex"], estimand="ratio")
     ```
     """
+    if estimand not in {"difference", "ratio", "percentage_difference"}:
+        raise ValueError(
+            f"estimand must be 'difference', 'ratio', or 'percentage_difference', got {estimand!r}"
+        )
+
     # Get RMST values and SEs for each group
-    rmst_dict, group_labels_ordered = _rmst_group_values(surv, tau, group, strata)
+    rmst_dict, group_labels_ordered = _rmst_group_values(surv, tau, group)
 
     # Sort group labels for consistent ordering
     group_labels = sorted(set(group_labels_ordered), key=lambda v: (str(type(v)), v))
