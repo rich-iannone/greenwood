@@ -119,6 +119,45 @@ write_json_fixture(
   "rmst"
 )
 
+# -- Two-group RMST comparison (lung, sex groups at tau=365) ------------------------
+
+rmst_twogroup_lung <- function() {
+  sf1 <- summary(survfit(Surv(time, status) ~ 1, data = lung[lung$sex == 1, ]), rmean = 365)$table
+  sf2 <- summary(survfit(Surv(time, status) ~ 1, data = lung[lung$sex == 2, ]), rmean = 365)$table
+  rmst1 <- unname(sf1["rmean"]); se1 <- unname(sf1["se(rmean)"])
+  rmst2 <- unname(sf2["rmean"]); se2 <- unname(sf2["se(rmean)"])
+
+  # Stratified by ph.ecog: inverse-variance pooling of per-stratum differences.
+  l_clean <- lung[!is.na(lung$ph.ecog), ]
+  strata_levels <- sort(unique(l_clean$ph.ecog))
+  d_vals <- numeric(0); var_vals <- numeric(0)
+  for (s in strata_levels) {
+    ls <- l_clean[l_clean$ph.ecog == s, ]
+    if (length(unique(ls$sex)) < 2) next
+    s1 <- summary(survfit(Surv(time, status) ~ 1, data = ls[ls$sex == 1, ]), rmean = 365)$table
+    s2 <- summary(survfit(Surv(time, status) ~ 1, data = ls[ls$sex == 2, ]), rmean = 365)$table
+    d_vals  <- c(d_vals,  s1["rmean"]        - s2["rmean"])
+    var_vals <- c(var_vals, s1["se(rmean)"]^2 + s2["se(rmean)"]^2)
+  }
+  w <- 1 / var_vals; W <- sum(w)
+
+  list(
+    tau = 365, group1 = 1, group2 = 2,
+    rmst1 = rmst1, se1 = se1, rmst2 = rmst2, se2 = se2,
+    difference = rmst1 - rmst2,
+    se_difference = sqrt(se1^2 + se2^2),
+    stratified = list(
+      strata_var  = "ph.ecog",
+      difference  = sum(w * d_vals) / W,
+      se          = sqrt(1 / W),
+      statistic   = (sum(w * d_vals) / W) / sqrt(1 / W),
+      p_value     = 2 * (1 - pnorm(abs((sum(w * d_vals) / W) / sqrt(1 / W))))
+    )
+  )
+}
+
+write_json_fixture(rmst_twogroup_lung(), "rmst_twogroup_lung")
+
 # -- Log-rank and G-rho (Fleming-Harrington) tests via survdiff ---------------------
 
 sd_fixture <- function(sd) {

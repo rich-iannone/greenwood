@@ -127,8 +127,100 @@ class RMSTResult:
         )
 
 
+def _subset_surv(surv: Surv, mask: npt.NDArray[np.bool_]) -> Surv:
+    """Subset a Surv object by a boolean mask."""
+    from ._surv import Surv as _Surv
+
+    if surv.type.value == "right":
+        return _Surv.right(surv.stop[mask], surv.event[mask])
+    if surv.type.value == "counting":
+        return _Surv.counting(surv.entry[mask], surv.stop[mask], surv.event[mask])
+    raise NotImplementedError(f"_subset_surv does not support Surv type {surv.type.value!r}")
+
+
+def _stratified_rmst_group_values(
+    surv: Surv,
+    tau: float,
+    group: Any,
+    strata: Any,
+    label1: Any,
+    label2: Any,
+) -> tuple[float, float, float, float]:
+    """Return inverse-variance-pooled (rmst1, se1, rmst2, se2) across strata.
+
+    Per-stratum differences are pooled with inverse-variance weights based on the
+    variance of the difference (`var_s = se1_s^2 + se2_s^2`). This matches the
+    standard stratified RMST estimator (e.g. survRM2):
+
+        w_s     = 1 / (se1_s^2 + se2_s^2)
+        W       = sum(w_s)
+        rmst1   = sum(w_s * rmst1_s) / W          (consistent display value)
+        rmst2   = sum(w_s * rmst2_s) / W          (consistent display value)
+        se_k    = sqrt(sum(w_s^2 * se_k_s^2)) / W (propagated SE)
+
+    Strata where either group is absent are skipped.
+    """
+    from ._surv import _to_1d_array
+
+    group_arr = _to_1d_array(group, dtype=object)
+    strata_arr = _to_1d_array(strata, dtype=object)
+    strata_levels = sorted(set(strata_arr.tolist()), key=lambda v: (str(type(v)), v))
+
+    rmst1_vals: list[float] = []
+    se1_vals: list[float] = []
+    rmst2_vals: list[float] = []
+    se2_vals: list[float] = []
+
+    for s in strata_levels:
+        s_mask = strata_arr == s
+        s_group = group_arr[s_mask]
+        present = set(s_group.tolist())
+        if label1 not in present or label2 not in present:
+            continue  # Skip strata that lack one of the two groups
+
+        surv_sub = _subset_surv(surv, s_mask)
+        rmst_dict, _ = _rmst_group_values(surv_sub, tau, s_group)
+
+        rmst1_s, se1_s = rmst_dict[label1]
+        rmst2_s, se2_s = rmst_dict[label2]
+
+        if se1_s <= 0 or se2_s <= 0:
+            continue  # Degenerate stratum (all events at one time point)
+
+        rmst1_vals.append(rmst1_s)
+        se1_vals.append(se1_s)
+        rmst2_vals.append(rmst2_s)
+        se2_vals.append(se2_s)
+
+    if not rmst1_vals:
+        raise ValueError(
+            "No usable strata found: each stratum must contain both group levels with "
+            "positive standard errors."
+        )
+
+    se1_arr = np.array(se1_vals)
+    se2_arr = np.array(se2_vals)
+    rmst1_arr = np.array(rmst1_vals)
+    rmst2_arr = np.array(rmst2_vals)
+
+    # Weights based on variance of the per-stratum difference
+    var_diff = se1_arr**2 + se2_arr**2
+    w = 1.0 / var_diff
+    W = float(w.sum())
+
+    # Pooled RMST display values (same weights for both groups → difference is consistent)
+    rmst1_pooled = float(np.dot(w, rmst1_arr) / W)
+    rmst2_pooled = float(np.dot(w, rmst2_arr) / W)
+
+    # Propagated SEs using the difference-based weights
+    se1_pooled = float(np.sqrt(np.dot(w**2, se1_arr**2)) / W)
+    se2_pooled = float(np.sqrt(np.dot(w**2, se2_arr**2)) / W)
+
+    return rmst1_pooled, se1_pooled, rmst2_pooled, se2_pooled
+
+
 def _rmst_group_values(
-    surv: Surv, tau: float, group: Any, strata: Any | None = None
+    surv: Surv, tau: float, group: Any
 ) -> tuple[dict[Any, tuple[float, float]], list[Any]]:
     """Compute RMST and SE for each group.
 
@@ -214,7 +306,9 @@ def rmst_test(
         or `"percentage_difference"` ((RMST1 - RMST2) / RMST2 * 100).
     strata
         (Optional) Stratification variable for stratified RMST comparison. If provided,
-        RMST estimates are combined across strata before computing the test statistic.
+        per-group RMST estimates are computed separately within each stratum and then
+        combined using inverse-variance weights (Kaplan-Meier Greenwood variance).
+        Strata in which either group is absent are skipped.
     conf_level
         Confidence level for confidence intervals (the default is `0.95` for 95% CI).
 
@@ -248,6 +342,17 @@ def rmst_test(
     \frac{\mathrm{SE}_2^2}{\mathrm{RMST}_2^2}}
     $$
 
+    When `strata` is provided, per-group RMST values within each stratum are combined
+    using inverse-variance (Greenwood) weights:
+
+    $$
+    \widehat{\mathrm{RMST}}_k = \frac{\sum_s w_{ks}\, \mathrm{RMST}_{ks}}{\sum_s w_{ks}},
+    \quad w_{ks} = \frac{1}{\mathrm{SE}_{ks}^2}
+    $$
+
+    The stratified SE is $1 / \sqrt{\sum_s w_{ks}}$. The test statistic is then
+    computed from the pooled group-level estimates.
+
     Examples
     --------
     Test RMST difference between two treatment groups:
@@ -268,8 +373,13 @@ def rmst_test(
     result_ratio = gw.rmst_test(y, tau=365, group=lung["sex"], estimand="ratio")
     ```
     """
+    if estimand not in {"difference", "ratio", "percentage_difference"}:
+        raise ValueError(
+            f"estimand must be 'difference', 'ratio', or 'percentage_difference', got {estimand!r}"
+        )
+
     # Get RMST values and SEs for each group
-    rmst_dict, group_labels_ordered = _rmst_group_values(surv, tau, group, strata)
+    rmst_dict, group_labels_ordered = _rmst_group_values(surv, tau, group)
 
     # Sort group labels for consistent ordering
     group_labels = sorted(set(group_labels_ordered), key=lambda v: (str(type(v)), v))
@@ -282,17 +392,16 @@ def rmst_test(
             "rmst_test supports two groups; use rmst_pairwise_test for multiple groups"
         )
 
-    if estimand not in {"difference", "ratio", "percentage_difference"}:
-        raise ValueError(
-            f"estimand must be 'difference', 'ratio', or 'percentage_difference', got {estimand!r}"
-        )
-
-    # Get RMST values and SEs for each group
-    rmst_dict, _ = _rmst_group_values(surv, tau, group, strata)
-
     label1, label2 = group_labels
     rmst1, se1 = rmst_dict[label1]
     rmst2, se2 = rmst_dict[label2]
+
+    # When strata are provided, replace per-group RMST values with the
+    # inverse-variance pooled estimates across strata.
+    if strata is not None:
+        rmst1, se1, rmst2, se2 = _stratified_rmst_group_values(
+            surv, tau, group, strata, label1, label2
+        )
 
     # Compute estimate and SE based on estimand
     z_critical = norm.ppf(1.0 - (1.0 - conf_level) / 2.0)

@@ -145,6 +145,45 @@ def test_rmst_matches_r() -> None:
         assert_allclose_to_r((value - lower) / z, expected["se"], what=f"{name} rmst se")
 
 
+def test_rmst_twogroup_matches_r() -> None:
+    """Two-group rmst_test must match per-group survfit RMST values from R."""
+    fix = load_fixture("rmst_twogroup_lung")
+    df = gw.load_dataset("lung", backend="pandas")
+    y = Surv.right(df["time"], event=(df["status"] == 2))
+    result = gw.rmst_test(y, tau=fix["tau"], group=df["sex"].astype(int))
+
+    assert_allclose_to_r(result.rmst1, fix["rmst1"], what="rmst twogroup lung rmst1")
+    assert_allclose_to_r(result.rmst2, fix["rmst2"], what="rmst twogroup lung rmst2")
+    assert_allclose_to_r(result.se1, fix["se1"], what="rmst twogroup lung se1")
+    assert_allclose_to_r(result.se2, fix["se2"], what="rmst twogroup lung se2")
+    assert_allclose_to_r(result.estimate, fix["difference"], what="rmst twogroup lung difference")
+    assert_allclose_to_r(result.se, fix["se_difference"], what="rmst twogroup lung se_difference")
+
+
+def test_rmst_twogroup_stratified_matches_r() -> None:
+    """Stratified rmst_test must match inverse-variance pooled values from R."""
+    fix = load_fixture("rmst_twogroup_lung")["stratified"]
+    df = gw.load_dataset("lung", backend="pandas")
+    df_clean = df[df["ph.ecog"].notna()].copy()
+    y = Surv.right(df_clean["time"], event=(df_clean["status"] == 2))
+    result = gw.rmst_test(
+        y,
+        tau=365,
+        group=df_clean["sex"].astype(int),
+        strata=df_clean["ph.ecog"].astype(int),
+    )
+
+    assert result.stratified is True
+    assert_allclose_to_r(
+        result.estimate, fix["difference"], atol=1e-6, what="stratified rmst difference"
+    )
+    assert_allclose_to_r(result.se, fix["se"], atol=1e-6, what="stratified rmst se")
+    assert_allclose_to_r(
+        result.statistic, fix["statistic"], atol=1e-6, what="stratified rmst z-statistic"
+    )
+    assert_allclose_to_r(result.p_value, fix["p_value"], atol=1e-6, what="stratified rmst p-value")
+
+
 # -- Log-rank / G-rho against survdiff ------------------------------------------
 
 
