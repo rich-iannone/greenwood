@@ -455,6 +455,7 @@ class AFT:
         type: str = "survival",
         times: Any = None,
         p: Any = 0.5,
+        tau: Any = None,
         conditional_after: Any = None,
         ci: bool = False,
         conf_type: str = "log-log",
