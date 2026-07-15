@@ -519,11 +519,15 @@ class AFT:
             Failure probabilities for `type="quantile"` (ignored for other types). Can be a
             scalar (e.g., `0.5` for median) or array-like. Default `0.5` (median). Must be in
             (0, 1).
+        tau
+            Restriction time for `type="rmst"`. Scalar float giving the upper limit of
+            integration. Required when `type="rmst"`, ignored otherwise.
         conditional_after
-            For `type="survival"`, optionally compute conditional survival:
-            $P(T > t \mid T > c) = S(t) / S(c)$. Scalar (same conditioning time for all
-            subjects) or array-like (one per subject). Default `None` (unconditional).
-            Predictions before the landmark time return `1.0`.
+            For `type="survival"`, optionally compute conditional survival
+            $P(T > t \mid T > c) = S(t) / S(c)$. Also used with `type="mean"` and
+            `type="mean_remaining"` to condition on surviving past a landmark time $t_0$.
+            Scalar (same conditioning time for all subjects) or array-like (one per
+            subject). Default `None` (unconditional).
         ci
             If `True` (survival only), include confidence intervals (`_lower` and `_upper`
             columns per subject). Default is `False`. Not supported with `conditional_after`.
@@ -538,7 +542,8 @@ class AFT:
         format
             Output format for the returned frame (`type="quantile"` or `"survival"`): `None`
             (default), `"pandas"`, `"polars"`, or `"pyarrow"`. When `None`, a backend is
-            auto-detected (Polars, then Pandas, then PyArrow). Ignored for `type="lp"`.
+            auto-detected (Polars, then Pandas, then PyArrow). Ignored for `type="lp"`,
+            `"mean"`, `"mean_remaining"`, and `"rmst"` (which always return arrays).
 
         Returns
         -------
