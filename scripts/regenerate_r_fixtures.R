@@ -522,4 +522,75 @@ write_json_fixture(
   "brier_lung"
 )
 
+# -- Time-dependent AUC: Uno et al. (2011) IPCW cumulative-dynamic AUC ----------
+#
+# Direct R implementation of the same formula used in greenwood._metrics.time_dependent_auc.
+# No third-party package is required; survival:: provides the censoring KM.
+# Reference: Uno H. et al. (2011) Stat Med 30(10):1105-1117.
+
+uno_td_auc <- function(T, delta, marker, times) {
+  # KM of the censoring distribution using the same "nudged" Fine-Gray convention
+  # as Python's greenwood._competing._censoring_km:
+  #   At each censoring time c, events tied at c are excluded from the risk set
+  #   (treated as having left just before c).  This matches the Python implementation.
+  delta_int   <- as.integer(delta)
+  censor_times <- sort(unique(T[delta_int == 0L]))
+  g_surv_val  <- 1.0
+  g_times_vec <- numeric(0)
+  g_surv_vec  <- numeric(0)
+  for (c in censor_times) {
+    n_risk <- sum(T > c) + sum(delta_int == 0L & T == c)
+    d      <- sum(delta_int == 0L & T == c)
+    g_surv_val  <- g_surv_val * (1.0 - d / n_risk)
+    g_times_vec <- c(g_times_vec, c)
+    g_surv_vec  <- c(g_surv_vec, g_surv_val)
+  }
+
+  # G(t-): censoring survival just before t (left-continuous).
+  g_left <- function(t_vec) {
+    sapply(t_vec, function(t) {
+      idx <- which(g_times_vec < t)    # strictly less than t
+      if (length(idx) == 0L) 1.0 else g_surv_vec[max(idx)]
+    })
+  }
+
+  sapply(times, function(t) {
+    cases <- which(T <= t & delta_int == 1L)
+    ctrls <- which(T > t)
+    if (length(cases) == 0L || length(ctrls) == 0L) return(NA_real_)
+
+    g_case <- g_left(T[cases])
+    w      <- ifelse(g_case > 0, 1.0 / g_case^2, 0.0)
+
+    eta_c <- marker[cases]
+    eta_k <- marker[ctrls]
+
+    conc_per_case <- vapply(seq_along(cases), function(i) {
+      d <- eta_c[i] - eta_k
+      sum(d > 0) + 0.5 * sum(d == 0)
+    }, numeric(1))
+
+    num   <- sum(w * conc_per_case)
+    denom <- sum(w) * length(ctrls)
+    if (denom == 0) NA_real_ else num / denom
+  })
+}
+
+# Use the Cox LP (age + sex, Efron) on the lung dataset as the risk marker —
+# the same model validated elsewhere in the test suite.
+auc_cm    <- coxph(Surv(time, status) ~ age + sex, data = lung, ties = "efron")
+auc_lp    <- unname(predict(auc_cm, type = "lp"))
+auc_times <- c(180, 365, 540)
+auc_vals  <- uno_td_auc(
+  T      = lung$time,
+  delta  = as.integer(lung$status == 2),
+  marker = auc_lp,
+  times  = auc_times
+)
+
+write_json_fixture(
+  list(times = auc_times, auc = auc_vals, marker = auc_lp),
+  "td_auc_lung"
+)
+
 cat("done\n")
