@@ -14,7 +14,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 from scipy.integrate import quad
-from scipy.special import gamma as sp_gamma, gammaincc
+from scipy.special import gamma as sp_gamma
 from scipy.stats import logistic, norm
 
 import greenwood as gw
