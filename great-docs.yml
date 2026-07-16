@@ -103,11 +103,14 @@ reference:
       - logrank_sample_size
 
   - title: Prediction performance
-    desc: Concordance and the IPCW Brier score.
+    desc: Concordance, IPCW Brier score, time-dependent AUC, calibration, and k-fold cross-validation.
     contents:
       - concordance_index
       - brier_score
       - integrated_brier_score
+      - time_dependent_auc
+      - integrated_auc
+      - calibration
       - cross_validate
 
   - title: Visualization
