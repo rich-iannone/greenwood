@@ -11,21 +11,21 @@ Unlike many statistical libraries, Greenwood is built on [Narwhals](https://narw
 
 ## Why Greenwood?
 
-- **Works with your dataframe library**: Pandas, Polars, PyArrow, or any Narwhals-compatible frame—use the `format=` argument to control output types.
-- **Rigorously validated**: Every statistic is tested to tolerance against R's `survival` package, so results match what the field already trusts.
-- **Beautiful visualizations**: Interactive survival curves, forest plots, and cumulative incidence plots with a choice of plotting backends.
-- **Publication-ready tables**: Built-in integration with [Great Tables](https://posit-co.github.io/great-tables/) for production-quality reporting.
-- **Complete toolkit**: From simple Kaplan-Meier curves to Cox regression, competing risks, and multi-state models—everything you need, all validated.
+- **Works with your dataframe library**: Pandas, Polars, PyArrow, or any Narwhals-compatible frame (use the `format=` argument to control output types).
+- **Rigorously validated**: every statistic is tested to tolerance against R's `survival` package, so results match what the field already trusts.
+- **Beautiful visualizations**: interactive survival curves, forest plots, and cumulative incidence plots with a choice of plotting backends.
+- **Publication-ready tables**: built-in integration with [Great Tables](https://posit-co.github.io/great-tables/) for production-quality reporting.
+- **Complete toolkit**: from simple Kaplan-Meier curves to Cox regression, competing risks, and multi-state models (everything you need, all validated)`.
 
 ## The analytical pipeline
 
 Every Greenwood analysis follows a consistent workflow:
 
-1. **Represent the data** with `Surv`: Capture survival outcomes and censoring (right, left, interval, or counting-process form) in a validated response object.
-2. **Estimate and summarize**: Use `KaplanMeier` or `NelsonAalen` to describe the data, then compare groups with `logrank_test`, trend tests, or RMST comparisons.
-3. **Build and fit models**: Fit Cox proportional hazards, parametric AFT models, or competing-risks models to examine covariate effects.
-4. **Visualize and evaluate**: Create publication-quality plots with `plot_survival`, `forest_plot`, or `cif_plot`, and assess model performance with concordance, Brier scores, or cross-validation.
-5. **Report results**: Tidy model summaries and publication tables are built in via broom-compatible `tidy()` functions and Great Tables.
+1. **Represent the data** with `Surv`: capture survival outcomes and censoring (right, left, interval, or counting-process form) in a validated response object.
+2. **Estimate and summarize**: use `KaplanMeier` or `NelsonAalen` to describe the data, then compare groups with `logrank_test`, trend tests, or RMST comparisons.
+3. **Build and fit models**: fit Cox proportional hazards, parametric AFT models, or competing-risks models to examine covariate effects.
+4. **Visualize and evaluate**: create publication-quality plots with `plot_survival`, `forest_plot`, or `cif_plot`, and assess model performance with concordance, Brier scores, or cross-validation.
+5. **Report results**: tidy model summaries and publication tables are built in via broom-compatible `tidy()` functions and Great Tables.
 
 ## A first look
 
@@ -86,20 +86,20 @@ gw.tidy(cox, exponentiate=True, format="polars")
 
 **Regression models**: Cox proportional hazards with stratification, baseline hazard prediction with confidence intervals, and full diagnostics. Parametric accelerated failure time (AFT) models with Weibull, exponential, log-normal, and log-logistic distributions. Competing risks via Aalen-Johansen and Fine-Gray models. Multi-state transition probabilities.
 
-**Visualization**: Interactive survival curves with confidence bands, censoring marks, and aligned at-risk tables. Forest plots with hazard ratios. Cumulative incidence plots for competing risks. All plots are interactive and publication-ready.
+**Visualization**: interactive survival curves with confidence bands, censoring marks, and aligned at-risk tables. Forest plots with hazard ratios. Cumulative incidence plots for competing risks. All plots are interactive and publication-ready.
 
 **Model evaluation**: Concordance index (Harrell's C-statistic), IPCW Brier scores, integrated Brier scores, and k-fold cross-validation with stratification support.
 
-**Built-in data**: Load bundled datasets (`lung`, `veteran`, `ovarian`, `pbc`, `colon`, `mgus2`) in any supported backend.
+**Built-in data**: load bundled datasets (`lung`, `veteran`, `ovarian`, `pbc`, `colon`, `mgus2`) in any supported backend.
 
 ## Next steps
 
-- **Installation**: Get started with `pip install greenwood` or see [Installation](user_guide/01-installation.qmd).
-- **Quick tour**: New to Greenwood? Start with the [Quick start](user_guide/02-quick-start.qmd) for a fast hands-on tour (5 min read).
-- **Learn survival analysis**: New to survival analysis? Begin with [Survival data and the Surv object](user_guide/03-survival-data.qmd) to understand censoring.
-- **Build models**: Jump to [Cox regression](user_guide/08-cox-regression.qmd) or [Parametric models](user_guide/10-parametric-models.qmd).
-- **Explore everything**: See the full [User Guide](user_guide/00-get-started.qmd) for comprehensive coverage of all features.
-- **API reference**: Browse the [Python API reference](reference/) for function signatures and detailed documentation.
+- **Installation**: get started with `pip install greenwood` or see [Installation](user_guide/01-installation.qmd).
+- **Quick tour**: new to Greenwood? Start with the [Quick start](user_guide/02-quick-start.qmd) for a fast hands-on tour (5 min read).
+- **Learn survival analysis**: new to survival analysis? Begin with [Survival data and the Surv object](user_guide/03-survival-data.qmd) to understand censoring.
+- **Build models**: jump to [Cox regression](user_guide/08-cox-regression.qmd) or [Parametric models](user_guide/10-parametric-models.qmd).
+- **Explore everything**: see the full [User Guide](user_guide/00-get-started.qmd) for comprehensive coverage of all features.
+- **API reference**: browse the [Python API reference](reference/) for function signatures and detailed documentation.
 
 ## Key features at a glance
 

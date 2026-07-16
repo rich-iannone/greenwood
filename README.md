@@ -41,7 +41,7 @@ Descriptive statistics:
 - **`Surv` response object**: Handle right-, left-, and interval-censored data; counting-process form; left truncation; weights; and multi-state endpoints with built-in validation.
 - **Kaplan-Meier estimation** (`KaplanMeier`): Survival curves with Greenwood confidence intervals, median/quantile survival, restricted mean survival time, and step-function predictions.
 - **Nelson-Aalen estimator** (`NelsonAalen`): Cumulative hazard curves.
-- **Visualization** (`plot_survival()`, `forest_plot()`, `cif_plot()`): Interactive survival curves with confidence bands and censoring marks, publication-ready forest plots with aligned at-risk tables, and cumulative incidence plots for competing risks—all with a choice of plotting backends and Great Tables integration.
+- **Visualization** (`plot_survival()`, `forest_plot()`, `cif_plot()`): Interactive survival curves with confidence bands and censoring marks, publication-ready forest plots with aligned at-risk tables, and cumulative incidence plots for competing risks (all with a choice of plotting backends and Great Tables integration).
 
 Hypothesis testing:
 

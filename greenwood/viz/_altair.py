@@ -302,7 +302,7 @@ def _plot_survival_altair(
         if censors["time"]:
             # Censoring marks are thin `/` notches in a darker tint of each curve's color:
             # distinctive, and readable where many cluster together. The custom symbol path
-            # anchors its origin (0,0) — the notch's bottom-left tip — at the data point, so the
+            # anchors its origin (0,0) (the notch's bottom-left tip) at the data point, so the
             # mark rests *on* the curve and slants up and to the right, away from the
             # descending trace, rather than being centered across it.
             marks = (

@@ -519,7 +519,7 @@ def test_rmst_test_stratified_same_both_strata_near_zero() -> None:
 
 def test_rmst_test_stratified_missing_group_in_stratum_skipped() -> None:
     """Strata lacking one group are silently skipped."""
-    # Stratum s2 only has group "a" — should be skipped; result from s1 only.
+    # Stratum s2 only has group "a" (should be skipped; result from s1 only).
     time = [
         1,
         2,

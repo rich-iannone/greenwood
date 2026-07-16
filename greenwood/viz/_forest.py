@@ -19,7 +19,7 @@ __all__ = ["plot_forest", "theme_forest"]
 
 
 # ---------------------------------------------------------------------------
-# plot_forest — Cox-aware high-level wrapper
+# plot_forest(): Cox-aware high-level wrapper
 # ---------------------------------------------------------------------------
 
 

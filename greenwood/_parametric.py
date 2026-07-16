@@ -19,6 +19,9 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import numpy.typing as npt
 from scipy.optimize import minimize
+from scipy.special import betainc as _sp_betainc
+from scipy.special import gamma as _sp_gamma
+from scipy.special import gammaincc as _sp_gammaincc
 from scipy.stats import logistic, norm
 
 from ._backends import to_dataframe
@@ -55,6 +58,91 @@ def _error_quantile(dist: str, p: Array) -> Array:
     if dist == "lognormal":
         return norm.ppf(p)
     return logistic.ppf(p)  # loglogistic
+
+
+def _mean_survival_aft(dist: str, mu: Array, sigma: float) -> Array:
+    r"""Closed-form $E[T]$ for each subject under the AFT distribution.
+
+    Returns `np.inf` for log-logistic when `sigma >= 1` (mean is undefined).
+    """
+    if dist in ("weibull", "exponential"):
+        return np.exp(mu) * _sp_gamma(1.0 + sigma)
+    if dist == "lognormal":
+        return np.exp(mu + 0.5 * sigma**2)
+    # loglogistic
+    if sigma < 1.0:
+        return np.exp(mu) * np.pi * sigma / np.sin(np.pi * sigma)
+    return np.full_like(mu, np.inf)
+
+
+def _tail_partial_moment(dist: str, mu: Array, sigma: float, t0: Array) -> Array:
+    r"""Compute $\int_{t_0}^\infty S(t)\,dt$ for each subject.
+
+    This is the *tail partial moment* starting at `t0`. When `t0 = 0` it
+    equals `E[T]`, and therefore `_mean_survival_aft` is a special case.
+
+    The key identities derived from this quantity are:
+
+    - $E[T - t_0 \mid T > t_0] = \text{tail}(t_0) / S(t_0)$
+    - $E[T \mid T > t_0] = t_0 + \text{tail}(t_0) / S(t_0)$
+    - $E[\min(T, \tau)] = E[T] - \text{tail}(\tau)$  (when $E[T] < \infty$)
+
+    Closed-form formulas by distribution:
+
+    - **Weibull / Exponential**:
+      $e^\mu \Gamma(1+\sigma) \cdot \bar{\Gamma}(\sigma,\, u_0)$
+      where $u_0 = (t_0 / e^\mu)^{1/\sigma}$ and $\bar{\Gamma}$ is the
+      regularized upper incomplete gamma function.
+    - **Log-normal**:
+      $e^{\mu+\sigma^2/2} \Phi(\sigma - z_0) - t_0 \Phi(-z_0)$
+      where $z_0 = (\log t_0 - \mu)/\sigma$.
+    - **Log-logistic** ($\sigma < 1$):
+      $E[T] \cdot I_{S(t_0)}(1-\sigma,\, \sigma)$
+      where $I_x$ is the regularized incomplete Beta function and
+      $S(t_0) = \operatorname{logistic.sf}(z_0)$.
+    - **Log-logistic** ($\sigma \ge 1$): numerical integration via
+      `scipy.integrate.quad`.
+    """
+    t0 = np.broadcast_to(np.asarray(t0, dtype=float), mu.shape).copy()
+
+    if dist in ("weibull", "exponential"):
+        lam = np.exp(mu)
+        u0 = (t0 / lam) ** (1.0 / sigma)
+        return lam * _sp_gamma(1.0 + sigma) * _sp_gammaincc(sigma, u0)
+
+    if dist == "lognormal":
+        # Avoid log(0) = -inf warnings; handle t0 = 0 as a special case
+        with np.errstate(divide="ignore", invalid="ignore"):
+            log_t0 = np.log(np.where(t0 > 0.0, t0, 1.0))
+        log_t0 = np.where(t0 > 0.0, log_t0, -np.inf)
+        z0 = (log_t0 - mu) / sigma
+        term1 = np.exp(mu + 0.5 * sigma**2) * norm.cdf(sigma - z0)
+        term2 = np.where(t0 > 0.0, t0 * norm.sf(z0), 0.0)
+        return term1 - term2
+
+    # loglogistic
+    with np.errstate(divide="ignore", invalid="ignore"):
+        log_t0 = np.log(np.where(t0 > 0.0, t0, 1.0))
+    log_t0 = np.where(t0 > 0.0, log_t0, -np.inf)
+    z0 = (log_t0 - mu) / sigma
+    s0 = logistic.sf(z0)  # S(t0) per subject
+    if sigma < 1.0:
+        e_t = np.exp(mu) * np.pi * sigma / np.sin(np.pi * sigma)
+        return e_t * _sp_betainc(1.0 - sigma, sigma, s0)
+    # sigma >= 1: no closed-form; per-subject numerical integration
+    from scipy.integrate import quad
+
+    out = np.empty_like(mu)
+    for i in range(mu.shape[0]):
+        mu_i = float(mu[i])
+        t0_i = float(t0[i])
+
+        def _sf(t: float, _mu: float = mu_i) -> float:
+            z = (np.log(t) - _mu) / sigma
+            return float(logistic.sf(z))
+
+        out[i], _ = quad(_sf, t0_i, np.inf, limit=200)
+    return out
 
 
 def _num_hessian(fn: Any, x: Array, rel_step: float = 1e-5) -> Array:
@@ -370,6 +458,7 @@ class AFT:
         type: str = "survival",
         times: Any = None,
         p: Any = 0.5,
+        tau: Any = None,
         conditional_after: Any = None,
         ci: bool = False,
         conf_type: str = "log-log",
@@ -382,7 +471,7 @@ class AFT:
         (via `newdata`) and the type of prediction desired. Pass `newdata=None` to predict
         for the training data (fitted subjects).
 
-        Three prediction types are available:
+        Six prediction types are available:
 
         1. **Linear predictor** (`type="lp"`): the log-time location $X\beta$, showing how
            covariates shift the log-survival time distribution.
@@ -395,6 +484,19 @@ class AFT:
            times, returned as a DataFrame for easy visualization. Optionally condition on already
            having survived to a landmark time (`conditional_after`) for landmark-based
            predictions. With `ci=True`, confidence intervals are included.
+
+        4. **Mean** (`type="mean"`): the expected survival time $E[T]$ (unconditional) or the
+           conditional mean $E[T \mid T > t_0]$ when `conditional_after` is provided. Computed
+           via closed-form formulas for all distributions. Returns an array of shape
+           (n_subjects,).
+
+        5. **Mean remaining** (`type="mean_remaining"`): expected remaining lifetime
+           $E[T - t_0 \mid T > t_0]$ for subjects known to have survived past `t0`.
+           Requires `conditional_after`. Returns an array of shape (n_subjects,).
+
+        6. **RMST** (`type="rmst"`): restricted mean survival time $E[\min(T, \tau)]$ up to
+           the restriction time `tau`. Requires the `tau` argument. Returns an array of
+           shape (n_subjects,).
 
         Parameters
         ----------
@@ -420,11 +522,15 @@ class AFT:
             Failure probabilities for `type="quantile"` (ignored for other types). Can be a
             scalar (e.g., `0.5` for median) or array-like. Default `0.5` (median). Must be in
             (0, 1).
+        tau
+            Restriction time for `type="rmst"`. Scalar float giving the upper limit of
+            integration. Required when `type="rmst"`, ignored otherwise.
         conditional_after
-            For `type="survival"`, optionally compute conditional survival:
-            $P(T > t \mid T > c) = S(t) / S(c)$. Scalar (same conditioning time for all
-            subjects) or array-like (one per subject). Default `None` (unconditional).
-            Predictions before the landmark time return `1.0`.
+            For `type="survival"`, optionally compute conditional survival
+            $P(T > t \mid T > c) = S(t) / S(c)$. Also used with `type="mean"` and
+            `type="mean_remaining"` to condition on surviving past a landmark time $t_0$.
+            Scalar (same conditioning time for all subjects) or array-like (one per
+            subject). Default `None` (unconditional).
         ci
             If `True` (survival only), include confidence intervals (`_lower` and `_upper`
             columns per subject). Default is `False`. Not supported with `conditional_after`.
@@ -439,7 +545,8 @@ class AFT:
         format
             Output format for the returned frame (`type="quantile"` or `"survival"`): `None`
             (default), `"pandas"`, `"polars"`, or `"pyarrow"`. When `None`, a backend is
-            auto-detected (Polars, then Pandas, then PyArrow). Ignored for `type="lp"`.
+            auto-detected (Polars, then Pandas, then PyArrow). Ignored for `type="lp"`,
+            `"mean"`, `"mean_remaining"`, and `"rmst"` (which always return arrays).
 
         Returns
         -------
@@ -450,6 +557,11 @@ class AFT:
             If `type="survival"`: a DataFrame with columns `time` (query times) and
             `subject_1`, `subject_2`, etc. containing survival probabilities at each time,
             optionally with `_lower` and `_upper` columns for confidence intervals.
+            If `type="mean"`: an array of shape (n_subjects,) with $E[T]$ or
+            $E[T \mid T > t_0]$.
+            If `type="mean_remaining"`: an array of shape (n_subjects,) with
+            $E[T - t_0 \mid T > t_0]$.
+            If `type="rmst"`: an array of shape (n_subjects,) with $E[\min(T, \tau)]$.
 
         Details
         -------
@@ -504,6 +616,25 @@ class AFT:
         ```{python}
         aft.predict(lung[["age", "sex"]][:2], type="survival", times=[180, 365],
                     ci=True, format="polars")
+        ```
+
+        Unconditional mean survival time per subject:
+
+        ```{python}
+        aft.predict(lung[["age", "sex"]][:2], type="mean")
+        ```
+
+        Expected remaining lifetime given the subject has already survived 100 days:
+
+        ```{python}
+        aft.predict(lung[["age", "sex"]][:2], type="mean_remaining",
+                    conditional_after=100)
+        ```
+
+        Restricted mean survival time up to 365 days:
+
+        ```{python}
+        aft.predict(lung[["age", "sex"]][:2], type="rmst", tau=365)
         ```
         """
         x = self._design(newdata)
@@ -574,7 +705,62 @@ class AFT:
             else:
                 cols.update({f"subject_{i + 1}": surv[:, i] for i in range(surv.shape[1])})
             return to_dataframe(cols, format=format)
-        raise ValueError(f"Unknown predict type {type!r}; use 'lp', 'quantile', or 'survival'.")
+        if type == "mean":
+            if conditional_after is None:
+                return _mean_survival_aft(self.dist, mu, sigma)
+            c = np.asarray(conditional_after, dtype=float)
+            if c.ndim == 0:
+                c = np.full(mu.shape[0], float(c))
+            if c.shape[0] != mu.shape[0]:
+                raise ValueError("conditional_after must be a scalar or one value per subject.")
+            with np.errstate(divide="ignore"):
+                zc = (np.log(np.where(c > 0.0, c, 1.0)) - mu) / sigma
+            _, log_s_c = _log_density_survival(self.dist, zc)
+            s_c = np.where(c > 0.0, np.exp(log_s_c), 1.0)
+            tail = _tail_partial_moment(self.dist, mu, sigma, c)
+            return c + tail / s_c
+        if type == "mean_remaining":
+            if conditional_after is None:
+                raise ValueError("type='mean_remaining' requires conditional_after.")
+            c = np.asarray(conditional_after, dtype=float)
+            if c.ndim == 0:
+                c = np.full(mu.shape[0], float(c))
+            if c.shape[0] != mu.shape[0]:
+                raise ValueError("conditional_after must be a scalar or one value per subject.")
+            with np.errstate(divide="ignore"):
+                zc = (np.log(np.where(c > 0.0, c, 1.0)) - mu) / sigma
+            _, log_s_c = _log_density_survival(self.dist, zc)
+            s_c = np.where(c > 0.0, np.exp(log_s_c), 1.0)
+            tail = _tail_partial_moment(self.dist, mu, sigma, c)
+            return tail / s_c
+        if type == "rmst":
+            if tau is None:
+                raise ValueError("type='rmst' requires tau.")
+            tau_val = float(tau)
+            if tau_val <= 0.0:
+                raise ValueError(f"tau must be positive, got {tau_val}.")
+            tau_arr = np.full_like(mu, tau_val)
+            if self.dist == "loglogistic" and sigma >= 1.0:
+                # E[T] = inf when sigma >= 1; integrate S from 0 to tau directly
+                from scipy.integrate import quad
+
+                out = np.empty_like(mu)
+                for i in range(mu.shape[0]):
+                    mu_i = float(mu[i])
+
+                    def _sf(t: float, _mu: float = mu_i) -> float:
+                        z = (np.log(t) - _mu) / sigma
+                        return float(logistic.sf(z))
+
+                    out[i], _ = quad(_sf, 0.0, tau_val, limit=200)
+                return out
+            return _mean_survival_aft(self.dist, mu, sigma) - _tail_partial_moment(
+                self.dist, mu, sigma, tau_arr
+            )
+        raise ValueError(
+            f"Unknown predict type {type!r}; use "
+            "'lp', 'quantile', 'survival', 'mean', 'mean_remaining', or 'rmst'."
+        )
 
     def _coefficient_columns(self) -> dict[str, Any]:
         return {
