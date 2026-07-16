@@ -194,7 +194,7 @@ def test_cross_validate_counting_and_errors(lung) -> None:
     # Counting-process response exercises the counting branch of the fold subsetter.
     yc = Surv.counting(start=[0, 0, 0, 0, 0, 0], stop=[2, 4, 6, 3, 5, 7], event=[1, 1, 1, 1, 0, 1])
     x = np.arange(6.0).reshape(-1, 1)
-    out = cross_validate(CoxPH(), yc, x, k=2, seed=0)
+    out = cross_validate(CoxPH(), yc, x, k=2, seed=23)
     assert len(out["scores"]) == 2
     y = Surv.right(lung["time"], event=(lung["status"] == 2))
     with pytest.raises(ValueError, match="same number of rows"):
@@ -203,7 +203,7 @@ def test_cross_validate_counting_and_errors(lung) -> None:
 
 def test_cross_validate_drops_missing_rows(lung) -> None:
     y = Surv.right(lung["time"], event=(lung["status"] == 2))
-    out = cross_validate(CoxPH(), y, lung[["age", "ph.ecog"]], k=3, seed=0)  # ph.ecog has a NaN
+    out = cross_validate(CoxPH(), y, lung[["age", "ph.ecog"]], k=3, seed=23)  # ph.ecog has a NaN
     assert len(out["scores"]) == 3
 
 

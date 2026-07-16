@@ -50,7 +50,7 @@ def test_formula_matches_frame(lung, y) -> None:
 
 def test_does_not_mutate_input_model(lung, y) -> None:
     model = gw.CoxPH()
-    cross_validate(model, y, lung[["age", "sex"]], seed=0)
+    cross_validate(model, y, lung[["age", "sex"]], seed=23)
     assert getattr(model, "coef_", None) is None  # the passed model stays unfitted
 
 
@@ -73,7 +73,7 @@ def test_stratified_kfold_balances_events(lung, y) -> None:
     from greenwood._resample import _stratified_kfold_indices
 
     overall_event_rate = y.event.mean()
-    folds = _stratified_kfold_indices(y, k=5, seed=42)
+    folds = _stratified_kfold_indices(y, k=5, seed=23)
 
     # Check each fold has similar event representation
     fold_event_rates = []
@@ -95,8 +95,8 @@ def test_stratified_vs_random_kfold(lung, y) -> None:
     """Stratified k-fold should produce different (more balanced) folds than random."""
     from greenwood._resample import _stratified_kfold_indices
 
-    stratified = _stratified_kfold_indices(y, k=5, seed=42)
-    random_perm = np.random.default_rng(42).permutation(y.n)
+    stratified = _stratified_kfold_indices(y, k=5, seed=23)
+    random_perm = np.random.default_rng(23).permutation(y.n)
     random_folds = np.array_split(random_perm, 5)
 
     # Stratified should have more balanced event rates
@@ -114,8 +114,8 @@ def test_stratified_kfold_reproducible(lung, y) -> None:
     """Stratified k-fold with same seed should produce same folds."""
     from greenwood._resample import _stratified_kfold_indices
 
-    folds1 = _stratified_kfold_indices(y, k=5, seed=123)
-    folds2 = _stratified_kfold_indices(y, k=5, seed=123)
+    folds1 = _stratified_kfold_indices(y, k=5, seed=23)
+    folds2 = _stratified_kfold_indices(y, k=5, seed=23)
 
     for f1, f2 in zip(folds1, folds2, strict=True):
         np.testing.assert_array_equal(f1, f2)
