@@ -712,9 +712,7 @@ class AFT:
             if c.ndim == 0:
                 c = np.full(mu.shape[0], float(c))
             if c.shape[0] != mu.shape[0]:
-                raise ValueError(
-                    "conditional_after must be a scalar or one value per subject."
-                )
+                raise ValueError("conditional_after must be a scalar or one value per subject.")
             with np.errstate(divide="ignore"):
                 zc = (np.log(np.where(c > 0.0, c, 1.0)) - mu) / sigma
             _, log_s_c = _log_density_survival(self.dist, zc)
@@ -728,9 +726,7 @@ class AFT:
             if c.ndim == 0:
                 c = np.full(mu.shape[0], float(c))
             if c.shape[0] != mu.shape[0]:
-                raise ValueError(
-                    "conditional_after must be a scalar or one value per subject."
-                )
+                raise ValueError("conditional_after must be a scalar or one value per subject.")
             with np.errstate(divide="ignore"):
                 zc = (np.log(np.where(c > 0.0, c, 1.0)) - mu) / sigma
             _, log_s_c = _log_density_survival(self.dist, zc)

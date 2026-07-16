@@ -37,8 +37,7 @@ def fitted_models(lung_data):  # type: ignore[no-untyped-def]
     df, y = lung_data
     X = df[["age", "sex"]]
     return {
-        dist: AFT(dist).fit(y, X)
-        for dist in ("weibull", "exponential", "lognormal", "loglogistic")
+        dist: AFT(dist).fit(y, X) for dist in ("weibull", "exponential", "lognormal", "loglogistic")
     }
 
 
