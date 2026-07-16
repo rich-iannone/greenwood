@@ -17,7 +17,7 @@ import numpy.typing as npt
 if TYPE_CHECKING:
     from ._surv import Surv
 
-__all__ = ["concordance_index", "brier_score", "integrated_brier_score", "calibration"]
+__all__ = ["concordance_index", "brier_score", "integrated_brier_score", "calibration", "time_dependent_auc", "integrated_auc"]
 
 Array = npt.NDArray[Any]
 
