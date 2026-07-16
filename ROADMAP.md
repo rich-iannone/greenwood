@@ -11,15 +11,6 @@ public capability roadmap.
 
 Descriptive and exploratory features building on the core estimators.
 
-### AFT Model Extensions
-
-Advanced predictions and conditional inference for accelerated failure time (AFT) models.
-
-- Conditional expectation predictions: expected remaining lifespan E(T - t₀ | T ≥ t₀) for censored subjects
-- Log-normal and log-logistic closed-form expectation formulas using scipy (error function and incomplete beta)
-- Conditional mean survival E[T | T > t₀] and E[T - t₀ | T > t₀] for all AFT distributions
-- Mean survival time (RMST) and conditional mean predictions at arbitrary follow-up times
-
 ### Exploratory Plots
 
 Visualization for grouped survival analyses.
