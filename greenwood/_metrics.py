@@ -17,7 +17,14 @@ import numpy.typing as npt
 if TYPE_CHECKING:
     from ._surv import Surv
 
-__all__ = ["concordance_index", "brier_score", "integrated_brier_score", "calibration", "time_dependent_auc", "integrated_auc"]
+__all__ = [
+    "concordance_index",
+    "brier_score",
+    "integrated_brier_score",
+    "calibration",
+    "time_dependent_auc",
+    "integrated_auc",
+]
 
 Array = npt.NDArray[Any]
 
@@ -621,8 +628,8 @@ def time_dependent_auc(surv: Surv, marker: Any, times: Any) -> Array:
 
     out = np.empty(query.shape[0])
     for j, t in enumerate(query):
-        case_mask = (T <= t) & evt
-        ctrl_mask = T > t
+        case_mask = (t >= T) & evt
+        ctrl_mask = t < T
         n_ctrl = int(ctrl_mask.sum())
 
         if case_mask.sum() == 0 or n_ctrl == 0:
