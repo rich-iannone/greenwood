@@ -21,7 +21,9 @@ from ._metrics import (
     brier_score,
     calibration,
     concordance_index,
+    integrated_auc,
     integrated_brier_score,
+    time_dependent_auc,
 )
 from ._nonparametric import KaplanMeier, NelsonAalen
 from ._parametric import AFT
@@ -71,7 +73,9 @@ __all__ = [
     "logrank_power",
     "logrank_sample_size",
     "brier_score",
+    "integrated_auc",
     "integrated_brier_score",
+    "time_dependent_auc",
     "logrank_test",
     "pairwise_logrank_test",
     "trend_test",
