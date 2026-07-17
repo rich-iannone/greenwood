@@ -11,75 +11,155 @@ import great_docs as gd
 gd.enable_tbl_preview(n_head=8, n_tail=3)
 ```
 
-The Cox model deliberately avoids specifying the shape of the baseline hazard. Parametric
-models take the opposite approach: they assume the survival times follow a particular
-distribution, such as Weibull or log-normal. In exchange for that assumption you gain a fully
-specified model that can extrapolate beyond the observed follow-up, produce smooth survival
-and hazard curves, and sometimes fit more efficiently. Greenwood provides these as
-accelerated failure time models, which describe how covariates stretch or compress the time
-scale. This page shows how to fit them and how to read their coefficients.
+The Cox model deliberately avoids specifying the shape of the baseline hazard. Parametric models
+take the opposite approach: they assume the survival times follow a particular distribution, such as
+Weibull or log-normal. In exchange for that assumption you gain a fully specified model that can
+extrapolate beyond the observed follow-up, produce smooth survival and hazard curves, and sometimes
+fit more efficiently. Greenwood provides these as accelerated failure time models, which describe
+how covariates stretch or compress the time scale. This page shows how to fit them and how to read
+their coefficients.
 
-We work from the `lung` outcomes. The response `y` is a `Surv` object that pairs each
-follow-up time with an event indicator, and it is what every model on this page is fit
-against.
+We work from the `lung` outcomes. The response `y` is a `Surv` object that pairs each follow-up time
+with an event indicator, and it is what every model on this page is fit against.
 
 ```{python}
+# Import the Greenwood library
 import greenwood as gw
 
+# Load the bundled lung dataset as a Polars DataFrame
 lung = gw.load_dataset("lung", backend="polars")
 
+# Build a right-censored response (status 2 = dead in this R-originating dataset)
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+
+# Display the response summary
 y
 ```
 
-The printed response shows 165 events among 228 subjects, with a `+` marking each censored
-time.
+The printed response shows a right-censored response with 165 events among 228 subjects.
+
+## Fitting a distribution to survival data
+
+Before adding covariates, it is often useful to ask: what parametric distribution fits this data
+best? The `Parametric` class fits a standalone survival distribution by maximum likelihood, giving
+you parameter estimates, standard errors, and model-selection statistics.
+
+```{python}
+# Fit a Weibull distribution by maximum likelihood (no covariates)
+fit = gw.Parametric("weibull").fit(y)
+
+# Display parameter estimates, standard errors, and model-selection statistics
+fit
+```
+
+The summary reports the natural parameters of the chosen family (here, Weibull shape and scale), the
+log-likelihood, and AIC/BIC. The estimated shape parameter tells you about the hazard trend:
+shape > 1 means the hazard increases over time, shape < 1 means it decreases, and shape = 1 is a
+constant hazard (exponential).
+
+### Comparing distributions
+
+Rather than fitting each family one at a time, `compare_distributions` fits all four and returns a
+model-selection table sorted by AIC (where lower is better):
+
+```{python}
+# Fit all four families at once and rank by AIC (lower is better)
+gw.compare_distributions(y, format="polars")
+```
+
+This immediately tells you which distributional assumption is most supported by the data. A
+difference of 2 or less in AIC is negligible whereas differences above 10 are decisive.
+
+### Predictions from a fitted distribution
+
+A fitted `Parametric` object gives you the full distributional toolkit without needing to specify
+covariates:
+
+```{python}
+# Refit the Weibull for prediction
+fit = gw.Parametric("weibull").fit(y)
+
+# Query the survival function at 6 months, 1 year, and 2 years
+fit.survival([180, 365, 730])
+```
+
+```{python}
+# Instantaneous hazard rate at the same time points (risk of event per unit time)
+fit.hazard([180, 365, 730])
+```
+
+```{python}
+# Time by which 25%, 50%, and 75% of subjects have experienced the event
+fit.quantile([0.25, 0.5, 0.75])
+```
+
+```{python}
+# Single-number summaries of the fitted distribution
+print(f"Mean:   {fit.mean():.1f} days")
+print(f"Median: {fit.median():.1f} days")
+```
+
+These predictions describe the population-level survival distribution. Once you are satisfied with a
+distributional family, you can move to an AFT model to understand how covariates shift that
+distribution.
+
+::: {.callout-tip}
+## From exploration to regression
+
+The `Parametric` class is for exploration: which distribution shape fits my data? Once you've
+chosen, use `AFT` with the same distribution to model covariate effects. For example, if
+`compare_distributions` picks Weibull, follow up with `gw.AFT("weibull").fit(y, covariates)`.
+:::
 
 ## The accelerated failure time model
 
-An accelerated failure time model, or AFT model, works on the logarithm of survival time. It
-says that covariates act by multiplying the time scale: a covariate might make time pass
-twice as fast, halving survival, or twice as slowly, doubling it. This is a different and
-often more intuitive framing than the Cox model's multiplication of hazards. The model is
-fit by maximum likelihood, and it includes an intercept because it estimates the actual
-location of the survival distribution, not just relative effects.
+An accelerated failure time model, or AFT model, works on the logarithm of survival time. It says
+that covariates act by multiplying the time scale: a covariate might make time pass twice as fast,
+halving survival, or twice as slowly, doubling it. This is a different and often more intuitive
+framing than the Cox model's multiplication of hazards. The model is fit by maximum likelihood, and
+it includes an intercept because it estimates the actual location of the survival distribution, not
+just relative effects.
 
 You fit one by naming a distribution. The Weibull is the default and the most common choice.
 
 ```{python}
+# Fit a Weibull AFT model with age and sex as covariates
 lung = gw.load_dataset("lung", backend="polars")
-
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 
+# The model estimates how each covariate stretches or compresses survival time
 aft = gw.AFT("weibull").fit(y, lung[["age", "sex"]])
+
+# Display the coefficient table, scale, and log-likelihood
 aft
 ```
 
-Printing the fitted model gives a summary in the style of R's `survreg`: the coefficient
-table, the scale parameter, the sample size, and the log-likelihood. For the coefficients as
-data, pass the model to `gw.tidy`, which returns a tidy frame.
+Printing the fitted model gives a summary in the style of R's `survreg`: the coefficient table, the
+scale parameter, the sample size, and the log-likelihood. For the coefficients as data, pass the
+model to `gw.tidy()`, which returns a tidy DataFrame.
 
 ```{python}
+# Extract the coefficient table as a tidy DataFrame (one row per term)
 gw.tidy(aft, format="polars")
 ```
 
-The coefficients are on the log-time scale. A positive coefficient lengthens survival time,
-and a negative coefficient shortens it. This is the opposite direction from a Cox hazard
-ratio, where a positive coefficient means higher risk and shorter survival, so take care when
-comparing the two.
+The coefficients are on the log-time scale. A positive coefficient lengthens survival time, and a
+negative coefficient shortens it. This is the opposite direction from a Cox hazard ratio, where a
+positive coefficient means higher risk and shorter survival, so take care when comparing the two.
 
 ## Choosing a distribution
 
 Greenwood supports four parametric distributions, each giving a different hazard shape.
 
-- exponential: Constant hazard (h(t) = λ). Simplest; often too restrictive.
-- Weibull: monotonic hazard (increasing or decreasing). Default; most flexible while remaining parsimonious.
-- log-normal: hazard rises then falls; many peak early. Good for disease incidence.
+- exponential: Constant hazard (h(t) = λ). Simplest and often too restrictive.
+- Weibull: monotonic hazard (increasing or decreasing). The default and most flexible while
+remaining parsimonious.
+- log-normal: hazard rises then falls (many peak early). Good for disease incidence.
 - log-logistic: similar to log-normal but with heavier tails.
 
 ```{python}
+# Fit each distribution to the same data and print the log-likelihood and scale
 lung = gw.load_dataset("lung", backend="polars")
-
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 
 for dist in ("exponential", "weibull", "lognormal", "loglogistic"):
@@ -87,12 +167,13 @@ for dist in ("exponential", "weibull", "lognormal", "loglogistic"):
     print(f"{dist:20s} loglik={model.loglik_:10.3f} scale={model.scale_:.4f}")
 ```
 
-To compare and choose among distributions, use the AIC (available from `glance`), where a
+To compare and choose among distributions, use the AIC (available from `glance()`), where a
 lower value indicates a better fit:
 
 ```{python}
 import pandas as pd
 
+# Collect glance summaries from each distribution into one table
 results = []
 for dist in ("exponential", "weibull", "lognormal", "loglogistic"):
     model = gw.AFT(dist).fit(y, lung[["age", "sex"]])
@@ -100,21 +181,23 @@ for dist in ("exponential", "weibull", "lognormal", "loglogistic"):
     glance_result["distribution"] = dist
     results.append(glance_result)
 
+# Combine and sort by AIC (lower is better)
 comparison = pd.concat(results)[["distribution", "loglik", "aic"]]
-
 print(comparison.sort_values("aic"))
 ```
 
-The scale parameter describes the spread of the distribution. For the exponential, it is fixed at 1 (constant hazard). For Weibull, values > 1 indicate increasing hazard, < 1 indicate decreasing. Other distributions use scale differently; see the model's docstring for details.
+The `scale=` parameter describes the spread of the distribution. For the exponential, it is fixed at
+`1` (constant hazard). For Weibull, values > 1 indicate increasing hazard, < 1 indicate decreasing.
+Other distributions use scale differently so see the model's help page for details.
 
 ## Model comparison and selection
 
-Each call to `gw.glance` returns a one-row DataFrame of model-level summaries for a
+Each call to `gw.glance()` returns a one-row DataFrame of model-level summaries for a
 single fit. We can compare all four distributions systematically:
 
 ```{python}
+# Fit each distribution and collect glance results for ranking
 lung = gw.load_dataset("lung", backend="polars")
-
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 
 comparisons = []
@@ -124,13 +207,13 @@ for dist in ("exponential", "weibull", "lognormal", "loglogistic"):
     result["distribution"] = dist
     comparisons.append(result)
 
+# Rank distributions by AIC: the lowest value wins
 comparison = pd.concat(comparisons)[["distribution", "loglik", "aic"]]
-
 print(comparison.sort_values("aic"))
 ```
 
 Compare the models by reading the AIC column and preferring the lowest value. A difference of
-10 in AIC is substantial; differences of 2-3 are subtle and don't warrant changing models.
+10 in AIC is substantial. Differences of 2-3 are subtle and don't warrant changing models.
 
 **When to use each distribution:**
 
@@ -145,7 +228,7 @@ Compare the models by reading the AIC column and preferring the lowest value. A 
 Choose a parametric model when you need to extrapolate, want smooth hazard or quantile
 predictions, or have a distributional form suggested by theory. Choose the Cox model when
 you want to avoid distributional assumptions and care mainly about relative effects. Both are
-valid; they answer slightly different questions.
+valid and they answer slightly different questions.
 :::
 
 ::: {.callout-tip}
@@ -160,16 +243,18 @@ holding other covariates fixed.
 
 Because a parametric model specifies the whole distribution, it can predict smoothly at any
 time and extrapolate beyond the observed follow-up. We predict for two new subjects, a
-50-year-old and a 70-year-old, both with `sex` coded 1.
+50-year-old and a 70-year-old, both with `sex` coded as `1`.
 
 ```{python}
+# Fit a Weibull AFT and define two new subjects for prediction
 lung = gw.load_dataset("lung", backend="polars")
-
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 aft = gw.AFT("weibull").fit(y, lung[["age", "sex"]])
 
+# Two new subjects: a 50-year-old and a 70-year-old, both sex = 1
 newdata = pd.DataFrame({"age": [50, 70], "sex": [1, 1]})
 
+# Predict survival-time quantiles at 25%, 50%, and 75% failure probabilities
 aft.predict(newdata, type="quantile", p=[0.25, 0.5, 0.75], format="polars")
 ```
 
@@ -180,6 +265,7 @@ time, and the older subject's is shorter, as expected. These quantiles match R's
 For the survival curve itself, use `type="survival"` with the times you want.
 
 ```{python}
+# Survival curve at specific times: probability of being alive past each time point
 aft.predict(newdata, type="survival", times=[180, 365, 730], format="polars")
 ```
 
@@ -192,15 +278,16 @@ The AFT distributions impose a fixed hazard shape. When none of them fits well b
 want the smooth, extrapolatable curves of a parametric model, a Royston-Parmar model is a good
 middle ground. It models the log cumulative hazard as a restricted cubic spline in log time,
 so the baseline shape is estimated from the data rather than assumed. The flexibility is set
-by `df`, the number of spline degrees of freedom.
+by `df=`, the number of spline degrees of freedom.
 
 ```{python}
+# Fit a Royston-Parmar flexible-parametric model (3 spline degrees of freedom)
 lung = gw.load_dataset("lung", backend="polars")
-
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 
 rp = gw.RoystonParmar(df=3).fit(y, lung[["age", "sex"]])
 
+# Display the spline and covariate coefficients
 rp.to_frame(format="polars")
 ```
 
@@ -209,19 +296,19 @@ named terms are the covariate effects on that scale.
 
 ### Choosing the degrees of freedom
 
-The `df` parameter controls spline flexibility. `df=1` is exactly a Weibull model (no spline);
+The `df=` parameter controls spline flexibility. `df=1` is exactly a Weibull model (no spline);
 higher values let the hazard adapt to the data shape. More flexibility fits the observed data
 better but risks overfitting and unstable extrapolation.
 
 ```{python}
-# Compare different df values using loglik
+# Sweep across spline degrees of freedom to find the best-fitting complexity
 results = []
 for df in (1, 2, 3, 4, 5):
     rp_df = gw.RoystonParmar(df=df).fit(y, lung[["age", "sex"]])
     results.append({"df": df, "loglik": rp_df.loglik_})
 
+# Display the improvement (or lack thereof) as df increases
 comparison = pd.DataFrame(results)
-
 print(comparison)
 ```
 
@@ -236,8 +323,10 @@ defaults. Choose based on the trade-off between fit and complexity:
 Prediction works as for the AFT model, with survival, hazard, or cumulative hazard curves.
 
 ```{python}
+# Two new subjects for prediction from the Royston-Parmar model
 newdata = pd.DataFrame({"age": [50, 70], "sex": [1, 1]})
 
+# Predicted survival at 6 months, 1 year, and 2 years
 rp.predict(newdata, type="survival", times=[180, 365, 730], format="polars")
 ```
 
@@ -254,20 +343,21 @@ often due to covariate values that are far from the training data mean.
 Pass `ci=True` to get confidence bounds alongside the survival probability:
 
 ```{python}
+# Refit the Weibull AFT for confidence interval demonstration
 lung = gw.load_dataset("lung", backend="polars")
-
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-
 aft = gw.AFT("weibull").fit(y, lung[["age", "sex"]])
 
-# Predict survival for two subjects with confidence intervals
+# Two subjects with different covariate profiles
 newdata = pd.DataFrame({"age": [50, 70], "sex": [1, 2]})
 
+# Predict survival with delta-method confidence intervals (log-log transform)
 predictions = aft.predict(
     newdata, type="survival", times=[180, 365, 730],
     ci=True, conf_type="log-log", format="polars"
 )
 
+# Display the point estimates and their confidence bounds
 predictions
 ```
 
@@ -305,7 +395,7 @@ and conditional expectations.
 
 ### Unconditional mean survival
 
-`type="mean"` returns the expected survival time $E[T]$ for each subject under the fitted
+Using `type="mean"` returns the expected survival time $E[T]$ for each subject under the fitted
 distribution. Each distribution has a closed-form formula, so the calculation is exact and
 fast:
 
@@ -317,13 +407,15 @@ where $\mu = X\beta$ is the log-time location for each subject and $\sigma$ is t
 parameter.
 
 ```{python}
+# Fit a log-normal AFT model (different distributional choice for illustration)
 lung = gw.load_dataset("lung", backend="polars")
-
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 aft = gw.AFT("lognormal").fit(y, lung[["age", "sex"]])
 
+# Two subjects for prediction
 newdata = pd.DataFrame({"age": [50, 70], "sex": [1, 1]})
 
+# Unconditional expected survival time E[T] for each subject
 aft.predict(newdata, type="mean")
 ```
 
@@ -347,7 +439,7 @@ survive in total?" but "how much longer can they expect to live?" This is the co
 mean $E[T \mid T > t_0]$, computed by passing `conditional_after`:
 
 ```{python}
-# Conditional mean for subjects who have already survived 365 days
+# Conditional mean given that each subject has already survived one year
 aft.predict(newdata, type="mean", conditional_after=365)
 ```
 
@@ -358,9 +450,10 @@ subject has a different follow-up time:
 ```{python}
 import numpy as np
 
-# Each subject has reached their own last-known follow-up time
+# Each subject has a different last-known follow-up time (their landmark)
 landmark_times = np.array([200.0, 400.0])
 
+# Conditional mean given each subject's own landmark
 aft.predict(newdata, type="mean", conditional_after=landmark_times)
 ```
 
@@ -370,7 +463,7 @@ aft.predict(newdata, type="mean", conditional_after=landmark_times)
 directly. This is how much longer a subject is expected to survive past their landmark time:
 
 ```{python}
-# How much longer do these subjects expect to survive past their last follow-up?
+# Expected additional lifetime beyond the landmark: E[T - t0 | T > t0]
 remaining = aft.predict(newdata, type="mean_remaining", conditional_after=landmark_times)
 remaining
 ```
@@ -406,7 +499,7 @@ observation window.
 Use `type="rmst"` with the `tau` argument:
 
 ```{python}
-# Restricted mean survival time within one year (365 days)
+# RMST within one year: expected event-free days accumulated in [0, 365]
 aft.predict(newdata, type="rmst", tau=365)
 ```
 
@@ -418,6 +511,7 @@ subjects or models on an absolute scale (days, or whatever the time unit is). Co
 RMST values at several horizons also reveals how quickly a covariate effect unfolds:
 
 ```{python}
+# RMST at several horizons: shows how the covariate gap widens over time
 horizons = [180, 365, 730]
 
 for tau in horizons:
