@@ -47,7 +47,7 @@ called semiparametric, and why it is the default choice for most analyses.
 
 ## Fitting a model
 
-You fit the model with a `Surv` response and a set of covariates. Covariates can be a pandas
+You fit the model with a `Surv` response and a set of covariates. Covariates can be a Pandas
 or Polars data frame; numeric columns are used directly and non-numeric columns are turned
 into indicator variables automatically. Rows with missing covariate values are dropped, as
 in a standard complete-case analysis.
@@ -273,7 +273,7 @@ df = pd.DataFrame({
     'event': [0, 1, 0, 1, 0, 1]
 })
 
-# Convert calendar time to subject-relative time (pandas)
+# Convert calendar time to subject-relative time (Pandas)
 df['entry_date'] = df.groupby('subject')['start'].transform('min')
 df['start_relative'] = df['start'] - df['entry_date']
 df['stop_relative'] = df['stop'] - df['entry_date']

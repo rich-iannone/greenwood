@@ -11,7 +11,7 @@ import great_docs as gd
 gd.enable_tbl_preview(n_head=8, n_tail=3)
 ```
 
-Real survival data arrives in many shapes. It might be a pandas data frame you built from a
+Real survival data arrives in many shapes. It might be a Pandas data frame you built from a
 CSV, a Polars data frame from a Parquet file, a table pulled straight from a database, or one
 of the datasets bundled with Greenwood for learning and testing. One of the design goals of
 this package is that none of this should matter: you bring the data in whatever form you
@@ -31,7 +31,7 @@ In practice this means you can pass data from any of the backends Narwhals suppo
 these are covered directly by the Greenwood test suite, which checks that they all produce
 identical estimates on the same data.
 
-- **pandas**, the most widely used data frame library, and the default for the bundled
+- **Pandas**, the most widely used data frame library, and the default for the bundled
   datasets.
 - **Polars**, a fast, multi-threaded, Arrow-based data frame library, well suited to large
   datasets.
@@ -44,10 +44,10 @@ and are expected to work the same way, though the test suite pins parity on the 
 ## What "backend-agnostic" buys you
 
 You do not have to rewrite your analysis when you switch data frame libraries. Code written
-for a pandas workflow runs unchanged when the data arrives as Polars, because Greenwood reads
+for a Pandas workflow runs unchanged when the data arrives as Polars, because Greenwood reads
 both through the same interface. This also means results do not depend on the backend: the
 same data produces the same estimates regardless of where the frame came from. The test suite
-verifies this for pandas, Polars, and PyArrow on identical inputs.
+verifies this for Pandas, Polars, and PyArrow on identical inputs.
 :::
 
 ## Passing columns and passing frames
@@ -55,7 +55,7 @@ verifies this for pandas, Polars, and PyArrow on identical inputs.
 There are two ways to feed data to Greenwood, and both are always available.
 
 The first is to pass individual columns to a `Surv` constructor. This is how you build the
-response. A column can be a pandas `Series`, a Polars `Series`, a NumPy array, or an ordinary
+response. A column can be a Pandas `Series`, a Polars `Series`, a NumPy array, or an ordinary
 Python list. Greenwood treats them all the same.
 
 ```{python}
@@ -87,7 +87,7 @@ gw.tidy(cox, exponentiate=True, format="polars")
 ## Choosing a backend
 
 The `load_dataset` function is itself dataframe-agnostic. With its default it returns a Polars
-data frame when Polars is installed, falls back to pandas when only pandas is available, and
+data frame when Polars is installed, falls back to Pandas when only Pandas is available, and
 raises a clear error if neither is. When you want a specific type, name it with the `backend`
 argument.
 
@@ -98,10 +98,10 @@ lung_pl = gw.load_dataset("lung", backend="polars")
 type(lung_pd).__module__.split(".")[0], type(lung_pl).__module__.split(".")[0]
 ```
 
-The backend makes no difference to any result. The same model fit on the pandas frame and on
+The backend makes no difference to any result. The same model fit on the Pandas frame and on
 the Polars frame returns the same coefficients, a property the test suite checks on every
 release. To show this, we first build a response from the Polars columns. The resulting `Surv`
-object looks the same as one built from pandas: it records the same times and events, because
+object looks the same as one built from Pandas: it records the same times and events, because
 Greenwood read both through Narwhals.
 
 ```{python}

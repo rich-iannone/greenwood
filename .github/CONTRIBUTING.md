@@ -31,7 +31,7 @@ Run `make help` for the full list.
 `cmprsk`/`flexsurv`/`riskRegression`/`mstate` for specialized estimators) is the brand.
 Regenerate fixtures with `Rscript scripts/regenerate_r_fixtures.R` and validate with
 `make test-rparity`.
-- **Narwhals-native.** Never assume pandas; write data handling against Narwhals and drop
+- **Narwhals-native.** Never assume Pandas; write data handling against Narwhals and drop
 to NumPy only inside numeric kernels.
 - **Typed & deterministic.** Full type hints (`py.typed`), `pyright` clean, byte-identical
 output for identical inputs.

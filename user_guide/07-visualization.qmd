@@ -248,8 +248,6 @@ of hazard ratios, or `scale="linear"` for RMST differences and other contrasts.
 
 ```{python}
 # Hazard ratios in a DataFrame: use scale="log"
-import pandas as pd
-
 hr_df = pd.DataFrame({
     "term": ["Drug A", "Drug B", "Reference"],
     "estimate": [0.82, 0.95, 1.0],
