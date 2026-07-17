@@ -42,6 +42,7 @@ and are expected to work the same way, though the test suite pins parity on the 
 
 ::: {.callout-note}
 ## What "backend-agnostic" buys you
+
 You do not have to rewrite your analysis when you switch data frame libraries. Code written
 for a pandas workflow runs unchanged when the data arrives as Polars, because Greenwood reads
 both through the same interface. This also means results do not depend on the backend: the
@@ -123,12 +124,112 @@ then pass its columns to `Surv` exactly as above. Anything that produces a suppo
 frame is a valid source.
 :::
 
+## Shaping raw study data for Surv
+
+Loading a data frame is rarely the last step before building a response. Real study exports
+often arrive in a form that needs light transformation before the times and event indicators
+are ready for `Surv`. Three situations come up often: (1) the data stores calendar dates
+rather than durations, (2) the event indicator is encoded in a compound or string status
+column, and (3) a multi-endpoint frame mixes rows that belong to different analyses.
+
+### Computing durations from timestamps
+
+The most common transformation is computing the elapsed time between two date columns.
+Subtract the enrollment date from the exit date and convert the result to your preferred
+time unit. Polars returns a `Duration` type from date subtraction; `.dt.total_days()`
+gives integer days, which you then cast to float for `Surv`.
+
+```{python}
+import polars as pl
+
+study = pl.DataFrame({
+    "subject": [1, 2, 3, 4, 5, 6],
+    "enroll":  ["2021-03-01", "2021-03-15", "2021-04-01",
+                "2021-04-20", "2021-05-01", "2021-06-01"],
+    "exit":    ["2022-01-10", "2021-09-22", "2023-01-01",
+                "2021-12-05", "2022-08-14", "2022-03-30"],
+    "outcome": ["died", "censored", "censored", "died", "withdrew", "died"],
+}).with_columns(
+    pl.col("enroll", "exit").cast(pl.Date)
+).with_columns(
+    time=(pl.col("exit") - pl.col("enroll")).dt.total_days().cast(pl.Float64),
+    event=(pl.col("outcome") == "died"),
+)
+
+y = gw.Surv.right(study["time"], event=study["event"])
+y
+```
+
+A few things to notice in this example. First, the `outcome` column uses three values:
+`"died"` (the event), `"censored"` (lost to follow-up at the exit date), and `"withdrew"`
+(left the study early). All three map cleanly to a boolean event indicator: the event is
+`True` only for `"died"`, and all other outcomes become censored observations. Second,
+the exit date serves the same role regardless of the reason for exit: it is always the
+last time at which the subject was observed, and the event indicator records what happened
+at that time.
+
+::: {.callout-note}
+## Missing values
+
+`Surv` raises an error if `time` or `event` contains null values. Drop or impute missing
+rows before constructing the response:
+
+```python
+study_clean = study.drop_nulls(subset=["time", "event"])
+```
+:::
+
+### Encoding from compound status columns
+
+Some datasets store multiple outcome levels in a single integer status column. `pbc` is
+a typical example: `status` is 0 (censored), 1 (transplant), or 2 (dead). The right
+encoding depends on the analysis you intend to run.
+
+```{python}
+pbc = gw.load_dataset("pbc", backend="polars")
+
+# All-cause analysis: transplant and death are both events
+y_all = gw.Surv.right(pbc["time"], event=(pbc["status"] > 0))
+
+# Death-only: transplant becomes censoring (patient still alive at last contact)
+y_death = gw.Surv.right(pbc["time"], event=(pbc["status"] == 2))
+
+print("all-cause: ", y_all)
+print("death-only:", y_death)
+```
+
+The event counts differ because 25 subjects reached transplant rather than death: the
+all-cause endpoint treats them as events, the death-only endpoint treats them as censored.
+Which is correct depends entirely on your research question. For a competing-risks analysis
+that keeps the two outcomes separate, pass the full `status` column to `AalenJohansen` or
+`FineGray` with explicit event codes. See the competing-risks chapter for that pattern.
+
+### Filtering multi-endpoint frames
+
+Some study exports give each subject one row per potential endpoint. The `colon` dataset is
+structured this way: `etype` is `1` for recurrence and `2` for death, so the full frame has
+1858 rows for 929 patients. Mixing rows from different endpoints in a single `Surv` is
+meaningless, so always filter to one endpoint first.
+
+```{python}
+colon = gw.load_dataset("colon", backend="polars")
+
+recurrence = colon.filter(pl.col("etype") == 1)
+y_recur = gw.Surv.right(recurrence["time"], event=recurrence["status"])
+y_recur
+```
+
+The same principle applies to `mgus2`, which stores its two competing endpoints in separate
+column pairs (`ptime`/`pstat` for progression, `futime`/`death` for death) rather than
+separate rows. There you select the column pair that matches the endpoint you want, or pass
+both to a competing-risks model.
+
 ## Tidy output frames
 
 Every estimator and model returns its results as tidy data frames, through the `to_frame()`
 method and through the `tidy` and `glance` functions. Pass `format=` (`"pandas"`, `"polars"`,
 or `"pyarrow"`) to choose the backend; when you leave it off, Greenwood auto-detects one
-(Polars if installed, otherwise pandas, otherwise PyArrow). This makes the results easy to
+(Polars if installed, otherwise Pandas, otherwise PyArrow). This makes the results easy to
 inspect, filter, join, or pass on to a plotting or table library.
 
 ```{python}
@@ -141,8 +242,8 @@ gw.glance(cox, format="polars")
 ```
 
 The tidy and glance functions follow the same conventions as R's broom package, so a fitted
-model always yields a per-term table (`tidy`) and a one-row model summary (`glance`). This is
-the seam that lets Greenwood feed publication tables in Great Summaries and Great Tables.
+model always yields a per-term table (`tidy()`) and a one-row model summary (`glance()`).
+This is the seam that lets Greenwood feed publication tables in Great Tables.
 
 ## Datasets bundled with Greenwood
 
@@ -166,8 +267,8 @@ trial of advanced lung cancer. It is the workhorse example throughout the Greenw
 documentation and the most commonly cited benchmark in the Python and R survival-analysis
 literature.
 
-**Columns:** `inst` (institution code), `time` (survival days), `status` (1 = censored,
-2 = dead), `age`, `sex` (1 = male, 2 = female), `ph.ecog` (ECOG performance score 0–4),
+**Columns:** `inst` (institution code), `time` (survival days), `status` (`1` = censored,
+2 = dead), `age`, `sex` (`1` = male, `2` = female), `ph.ecog` (ECOG performance score 0–4),
 `ph.karno` (Karnofsky score rated by physician), `pat.karno` (Karnofsky score rated by
 patient), `meal.cal` (calories consumed at meals), `wt.loss` (weight loss in the last six
 months).
@@ -182,8 +283,8 @@ construction examples throughout this guide.
 ::: {.callout-note}
 ## Event coding
 
-`status` uses the R-style 1 / 2 convention: 1 = censored, 2 = dead. Build the response as
-`Surv.right(time, event=(status == 2))`.
+`status` uses the R-style 1 / 2 convention: `1` = censored, `2` = dead. Build the response
+as `Surv.right(time, event=(status == 2))`.
 :::
 
 ```{python}
@@ -198,8 +299,8 @@ patients into four histological groups (squamous, small cell, adeno, and large c
 makes it the natural choice for demonstrating stratified Kaplan-Meier curves and multi-group
 comparison tests.
 
-**Columns:** `trt` (1 = standard, 2 = test), `celltype` (squamous / smallcell / adeno /
-large), `time` (survival days), `status` (0 = censored, 1 = dead), `karno` (Karnofsky
+**Columns:** `trt` (`1` = standard, `2` = test), `celltype` (squamous / smallcell / adeno /
+large), `time` (survival days), `status` (`0` = censored, `1` = dead), `karno` (Karnofsky
 performance score), `diagtime` (months from diagnosis to study entry), `age`, `prior`
 (prior therapy: 0 / 10).
 
@@ -219,14 +320,14 @@ chemotherapy regimens for ovarian cancer. Its small size makes it ideal for teac
 verifying that a method produces the right result on data you can inspect by eye, and for
 quick checks during development.
 
-**Columns:** `futime` (follow-up days), `fustat` (0 = censored, 1 = dead), `age`,
-`resid.ds` (residual disease after surgery: 1 = no, 2 = yes), `rx` (treatment group:
+**Columns:** `futime` (follow-up days), `fustat` (`0` = censored, `1` = dead), `age`,
+`resid.ds` (residual disease after surgery: `1` = no, `2` = yes), `rx` (treatment group:
 1 or 2), `ecog.ps` (ECOG performance status).
 
 **Model fit:** Because of its size, `ovarian` is best used with non-parametric estimators
 (`KaplanMeier`, `NelsonAalen`) and simple group comparisons (`logrank_test`). Regression
-models can be fit but coefficient estimates will have wide confidence intervals. Use `pbc` or
-`colon` when you need a richer covariate structure.
+models can be fit but coefficient estimates will have wide confidence intervals. Use `pbc`
+or `colon` when you need a richer covariate structure.
 
 ```{python}
 gd.tbl_explorer(gw.load_dataset("ovarian"), caption="ovarian: 26 patients, 6 variables")
@@ -239,8 +340,8 @@ primary biliary cholangitis, a chronic liver disease. With 20 columns including 
 values, clinical signs, and histological staging, it is the reference dataset for
 high-dimensional regression in Greenwood.
 
-**Columns:** `id`, `time` (days to death or transplant), `status` (0 = censored,
-1 = transplant, 2 = dead), `trt` (1 = D-penicillamine, 2 = placebo), `age`, `sex`,
+**Columns:** `id`, `time` (days to death or transplant), `status` (`0` = censored,
+`1` = transplant, `2` = dead), `trt` (`1` = D-penicillamine, `2` = placebo), `age`, `sex`,
 `ascites`, `hepato` (hepatomegaly), `spiders`, `edema`, `bili` (serum bilirubin), `chol`
 (cholesterol), `albumin`, `copper`, `alk.phos` (alkaline phosphatase), `ast`, `trig`
 (triglycerides), `platelet`, `protime` (prothrombin time), `stage` (histologic stage 1–4).
@@ -255,7 +356,7 @@ a standard right-censored analysis, or separate them into competing events for
 ::: {.callout-note}
 ## Event coding
 
-`status` has three levels: 0 = censored, 1 = transplant, 2 = dead. For an all-cause
+`status` has three levels: `0` = censored, `1` = transplant, `2` = dead. For an all-cause
 analysis use `event=(status > 0)`. For competing risks, pass the full column with explicit
 event codes to `AalenJohansen` or `FineGray`.
 :::
@@ -274,7 +375,7 @@ frame contains roughly twice the number of subjects.
 
 **Columns:** `id`, `study`, `rx` (Obs / Lev / Lev+5FU), `sex`, `age`, `obstruct`,
 `perfor` (bowel perforation), `adhere`, `nodes` (positive lymph nodes), `status`
-(0 = censored, 1 = event), `differ` (tumor differentiation), `extent` (depth of invasion),
+(`0` = censored, `1` = event), `differ` (tumor differentiation), `extent` (depth of invasion),
 `surg` (short / long time from surgery to registration), `node4` (nodes > 4), `time`,
 `etype` (1 = recurrence, 2 = death).
 
@@ -300,8 +401,8 @@ example for cumulative incidence functions in this guide.
 
 **Columns:** `id`, `age`, `sex`, `dxyr` (year of diagnosis), `hgb` (hemoglobin), `creat`
 (creatinine), `mspike` (M-spike size in g/dL), `ptime` (months to progression), `pstat`
-(0 = no progression, 1 = progressed), `futime` (months to death or censoring), `death`
-(0 = alive, 1 = dead).
+(`0` = no progression, `1` = progressed), `futime` (months to death or censoring), `death`
+(`0` = alive, `1` = dead).
 
 **Model fit:** `mgus2` is designed for competing-risks analysis. Use `AalenJohansen` for
 non-parametric cumulative incidence functions and `FineGray` for regression on the
@@ -317,9 +418,10 @@ gd.tbl_explorer(gw.load_dataset("mgus2"), caption="mgus2: 1384 patients, 11 vari
 ## Event coding in the bundled data
 
 Several of these datasets follow R's convention rather than the `0`/`1` convention for the
-status column. `lung` codes status as 1 = censored and 2 = dead. `pbc` uses three levels
-(0 / 1 / 2). Always inspect the column and convert it explicitly when building the response.
-See [Survival data](03-survival-data.qmd) for why Greenwood does not guess at event coding.
+status column. `lung` codes status as `1` = censored and `2` = dead. `pbc` uses three levels
+(`0` / `1` / `2`). Always inspect the column and convert it explicitly when building the
+response. See [Survival data](03-survival-data.qmd) for why Greenwood does not guess at event
+coding.
 :::
 
 ## Next steps
