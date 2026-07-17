@@ -43,6 +43,8 @@ we diagnose throughout the page, so we fit it once here and reuse it below.
 cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
 ```
 
+With the response and model in hand, the sections below work through each diagnostic in turn.
+
 ## Checking the proportional hazards assumption
 
 The Cox model assumes each covariate's effect on the hazard is constant over time. When this
@@ -51,8 +53,8 @@ misleading average. The Grambsch-Therneau test checks the assumption by looking 
 in the scaled Schoenfeld residuals against time. A small p-value is evidence that the
 assumption is violated for that covariate.
 
-Calling `cox_zph` returns a `ZPHResult`, an object that bundles the test statistics together.
-Displaying it directly gives a compact summary of the test.
+Calling `cox_zph()` returns a `ZPHResult`, an object that bundles the test statistics
+together. Displaying it directly gives a compact summary of the test.
 
 ```{python}
 # Load data and build the response
@@ -120,6 +122,10 @@ column per covariate.
 cox.residuals("schoenfeld", format="polars")
 ```
 
+Taken together, martingale residuals are most useful for spotting influential subjects or a
+nonlinear covariate relationship, while Schoenfeld residuals are the basis for the proportional
+hazards test and for plotting a covariate's effect against time.
+
 ## Baseline hazard and predicted survival
 
 Although the Cox model does not assume a shape for the baseline hazard, it can estimate one
@@ -184,6 +190,10 @@ returned probabilities are $P(T > t \mid T > 180) = S(t) / S(180)$.
 # Predict P(T > t | T > 180): survival conditional on being alive at day 180
 cox.predict(newdata, type="survival", times=[365, 730], conditional_after=180, format="polars")
 ```
+
+Confidence bands quantify the uncertainty in a predicted survival curve, and conditional
+survival gives an updated estimate that is directly meaningful for a patient already some
+time into follow-up. Both are straightforward extensions of the base `predict()` call.
 
 ## Stratification
 
@@ -259,6 +269,11 @@ cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
 # Compute Harrell's C-statistic: probability of correct pairwise risk ordering
 cox.concordance()
 ```
+
+The C-statistic summarizes discrimination across all observed pairs, but it does not say
+whether predicted probabilities are well calibrated. For a more complete picture of model
+performance, including calibration and the Brier score, see
+[Prediction performance](13-prediction-performance.qmd).
 
 ## Next steps
 
