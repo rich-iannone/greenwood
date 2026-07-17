@@ -22,9 +22,13 @@ We continue with the `lung` dataset, comparing survival between the two sexes.
 ```{python}
 import greenwood as gw
 
+# Load the bundled lung dataset as a Polars DataFrame
 lung = gw.load_dataset("lung", backend="polars")
 
+# Build a right-censored response; status == 2 marks a death
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+
+# Display the response summary
 y
 ```
 
@@ -40,9 +44,11 @@ group, computes the events expected under the null hypothesis of no difference, 
 the observed-minus-expected discrepancies into a single chi-square statistic.
 
 ```{python}
+# Load data and build the response
 lung = gw.load_dataset("lung", backend="polars")
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 
+# Run the log-rank test comparing survival between the two sexes
 result = gw.logrank_test(y, group=lung["sex"])
 ```
 
@@ -50,6 +56,7 @@ The call returns a `TestResult` object, which we store in `result`. Displaying i
 readable summary of the whole test at once.
 
 ```{python}
+# Print the test statistic, degrees of freedom, and p-value
 result
 ```
 
@@ -60,6 +67,7 @@ direction of the difference. These live on the `result` object as the `observed`
 `expected` attributes, one entry per group.
 
 ```{python}
+# Inspect the per-group event counts to see the direction of the difference
 print("observed:", result.observed)
 print("expected:", result.expected)
 ```
@@ -93,10 +101,11 @@ the weighting has changed, so compare its statistic and p-value against the unwe
 above to see how much the emphasis on early event times matters here.
 
 ```{python}
+# Load data and build the response
 lung = gw.load_dataset("lung", backend="polars")
-
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 
+# Peto-Peto test: rho=1 weights early event times more heavily than the standard log-rank
 gw.logrank_test(y, group=lung["sex"], rho=1)
 ```
 
@@ -129,10 +138,11 @@ The log-rank test extends to any number of groups, giving one overall test. We s
 `veteran` dataset, which records a cell type with four levels.
 
 ```{python}
+# Load the veteran dataset and build the response
 vet = gw.load_dataset("veteran", backend="polars")
-
 y_vet = gw.Surv.right(vet["time"], event=vet["status"])
 
+# Overall log-rank test across all four cell types
 gw.logrank_test(y_vet, group=vet["celltype"])
 ```
 
@@ -141,11 +151,12 @@ not say which ones differ. For that, test each pair and correct for the fact tha
 running several tests at once. `pairwise_logrank_test` does both.
 
 ```{python}
+# Test every pair of cell types; p_adjusted applies Holm multiple-comparison correction
 gw.pairwise_logrank_test(y_vet, group=vet["celltype"], format="polars")
 ```
 
 Each row is one pair, with its own statistic, the raw `p_value`, and a `p_adjusted` value
-that accounts for the multiple comparisons. The default correction is Holm's; pass
+that accounts for the multiple comparisons. The default correction is Holm's but you can pass
 `correction="bh"` for Benjamini-Hochberg, `"bonferroni"`, or `"none"`. Read significance from
 the adjusted column, not the raw one.
 
@@ -164,12 +175,14 @@ Compare RMST between two groups with confidence intervals and hypothesis tests u
 `rmst_test()`. Here we compare 1-year RMST between the two sexes in the `lung` dataset.
 
 ```{python}
+# Load data and build the response
 lung = gw.load_dataset("lung", backend="polars")
-
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 
 # Compare 1-year RMST between groups
 result = gw.rmst_test(y, tau=365, group=lung["sex"])
+
+# Display the RMST per group, their difference, and the p-value
 result
 ```
 
@@ -180,6 +193,7 @@ higher RMST (longer average survival).
 You can extract specific components:
 
 ```{python}
+# Extract the key effect-size components from the result object
 print(f"RMST difference: {result.estimate:.1f} days")
 print(f"95% CI: [{result.lower_ci:.1f}, {result.upper_ci:.1f}]")
 print(f"P-value: {result.p_value:.4f}")
@@ -193,8 +207,11 @@ percentage difference using the `estimand` parameter.
 **Ratio of RMSTs** (group 1 / group 2):
 
 ```{python}
+# Ratio estimand: group 1 RMST divided by group 2 RMST
 result_ratio = gw.rmst_test(y, tau=365, group=lung["sex"], estimand="ratio")
-result_ratio.estimate  # Ratio
+
+# A value < 1 means group 1 has shorter average survival
+result_ratio.estimate
 ```
 
 A ratio of `0.8` means group 1 has 80% of the RMST of group 2 (20% shorter average survival).
@@ -202,8 +219,11 @@ A ratio of `0.8` means group 1 has 80% of the RMST of group 2 (20% shorter avera
 **Percentage difference** ((group 1 - group 2) / group 2 × 100):
 
 ```{python}
+# Percentage-difference estimand: (group 1 - group 2) / group 2 × 100
 result_pct = gw.rmst_test(y, tau=365, group=lung["sex"], estimand="percentage_difference")
-result_pct.estimate  # Percentage
+
+# Negative means group 1 has shorter average survival as a percentage
+result_pct.estimate
 ```
 
 All three estimands use the delta method to construct standard errors and confidence intervals,
@@ -216,12 +236,14 @@ multiple-comparison adjustment. Here we test which cell types in the `veteran` d
 in 1-year RMST.
 
 ```{python}
+# Load the veteran dataset and build the response
 vet = gw.load_dataset("veteran", backend="polars")
-
 y_vet = gw.Surv.right(vet["time"], event=vet["status"])
 
 # Pairwise RMST differences with Holm adjustment
 pairs = gw.pairwise_rmst_test(y_vet, tau=365, group=vet["celltype"])
+
+# Display the full pairwise comparison table
 pairs
 ```
 
@@ -236,8 +258,10 @@ while `tau=1825` extends to 5 years. Choose `tau` based on clinical relevance be
 at the data. Common choices are clinically meaningful milestones (1 year, 5 years, etc.).
 
 ```{python}
-# Compare 5-year RMST instead
+# Extend the horizon to 5 years and compare again
 result_5y = gw.rmst_test(y, tau=1825, group=lung["sex"])
+
+# Display the 5-year RMST difference
 result_5y.estimate
 ```
 
@@ -256,19 +280,24 @@ is correlated with both sex and prognosis.
 ```{python}
 import polars as pl
 
+# Load the lung dataset
 lung = gw.load_dataset("lung", backend="polars")
 
 # Drop the small number of rows with missing ECOG score
 lung_clean = lung.filter(pl.col("ph.ecog").is_not_null())
 
+# Build the response from the cleaned frame
 y = gw.Surv.right(lung_clean["time"], event=(lung_clean["status"] == 2))
 
+# Stratified RMST: compare sexes while controlling for ECOG performance status
 result_strat = gw.rmst_test(
     y,
     tau=365,
     group=lung_clean["sex"],
     strata=lung_clean["ph.ecog"],
 )
+
+# Display the pooled stratified result
 result_strat
 ```
 
@@ -277,6 +306,7 @@ make it clear which analysis was run. The `estimate` is the pooled RMST differen
 `se` reflects the combined uncertainty across all strata.
 
 ```{python}
+# Display the pooled estimate and its uncertainty
 print(f"Pooled RMST difference: {result_strat.estimate:.1f} days")
 print(f"95% CI: [{result_strat.lower_ci:.1f}, {result_strat.upper_ci:.1f}]")
 print(f"P-value: {result_strat.p_value:.4f}")
@@ -330,10 +360,11 @@ log-rank does this. Here we compare the two treatments while stratifying by cell
 removes any cell-type imbalance from the comparison.
 
 ```{python}
+# Load the veteran dataset and build the response
 vet = gw.load_dataset("veteran", backend="polars")
-
 y_vet = gw.Surv.right(vet["time"], event=vet["status"])
 
+# Stratified log-rank: compare treatments while controlling for cell type
 gw.logrank_test(y_vet, group=vet["trt"], strata=vet["celltype"])
 ```
 
@@ -358,11 +389,11 @@ By default, groups are sorted and assigned scores 0, 1, 2, ..., (*k* - 1). Here 
 survival differs across cell types in the `veteran` dataset, treating them as an ordered grouping.
 
 ```{python}
+# Load the veteran dataset and build the response
 vet = gw.load_dataset("veteran", backend="polars")
-
 y = gw.Surv.right(vet["time"], event=vet["status"])
 
-# Test linear trend across ordered cell types
+# Test linear trend across ordered cell types (default integer scores)
 gw.trend_test(y, group=vet["celltype"])
 ```
 
@@ -376,12 +407,15 @@ If the ordering is not uniform (for instance, some groups have very different pr
 can specify custom scores. Scores must be numeric and reflect your belief about the ordering.
 
 ```{python}
+# Load the veteran dataset and build the response
 vet = gw.load_dataset("veteran", backend="polars")
 
 y = gw.Surv.right(vet["time"], event=vet["status"])
 
 # Custom scores: adeno and large get weight 1, smallcell and squamous get weight 3
 scores = {"adeno": 1, "large": 1, "smallcell": 3, "squamous": 3}
+
+# Apply the custom scoring to reflect domain knowledge about group ordering
 gw.trend_test(y, group=vet["celltype"], scores=scores)
 ```
 
@@ -395,11 +429,11 @@ or late differences. With `rho=1`, the Peto-Peto variant emphasizes early event 
 is useful if you suspect early separation of the curves.
 
 ```{python}
+# Load the veteran dataset and build the response
 vet = gw.load_dataset("veteran", backend="polars")
-
 y = gw.Surv.right(vet["time"], event=vet["status"])
 
-# Peto-Peto trend test: weights early events more heavily
+# Peto-Peto trend test: rho=1 weights early events more heavily
 gw.trend_test(y, group=vet["celltype"], rho=1)
 ```
 
@@ -410,11 +444,11 @@ trend across ordered groups. The stratified test computes the trend separately i
 and then combines the results.
 
 ```{python}
+# Load the veteran dataset and build the response
 vet = gw.load_dataset("veteran", backend="polars")
-
 y = gw.Surv.right(vet["time"], event=vet["status"])
 
-# Test trend in celltype while controlling for treatment
+# Test trend in celltype while controlling for treatment group
 gw.trend_test(y, group=vet["celltype"], strata=vet["trt"])
 ```
 
@@ -422,11 +456,11 @@ gw.trend_test(y, group=vet["celltype"], strata=vet["trt"])
 ## When to use trend tests vs. pairwise tests
 
 - use `trend_test()` when groups are ordered and you care about detecting a linear trend.
-  It's more powerful for this specific hypothesis.
+It's more powerful for this specific hypothesis.
 - use `pairwise_logrank_test()` when you want to know which specific pairs of unordered
-  groups differ. It tests all pairwise differences, not a linear trend.
+groups differ. It tests all pairwise differences, not a linear trend.
 - use `logrank_test()` for an overall test of differences without assuming any structure
-  on the groups.
+on the groups.
 :::
 
 ## Study design: sample size and power

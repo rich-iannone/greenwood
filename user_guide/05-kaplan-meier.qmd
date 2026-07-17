@@ -23,9 +23,13 @@ Every example here uses the bundled `lung` dataset and the `Surv` response intro
 ```{python}
 import greenwood as gw
 
+# Load the bundled lung dataset as a Polars DataFrame
 lung = gw.load_dataset("lung", backend="polars")
 
+# Build a right-censored response; status == 2 marks a death
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+
+# Display the response summary
 y
 ```
 
@@ -40,10 +44,14 @@ You fit the estimator by calling `fit` with a response. The `KaplanMeier` object
 familiar fit-then-inspect pattern, so we fit it first and set it aside.
 
 ```{python}
+# Load data and build the response
 lung = gw.load_dataset("lung", backend="polars")
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 
+# Fit the Kaplan-Meier estimator
 km = gw.KaplanMeier().fit(y)
+
+# Print the median survival and confidence interval
 km
 ```
 
@@ -52,6 +60,7 @@ The fitted `km` object holds the whole curve internally. The most direct way to 
 few rows.
 
 ```{python}
+# Export the full survival curve as a tidy one-row-per-time DataFrame
 km.to_frame(format="polars")
 ```
 
@@ -67,20 +76,22 @@ evaluates the step function. It returns a plain array with one probability per r
 time, in the same order you asked for them.
 
 ```{python}
+# Evaluate the step-function survival curve at specific time points (days)
 km.predict([180, 365, 730])
 ```
 
 ::: {.callout-note}
 ## Reading the survival probability
-A survival probability of 0.53 at 365 days means the estimator predicts that 53 percent of
-subjects remain event-free one year in. Because the curve is a step function, the value
+
+A survival probability of `0.53` at 365 days means the estimator predicts that 53 percent
+of subjects remain event-free one year in. Because the curve is a step function, the value
 holds constant between event times.
 :::
 
 ## Confidence intervals
 
 The confidence band around the curve comes from Greenwood's variance formula. Greenwood
-supports three transforms for the interval, chosen with `conf_type`. The default is `"log"`,
+supports three transforms for the interval, chosen with `conf_type=`. The default is `"log"`,
 which matches the default in R's survival package. The `"log-log"` transform keeps the
 limits inside the valid range from 0 to 1 more reliably at the tails, and `"plain"` gives a
 symmetric interval on the probability scale.
@@ -89,11 +100,14 @@ You set the transform when you construct the estimator, so we fit a second `Kapl
 `conf_type="log-log"` and keep it separate from the default fit above.
 
 ```{python}
+# Load data and build the response
 lung = gw.load_dataset("lung", backend="polars")
-
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 
+# Fit with the log-log confidence interval transform
 km_loglog = gw.KaplanMeier(conf_type="log-log").fit(y)
+
+# Print the median survival with log-log bounds
 km_loglog
 ```
 
@@ -101,6 +115,7 @@ Pulling out just the estimate and its interval limits lets you compare this fit 
 default one. We select those columns to keep the table narrow.
 
 ```{python}
+# Compare confidence limits from the log-log transform against the plain estimate
 km_loglog.to_frame(format="polars")[["time", "estimate", "conf_low", "conf_high"]]
 ```
 
@@ -110,14 +125,15 @@ the transform before fitting, and report which one you used.
 ### Customizing the confidence level
 
 By default, Greenwood computes 95% confidence intervals. You can adjust this with the
-`conf_level` parameter, useful for regulatory submissions or sensitivity analyses that require
-different coverage levels (e.g., 90% or 99%).
+`conf_level=` parameter, useful for regulatory submissions or sensitivity analyses that
+require different coverage levels (e.g., 90% or 99%).
 
 ```{python}
+# Fit with 90% and 99% confidence levels for sensitivity comparison
 km_90 = gw.KaplanMeier(conf_level=0.90).fit(y)
 km_99 = gw.KaplanMeier(conf_level=0.99).fit(y)
 
-# Compare intervals at a few time points
+# Inspect the narrower 90% interval on the first three rows
 km_90.to_frame(format="polars")[["time", "estimate", "conf_low", "conf_high"]].head(3)
 ```
 
@@ -133,12 +149,12 @@ they construct the interval. Here is a comparison to help you choose:
 ```{python}
 import polars as pl
 
-# Fit KM with each transform
+# Fit the same data with all three CI transforms
 km_plain = gw.KaplanMeier(conf_type="plain").fit(y)
 km_log = gw.KaplanMeier(conf_type="log").fit(y)
 km_loglog = gw.KaplanMeier(conf_type="log-log").fit(y)
 
-# Compare interval widths at selected quantile times
+# Build a combined table showing every 30th row from each transform
 results = []
 for km, name in [(km_plain, "plain"), (km_log, "log"), (km_loglog, "log-log")]:
     df = km.to_frame(format="polars")
@@ -147,6 +163,7 @@ for km, name in [(km_plain, "plain"), (km_log, "log"), (km_loglog, "log-log")]:
     df_subset = df_subset.with_columns(pl.lit(name).alias("transform"))
     results.append(df_subset)
 
+# Stack all three into one frame for side-by-side comparison
 pl.concat(results)
 ```
 
@@ -161,11 +178,12 @@ Choose the transform before fitting and report which you used.
 ## Median survival and quantiles
 
 ```{python}
+# Load data and build the response
 lung = gw.load_dataset("lung", backend="polars")
-
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 km = gw.KaplanMeier().fit(y)
 
+# Return the median survival time with its confidence interval
 km.median(ci=True)
 ```
 
@@ -173,11 +191,13 @@ The result is the median together with its confidence limits, obtained by invert
 confidence band. Other quantiles work the same way through `quantile`.
 
 ```{python}
+# Return the 25th-percentile survival time
 km.quantile(0.25)
 ```
 
 ::: {.callout-tip}
 ## When the median is not defined
+
 If the survival curve never falls to 0.5 within the observed follow-up, the median is not
 estimable and Greenwood returns `nan`. This is not an error; it is an honest statement that
 the data do not reach the median.
@@ -192,11 +212,12 @@ as the average event-free time over the first `tau` units, and it is a good summ
 survival curves cross, which makes hazard ratios hard to interpret.
 
 ```{python}
+# Load data and build the response
 lung = gw.load_dataset("lung", backend="polars")
-
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 km = gw.KaplanMeier().fit(y)
 
+# Average event-free days in the first year, with a 95% confidence interval
 km.rmst(365, ci=True)
 ```
 
@@ -213,11 +234,12 @@ is the area under the conditional survival curve from `s` to `tau`, divided by t
 subjects still event-free at `s`. Setting `s=0` recovers the restricted mean survival time.
 
 ```{python}
+# Load data and build the response
 lung = gw.load_dataset("lung", backend="polars")
-
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 km = gw.KaplanMeier().fit(y)
 
+# Expected additional event-free days between day 180 and 730, for survivors at day 180
 km.rmrl(180, 730, ci=True)
 ```
 
@@ -232,10 +254,14 @@ Passing a grouping variable to `by` fits a separate curve within each stratum, w
 starting point for any subgroup comparison. The tidy output gains a `strata` column.
 
 ```{python}
+# Load data and build the response
 lung = gw.load_dataset("lung", backend="polars")
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 
+# Fit a separate Kaplan-Meier curve for each level of sex
 km_sex = gw.KaplanMeier().fit(y, by=lung["sex"])
+
+# Print per-stratum median survival
 km_sex
 ```
 
@@ -244,6 +270,7 @@ column identifying which curve each row belongs to. We show the first couple of 
 each stratum so you can see both curves side by side without printing every time point.
 
 ```{python}
+# Show the first two rows from each stratum to see both curves side by side
 km_sex.to_frame(format="polars").group_by("strata").head(2)
 ```
 
@@ -251,6 +278,7 @@ Per-stratum summaries follow naturally. `median` and `rmst` return a dictionary 
 stratum when the fit is grouped.
 
 ```{python}
+# Per-stratum median survival times as a dictionary keyed by stratum label
 km_sex.median()
 ```
 
@@ -264,12 +292,15 @@ When your data contains frequency weights (e.g., summarized counts rather than i
 records), or case weights for design-based analysis, pass them via the `weights` parameter.
 
 ```{python}
-# Example with case weights: create sample weights for demonstration
 import numpy as np
 
+# Create sample weights for demonstration
 weights = np.random.uniform(0.5, 2.0, len(y))
 
+# Fit with frequency/case weights applied to each observation
 km_weighted = gw.KaplanMeier().fit(y, weights=weights)
+
+# Display the weighted median survival
 km_weighted
 ```
 
@@ -286,10 +317,14 @@ The estimator follows the same fit-then-inspect pattern as `KaplanMeier`, so we 
 own step.
 
 ```{python}
+# Load data and build the response
 lung = gw.load_dataset("lung", backend="polars")
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 
+# Fit the Nelson-Aalen cumulative hazard estimator
 na = gw.NelsonAalen().fit(y)
+
+# Print a summary of the cumulative hazard
 na
 ```
 
@@ -298,6 +333,7 @@ Reading `na` with `to_frame()` gives the same table layout as before, but now th
 survival, it starts at 0 and climbs as events accumulate.
 
 ```{python}
+# Export the cumulative hazard curve as a tidy DataFrame
 na.to_frame(format="polars")
 ```
 
