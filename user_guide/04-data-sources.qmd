@@ -288,6 +288,7 @@ as `Surv.right(time, event=(status == 2))`.
 :::
 
 ```{python}
+#| echo: false
 gd.tbl_explorer(gw.load_dataset("lung"), caption="lung: 228 patients, 10 variables")
 ```
 
@@ -310,6 +311,7 @@ log-rank tests, pairwise log-rank, and trend tests. For regression, `CoxPH` acce
 giving one hazard ratio per cell type relative to the reference level.
 
 ```{python}
+#| echo: false
 gd.tbl_explorer(gw.load_dataset("veteran"), caption="veteran: 137 patients, 8 variables")
 ```
 
@@ -330,6 +332,7 @@ models can be fit but coefficient estimates will have wide confidence intervals.
 or `colon` when you need a richer covariate structure.
 
 ```{python}
+#| echo: false
 gd.tbl_explorer(gw.load_dataset("ovarian"), caption="ovarian: 26 patients, 6 variables")
 ```
 
@@ -362,6 +365,7 @@ event codes to `AalenJohansen` or `FineGray`.
 :::
 
 ```{python}
+#| echo: false
 gd.tbl_explorer(gw.load_dataset("pbc"), caption="pbc: 418 patients, 20 variables")
 ```
 
@@ -386,6 +390,7 @@ estimates. Filtering to `etype == 2` and treating the recurrence event as a comp
 gives a natural setup for `AalenJohansen` and `FineGray`.
 
 ```{python}
+#| echo: false
 gd.tbl_explorer(gw.load_dataset("colon"), caption="colon: 1858 rows (2 endpoints per patient), 16 variables")
 ```
 
@@ -411,6 +416,7 @@ three-state illness-death structure (MGUS -> progression -> death). The competin
 page of this guide builds its examples entirely on this dataset.
 
 ```{python}
+#| echo: false
 gd.tbl_explorer(gw.load_dataset("mgus2"), caption="mgus2: 1384 patients, 11 variables")
 ```
 
