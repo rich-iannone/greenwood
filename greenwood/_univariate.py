@@ -248,3 +248,34 @@ class Parametric:
         """
         return -np.log(self.survival(times))
 
+    def hazard(self, times: Any) -> Array:
+        r"""Hazard function $h(t) = f(t) / S(t)$ at the given times.
+
+        Parameters
+        ----------
+        times
+            Query times (array-like of positive floats).
+
+        Returns
+        -------
+        ndarray
+            Hazard rate values, same length as `times=`.
+
+        Examples
+        --------
+        ```{python}
+        import greenwood as gw
+
+        lung = gw.load_dataset("lung", backend="polars")
+        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        fit = gw.Parametric("weibull").fit(y)
+        fit.hazard([100, 200, 365, 500])
+        ```
+        """
+        t = np.atleast_1d(np.asarray(times, dtype=float))
+        z = (np.log(t) - self._mu) / self._sigma
+        log_f, log_s = _log_density_survival(self.dist, z)
+        # f_T(t) = f_eps(z) / (sigma * t), h(t) = f_T(t) / S(t)
+        log_hazard = log_f - log_s - np.log(self._sigma) - np.log(t)
+        return np.exp(log_hazard)
+
