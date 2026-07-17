@@ -342,3 +342,13 @@ class Parametric:
         mu_arr = np.array([self._mu])
         return float(_mean_survival_aft(self.dist, mu_arr, self._sigma)[0])
 
+    def median(self) -> float:
+        """Median survival time (the 50th-percentile time).
+
+        Returns
+        -------
+        float
+            The time at which $S(t) = 0.5$.
+        """
+        return float(self.quantile(0.5)[0])
+
