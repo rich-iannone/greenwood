@@ -124,7 +124,7 @@ aft = gw.AFT("weibull").fit(y, df[["age", "sex"]])
 gw.tidy(aft, format="polars")           # coefficients on the log-time scale
 
 # Competing risks: cumulative incidence per cause
-# (mgus2 loaded with pandas here for the Series `.where` construction below)
+# (mgus2 loaded with Pandas here for the Series `.where` construction below)
 mg = gw.load_dataset("mgus2", backend="pandas")
 etime = mg["ptime"].where(mg["pstat"] == 1, mg["futime"])
 cause = mg["pstat"].where(mg["pstat"] == 1, 2 * mg["death"])
