@@ -394,3 +394,77 @@ class Parametric:
         )
 
 
+# ---------------------------------------------------------------------------
+# Model comparison
+# ---------------------------------------------------------------------------
+
+
+def compare_distributions(
+    surv: Any,
+    *,
+    dists: list[str] | None = None,
+    format: str | None = None,
+) -> Any:
+    """Fit multiple parametric distributions and return an AIC/BIC comparison table.
+
+    This is the primary model-selection helper for univariate parametric survival analysis. It fits
+    each distribution by maximum likelihood, then ranks them by AIC (lower is better).
+
+    Parameters
+    ----------
+    surv
+        A right-censored `Surv` response.
+    dists
+        Distribution families to compare. The default is all four:
+        `["weibull", "exponential", "lognormal", "loglogistic"]`.
+    format
+        Output format: `None` (auto-detect), `"pandas"`, `"polars"`, or `"pyarrow"`.
+
+    Returns
+    -------
+    DataFrame
+        One row per distribution, sorted by AIC, with columns `dist`, `n_params`, `loglik`, `aic`,
+        and `bic`.
+
+    Examples
+    --------
+    ```{python}
+    import greenwood as gw
+
+    lung = gw.load_dataset("lung", backend="polars")
+    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+    gw.compare_distributions(y, format="polars")
+    ```
+    """
+    if dists is None:
+        dists = ["weibull", "exponential", "lognormal", "loglogistic"]
+
+    fits = [Parametric(d).fit(surv) for d in dists]
+
+    rows_dist: list[str] = []
+    rows_npar: list[int] = []
+    rows_ll: list[float] = []
+    rows_aic: list[float] = []
+    rows_bic: list[float] = []
+    for fit in fits:
+        rows_dist.append(fit.dist)
+        rows_npar.append(len(fit.params_))
+        rows_ll.append(fit.loglik_)
+        rows_aic.append(fit.aic_)
+        rows_bic.append(fit.bic_)
+
+    # Sort by AIC (best first).
+    order = sorted(range(len(rows_aic)), key=lambda i: rows_aic[i])
+
+    return to_dataframe(
+        {
+            "dist": [rows_dist[i] for i in order],
+            "n_params": [rows_npar[i] for i in order],
+            "loglik": [rows_ll[i] for i in order],
+            "aic": [rows_aic[i] for i in order],
+            "bic": [rows_bic[i] for i in order],
+        },
+        format=format,
+    )
+
+
