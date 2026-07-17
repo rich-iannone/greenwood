@@ -298,3 +298,34 @@ class Parametric:
         # f_T(t) = f_eps(z) / (sigma * t)
         return np.exp(log_f - np.log(self._sigma) - np.log(t))
 
+    def quantile(self, p: Any) -> Array:
+        r"""Quantile function: survival-time quantiles at failure probabilities `p`.
+
+        The quantile $t_p$ satisfies $P(T \le t_p) = p$, so $p = 0.5$ gives the median survival
+        time.
+
+        Parameters
+        ----------
+        p
+            Failure probabilities in `(0, 1)`. Scalar or array-like.
+
+        Returns
+        -------
+        ndarray
+            Survival times corresponding to each probability.
+
+        Examples
+        --------
+        ```{python}
+        import greenwood as gw
+
+        lung = gw.load_dataset("lung", backend="polars")
+        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        fit = gw.Parametric("weibull").fit(y)
+        fit.quantile([0.25, 0.5, 0.75])
+        ```
+        """
+        p_arr = np.atleast_1d(np.asarray(p, dtype=float))
+        w = _error_quantile(self.dist, p_arr)
+        return np.exp(self._mu + self._sigma * w)
+
