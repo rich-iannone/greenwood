@@ -9,7 +9,7 @@ a direct counterpart in Greenwood's API, the relevant class or function is noted
 Accelerated failure time (AFT)
 : A parametric regression model for survival data that represents the log of the event time
   as a linear function of covariates. Covariates "accelerate" or "decelerate" time to the
-  event rather than scaling the hazard; the coefficient $e^\beta$ is an acceleration factor.
+  event rather than scaling the hazard. The coefficient $e^\beta$ is an acceleration factor.
   Greenwood provides AFT with Weibull, exponential, log-normal, and log-logistic distributions
   via `AFT`.
 
@@ -47,7 +47,7 @@ Breslow estimator
   unchanged across all tied events (i.e., the denominator is computed once using the full
   risk set). This is computationally simple but can be noticeably biased when the fraction of
   tied event times is large. The **Efron approximation** is more accurate in those situations
-  and is preferred in practice; see **tied event times** for a comparison. In Greenwood,
+  and is preferred in practice (see **tied event times** for a comparison). In Greenwood,
   `ties="breslow"` selects the Breslow approximation and `ties="efron"` (the default) selects
   the Efron approximation.
 
@@ -55,7 +55,7 @@ Brier score
 : A proper scoring rule that measures the mean squared difference between predicted survival
   probabilities and observed binary outcomes at a single time horizon. In the censored setting,
   observations are reweighted by the inverse probability of censoring (IPCW) to account for
-  unobserved event times. Lower is better; a naive constant-survival model gives an upper
+  unobserved event times. Lower is better, and a naive constant-survival model gives an upper
   benchmark. Available via `brier_score()`.
 
 C-statistic
@@ -63,7 +63,7 @@ C-statistic
 
 Censoring
 : The situation in which the exact event time is not observed for a subject. Censoring is the
-  defining feature of survival data; standard regression methods that ignore it are biased.
+  defining feature of survival data. Standard regression methods that ignore it are biased.
   Greenwood supports four censoring types: **right censoring**, **left censoring**,
   **interval censoring**, and the **counting-process form** for left truncation and
   time-varying covariates.
@@ -72,7 +72,7 @@ Concordance index (C-statistic, Harrell's C)
 : A measure of a model's ability to rank subjects by their event times. It is the proportion
   of all comparable pairs of subjects (one who had an event before the other) for which the
   model assigns a higher risk score to the subject who had the event first. A value of 0.5
-  corresponds to random ranking; 1.0 is perfect discrimination. Available via
+  corresponds to random ranking, whereas 1.0 is perfect discrimination. Available via
   `concordance_index()`.
 
 Competing risks
@@ -105,10 +105,10 @@ Cox proportional hazards model
 CoxNet
 : A penalized Cox proportional hazards model that adds an elastic-net penalty
   ($\alpha \|\beta\|_1 + (1-\alpha)\|\beta\|_2^2$) to the partial likelihood. Setting
-  $\alpha = 1$ gives lasso (automatic variable selection through coefficient shrinkage to
-  zero); $\alpha = 0$ gives ridge (shrinks all coefficients without dropping them). Useful
-  when the number of covariates is large relative to the number of events. Available via
-  `CoxNet`.
+  $\alpha = 1$ gives **lasso** (automatic variable selection through coefficient shrinkage to
+  zero). Using $\alpha = 0$ gives **ridge** (shrinks all coefficients without dropping them).
+  Useful when the number of covariates is large relative to the number of events. Available
+  via `CoxNet`.
 
 Cumulative hazard function
 : The integral of the hazard function over time: $H(t) = \int_0^t h(u)\,du$. It is related
@@ -171,8 +171,8 @@ Fine-Gray model
 Fleming-Harrington test
 : A family of weighted log-rank tests parameterized by $(\rho, \gamma)$ that apply time-varying
   weights $W(t) = \hat{S}(t^-)^\rho (1 - \hat{S}(t^-))^\gamma$ to each event time. Setting
-  $\rho = 0, \gamma = 0$ gives the standard log-rank test; $\rho = 1, \gamma = 0$ gives the
-  Peto-Peto test, which emphasizes early differences. Available via `logrank_test()` with
+  $\rho = 0, \gamma = 0$ gives the standard log-rank test whereas $\rho = 1, \gamma = 0$ gives
+  the Peto-Peto test, which emphasizes early differences. Available via `logrank_test()` with
   `rho=` and `gamma=` arguments.
 
 Follow-up
@@ -239,10 +239,21 @@ Left censoring
   time (the event time is at most $t_i$, not at least $t_i$). Less common than right
   censoring. Built with `Surv.left(time, event)`.
 
+Lasso (L1 penalty)
+: A regularization method that adds a penalty proportional to the sum of absolute coefficient
+  values, $\lambda \|\beta\|_1$, to the model's log-likelihood or loss function. As the
+  penalty strength $\lambda$ increases, lasso shrinks coefficients toward zero and sets some
+  exactly to zero, performing automatic variable selection. This is in contrast to **ridge**
+  (L2) regularization, which shrinks all coefficients but rarely zeroes them out. In the
+  survival context, lasso is especially useful when the number of covariates is large relative
+  to the number of events. In Greenwood, lasso is obtained from `CoxNet` by setting
+  `alpha=1`. Intermediate values of `alpha` blend lasso and **ridge** in an elastic-net
+  penalty.
+
 Left truncation (late entry)
 : A form of selection bias in which a subject is only observed because they survived long
   enough to enter the study. The subject only joins the risk set at their entry time
-  $s_i > 0$; if their event had occurred before $s_i$, they would not be in the data at all.
+  $s_i > 0$. If their event had occurred before $s_i$, they would not be in the data at all.
   Handled via the **counting-process form** `Surv.counting(start, stop, event)`.
 
 Lin-Wei sandwich estimator
@@ -258,7 +269,7 @@ Log-rank test
 : A non-parametric test for equality of survival curves across two or more groups. It sums
   the (observed − expected) event counts at each event time, where expected counts are
   computed under the null hypothesis of equal hazard rates. The log-rank test is most
-  powerful when hazards are proportional over time; use **Fleming-Harrington** weights for
+  powerful when hazards are proportional over time. Use **Fleming-Harrington** weights for
   alternatives. Available via `logrank_test()`.
 
 Multi-state model
@@ -322,6 +333,27 @@ Restricted mean survival time (RMST)
   $\text{RMST}(\tau) = \int_0^\tau S(t)\,dt$. It is the area under the survival curve to
   $\tau$ and has a direct clinical interpretation as "average time alive and event-free up to
   $\tau$." Available via `KaplanMeier.rmst()`, and tested between groups with `rmst_test()`.
+
+Response (`y`)
+: The outcome variable passed to a survival model, consisting of event times paired with
+  their censoring or event-type status. In Greenwood, the response is always a `Surv` object.
+  It is conventionally named `y` in model-fitting code, carrying over the standard statistical
+  notation for the dependent variable: in ordinary regression $y = X\beta + \varepsilon$,
+  `y` is the vector of outcomes and `X` is the covariate matrix. Survival analysis adopts the
+  same convention even though the response is a composite (time and status) rather than a
+  single scalar. Throughout the documentation and examples you will see the pattern
+  `y = gw.Surv.right(time, event)` followed by `model.fit(y, X)`, deliberately mirroring
+  the $y$, $X$ split familiar from regression.
+
+Ridge (L2 penalty)
+: A regularization method that adds a penalty proportional to the sum of squared coefficient
+  values, $\lambda \|\beta\|_2^2$, to the model's log-likelihood or loss function. Ridge
+  shrinks all coefficients toward zero as the penalty strength $\lambda$ increases, but
+  unlike **lasso** it rarely sets any coefficient exactly to zero. This makes ridge well
+  suited to situations where many covariates each contribute a small signal: all of them are
+  retained in the model but their estimates are stabilized. In Greenwood, ridge is obtained
+  from `CoxNet` by setting `alpha=0`. Intermediate values of `alpha` blend ridge and lasso
+  in an elastic-net penalty.
 
 Right censoring
 : The most common censoring mechanism. An observation is right-censored if the event had not
@@ -403,8 +435,8 @@ Tied event times (ties)
   registry records all events within a batch. They create an ambiguity in the Cox partial
   likelihood, which is derived under the assumption that event times are strictly ordered.
   Two approximations are widely used: the **Breslow** method treats tied events as if they
-  occurred in an arbitrary sequence, which is fast but biased when the tie fraction is large;
-  the **Efron** method averages over the possible orderings of the tied events, which is more
+  occurred in an arbitrary sequence, which is fast but biased when the tie fraction is large.
+  The **Efron** method averages over the possible orderings of the tied events, which is more
   accurate and is the default in both R's `coxph` and Greenwood's `CoxPH`. The tie-handling
   method is set via the `ties=` argument to `CoxPH`.
 
@@ -426,7 +458,8 @@ Weibull distribution
 : A two-parameter family of probability distributions widely used in parametric survival
   analysis. Its hazard function is $h(t) = \lambda \kappa t^{\kappa - 1}$, where $\lambda >
   0$ is the scale and $\kappa > 0$ is the shape. When $\kappa = 1$ it reduces to the
-  exponential distribution (constant hazard); $\kappa > 1$ gives an increasing hazard over
-  time; $\kappa < 1$ a decreasing one. The Weibull is the only distribution that satisfies
-  both the **accelerated failure time** and the **proportional hazards** parameterizations,
-  making it the default distribution in many AFT implementations including Greenwood's `AFT`.
+  exponential distribution (constant hazard). $\kappa > 1$ gives an increasing hazard over
+  time whereas $\kappa < 1$ a decreasing one. The Weibull is the only distribution that
+  satisfies both the **accelerated failure time** and the **proportional hazards**
+  parameterizations, making it the default distribution in many AFT implementations
+  including Greenwood's `AFT`.
