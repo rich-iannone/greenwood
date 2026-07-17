@@ -147,3 +147,58 @@ class Parametric:
 
         return self
 
+    def _compute_natural_params(self) -> None:
+        """Derive natural distribution parameters and SEs from the AFT fit."""
+        mu = self._mu
+        sigma = self._sigma
+        vcov = self._vcov_raw
+        z_val = float(norm.ppf(1.0 - (1.0 - self.conf_level) / 2.0))
+
+        if self.dist == "weibull":
+            shape = 1.0 / sigma
+            scale = np.exp(mu)
+            # Delta method SEs: shape = exp(-log_sigma), scale = exp(mu).
+            se_shape = shape * np.sqrt(vcov[1, 1])
+            se_scale = scale * np.sqrt(vcov[0, 0])
+            self.params_ = {"shape": shape, "scale": scale}
+            self.std_error_ = {"shape": se_shape, "scale": se_scale}
+            self.conf_low_ = {"shape": shape - z_val * se_shape, "scale": scale - z_val * se_scale}
+            self.conf_high_ = {
+                "shape": shape + z_val * se_shape,
+                "scale": scale + z_val * se_scale,
+            }
+
+        elif self.dist == "exponential":
+            rate = np.exp(-mu)
+            se_rate = rate * np.sqrt(vcov[0, 0])
+            self.params_ = {"rate": rate}
+            self.std_error_ = {"rate": se_rate}
+            self.conf_low_ = {"rate": rate - z_val * se_rate}
+            self.conf_high_ = {"rate": rate + z_val * se_rate}
+
+        elif self.dist == "lognormal":
+            se_mu = np.sqrt(vcov[0, 0])
+            se_sigma = sigma * np.sqrt(vcov[1, 1])
+            self.params_ = {"mu": mu, "sigma": sigma}
+            self.std_error_ = {"mu": se_mu, "sigma": se_sigma}
+            self.conf_low_ = {"mu": mu - z_val * se_mu, "sigma": sigma - z_val * se_sigma}
+            self.conf_high_ = {"mu": mu + z_val * se_mu, "sigma": sigma + z_val * se_sigma}
+
+        else:  # loglogistic
+            alpha = np.exp(mu)
+            beta = 1.0 / sigma
+            se_alpha = alpha * np.sqrt(vcov[0, 0])
+            se_beta = beta * np.sqrt(vcov[1, 1])
+            self.params_ = {"alpha": alpha, "beta": beta}
+            self.std_error_ = {"alpha": se_alpha, "beta": se_beta}
+            self.conf_low_ = {
+                "alpha": alpha - z_val * se_alpha,
+                "beta": beta - z_val * se_beta,
+            }
+            self.conf_high_ = {
+                "alpha": alpha + z_val * se_alpha,
+                "beta": beta + z_val * se_beta,
+            }
+
+        self.vcov_ = vcov
+
