@@ -25,9 +25,13 @@ Altair is an optional dependency. If you installed Greenwood with the `altair` e
 ```{python}
 import greenwood as gw
 
+# Load the bundled lung dataset as a Polars DataFrame
 lung = gw.load_dataset("lung", backend="polars")
 
+# Build a right-censored response; status == 2 marks a death
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+
+# Display the response summary
 y
 ```
 
@@ -35,7 +39,10 @@ We then fit a Kaplan-Meier estimator stratified by sex, one curve per group, usi
 log-log confidence interval transform. Printing the fitted estimator summarizes each stratum.
 
 ```{python}
+# Fit Kaplan-Meier with log-log CI transform, stratified by sex
 km = gw.KaplanMeier(conf_type="log-log").fit(y, by=lung["sex"])
+
+# Print per-stratum median survival
 km
 ```
 
@@ -46,6 +53,7 @@ probability and its confidence limits. The preview shows the first and last rows
 the full dimensions of the table.
 
 ```{python}
+# Export the step-function estimates as a tidy DataFrame (one row per stratum and time)
 km.to_frame(format="polars")
 ```
 
@@ -62,11 +70,14 @@ The main entry point is `survival_plot()`. Given a fitted `KaplanMeier`, it draw
 curve for each stratum, a shaded confidence band, and a small notch at each censoring time.
 
 ```{python}
+# Load data and build the response
 lung = gw.load_dataset("lung", backend="polars")
-
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+
+# Fit Kaplan-Meier stratified by sex with log-log CI
 km = gw.KaplanMeier(conf_type="log-log").fit(y, by=lung["sex"])
 
+# Draw the interactive survival curve with confidence band and censoring marks
 gw.survival_plot(km)
 ```
 
@@ -102,6 +113,7 @@ You can turn individual elements off. Removing the band and the censoring marks 
 cleaner curve for a slide or a small figure.
 
 ```{python}
+# Strip the confidence band and censoring marks for a cleaner figure
 gw.survival_plot(km, conf_int=False, censor_marks=False)
 ```
 
@@ -113,6 +125,7 @@ and the table makes that visible. Pass `risk_table=True` to stack an aligned tab
 the curve.
 
 ```{python}
+# Append an aligned numbers-at-risk table beneath the curve
 gw.survival_plot(km, risk_table=True)
 ```
 
@@ -121,6 +134,7 @@ times they describe. And because they share one *x* scale, panning or zooming th
 the table with it. You control the times shown with the `times` argument.
 
 ```{python}
+# Show risk counts at specific time points; the table x-axis stays synced with the curve
 gw.plot_survival(km, risk_table=True, times=[0, 250, 500, 750, 1000])
 ```
 
@@ -129,6 +143,7 @@ render however you like, including through Great Tables. It is backend-neutral, 
 whether or not you have a plotting library installed.
 
 ```{python}
+# Return the risk counts as a tidy DataFrame (backend-neutral, no plotting required)
 gw.get_risk_table_frame(km, times=[0, 250, 500, 750, 1000], format="polars")
 ```
 
@@ -137,6 +152,7 @@ Great Tables object that you can view interactively in notebooks or export to HT
 other formats.
 
 ```{python}
+# Render a publication-ready Great Tables object showing numbers at risk
 gw.risk_table(km, times=[0, 250, 500, 750, 1000])
 ```
 
@@ -146,6 +162,7 @@ gw.risk_table(km, times=[0, 250, 500, 750, 1000])
 `.properties` sets the title and dimensions, and you can keep layering or restyling from there.
 
 ```{python}
+# Refine the chart with Altair's .properties() — title and dimensions
 gw.plot_survival(km).properties(
     title="Survival by sex", width=640, height=360
 )
@@ -189,11 +206,14 @@ p-values automatically and draws an interactive Altair chart with a log-scaled x
 dashed reference line at HR = 1.
 
 ```{python}
+# Load data and build the response
 lung = gw.load_dataset("lung", backend="polars")
-
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+
+# Fit a Cox model with three covariates
 cox = gw.CoxPH().fit(y, lung[["age", "sex", "ph.ecog"]])
 
+# Draw a forest plot of hazard ratios with a log-scale x-axis
 gw.plot_forest(cox)
 ```
 
@@ -210,6 +230,7 @@ Column names from the data often need to be rewritten for a publication figure. 
 renamed; the rest keep their original names.
 
 ```{python}
+# Rename internal covariate labels to publication-friendly display strings
 gw.plot_forest(
     cox,
     term_labels={
@@ -231,13 +252,15 @@ calling `gw.tidy()` on each, then stacking the results).
 ```{python}
 import pandas as pd
 
+# Build a pre-assembled subgroup results table (term, estimate, ci_lower, ci_upper)
 subgroups = pd.DataFrame({
-    "term": ["Age < 60", "Age ≥ 60", "Male", "Female", "ECOG 0", "ECOG 1+"],
+    "term": ["Age < 60", "Age \u2265 60", "Male", "Female", "ECOG 0", "ECOG 1+"],
     "estimate": [0.72, 0.91, 0.88, 0.68, 0.60, 0.95],
     "ci_lower": [0.51, 0.74, 0.69, 0.50, 0.42, 0.78],
     "ci_upper": [1.01, 1.12, 1.12, 0.92, 0.86, 1.16],
 })
 
+# Plot the subgroup forest plot directly from the DataFrame
 gw.plot_forest(subgroups, title="Subgroup Analysis")
 ```
 
@@ -254,6 +277,7 @@ hr_df = pd.DataFrame({
     "ci_lower": [0.68, 0.76, 0.85],
     "ci_upper": [0.99, 1.18, 1.18],
 })
+
 gw.plot_forest(hr_df, scale="log", title="Hazard Ratios: Treatment vs. Reference")
 ```
 
@@ -265,6 +289,7 @@ rmst_df = pd.DataFrame({
     "ci_lower": [-10, -20],
     "ci_upper": [95, 70],
 })
+
 gw.plot_forest(rmst_df, title="RMST Differences vs. Placebo")
 ```
 
@@ -288,8 +313,10 @@ accepts either a single group or stratified data by group.
 ```{python}
 import numpy as np
 
+# Define time points and cumulative incidence values for two competing events
 times = np.array([30, 60, 90, 120, 180])
-# CIF for two competing events over time
+
+# Each row is a time point; each column is one competing event
 cif = np.array([
     [0.05, 0.02],
     [0.12, 0.05],
@@ -298,6 +325,7 @@ cif = np.array([
     [0.42, 0.18],
 ])
 
+# Draw a CIF plot with one facet per event type
 gw.cif_plot(
     time=times,
     cif=cif,
@@ -309,7 +337,7 @@ gw.cif_plot(
 **Stratified by group:**
 
 ```{python}
-# CIF for two groups
+# CIF arrays keyed by group name: each value is (n_times x n_events)
 cif_by_group = {
     "Treatment A": np.array([
         [0.05, 0.02],
@@ -327,6 +355,7 @@ cif_by_group = {
     ]),
 }
 
+# Draw CIF curves for both groups, faceted by event type
 gw.cif_plot(
     time=times,
     cif=cif_by_group,
@@ -345,6 +374,7 @@ The examples above create interactive Altair charts directly. The plot arranges 
 Like the other visualization functions, `cif_plot()` returns an Altair chart:
 
 ```{python}
+# Customize figure dimensions via width= and height=
 gw.cif_plot(
     time=times,
     cif=cif_by_group,

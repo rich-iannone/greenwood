@@ -24,9 +24,13 @@ time with an event indicator, and it is the target every model on this page is f
 ```{python}
 import greenwood as gw
 
+# Load the bundled lung dataset as a Polars DataFrame
 lung = gw.load_dataset("lung", backend="polars")
 
+# Build a right-censored response; status == 2 marks a death
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+
+# Display the response summary
 y
 ```
 
@@ -35,6 +39,7 @@ observation. We fit a Cox model to it using `age` and `sex` as covariates. This 
 we diagnose throughout the page, so we fit it once here and reuse it below.
 
 ```{python}
+# Fit the model we will diagnose throughout this page
 cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
 ```
 
@@ -50,12 +55,17 @@ Calling `cox_zph` returns a `ZPHResult`, an object that bundles the test statist
 Displaying it directly gives a compact summary of the test.
 
 ```{python}
+# Load data and build the response
 lung = gw.load_dataset("lung", backend="polars")
-
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+
+# Fit a Cox model with age and sex as covariates
 cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
 
+# Run the Grambsch-Therneau proportional hazards test
 zph = cox.cox_zph()
+
+# Print per-covariate test statistics and p-values
 zph
 ```
 
@@ -63,6 +73,7 @@ For the full per-covariate breakdown, call `to_frame()` on that result. This is 
 you will read most often.
 
 ```{python}
+# Export the ZPH test table as a tidy DataFrame (one row per term plus GLOBAL)
 zph.to_frame(format="polars")
 ```
 
@@ -90,11 +101,14 @@ The martingale residuals come back as a NumPy array with one entry per subject. 
 of them, so we look at the first five rather than the whole array.
 
 ```{python}
+# Load data and build the response
 lung = gw.load_dataset("lung", backend="polars")
-
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+
+# Fit a Cox model with age and sex as covariates
 cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
 
+# Compute martingale residuals (one per subject); peek at the first five
 cox.residuals("martingale")[:5]
 ```
 
@@ -102,6 +116,7 @@ The Schoenfeld residuals come back as a DataFrame instead, with one row per even
 column per covariate.
 
 ```{python}
+# Compute Schoenfeld residuals (one row per event, one column per covariate)
 cox.residuals("schoenfeld", format="polars")
 ```
 
@@ -112,11 +127,14 @@ after fitting. The baseline cumulative hazard, and the survival curve derived fr
 describe a reference subject.
 
 ```{python}
+# Load data and build the response
 lung = gw.load_dataset("lung", backend="polars")
-
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+
+# Fit a Cox model with age and sex as covariates
 cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
 
+# Retrieve the Breslow cumulative baseline hazard and implied survival
 cox.baseline_hazard(format="polars")
 ```
 
@@ -128,7 +146,10 @@ predict from them.
 ```{python}
 import pandas as pd
 
+# Two new subjects: a 50-year-old male and a 70-year-old female
 newdata = pd.DataFrame({"age": [50, 70], "sex": [1, 2]})
+
+# Preview the covariate frame before predicting
 newdata
 ```
 
@@ -136,6 +157,7 @@ Given that new data and a set of times, `predict` returns the estimated survival
 for each subject.
 
 ```{python}
+# Predict survival probabilities at specific times for each subject in newdata
 cox.predict(newdata, type="survival", times=[180, 365, 730], format="polars")
 ```
 
@@ -150,6 +172,7 @@ hazard and matching R's `survfit` (which combines baseline-hazard and coefficien
 uncertainty).
 
 ```{python}
+# Add pointwise 95% confidence bands; each subject gains _lower and _upper columns
 cox.predict(newdata, type="survival", times=[180, 365, 730], ci=True, format="polars")
 ```
 
@@ -158,6 +181,7 @@ useful for updating a prognosis partway through follow-up. With `conditional_aft
 returned probabilities are $P(T > t \mid T > 180) = S(t) / S(180)$.
 
 ```{python}
+# Predict P(T > t | T > 180): survival conditional on being alive at day 180
 cox.predict(newdata, type="survival", times=[365, 730], conditional_after=180, format="polars")
 ```
 
@@ -170,17 +194,24 @@ You pass the stratifying variable to `strata`. Here we stratify by `sex` while k
 and `ph.ecog` as covariates.
 
 ```{python}
+# Load data and build the response
 lung = gw.load_dataset("lung", backend="polars")
-
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 
+# Fit a stratified model: separate baselines per sex, shared age and ECOG coefficients
 stratified = gw.CoxPH().fit(y, lung[["age", "ph.ecog"]], strata=lung["sex"])
 ```
 
-As with any fitted model, we can print `stratified` for a summary, or read its coefficient
-table as data with `to_frame()`.
+As with any fitted model, we can print `stratified` for a summary 
 
 ```{python}
+stratified
+```
+
+or read its coefficient table as a DataFrame with `to_frame()`.
+
+```{python}
+# Export the coefficient table; sex does not appear (absorbed into the baselines)
 stratified.to_frame(format="polars")
 ```
 
@@ -195,12 +226,14 @@ small. The robust, or sandwich, variance corrects for this. Set `robust=True` fo
 Lin-Wei sandwich estimator, and pass `cluster` to group correlated observations.
 
 ```{python}
+# Load data and build the response
 lung = gw.load_dataset("lung", backend="polars")
-
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 
+# Fit with the Lin-Wei sandwich variance; coefficients are unchanged, SEs are adjusted
 robust = gw.CoxPH().fit(y, lung[["age", "sex"]], robust=True)
 
+# Show only the standard errors to compare against the model-based values
 robust.to_frame(format="polars")[["term", "std_error"]]
 ```
 
@@ -216,11 +249,14 @@ of subjects, the one who failed first had the higher predicted risk. A value of 
 better than chance and 1.0 is perfect discrimination.
 
 ```{python}
+# Load data and build the response
 lung = gw.load_dataset("lung", backend="polars")
-
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+
+# Fit a Cox model with age and sex as covariates
 cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
 
+# Compute Harrell's C-statistic: probability of correct pairwise risk ordering
 cox.concordance()
 ```
 

@@ -22,14 +22,18 @@ tests it reports.
 ```{python}
 import greenwood as gw
 
+# Load the bundled lung dataset as a Polars DataFrame
 lung = gw.load_dataset("lung", backend="polars")
 
+# Build a right-censored response; status == 2 marks a death
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+
+# Display the response summary
 y
 ```
 
 The response `y` is a `Surv` object that pairs each subject's follow-up time with an event
-indicator, marking censored times with a `+`. It records 165 events among 228 subjects, and it
+indicator, marking censored times with a tick. It records 165 events among 228 subjects, and it
 is the outcome the Cox model below regresses on the covariates.
 
 ## The proportional hazards idea
@@ -53,11 +57,11 @@ into indicator variables automatically. Rows with missing covariate values are d
 in a standard complete-case analysis.
 
 ```{python}
-import greenwood as gw
-
+# Load data and build the response
 lung = gw.load_dataset("lung", backend="polars")
-
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+
+# Fit a Cox model with age, sex, and ECOG score as covariates
 cox = gw.CoxPH().fit(y, lung[["age", "sex", "ph.ecog"]])
 ```
 
@@ -66,6 +70,7 @@ summary modeled on R's `coxph` output: the coefficient table, the sample size an
 count, and the overall likelihood ratio test.
 
 ```{python}
+# Print the coefficient table and global test statistics
 cox
 ```
 
@@ -73,6 +78,7 @@ The printed summary is meant for reading. When you want the numbers as data, to 
 or plot them, ask for the coefficient table with `to_frame()`, which returns a tidy frame.
 
 ```{python}
+# Export the coefficient table as a tidy Polars DataFrame
 cox.to_frame(format="polars")
 ```
 
@@ -87,8 +93,8 @@ When multiple subjects experience events at the same time, the Cox model needs a
 handle these "ties". Greenwood supports two tie-handling methods, controlled by the `ties`
 parameter in the constructor:
 
-- **"efron"** (default): Efron's method. Recommended; matches R's survival package default.
-- **"breslow"**: Breslow's method. Computationally simpler but less accurate when ties are common.
+- `"efron"` (default): Efron's method. Recommended; matches R's survival package default.
+- `"breslow"`: Breslow's method. Computationally simpler but less accurate when ties are common.
 
 The choice usually has minimal impact on results unless ties are very common. When in doubt,
 stick with the default (Efron).
@@ -96,7 +102,7 @@ stick with the default (Efron).
 ```{python}
 import pandas as pd
 
-# Compare methods
+# Compare Efron and Breslow tie-handling methods on the same data
 cox_efron = gw.CoxPH(ties="efron").fit(y, lung[["age", "sex"]])
 cox_breslow = gw.CoxPH(ties="breslow").fit(y, lung[["age", "sex"]])
 
@@ -113,19 +119,22 @@ To interpret the model you exponentiate the coefficients, which turns log hazard
 hazard ratios. Greenwood does this for you through the tidy layer.
 
 ```{python}
+# Load data and build the response
 lung = gw.load_dataset("lung", backend="polars")
-
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+
+# Fit a Cox model with age, sex, and ECOG score as covariates
 cox = gw.CoxPH().fit(y, lung[["age", "sex", "ph.ecog"]])
 
+# Export hazard ratios (exponentiated coefficients) with confidence intervals
 gw.tidy(cox, exponentiate=True, format="polars")
 ```
 
 A hazard ratio above 1 means the covariate increases the hazard, and a value below 1 means
 it decreases it. For a continuous covariate such as `age`, the hazard ratio is the
-multiplicative change in hazard per one-unit increase; a hazard ratio of 1.02 for age means
-roughly a 2 percent higher hazard for each additional year. For the `sex` indicator, coded 1
-and 2 in this dataset, a hazard ratio below 1 means the higher-coded group has lower risk.
+multiplicative change in hazard per one-unit increase; a hazard ratio of `1.02` for age means
+roughly a 2% higher hazard for each additional year. For the `sex` indicator, coded `1`
+and `2` in this dataset, a hazard ratio below 1 means the higher-coded group has lower risk.
 
 ::: {.callout-note}
 ## Hazard ratio, not risk ratio
@@ -138,16 +147,19 @@ measure like a survival difference or a restricted mean difference alongside the
 
 ## Model-fit statistics
 
-The `glance` view gives one-row summary statistics for the whole model, including the
+The `glance()` view gives one-row summary statistics for the whole model, including the
 log-likelihood, the AIC, and the likelihood-ratio test of the null hypothesis that all
 coefficients are zero.
 
 ```{python}
+# Load data and build the response
 lung = gw.load_dataset("lung", backend="polars")
-
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+
+# Fit a Cox model with age, sex, and ECOG score as covariates
 cox = gw.CoxPH().fit(y, lung[["age", "sex", "ph.ecog"]])
 
+# Retrieve the one-row model summary: n, events, log-likelihood, AIC
 gw.glance(cox, format="polars")
 ```
 
@@ -156,6 +168,7 @@ jointly improve the fit: the likelihood-ratio test, the Wald test, and the score
 usually agree closely, and the likelihood-ratio test is generally preferred.
 
 ```{python}
+# Compare the three classical global tests (they should be similar)
 print("likelihood ratio:", round(cox.lr_stat_, 3))
 print("Wald:", round(cox.wald_stat_, 3))
 print("score:", round(cox.score_stat_, 3))
@@ -169,10 +182,11 @@ also the default in R. The Breslow approximation is available and is faster but 
 accurate when ties are common.
 
 ```{python}
+# Load data and build the response
 lung = gw.load_dataset("lung", backend="polars")
-
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 
+# Fit with Breslow tie handling and show just the term and estimate columns
 gw.CoxPH(ties="breslow").fit(y, lung[["age", "sex"]]).to_frame(format="polars")[["term", "estimate"]]
 ```
 
@@ -205,10 +219,39 @@ counting-process form, where each subject contributes one row per interval over 
 covariates are constant. Each row records the interval `(start, stop]`, whether the event
 happened at its end, and the covariate values that held during it.
 
+::: {.callout-warning}
+## Immortal time bias
+
+A common mistake in observational studies is to assign treatment status based on what happens
+*after* study entry. For example: classifying patients as "treated" if they ever received a
+drug, and then analysing survival from enrolment. The time between enrolment and when they
+actually started the drug is **immortal time**. Those patients were guaranteed to be alive
+during that interval (because they had to survive long enough to receive the drug), yet the
+time is credited to the treated group. This artificially inflates apparent survival for the
+treated group.
+
+**The fix is to use the counting-process form.** Represent each patient as untreated from
+enrolment to the moment they start treatment, and treated from that moment onward. This way
+the "treated" rows only enter the risk set after treatment actually begins, and the immortal
+time is correctly attributed to the untreated period.
+
+```python
+# Wrong: classify as treated from day 0 even though treatment starts at day 30
+df["treated"] = 1   # all time counted as exposed
+
+# Correct: two rows per patient who switches
+# row 1: (0, 30], event=0, treated=0     - untreated until drug starts
+# row 2: (30, t], event=event, treated=1 - treated from day 30 onward
+```
+
+The example below shows the correct layout.
+:::
+
 We build a small illustrative dataset where a treatment switches on for some subjects. The
 response is a `gw.Surv.counting` object rather than `gw.Surv.right`.
 
 ```{python}
+# Build the time-varying covariate dataset: one row per (subject, interval)
 intervals = pd.DataFrame(
     {
         "subject": [1, 1, 2, 3, 3, 4, 5, 5],
@@ -219,6 +262,7 @@ intervals = pd.DataFrame(
     }
 )
 
+# Preview the interval layout
 intervals
 ```
 
@@ -226,8 +270,10 @@ Subject 1, for example, is untreated over `(0, 4]` and treated over `(4, 10]`, w
 at day 10. We pass the interval endpoints to `gw.Surv.counting` and fit as usual.
 
 ```{python}
+# Build the counting-process response from the interval endpoints
 y_tv = gw.Surv.counting(start=intervals["start"], stop=intervals["stop"], event=intervals["event"])
 
+# Fit the Cox model on the time-varying covariate layout
 gw.CoxPH().fit(y_tv, intervals[["treated"]]).to_frame(format="polars")[["term", "estimate", "p_value"]]
 ```
 
@@ -268,7 +314,7 @@ subtract each subject's entry date from their start/stop times.
 # Example data in calendar time (subjects enroll at different dates)
 df = pd.DataFrame({
     'subject': [1, 1, 2, 2, 3, 3],
-    'start': [0, 10, 365, 375, 730, 740],      # Different enrollment dates
+    'start': [0, 10, 365, 375, 730, 740],   # Different enrollment dates
     'stop': [10, 25, 375, 390, 740, 755],
     'event': [0, 1, 0, 1, 0, 1]
 })
@@ -324,12 +370,14 @@ model may be misspecified, or when observations are not independent (e.g., repea
 family data), use the sandwich (robust) variance estimator by setting `robust=True`:
 
 ```{python}
+# Load data and build the response
 lung = gw.load_dataset("lung", backend="polars")
-
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 
+# Fit with the Lin-Wei sandwich variance for robust standard errors
 cox_robust = gw.CoxPH().fit(y, lung[["age", "sex"]], robust=True)
 
+# Display the coefficient table with robust standard errors
 gw.tidy(cox_robust, format="polars")
 ```
 
@@ -339,14 +387,16 @@ measurements per subject), pass the cluster variable to ensure standard errors a
 within-cluster dependence:
 
 ```{python}
-# Simulated example: suppose subjects cluster by family
+# Simulate a cluster variable: assign subjects to families of 10
 lung_with_cluster = lung.with_columns(
     family=((pl.int_range(len(lung)) % 10) + 1)
 )
 
+# Fit with clustered sandwich standard errors
 cox_cluster = gw.CoxPH().fit(y, lung_with_cluster[["age", "sex"]],
                               robust=True, cluster=lung_with_cluster["family"])
 
+# Display the coefficient table; SEs reflect within-cluster correlation
 gw.tidy(cox_cluster, format="polars")
 ```
 
@@ -360,6 +410,7 @@ formula support uses [formulaic](https://matthewwardrop.github.io/formulaic/), i
 the `formula` extra.
 
 ```{python}
+# Fit using a Wilkinson formula string; categorical columns are dummy-coded automatically
 gw.CoxPH().fit(y, "age + sex", data=lung).to_frame(format="polars")[["term", "estimate"]]
 ```
 
@@ -368,6 +419,7 @@ written with `*` (which expands to the main effects plus their product) or `:` (
 alone). A term like `C(ph.ecog)` forces a column to be treated as categorical.
 
 ```{python}
+# The * operator expands to main effects plus their interaction term
 gw.CoxPH().fit(y, "age * sex", data=lung).to_frame(format="polars")[["term", "estimate"]]
 ```
 
@@ -383,13 +435,17 @@ argument sets the overall strength, and `l1_ratio` mixes the lasso (`1.0`) and r
 penalties.
 
 ```{python}
+# Load data and build the response
 lung = gw.load_dataset("lung", backend="polars")
-
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 
+# Select the covariates to include in the penalized model
 cols = ["age", "sex", "ph.ecog", "ph.karno", "wt.loss"]
 
+# Fit a lasso Cox model (l1_ratio=1.0 drives weak coefficients to zero)
 lasso = gw.CoxNet(penalizer=0.05, l1_ratio=1.0).fit(y, lung[cols])
+
+# Print the surviving (non-zero) coefficients
 lasso
 ```
 
@@ -403,6 +459,7 @@ The penalty strength is usually chosen by cross-validation. `cross_validate` acc
 `CoxNet` directly, so you can compare candidate values by held-out concordance.
 
 ```{python}
+# Choose the penalty strength by 5-fold cross-validated concordance
 for lam in [0.02, 0.05, 0.1]:
     cv = gw.cross_validate(gw.CoxNet(penalizer=lam, l1_ratio=1.0), y, lung[cols], k=5, seed=1)
     print(f"penalizer={lam}: CV concordance = {cv['mean']:.4f}")
@@ -426,18 +483,21 @@ confidence intervals quantify the uncertainty in the baseline hazard estimate.
 You can retrieve the baseline hazard with confidence intervals using the `ci=True` parameter:
 
 ```{python}
+# Load data and build the response
 lung = gw.load_dataset("lung", backend="polars")
-
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+
+# Fit a Cox model with age, sex, and ECOG score as covariates
 cox = gw.CoxPH().fit(y, lung[["age", "sex", "ph.ecog"]])
 
-# Get baseline hazard with 95% confidence intervals
+# Retrieve baseline cumulative hazard and survival with 95% CI (log-log transform)
 baseline = cox.baseline_hazard(ci=True, conf_type="log-log", format="polars")
 
+# Preview the baseline hazard frame
 baseline
 ```
 
-The returned frame includes:
+The returned DataFrame includes:
 
 - `time`: event times at which the baseline hazard is evaluated
 - `cumhaz`: cumulative baseline hazard $H_0(t)$
@@ -448,19 +508,20 @@ The returned frame includes:
 The `conf_type=` parameter controls the confidence interval transform:
 
 - `"log-log"` (default): uses a log-log transformation that ensures bounds respect the
-  survival probability constraint (staying between `0` and `1`). Recommended for most applications.
+survival probability constraint (staying between `0` and `1`). Recommended for most applications.
 - `"plain"`: Wald confidence intervals without transformation. Simpler but may produce
-  invalid bounds (negative cumulative hazard or survival > 1).
+invalid bounds (negative cumulative hazard or survival > 1).
 
 The baseline hazard can be combined with individual predictions to compute personalized survival
 curves with uncertainty bands. For stratified models, each stratum has its own baseline hazard
 and corresponding confidence intervals.
 
 ```{python}
-# For stratified models, CIs are computed per stratum
+# For stratified models, each stratum gets its own baseline hazard and CI
 cox_strat = gw.CoxPH().fit(y, lung[["age", "ph.ecog"]], strata=lung["sex"])
 baseline_strat = cox_strat.baseline_hazard(ci=True, format="polars")
 
+# Preview the per-stratum baseline frame
 baseline_strat
 ```
 
