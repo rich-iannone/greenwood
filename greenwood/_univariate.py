@@ -233,3 +233,18 @@ class Parametric:
         _, log_s = _log_density_survival(self.dist, z)
         return np.exp(log_s)
 
+    def cumulative_hazard(self, times: Any) -> Array:
+        r"""Cumulative hazard function $H(t) = -\log S(t)$ at the given times.
+
+        Parameters
+        ----------
+        times
+            Query times (array-like of positive floats).
+
+        Returns
+        -------
+        ndarray
+            Cumulative hazard values, same length as `times=`.
+        """
+        return -np.log(self.survival(times))
+
