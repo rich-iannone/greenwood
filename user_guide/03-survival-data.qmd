@@ -276,9 +276,10 @@ You now know how to represent survival data and how to avoid the most common cod
 From here you can bring in your own data or start estimating.
 
 - [Data sources and formats](04-data-sources.qmd) shows how to load data from pandas, Polars,
-  and other backends, and lists the datasets bundled with the package.
+and other backends, how to compute durations from timestamps and encode event indicators
+from compound status columns, and lists the datasets bundled with the package.
 - [Estimating survival with Kaplan-Meier](05-kaplan-meier.qmd) shows how to estimate and
-  summarize the survival curve.
+summarize the survival curve.
 - [Comparing groups](06-comparing-groups.qmd) covers the log-rank family of tests.
 - The [Quick start](02-quick-start.qmd) is a fast tour of everything if you prefer to skim
-  first.
+first.
