@@ -62,6 +62,13 @@ reference:
       - name: NelsonAalen
         members: true
 
+  - title: Univariate parametric models
+    desc: Standalone parametric distributions for data exploration and model selection.
+    contents:
+      - name: Parametric
+        members: true
+      - compare_distributions
+
   - title: Regression
     desc: Cox proportional hazards and parametric AFT models.
     contents:
