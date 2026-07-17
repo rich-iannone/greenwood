@@ -82,7 +82,7 @@ Greenwood does this for you with the `Surv` object.
 status codes and validates them, so that downstream code can rely on a clean, consistent
 representation. You build one with a constructor that names the censoring type.
 
-The most common constructor is `gw.Surv.right`, for right-censored data. It takes the observed
+The most common constructor is `gw.Surv.right()`, for right-censored data. It takes the observed
 times and an event indicator, where a truthy value (or `1`) means the event occurred and a
 falsy value (or `0`) means the observation was censored.
 
@@ -115,15 +115,15 @@ gw.Surv.counting(start=[0, 2, 1], stop=[5, 6, 4], event=[1, 0, 1])
 ```
 
 Left censoring, where all you know is that the event had already happened by the time of
-observation, uses `gw.Surv.left`. It takes the same `(time, event)` arguments as `gw.Surv.right`,
-but the time is an upper bound on the unknown event time rather than a lower one.
+observation, uses `gw.Surv.left()`. It takes the same `(time, event)` arguments as
+`gw.Surv.right()`, but the time is an upper bound on the unknown event time rather than a lower one.
 
 ```{python}
 gw.Surv.left(time=[5, 6, 4], event=[1, 0, 1])
 ```
 
 Interval censoring, where the event is known only to fall between two times, uses
-`gw.Surv.interval`. Use `numpy.inf` for the upper bound to mark right censoring.
+`gw.Surv.interval()`. Use `numpy.inf` for the upper bound to mark right censoring.
 
 ```{python}
 import numpy as np
@@ -132,7 +132,7 @@ gw.Surv.interval(lower=[1, 2, 3], upper=[2, np.inf, 5])
 ```
 
 Competing risks and multi-state endpoints, where more than one kind of event can occur, use
-`gw.Surv.multistate`. The event codes are `0` for censoring and `1, 2, ...` for the competing
+`gw.Surv.multistate()`. The event codes are `0` for censoring and `1, 2, ...` for the competing
 causes, and you name the states.
 
 ```{python}
@@ -204,9 +204,9 @@ Each `start` must be strictly less than its `stop`.
 
 If you encounter this error, check your data:
 
-- **Most common fix**: Exclude subjects with `start >= stop` (they have zero or negative follow-up time)
-- **Data quality check**: Why do some subjects have identical entry and exit times? Is this a data entry error?
-- **If intentional**: If the event truly occurred instantaneously, add a small epsilon to the stop time: `stop = start + 1e-10`
+- **Most common fix**: exclude subjects with `start >= stop` (they have zero or negative follow-up time)
+- **Data quality check**: why do some subjects have identical entry and exit times? Is this a data entry error?
+- **If intentional**: if the event truly occurred instantaneously, add a small epsilon to the stop time: `stop = start + 1e-10`
 
 A response also serializes to and from JSON without loss, which is useful for saving an
 analysis input or moving it between systems. Calling `to_json()` returns a plain string, so you
@@ -222,7 +222,7 @@ text[:200]
 ```
 
 That string carries the times and status codes together, which is exactly what a `Surv`
-object holds. Reading it back with `from_json` reconstructs an equivalent response, and we can
+object holds. Reading it back with `from_json()` reconstructs an equivalent response, and we can
 confirm nothing was lost by comparing the JSON of the original and the restored object.
 
 ```{python}
@@ -251,7 +251,7 @@ gw.Surv.from_dict(gw.Surv.right([5, 6, 4], event=[1, 0, 1]).to_dict())
 Under every non-parametric estimate is one tabulation: at each distinct event time, how many
 subjects are still at risk, how many have the event, and how many are censored. This risk-set
 table is what Kaplan-Meier, the log-rank test, and Cox all build on, and you can compute it
-directly with `event_table`. It matches R's `survfit` tabulation.
+directly with `event_table()`. It matches R's `survfit` tabulation.
 
 ```{python}
 lung = gw.load_dataset("lung", backend="polars")
