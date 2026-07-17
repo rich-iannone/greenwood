@@ -23,9 +23,13 @@ the two together in a `Surv` object. We use the bundled `lung` dataset, the surv
 patients with advanced lung cancer.
 
 ```{python}
+# Import the Greenwood library
 import greenwood as gw
 
+# Load the bundled lung cancer dataset as a Polars DataFrame
 lung = gw.load_dataset("lung", backend="polars")
+
+# Build a right-censored response; status == 2 marks a death
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 y
 ```
@@ -40,10 +44,14 @@ The Kaplan-Meier estimator turns those times into a survival curve, the probabil
 surviving past each point in time. Printing the fitted estimator reports the median survival.
 
 ```{python}
+# Load data and build the right-censored response
 lung = gw.load_dataset("lung", backend="polars")
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 
+# Fit the Kaplan-Meier estimator
 km = gw.KaplanMeier().fit(y)
+
+# Print a summary: median survival with its confidence interval
 km
 ```
 
@@ -52,15 +60,18 @@ after it give a 95 percent confidence interval for that median, 285 to 363 days.
 
 ## Plot the curve
 
-`plot_survival` draws the curve as an interactive chart, with a shaded confidence band and a
+`plot_survival()` draws the curve as an interactive chart, with a shaded confidence band and a
 notch wherever a patient was censored.
 
 ```{python}
+# Load data and build the right-censored response
 lung = gw.load_dataset("lung", backend="polars")
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 
+# Fit the Kaplan-Meier estimator
 km = gw.KaplanMeier().fit(y)
 
+# Draw an interactive survival curve with confidence band and censoring marks
 gw.plot_survival(km)
 ```
 
@@ -74,10 +85,14 @@ To ask how a characteristic changes the risk of death, fit a Cox proportional ha
 Here we include `age` and `sex`. Printing the model shows a coefficient table.
 
 ```{python}
+# Load data and build the right-censored response
 lung = gw.load_dataset("lung", backend="polars")
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 
+# Fit a Cox proportional hazards model with age and sex as covariates
 cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+
+# Print the coefficient table and global test statistics
 cox
 ```
 
