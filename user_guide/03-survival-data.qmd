@@ -70,6 +70,7 @@ delay). All of these are expressed through the same response object.
 
 ::: {.callout-note}
 ## The key idea
+
 A survival observation carries two pieces of information: a time, and a status that says
 what the time means (an event, or a censoring point). You must always keep them together.
 Greenwood does this for you with the `Surv` object.
