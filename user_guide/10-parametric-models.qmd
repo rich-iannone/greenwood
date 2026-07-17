@@ -108,7 +108,7 @@ distribution.
 
 The `Parametric` class is for exploration: which distribution shape fits my data? Once you've
 chosen, use `AFT` with the same distribution to model covariate effects. For example, if
-`compare_distributions` picks Weibull, follow up with `gw.AFT("weibull").fit(y, covariates)`.
+`compare_distributions()` picks Weibull, follow up with `gw.AFT("weibull").fit(y, covariates)`.
 :::
 
 ## The accelerated failure time model
@@ -192,8 +192,8 @@ Other distributions use scale differently so see the model's help page for detai
 
 ## Model comparison and selection
 
-Each call to `gw.glance()` returns a one-row DataFrame of model-level summaries for a
-single fit. We can compare all four distributions systematically:
+Each call to `gw.glance()` returns a one-row DataFrame of model-level summaries for a single fit. We
+can compare all four distributions systematically:
 
 ```{python}
 # Fit each distribution and collect glance results for ranking
@@ -212,8 +212,8 @@ comparison = pd.concat(comparisons)[["distribution", "loglik", "aic"]]
 print(comparison.sort_values("aic"))
 ```
 
-Compare the models by reading the AIC column and preferring the lowest value. A difference of
-10 in AIC is substantial. Differences of 2-3 are subtle and don't warrant changing models.
+Compare the models by reading the AIC column and preferring the lowest value. A difference of 10 in
+AIC is substantial. Differences of 2-3 are subtle and don't warrant changing models.
 
 **When to use each distribution:**
 
@@ -225,25 +225,25 @@ Compare the models by reading the AIC column and preferring the lowest value. A 
 ::: {.callout-note}
 ## Parametric or Cox?
 
-Choose a parametric model when you need to extrapolate, want smooth hazard or quantile
-predictions, or have a distributional form suggested by theory. Choose the Cox model when
-you want to avoid distributional assumptions and care mainly about relative effects. Both are
-valid and they answer slightly different questions.
+Choose a parametric model when you need to extrapolate, want smooth hazard or quantile predictions,
+or have a distributional form suggested by theory. Choose the Cox model when you want to avoid
+distributional assumptions and care mainly about relative effects. Both are valid and they answer
+slightly different questions.
 :::
 
 ::: {.callout-tip}
 ## Interpreting the acceleration factor
 
-Exponentiating an AFT coefficient gives a time-acceleration factor. A factor of 1.5 for a
-covariate means subjects with a one-unit-higher value survive 1.5 times as long on average,
-holding other covariates fixed.
+Exponentiating an AFT coefficient gives a time-acceleration factor. A factor of 1.5 for a covariate
+means subjects with a one-unit-higher value survive 1.5 times as long on average, holding other
+covariates fixed.
 :::
 
 ## Predicting survival and quantiles
 
-Because a parametric model specifies the whole distribution, it can predict smoothly at any
-time and extrapolate beyond the observed follow-up. We predict for two new subjects, a
-50-year-old and a 70-year-old, both with `sex` coded as `1`.
+Because a parametric model specifies the whole distribution, it can predict smoothly at any time and
+extrapolate beyond the observed follow-up. We predict for two new subjects, a 50-year-old and a
+70-year-old, both with `sex` coded as `1`.
 
 ```{python}
 # Fit a Weibull AFT and define two new subjects for prediction
@@ -258,9 +258,9 @@ newdata = pd.DataFrame({"age": [50, 70], "sex": [1, 1]})
 aft.predict(newdata, type="quantile", p=[0.25, 0.5, 0.75], format="polars")
 ```
 
-With `type="quantile"` the model returns survival-time quantiles: each column is a subject and
-each row a failure probability. The middle row (`p = 0.5`) is the predicted median survival
-time, and the older subject's is shorter, as expected. These quantiles match R's `survreg`.
+With `type="quantile"` the model returns survival-time quantiles: each column is a subject and each
+row a failure probability. The middle row (`p = 0.5`) is the predicted median survival time, and the
+older subject's is shorter, as expected. These quantiles match R's `survreg`.
 
 For the survival curve itself, use `type="survival"` with the times you want.
 
@@ -274,11 +274,11 @@ surviving past that time.
 
 ## Flexible parametric (Royston-Parmar) models
 
-The AFT distributions impose a fixed hazard shape. When none of them fits well but you still
-want the smooth, extrapolatable curves of a parametric model, a Royston-Parmar model is a good
-middle ground. It models the log cumulative hazard as a restricted cubic spline in log time,
-so the baseline shape is estimated from the data rather than assumed. The flexibility is set
-by `df=`, the number of spline degrees of freedom.
+The AFT distributions impose a fixed hazard shape. When none of them fits well but you still want
+the smooth, extrapolatable curves of a parametric model, a Royston-Parmar model is a good middle
+ground. It models the log cumulative hazard as a restricted cubic spline in log time, so the
+baseline shape is estimated from the data rather than assumed. The flexibility is set by `df=`, the
+number of spline degrees of freedom.
 
 ```{python}
 # Fit a Royston-Parmar flexible-parametric model (3 spline degrees of freedom)
@@ -291,14 +291,14 @@ rp = gw.RoystonParmar(df=3).fit(y, lung[["age", "sex"]])
 rp.to_frame(format="polars")
 ```
 
-The `gamma` terms are the spline coefficients for the baseline log cumulative hazard, and the
-named terms are the covariate effects on that scale.
+The `gamma` terms are the spline coefficients for the baseline log cumulative hazard, and the named
+terms are the covariate effects on that scale.
 
 ### Choosing the degrees of freedom
 
 The `df=` parameter controls spline flexibility. `df=1` is exactly a Weibull model (no spline);
-higher values let the hazard adapt to the data shape. More flexibility fits the observed data
-better but risks overfitting and unstable extrapolation.
+higher values let the hazard adapt to the data shape. More flexibility fits the observed data better
+but risks overfitting and unstable extrapolation.
 
 ```{python}
 # Sweep across spline degrees of freedom to find the best-fitting complexity
@@ -316,8 +316,8 @@ Notice that loglik generally improves up to `df=3`, after which gains diminish, 
 additional flexibility is not justified by the data. Two or three degrees of freedom are typical
 defaults. Choose based on the trade-off between fit and complexity:
 
-- **df=1**: equivalent to Weibull; simplest.
-- **df=2-3**: common choices; balance parsimony and fit.
+- **df=1**: equivalent to Weibull (simplest).
+- **df=2-3**: common choices (balances parsimony and fit).
 - **df=4+**: use only if AIC clearly favors it and validation shows good extrapolation.
 
 Prediction works as for the AFT model, with survival, hazard, or cumulative hazard curves.
@@ -332,13 +332,13 @@ rp.predict(newdata, type="survival", times=[180, 365, 730], format="polars")
 
 ## Survival predictions with confidence intervals
 
-When predicting survival probabilities from an AFT model, you can also compute confidence
-intervals that quantify uncertainty in the predictions. This is especially valuable when
-making personalized survival predictions for clinical use.
+When predicting survival probabilities from an AFT model, you can also compute confidence intervals
+that quantify uncertainty in the predictions. This is especially valuable when making personalized
+survival predictions for clinical use.
 
-Confidence intervals are computed via the delta-method, which propagates coefficient
-uncertainty through the survival function. Wider intervals indicate greater model uncertainty,
-often due to covariate values that are far from the training data mean.
+Confidence intervals are computed via the delta-method, which propagates coefficient uncertainty
+through the survival function. Wider intervals indicate greater model uncertainty, often due to
+covariate values that are far from the training data mean.
 
 Pass `ci=True` to get confidence bounds alongside the survival probability:
 
