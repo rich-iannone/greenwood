@@ -360,8 +360,8 @@ gw.cif_plot(
 You can now produce and customize publication-quality survival figures.
 
 - [Cox regression](08-cox-regression.qmd) introduces models whose coefficients you will
-  later visualize as forest plots.
+later visualize as forest plots.
 - [Competing risks](11-competing-risks.qmd) produces cumulative incidence curves, which are
-  plotted the same way.
+plotted the same way.
 - Revisit [Comparing groups](06-comparing-groups.qmd) to pair a grouped figure with a formal
-  test.
+test.

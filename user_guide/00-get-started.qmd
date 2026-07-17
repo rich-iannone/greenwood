@@ -32,21 +32,21 @@ The guide builds up from data to models. If you are new to survival analysis, re
 order; if you know what you need, jump straight to the relevant page.
 
 - **Foundations**: [Survival data and the Surv object](03-survival-data.qmd) explains
-  censoring and how to represent it, and [Data sources and formats](04-data-sources.qmd)
-  covers loading data from any backend.
+censoring and how to represent it, and [Data sources and formats](04-data-sources.qmd)
+covers loading data from any backend.
 - **Description and comparison**: [Kaplan-Meier](05-kaplan-meier.qmd),
-  [Comparing groups](06-comparing-groups.qmd), and
-  [Visualizing survival](07-visualization.qmd).
+[Comparing groups](06-comparing-groups.qmd), and
+[Visualizing survival](07-visualization.qmd).
 - **Regression**: [Cox regression](08-cox-regression.qmd),
-  [Cox model diagnostics](09-cox-diagnostics.qmd), and
-  [Parametric models](10-parametric-models.qmd).
+[Cox model diagnostics](09-cox-diagnostics.qmd), and
+[Parametric models](10-parametric-models.qmd).
 - **Multiple event types**: [Competing risks](11-competing-risks.qmd) and
-  [Multi-state models](12-multi-state.qmd).
+[Multi-state models](12-multi-state.qmd).
 - **Evaluation**: [Prediction performance](13-prediction-performance.qmd).
 
 ## Next steps
 
 - New to the library? Start with [Installation](01-installation.qmd), then the
-  [Quick start](02-quick-start.qmd) for a fast tour.
+[Quick start](02-quick-start.qmd) for a fast tour.
 - New to survival analysis? Begin with
-  [Survival data and the Surv object](03-survival-data.qmd).
+[Survival data and the Surv object](03-survival-data.qmd).

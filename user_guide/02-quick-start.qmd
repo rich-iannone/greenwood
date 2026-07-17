@@ -91,10 +91,10 @@ That is the core loop: represent the data, estimate a curve, visualize it, and m
 effect. Each part of the guide takes one of these steps further.
 
 - [Survival data and the Surv object](03-survival-data.qmd) and
-  [Data sources and formats](04-data-sources.qmd) cover the input side in full.
+[Data sources and formats](04-data-sources.qmd) cover the input side in full.
 - [Estimating survival with Kaplan-Meier](05-kaplan-meier.qmd),
-  [Comparing groups](06-comparing-groups.qmd), and
-  [Visualizing survival](07-visualization.qmd) cover description and comparison.
+[Comparing groups](06-comparing-groups.qmd), and
+[Visualizing survival](07-visualization.qmd) cover description and comparison.
 - [Cox regression](08-cox-regression.qmd) and
-  [Parametric survival models](10-parametric-models.qmd) cover modeling, and
-  [Prediction performance](13-prediction-performance.qmd) covers evaluation.
+[Parametric survival models](10-parametric-models.qmd) cover modeling, and
+[Prediction performance](13-prediction-performance.qmd) covers evaluation.

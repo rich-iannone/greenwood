@@ -479,6 +479,6 @@ You can now describe and formally compare survival across groups.
 
 - [Visualizing survival](07-visualization.qmd) shows how to present grouped curves clearly.
 - [Cox regression](08-cox-regression.qmd) estimates hazard ratios and adjusts for multiple
-  covariates.
+covariates.
 - Revisit [Kaplan-Meier](05-kaplan-meier.qmd) for restricted-mean-survival summaries, which
-  give an interpretable effect size to accompany a significant test.
+give an interpretable effect size to accompany a significant test.

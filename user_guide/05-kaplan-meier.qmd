@@ -306,8 +306,8 @@ na.to_frame(format="polars")
 You can now estimate survival curves, summarize them, and split them by group.
 
 - [Comparing groups](06-comparing-groups.qmd) tests whether survival differs between
-  strata with the log-rank family.
+strata with the log-rank family.
 - [Visualizing survival](07-visualization.qmd) turns these curves into publication-quality
-  figures with plotnine, including numbers-at-risk tables.
+figures with plotnine, including numbers-at-risk tables.
 - [Cox regression](08-cox-regression.qmd) moves from describing groups to modeling the
-  effect of continuous and multiple covariates.
+effect of continuous and multiple covariates.
