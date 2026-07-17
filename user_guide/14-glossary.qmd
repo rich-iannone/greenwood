@@ -131,6 +131,16 @@ dfbeta residuals
   coefficient. Greenwood's `_score_residuals()` method computes the score-residual building
   blocks used to form dfbeta values and the **Lin-Wei** robust variance.
 
+Endpoint
+: The specific outcome a study is designed to measure, defined in advance as the criterion
+  for declaring that an **event** has occurred. A study may have a single primary endpoint
+  (e.g., all-cause death) or multiple endpoints (e.g., recurrence and death analyzed
+  separately or as competing events). Choosing the endpoint determines which column or
+  combination of columns in the data encodes the event indicator and which time column to
+  use. In multi-endpoint datasets such as `colon` (recurrence vs. death, stored in separate
+  rows via `etype`) and `mgus2` (progression vs. death, stored in separate column pairs),
+  each endpoint must be extracted and analyzed independently before passing to `Surv`.
+
 Event
 : The outcome of interest in a survival study: death, disease progression, machine failure,
   customer churn, or any other well-defined, non-repeating endpoint. An observation for which
