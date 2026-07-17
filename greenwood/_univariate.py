@@ -352,3 +352,45 @@ class Parametric:
         """
         return float(self.quantile(0.5)[0])
 
+    # -- export --------------------------------------------------------------
+
+    def to_frame(self, *, format: str | None = None) -> Any:
+        """Return the parameter estimates as a tidy DataFrame.
+
+        One row per parameter, with columns `param`, `estimate`, `std_error`, `conf_low`, and
+        `conf_high`.
+
+        Parameters
+        ----------
+        format
+            Output format: `None` (auto-detect), `"pandas"`, `"polars"`, or `"pyarrow"`.
+
+        Returns
+        -------
+        DataFrame
+            A tidy parameter table.
+
+        Examples
+        --------
+        ```{python}
+        import greenwood as gw
+
+        lung = gw.load_dataset("lung", backend="polars")
+        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        fit = gw.Parametric("weibull").fit(y)
+        fit.to_frame(format="polars")
+        ```
+        """
+        names = list(self.params_.keys())
+        return to_dataframe(
+            {
+                "param": names,
+                "estimate": [self.params_[n] for n in names],
+                "std_error": [self.std_error_[n] for n in names],
+                "conf_low": [self.conf_low_[n] for n in names],
+                "conf_high": [self.conf_high_[n] for n in names],
+            },
+            format=format,
+        )
+
+
