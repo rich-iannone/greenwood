@@ -279,3 +279,22 @@ class Parametric:
         log_hazard = log_f - log_s - np.log(self._sigma) - np.log(t)
         return np.exp(log_hazard)
 
+    def density(self, times: Any) -> Array:
+        r"""Probability density function $f(t)$ at the given times.
+
+        Parameters
+        ----------
+        times
+            Query times (array-like of positive floats).
+
+        Returns
+        -------
+        ndarray
+            Density values, same length as `times=`.
+        """
+        t = np.atleast_1d(np.asarray(times, dtype=float))
+        z = (np.log(t) - self._mu) / self._sigma
+        log_f, _ = _log_density_survival(self.dist, z)
+        # f_T(t) = f_eps(z) / (sigma * t)
+        return np.exp(log_f - np.log(self._sigma) - np.log(t))
+
