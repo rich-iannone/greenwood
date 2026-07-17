@@ -1,0 +1,315 @@
+---
+title: Glossary
+guide-section: "Reference"
+---
+
+Terms used throughout the Greenwood documentation, listed alphabetically. Where a term has
+a direct counterpart in Greenwood's API, the relevant class or function is noted.
+
+Accelerated failure time (AFT)
+: A parametric regression model for survival data that represents the log of the event time
+  as a linear function of covariates. Covariates "accelerate" or "decelerate" time to the
+  event rather than scaling the hazard; the coefficient $e^\beta$ is an acceleration factor.
+  Greenwood provides AFT with Weibull, exponential, log-normal, and log-logistic distributions
+  via `AFT`.
+
+Aalen-Johansen estimator
+: A non-parametric estimator of the cumulative incidence function (CIF) in a competing-risks
+  setting. It generalizes Kaplan-Meier to multiple event types by accumulating cause-specific
+  hazard increments weighted by the overall survival probability. The sum of CIFs across all
+  causes plus the censoring probability equals 1 at every time point. Available via
+  `AalenJohansen`.
+
+At-risk / risk set
+: The set of subjects who are still under observation and have not yet experienced an event or
+  been censored just before a given time $t$. The size of the risk set, $n(t)$, is the
+  denominator in most survival estimators. See also **event table**.
+
+Baseline hazard
+: The hazard function $h_0(t)$ for a subject whose covariates are all zero (or at their
+  reference level) in a Cox model. It is left unspecified by the Cox partial likelihood and
+  estimated non-parametrically from the data. In Greenwood, `CoxPH.baseline_hazard()` returns
+  the Breslow estimator of the cumulative baseline hazard.
+
+Breslow estimator
+: A non-parametric estimator of the cumulative baseline hazard in a Cox model, computed as a
+  step function that jumps at each event time by the ratio of observed events to the
+  risk-weighted sum of covariate contributions. It is the default baseline hazard in most Cox
+  implementations, including Greenwood.
+
+Brier score
+: A proper scoring rule that measures the mean squared difference between predicted survival
+  probabilities and observed binary outcomes at a single time horizon. In the censored setting,
+  observations are reweighted by the inverse probability of censoring (IPCW) to account for
+  unobserved event times. Lower is better; a naive constant-survival model gives an upper
+  benchmark. Available via `brier_score()`.
+
+C-statistic
+: See **concordance index**.
+
+Censoring
+: The situation in which the exact event time is not observed for a subject. Censoring is the
+  defining feature of survival data; standard regression methods that ignore it are biased.
+  Greenwood supports four censoring types: **right censoring**, **left censoring**,
+  **interval censoring**, and the **counting-process form** for left truncation and
+  time-varying covariates.
+
+Concordance index (C-statistic, Harrell's C)
+: A measure of a model's ability to rank subjects by their event times. It is the proportion
+  of all comparable pairs of subjects (one who had an event before the other) for which the
+  model assigns a higher risk score to the subject who had the event first. A value of 0.5
+  corresponds to random ranking; 1.0 is perfect discrimination. Available via
+  `concordance_index()`.
+
+Competing risks
+: A study setting in which subjects can experience one of several mutually exclusive events.
+  Experiencing one event precludes the others from occurring. Standard Kaplan-Meier applied to
+  a single cause in the presence of competing risks overestimates the cause-specific
+  probability. The correct quantity is the **cumulative incidence function**, estimated by
+  `AalenJohansen` and used as the basis for `FineGray` regression.
+
+Counting-process form
+: A representation of survival data as a set of intervals $(s_i, t_i]$ with an event
+  indicator at $t_i$. It is the natural way to encode **left truncation** (late entry: $s_i >
+  0$) and **time-varying covariates** (a subject contributes multiple rows with $s_i$ = end
+  of previous interval). Built with `Surv.counting(start, stop, event)`.
+
+Cox proportional hazards model
+: A semi-parametric regression model that expresses the hazard as $h(t \mid x) = h_0(t)
+  \exp(\beta^\top x)$, where $h_0(t)$ is an unspecified baseline hazard and $\exp(\beta_j)$
+  is the **hazard ratio** for covariate $j$. Coefficients are estimated by maximizing the
+  partial likelihood, which eliminates $h_0(t)$. Available via `CoxPH`. See also
+  **proportional hazards assumption**.
+
+CoxNet
+: A penalized Cox proportional hazards model that adds an elastic-net penalty
+  ($\alpha \|\beta\|_1 + (1-\alpha)\|\beta\|_2^2$) to the partial likelihood. Setting
+  $\alpha = 1$ gives lasso (automatic variable selection through coefficient shrinkage to
+  zero); $\alpha = 0$ gives ridge (shrinks all coefficients without dropping them). Useful
+  when the number of covariates is large relative to the number of events. Available via
+  `CoxNet`.
+
+Cumulative hazard function
+: The integral of the hazard function over time: $H(t) = \int_0^t h(u)\,du$. It is related
+  to the survival function by $S(t) = \exp(-H(t))$. The **Nelson-Aalen estimator** targets
+  $H(t)$ directly, while the **Kaplan-Meier estimator** targets $S(t)$.
+
+Cumulative incidence function (CIF)
+: The probability of experiencing a specific cause of failure by time $t$, accounting for
+  competing causes: $F_k(t) = P(T \le t,\, \text{cause} = k)$. Unlike the naive
+  one-minus-Kaplan-Meier approach, the CIF is not biased by competing events. Estimated
+  non-parametrically by `AalenJohansen` and modeled by `FineGray`.
+
+Event
+: The outcome of interest in a survival study: death, disease progression, machine failure,
+  customer churn, or any other well-defined, non-repeating endpoint. An observation for which
+  the event occurred within the follow-up period is called an **event observation**; one for
+  which it did not (or could not be confirmed) is **censored**.
+
+Event table
+: A tabulation that, at each distinct event time, records the number of subjects at risk
+  ($n_\text{risk}$), the number of events ($n_\text{event}$), and the number of censorings
+  ($n_\text{censor}$). It is the common foundation for Kaplan-Meier, the log-rank test, and
+  Cox regression. Available via `event_table()`.
+
+Fine-Gray model
+: A regression model for competing-risks data based on the **subdistribution hazard** of a
+  specific cause. It models how covariates affect the cumulative incidence function directly,
+  rather than the cause-specific hazard. Implemented in Greenwood as `FineGray`, which accepts
+  a multi-state `Surv` response and a target cause.
+
+Fleming-Harrington test
+: A family of weighted log-rank tests parameterized by $(\rho, \gamma)$ that apply time-varying
+  weights $W(t) = \hat{S}(t^-)^\rho (1 - \hat{S}(t^-))^\gamma$ to each event time. Setting
+  $\rho = 0, \gamma = 0$ gives the standard log-rank test; $\rho = 1, \gamma = 0$ gives the
+  Peto-Peto test, which emphasizes early differences. Available via `logrank_test()` with
+  `rho=` and `gamma=` arguments.
+
+Forest plot
+: A graphical display of point estimates and confidence intervals (typically hazard ratios
+  from a Cox model) for multiple subgroups or covariates arranged in rows. Each row shows
+  a symbol for the estimate and a horizontal line for the interval, making it easy to
+  compare effect sizes and their uncertainty at a glance. In Greenwood, `plot_forest()`
+  produces an interactive forest plot from a fitted `CoxPH` model.
+
+Greenwood's formula
+: The standard variance estimator for the Kaplan-Meier survival curve:
+  $\widehat{\text{Var}}(\hat{S}(t)) = \hat{S}(t)^2 \sum_{t_i \le t} \frac{d_i}{n_i(n_i - d_i)}$,
+  where $d_i$ and $n_i$ are the events and risk-set size at time $t_i$. Confidence intervals
+  are derived from this variance on a transformed scale (`log`, `log-log`, or `plain`).
+  Greenwood uses this formula by default in `KaplanMeier`.
+
+Hazard function (hazard rate)
+: The instantaneous rate of an event at time $t$, given survival to that time:
+  $h(t) = \lim_{\delta \to 0} P(t \le T < t + \delta \mid T \ge t) / \delta$.
+  It is not a probability but a rate (events per unit time). The hazard is related to the
+  survival function by $S(t) = \exp\!\left(-\int_0^t h(u)\,du\right)$.
+
+Hazard ratio
+: The ratio of the hazard functions of two groups or covariate levels, typically assumed
+  constant over time under the **proportional hazards assumption**. In a Cox model, $e^{\beta_j}$
+  is the hazard ratio associated with a one-unit increase in covariate $j$. Values greater
+  than 1 indicate higher hazard (shorter survival) for the group with the higher covariate
+  value.
+
+Integrated Brier score (IBS)
+: The **Brier score** averaged over a range of evaluation times, providing a single summary
+  of overall predictive accuracy across the follow-up period. Available via
+  `integrated_brier_score()`.
+
+Interval censoring
+: A censoring mechanism in which the event is known only to have occurred within a time
+  interval $[\ell_i, u_i]$, rather than at an exact time. Built with
+  `Surv.interval(lower, upper)`. Use `numpy.inf` as the upper bound to represent right
+  censoring within this form.
+
+IPCW (inverse probability of censoring weighting)
+: A technique for correcting for informative censoring in prediction metrics. Observations
+  that are censored before the evaluation time are upweighted by the inverse of their
+  probability of remaining uncensored, estimated by a censoring Kaplan-Meier curve. Brier
+  scores, time-dependent AUC, and concordance index in Greenwood use IPCW by default.
+
+Kaplan-Meier estimator (product-limit estimator)
+: The standard non-parametric estimator of the survival function. It is a step function that
+  drops at each event time by the conditional probability of the event at that time:
+  $\hat{S}(t) = \prod_{t_i \le t} \left(1 - \frac{d_i}{n_i}\right)$.
+  Confidence intervals use **Greenwood's formula**. Available via `KaplanMeier`.
+
+Left censoring
+: A censoring mechanism in which the event is known to have occurred before the observation
+  time (the event time is at most $t_i$, not at least $t_i$). Less common than right
+  censoring. Built with `Surv.left(time, event)`.
+
+Left truncation (late entry)
+: A form of selection bias in which a subject is only observed because they survived long
+  enough to enter the study. The subject only joins the risk set at their entry time
+  $s_i > 0$; if their event had occurred before $s_i$, they would not be in the data at all.
+  Handled via the **counting-process form** `Surv.counting(start, stop, event)`.
+
+Log-rank test
+: A non-parametric test for equality of survival curves across two or more groups. It sums
+  the (observed − expected) event counts at each event time, where expected counts are
+  computed under the null hypothesis of equal hazard rates. The log-rank test is most
+  powerful when hazards are proportional over time; use **Fleming-Harrington** weights for
+  alternatives. Available via `logrank_test()`.
+
+Multi-state model
+: A model in which subjects can occupy one of several states and transition between them over
+  time. Competing risks is a special case (one transient state, multiple absorbing states).
+  More general structures (for example, a "healthy -> sick -> dead" illness-death model) are
+  represented with `Surv.multistate` and fitted with `MultiState`.
+
+Nelson-Aalen estimator
+: A non-parametric estimator of the **cumulative hazard function**:
+  $\hat{H}(t) = \sum_{t_i \le t} \frac{d_i}{n_i}$.
+  A survival estimate can be recovered as $\hat{S}(t) = \exp(-\hat{H}(t))$, though
+  Kaplan-Meier is usually preferred for direct survival estimation. Available via
+  `NelsonAalen`.
+
+Pairwise log-rank test
+: An extension of the log-rank test that performs all pairwise group comparisons when there
+  are more than two groups, with an optional multiplicity correction (e.g., Holm). Avoids
+  inflating the type I error rate that would result from running separate two-group tests.
+  Available via `pairwise_logrank_test()`.
+
+Pairwise RMST test
+: An extension of the **restricted mean survival time** comparison that performs all pairwise
+  group contrasts, with optional multiplicity correction. Available via `pairwise_rmst_test()`.
+
+Partial likelihood
+: The likelihood function used to estimate Cox model coefficients. It conditions on the
+  observed event times and considers only the identity of the subject who had the event
+  relative to those still at risk, thereby eliminating the unspecified **baseline hazard**
+  from the estimation.
+
+Proportional hazards assumption
+: The assumption in the Cox model that the hazard ratio between any two subjects is constant
+  over time (that is, the hazard functions are parallel on a log scale). It can be tested
+  formally with the **Schoenfeld residual** correlation test, available via
+  `CoxPH.zph()` which returns a `ZPHResult`.
+
+Restricted mean survival time (RMST)
+: The expected event-free survival time up to a pre-specified time horizon $\tau$:
+  $\text{RMST}(\tau) = \int_0^\tau S(t)\,dt$. It is the area under the survival curve to
+  $\tau$ and has a direct clinical interpretation as "average time alive and event-free up to
+  $\tau$." Available via `KaplanMeier.rmst()`, and tested between groups with `rmst_test()`.
+
+Right censoring
+: The most common censoring mechanism. An observation is right-censored if the event had not
+  yet occurred by the time the subject left the study or the study ended. All that is known
+  is that the true event time exceeds the observed time $t_i$. Built with
+  `Surv.right(time, event)`.
+
+Royston-Parmar model
+: A flexible parametric survival model that uses restricted cubic splines to represent the
+  log cumulative hazard (or log cumulative odds of the event), allowing smooth, data-driven
+  hazard shapes rather than the rigid forms imposed by exponential or Weibull models. It
+  bridges the gap between fully parametric models and the non-parametric Cox approach:
+  parameters are fully estimated so extrapolation and smooth hazard curves are possible.
+  Available via `RoystonParmar`.
+
+Schoenfeld residuals
+: Residuals from a fitted Cox model used to assess the **proportional hazards assumption**.
+  At each event time, the Schoenfeld residual for a covariate is the observed covariate value
+  of the subject who had the event minus the risk-set weighted mean. A significant correlation
+  between Schoenfeld residuals and time indicates non-proportional hazards. Computed by
+  `CoxPH.zph()`.
+
+Stratification
+: A technique in which separate **baseline hazards** are estimated for each level of a
+  stratification variable, while covariate effects (log-hazard-ratio coefficients) remain
+  shared across strata. It is a flexible way to relax the proportional hazards assumption for
+  a known confounder without estimating its coefficient. Specified via the `by=` argument to
+  `CoxPH.fit()`.
+
+Subdistribution hazard
+: The hazard function underlying the **Fine-Gray model**, defined over the entire follow-up
+  time for a specific cause. Subjects who experience a competing event remain in the "at risk"
+  set with a weight of zero rather than being removed, which means the subdistribution hazard
+  has a direct relationship to the **cumulative incidence function**.
+
+Survival function
+: The probability that the event has not yet occurred by time $t$: $S(t) = P(T > t)$.
+  It is a non-increasing function starting at $S(0) = 1$ and approaching 0 as
+  $t \to \infty$. Estimated non-parametrically by **Kaplan-Meier** or derived from the
+  **Nelson-Aalen** cumulative hazard as $\exp(-\hat{H}(t))$.
+
+Surv object
+: The response type in Greenwood that bundles event times with their status codes and
+  validates them eagerly. Every estimator and model in Greenwood consumes a `Surv` object.
+  Built with `Surv.right()`, `Surv.counting()`, `Surv.left()`, `Surv.interval()`, or
+  `Surv.multistate()` depending on the censoring and event structure of the data.
+
+Time-dependent AUC
+: The area under the ROC curve at a specific time horizon, measuring a model's ability to
+  distinguish subjects who had the event before that time from those who did not. IPCW
+  weighting is applied to handle censoring. Available via `time_dependent_auc()` and
+  `integrated_auc()`.
+
+Time-varying covariates
+: Covariates whose values change during a subject's follow-up period. They are handled by
+  splitting each subject into multiple rows in the **counting-process form**, where each row
+  covers the interval during which a particular covariate value applies.
+
+Trend test
+: A non-parametric test for a monotone (ordered) trend in survival across three or more
+  groups with a natural ordering, such as disease stages, dose levels, or age bands. It is
+  more powerful than the omnibus log-rank test when the alternative is a trend rather than
+  an arbitrary difference. Supports **Fleming-Harrington** weights and stratification.
+  Available via `trend_test()`.
+
+Truncation
+: A form of selection in which a subject's inclusion in the study depends on their event
+  time. **Left truncation** (late entry) is the most common form: subjects who experienced
+  the event before they could enter the study are not observed at all, biasing estimates if
+  not accounted for. The **counting-process form** corrects for left truncation by having
+  subjects enter the risk set only at their entry time.
+
+Weibull distribution
+: A two-parameter family of probability distributions widely used in parametric survival
+  analysis. Its hazard function is $h(t) = \lambda \kappa t^{\kappa - 1}$, where $\lambda >
+  0$ is the scale and $\kappa > 0$ is the shape. When $\kappa = 1$ it reduces to the
+  exponential distribution (constant hazard); $\kappa > 1$ gives an increasing hazard over
+  time; $\kappa < 1$ a decreasing one. The Weibull is the only distribution that satisfies
+  both the **accelerated failure time** and the **proportional hazards** parameterizations,
+  making it the default distribution in many AFT implementations including Greenwood's `AFT`.
