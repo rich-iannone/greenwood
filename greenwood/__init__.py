@@ -33,6 +33,7 @@ from ._resample import cross_validate
 from ._rmst import RMSTResult, pairwise_rmst_test, rmst_diff, rmst_test
 from ._surv import CensoringType, Surv
 from ._tests import TestResult, logrank_test, pairwise_logrank_test, trend_test
+from ._univariate import Parametric, compare_distributions
 from .data import available_datasets, load_dataset
 from .summaries import augment, glance, tidy
 from .viz import (
@@ -58,6 +59,7 @@ __all__ = [
     "event_table",
     "KaplanMeier",
     "NelsonAalen",
+    "Parametric",
     "CoxPH",
     "CoxNet",
     "RoystonParmar",
@@ -67,6 +69,7 @@ __all__ = [
     "FineGray",
     "MultiState",
     "calibration",
+    "compare_distributions",
     "concordance_index",
     "cross_validate",
     "logrank_n_events",
