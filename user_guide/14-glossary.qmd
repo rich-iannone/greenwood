@@ -175,6 +175,15 @@ Fleming-Harrington test
   Peto-Peto test, which emphasizes early differences. Available via `logrank_test()` with
   `rho=` and `gamma=` arguments.
 
+Follow-up
+: The period of observation during which a subject is monitored for the occurrence of the
+  **event**. Follow-up begins at study entry (or, in a **counting-process** analysis, at the
+  subject's delayed entry time) and ends either at the event or at **censoring** (whichever
+  comes first). The follow-up time is what is recorded in the `time` column of a survival
+  dataset. The total follow-up of a study is often summarized as the median or total
+  person-time across all subjects. Loss to follow-up (subjects who withdraw or become
+  unreachable before the study ends) is the most common source of **right censoring**.
+
 Forest plot
 : A graphical display of point estimates and confidence intervals (typically hazard ratios
   from a Cox model) for multiple subgroups or covariates arranged in rows. Each row shows
