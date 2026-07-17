@@ -45,3 +45,25 @@ class Parametric:
         self.dist = dist
         self.conf_level = conf_level
 
+    # -- repr ----------------------------------------------------------------
+
+    def __repr__(self) -> str:
+        if not hasattr(self, "params_"):
+            return f"Parametric(dist={self.dist!r}, conf_level={self.conf_level}) <unfitted>"
+        from ._repr import align_table, num
+
+        names = list(self.params_.keys())
+        rows = [[num(self.params_[n]), num(self.std_error_[n])] for n in names]
+        table = align_table(["estimate", "std_error"], rows, names)
+        return "\n".join(
+            [
+                f"Parametric ({self.dist} distribution)",
+                "",
+                table,
+                "",
+                f"n = {self.n_}, events = {self.n_event_}",
+                f"Log-likelihood = {num(self.loglik_)}",
+                f"AIC = {num(self.aic_)}, BIC = {num(self.bic_)}",
+            ]
+        )
+
