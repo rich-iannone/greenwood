@@ -22,7 +22,7 @@ class TestCrossValidatePandas:
         """Test cross_validate works with CoxPH and pandas."""
         df, y = lung_surv
         result = cross_validate(
-            CoxPH(), y, df[["age", "sex"]], metric="brier", times=[180, 365], seed=42
+            CoxPH(), y, df[["age", "sex"]], metric="brier", times=[180, 365], seed=23
         )
         assert result["metric"] == "brier"
         assert len(result["scores"]) > 0
@@ -43,7 +43,7 @@ class TestCrossValidatePolars:
         # Convert to polars
         df_polars = pl.from_pandas(df)
         result = cross_validate(
-            CoxPH(), y, df_polars[["age", "sex"]], metric="brier", times=[180, 365], seed=42
+            CoxPH(), y, df_polars[["age", "sex"]], metric="brier", times=[180, 365], seed=23
         )
         assert result["metric"] == "brier"
         assert len(result["scores"]) > 0
@@ -55,7 +55,7 @@ class TestCrossValidatePolars:
         df, y = lung_surv
         # Use CoxPH which now returns polars by default (format=None)
         result = cross_validate(
-            CoxPH(), y, df[["age", "sex"]], metric="brier", times=[180, 365], seed=42, k=3
+            CoxPH(), y, df[["age", "sex"]], metric="brier", times=[180, 365], seed=23, k=3
         )
         assert result["metric"] == "brier"
         assert len(result["scores"]) == 3  # k=3 folds
@@ -76,7 +76,7 @@ class TestCrossValidatePolyArrow:
         # Note: pyarrow tables don't support iloc, but cross_validate should handle it
         # This tests the fallback column selection logic
         result = cross_validate(
-            CoxPH(), y, df_arrow, metric="brier", times=[180, 365], seed=42, k=3
+            CoxPH(), y, df_arrow, metric="brier", times=[180, 365], seed=23, k=3
         )
         assert result["metric"] == "brier"
         assert len(result["scores"]) == 3
@@ -95,13 +95,13 @@ class TestCrossValidateConsistency:
 
         # Run with pandas
         result_pandas = cross_validate(
-            CoxPH(), y, df[["age", "sex"]], metric="brier", times=[180, 365], seed=42, k=3
+            CoxPH(), y, df[["age", "sex"]], metric="brier", times=[180, 365], seed=23, k=3
         )
 
         # Run with polars
         df_polars = pl.from_pandas(df)
         result_polars = cross_validate(
-            CoxPH(), y, df_polars[["age", "sex"]], metric="brier", times=[180, 365], seed=42, k=3
+            CoxPH(), y, df_polars[["age", "sex"]], metric="brier", times=[180, 365], seed=23, k=3
         )
 
         # Results should be identical (same seed and folds)
@@ -118,13 +118,13 @@ class TestCrossValidateConsistency:
 
         # Run with pandas
         result_pandas = cross_validate(
-            CoxPH(), y, df[["age", "sex"]], metric="brier", times=[180, 365], seed=42, k=3
+            CoxPH(), y, df[["age", "sex"]], metric="brier", times=[180, 365], seed=23, k=3
         )
 
         # Run with pyarrow
         df_arrow = pa.table(df[["age", "sex"]])
         result_arrow = cross_validate(
-            CoxPH(), y, df_arrow, metric="brier", times=[180, 365], seed=42, k=3
+            CoxPH(), y, df_arrow, metric="brier", times=[180, 365], seed=23, k=3
         )
 
         # Results should be identical
@@ -140,7 +140,7 @@ class TestCrossValidateAFTWithFormats:
         """Test cross_validate works with AFT model and pandas."""
         df, y = lung_surv
         result = cross_validate(
-            gw.AFT("weibull"), y, df[["age", "sex"]], metric="concordance", seed=42, k=3
+            gw.AFT("weibull"), y, df[["age", "sex"]], metric="concordance", seed=23, k=3
         )
         assert result["metric"] == "concordance"
         assert len(result["scores"]) == 3
@@ -156,7 +156,7 @@ class TestCrossValidateAFTWithFormats:
         # AFT doesn't have format parameter, so it returns pandas DataFrames
         # cross_validate should handle this gracefully
         result = cross_validate(
-            gw.AFT("weibull"), y, df_polars[["age", "sex"]], metric="concordance", seed=42, k=3
+            gw.AFT("weibull"), y, df_polars[["age", "sex"]], metric="concordance", seed=23, k=3
         )
         assert result["metric"] == "concordance"
         assert len(result["scores"]) == 3
