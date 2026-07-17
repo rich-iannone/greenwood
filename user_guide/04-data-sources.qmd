@@ -32,10 +32,10 @@ these are covered directly by the Greenwood test suite, which checks that they a
 identical estimates on the same data.
 
 - **Pandas**, the most widely used data frame library, and the default for the bundled
-  datasets.
+  datasets
 - **Polars**, a fast, multi-threaded, Arrow-based data frame library, well suited to large
-  datasets.
-- **PyArrow** tables, the in-memory Arrow format that many file readers and databases produce.
+  datasets
+- **PyArrow** tables, the in-memory Arrow format that many file readers and databases produce
 
 Other backends that Narwhals supports, such as Modin, cuDF, and DuckDB, use the same interface
 and are expected to work the same way, though the test suite pins parity on the three above.
@@ -74,6 +74,7 @@ and look at its results through the tidy functions below.
 
 ```{python}
 cox = gw.CoxPH().fit(y, lung[["age", "sex", "ph.ecog"]])
+cox
 ```
 
 Printing a fitted model shows a readable summary, but for programmatic use you read its
@@ -83,6 +84,9 @@ passing `exponentiate=True` reports hazard ratios rather than raw coefficients.
 ```{python}
 gw.tidy(cox, exponentiate=True, format="polars")
 ```
+
+These two patterns (columns into `Surv`, frames into models) are the only interface you need
+for the entire package. Every page in this guide uses one or both of them.
 
 ## Choosing a backend
 
@@ -115,6 +119,10 @@ Fitting a Cox model on the Polars-backed response and covariates, then viewing t
 ```{python}
 gw.CoxPH().fit(y_pl, lung_pl[["age", "sex"]]).to_frame(format="polars")
 ```
+
+You can choose whichever backend fits your existing workflow. If your pipeline already uses
+Polars, stick with Polars. If it uses Pandas, stick with Pandas. The choice has no effect on
+any numerical result.
 
 ::: {.callout-tip}
 ## Reading from files and databases
