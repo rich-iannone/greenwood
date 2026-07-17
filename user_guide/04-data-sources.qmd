@@ -61,9 +61,13 @@ Python list. Greenwood treats them all the same.
 ```{python}
 import greenwood as gw
 
+# Load the bundled lung dataset as a Polars DataFrame
 lung = gw.load_dataset("lung", backend="polars")
 
+# Build a right-censored response; status == 2 marks a death
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+
+# Display the response summary
 y
 ```
 
@@ -73,7 +77,10 @@ values, just as R's modeling functions do. We fit the model in its own cell, the
 and look at its results through the tidy functions below.
 
 ```{python}
+# Fit a Cox model with age, sex, and ECOG score as covariates
 cox = gw.CoxPH().fit(y, lung[["age", "sex", "ph.ecog"]])
+
+# Print the coefficient table and global test statistics
 cox
 ```
 
@@ -82,6 +89,7 @@ results through tidy output frames. The `tidy` function returns one row per mode
 passing `exponentiate=True` reports hazard ratios rather than raw coefficients.
 
 ```{python}
+# Extract a tidy per-term table; exponentiate=True gives hazard ratios
 gw.tidy(cox, exponentiate=True, format="polars")
 ```
 
@@ -96,9 +104,11 @@ raises a clear error if neither is. When you want a specific type, name it with 
 argument.
 
 ```{python}
+# Load the same dataset explicitly in each backend
 lung_pd = gw.load_dataset("lung", backend="pandas")
 lung_pl = gw.load_dataset("lung", backend="polars")
 
+# Confirm each object belongs to a different library
 type(lung_pd).__module__.split(".")[0], type(lung_pl).__module__.split(".")[0]
 ```
 
@@ -109,7 +119,10 @@ object looks the same as one built from Pandas: it records the same times and ev
 Greenwood read both through Narwhals.
 
 ```{python}
+# Build a response from the Polars columns — identical to building from Pandas
 y_pl = gw.Surv.right(lung_pl["time"], event=(lung_pl["status"] == 2))
+
+# Display the summary; it looks the same regardless of backend
 y_pl
 ```
 
@@ -117,6 +130,7 @@ Fitting a Cox model on the Polars-backed response and covariates, then viewing t
 `to_frame()`, gives the same coefficient table you would get from the Polars frame.
 
 ```{python}
+# Fit on the Polars frame and export the coefficient table — same numbers as Pandas
 gw.CoxPH().fit(y_pl, lung_pl[["age", "sex"]]).to_frame(format="polars")
 ```
 
@@ -126,10 +140,11 @@ any numerical result.
 
 ::: {.callout-tip}
 ## Reading from files and databases
+
 Greenwood does not read files itself, and it does not need to. Use your data frame library's
-reader (`pandas.read_csv`, `polars.read_parquet`, a database query, and so on) to get a frame,
-then pass its columns to `Surv` exactly as above. Anything that produces a supported data
-frame is a valid source.
+reader (`pandas.read_csv()`, `polars.read_parquet()`, a database query, and so on) to get a
+frame, then pass its columns to `Surv` exactly as above. Anything that produces a supported
+data frame is a valid source.
 :::
 
 ## Shaping raw study data for Surv
@@ -150,6 +165,7 @@ gives integer days, which you then cast to float for `Surv`.
 ```{python}
 import polars as pl
 
+# Build a simulated study export with enrollment dates, exit dates, and outcomes
 study = pl.DataFrame({
     "subject": [1, 2, 3, 4, 5, 6],
     "enroll":  ["2021-03-01", "2021-03-15", "2021-04-01",
@@ -160,11 +176,16 @@ study = pl.DataFrame({
 }).with_columns(
     pl.col("enroll", "exit").cast(pl.Date)
 ).with_columns(
+    # Subtract dates to get a Duration, then convert to float days
     time=(pl.col("exit") - pl.col("enroll")).dt.total_days().cast(pl.Float64),
+    # True only for "died"; censored and withdrew both become censored observations
     event=(pl.col("outcome") == "died"),
 )
 
+# Build the right-censored response from the computed columns
 y = gw.Surv.right(study["time"], event=study["event"])
+
+# Display the response summary
 y
 ```
 
@@ -194,6 +215,7 @@ a typical example: `status` is 0 (censored), 1 (transplant), or 2 (dead). The ri
 encoding depends on the analysis you intend to run.
 
 ```{python}
+# Load the pbc dataset; its status column has three levels (0, 1, 2)
 pbc = gw.load_dataset("pbc", backend="polars")
 
 # All-cause analysis: transplant and death are both events
@@ -202,6 +224,7 @@ y_all = gw.Surv.right(pbc["time"], event=(pbc["status"] > 0))
 # Death-only: transplant becomes censoring (patient still alive at last contact)
 y_death = gw.Surv.right(pbc["time"], event=(pbc["status"] == 2))
 
+# Compare event counts between the two endpoint definitions
 print("all-cause: ", y_all)
 print("death-only:", y_death)
 ```
@@ -220,10 +243,16 @@ structured this way: `etype` is `1` for recurrence and `2` for death, so the ful
 meaningless, so always filter to one endpoint first.
 
 ```{python}
+# Load the colon dataset; each patient contributes two rows, one per endpoint
 colon = gw.load_dataset("colon", backend="polars")
 
+# Keep only the recurrence-endpoint rows
 recurrence = colon.filter(pl.col("etype") == 1)
+
+# Build the response from the filtered frame (929 patients, not 1858 rows)
 y_recur = gw.Surv.right(recurrence["time"], event=recurrence["status"])
+
+# Display the response summary
 y_recur
 ```
 
@@ -241,11 +270,14 @@ or `"pyarrow"`) to choose the backend; when you leave it off, Greenwood auto-det
 inspect, filter, join, or pass on to a plotting or table library.
 
 ```{python}
+# Load data and build the response
 lung = gw.load_dataset("lung", backend="polars")
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 
+# Fit a Cox model with three covariates
 cox = gw.CoxPH().fit(y, lung[["age", "sex", "ph.ecog"]])
 
+# Retrieve the one-row model summary: n, events, log-likelihood, AIC
 gw.glance(cox, format="polars")
 ```
 
@@ -260,6 +292,7 @@ datasets drawn from R's `survival` package. Load any of them by name with
 `gw.load_dataset`, and list them with `gw.available_datasets()`.
 
 ```{python}
+# List the names of all datasets bundled with Greenwood
 gw.available_datasets()
 ```
 
