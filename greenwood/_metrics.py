@@ -17,7 +17,14 @@ import numpy.typing as npt
 if TYPE_CHECKING:
     from ._surv import Surv
 
-__all__ = ["concordance_index", "brier_score", "integrated_brier_score", "calibration"]
+__all__ = [
+    "concordance_index",
+    "brier_score",
+    "integrated_brier_score",
+    "calibration",
+    "time_dependent_auc",
+    "integrated_auc",
+]
 
 Array = npt.NDArray[Any]
 
@@ -505,3 +512,199 @@ def calibration(
         },
         format=format,
     )
+
+
+def time_dependent_auc(surv: Surv, marker: Any, times: Any) -> Array:
+    r"""IPCW (Uno) time-dependent AUC at specified times.
+
+    Computes the cumulative-dynamic AUC at each requested time using the inverse-probability-
+    of-censoring-weighted (IPCW) estimator of Uno et al. (2011). At each time $t$, *cases*
+    are subjects who experienced an event by $t$ and *controls* are subjects still at risk
+    after $t$; the AUC measures how well the marker separates the two groups, correcting for
+    censoring bias via IPCW weights.
+
+    **Interpretation**:
+
+    - 0.5: Random discrimination (marker carries no prognostic information at $t$).
+    - > 0.5: Better-than-random; the marker ranks earlier-failing subjects higher.
+    - 1.0: Perfect discrimination at $t$.
+    - AUC tends to vary with $t$; use `integrated_auc()` for a single summary.
+
+    **Higher marker = higher risk** convention: the marker should be on a scale where larger
+    values indicate greater hazard (e.g., a Cox linear predictor, a predicted cumulative
+    incidence, or a biomarker positively associated with failure). To use a *lower-is-worse*
+    marker (e.g., predicted survival probability), negate it first.
+
+    Parameters
+    ----------
+    surv
+        A right-censored `Surv` response.
+    marker
+        Risk score for each subject (one value per observation). Higher values should
+        indicate higher risk (earlier expected failure). Accepts a 1-D array, pandas/Polars
+        Series, or Python sequence.
+    times
+        Evaluation times where the AUC is computed. 1-D array-like. Times before the first
+        event or after the last observation yield `nan`.
+
+    Returns
+    -------
+    ndarray
+        AUC at each requested time, shape `(len(times),)`. Values are in [0, 1] or `nan`
+        when a time has no cases or no controls.
+
+    Details
+    -------
+    **Uno et al. (2011) estimator**: For time $t$ let
+
+    - cases: $\mathcal{C}(t) = \{i : T_i \le t,\; \Delta_i = 1\}$
+    - controls: $\mathcal{K}(t) = \{j : T_j > t\}$
+    - IPCW weight for case $i$: $w_i = \hat{G}(T_i-)^{-2}$, where $\hat{G}$ is the
+      Kaplan-Meier estimate of the *censoring* survival function.
+
+    $$
+    \widehat{AUC}(t) =
+    \frac{\displaystyle\sum_{i \in \mathcal{C}(t)} w_i
+          \Bigl[\#\{j\in\mathcal{K}(t):\eta_j < \eta_i\}
+               + \tfrac{1}{2}\#\{j\in\mathcal{K}(t):\eta_j = \eta_i\}\Bigr]}
+         {|\mathcal{K}(t)| \cdot \displaystyle\sum_{i \in \mathcal{C}(t)} w_i}
+    $$
+
+    When $G(t) = 1$ (no censoring) the estimator reduces to the empirical AUC of the
+    binary problem "case vs. control at $t$".
+
+    **Relationship to concordance**: The Harrell C-statistic is closely related to the
+    time-averaged AUC across all event times; use `integrated_auc()` to obtain a single
+    time-averaged summary that is directly comparable to the C-index.
+
+    References
+    ----------
+    Uno H., Cai T., Pencina M.J., D'Agostino R.B., Wei L.J. (2011). On the C-statistics
+    for evaluating overall adequacy of risk prediction procedures with censored survival
+    data. *Statistics in Medicine*, 30(10), 1105-1117.
+
+    Examples
+    --------
+    Fit a Cox model on the `lung` dataset and compute its time-dependent AUC using the
+    linear predictor as the risk marker.
+
+    ```{python}
+    import greenwood as gw
+
+    lung = gw.load_dataset("lung", backend="polars")
+    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+    cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+
+    lp = cox.predict(type="lp")
+    auc = gw.time_dependent_auc(y, lp, times=[180, 365, 540])
+    auc
+    ```
+
+    Compare discrimination of two models via `integrated_auc()`:
+
+    ```{python}
+    ibs = gw.integrated_auc(y, lp, times=[180, 365, 540])
+    ibs
+    ```
+    """
+    from ._surv import _to_1d_array
+
+    scores = _to_1d_array(marker)
+    query = np.atleast_1d(np.asarray(times, dtype=float))
+    if scores.shape[0] != surv.n:
+        raise ValueError("`marker` must have the same length as the response.")
+
+    T = surv.stop
+    evt = surv.event.astype(bool)
+
+    # Censoring KM: G(t-) is the censoring survival just before t.
+    g_times, g_surv = _censoring_survival(surv)
+
+    def _g_left(t_arr: Array) -> Array:
+        if g_times.shape[0] == 0:
+            return np.ones(len(t_arr))
+        idx = np.searchsorted(g_times, t_arr, side="left") - 1
+        return np.where(idx >= 0, g_surv[idx.clip(min=0)], 1.0)
+
+    out = np.empty(query.shape[0])
+    for j, t in enumerate(query):
+        case_mask = (t >= T) & evt
+        ctrl_mask = t < T
+        n_ctrl = int(ctrl_mask.sum())
+
+        if case_mask.sum() == 0 or n_ctrl == 0:
+            out[j] = np.nan
+            continue
+
+        # IPCW weights: 1 / G(T_i-)^2 for each case
+        g_case = _g_left(T[case_mask])
+        with np.errstate(divide="ignore", invalid="ignore"):
+            w = np.where(g_case > 0, 1.0 / g_case**2, 0.0)
+
+        eta_case = scores[case_mask]  # (n_cases,)
+        eta_ctrl = scores[ctrl_mask]  # (n_controls,)
+
+        # For each case i, count controls j where η_j < η_i (concordant) plus
+        # 0.5 * those where η_j == η_i (tied).  Broadcast shape: (n_cases, n_controls).
+        diff = eta_case[:, None] - eta_ctrl[None, :]
+        pairwise = (diff > 0).astype(float) + 0.5 * (diff == 0).astype(float)
+
+        num = float(np.dot(w, pairwise.sum(axis=1)))
+        denom = float(w.sum()) * n_ctrl
+        out[j] = num / denom if denom > 0.0 else np.nan
+
+    return out
+
+
+def integrated_auc(surv: Surv, marker: Any, times: Any) -> float:
+    r"""Time-averaged IPCW AUC across multiple time points.
+
+    Summarises `time_dependent_auc()` into a single number via trapezoidal integration
+    over the supplied time range. This provides a discrimination summary analogous to
+    Harrell's C-statistic but with explicit IPCW bias-correction for censoring.
+
+    **Interpretation**: Same scale as `time_dependent_auc()` (0.5 = random, 1.0 = perfect).
+    Values of 0.6-0.7 indicate moderate and 0.7+ indicate strong discrimination.
+
+    Parameters
+    ----------
+    surv
+        A right-censored `Surv` response.
+    marker
+        Risk score for each subject. Higher values indicate higher risk.
+    times
+        Evaluation times (at least 2). The integrated AUC is computed as the area under the
+        AUC curve from `times[0]` to `times[-1]`, normalised by the time span. `nan` time
+        points (no cases or controls) are dropped before integration.
+
+    Returns
+    -------
+    float
+        Time-averaged AUC in [0, 1]. Higher is better.
+
+    Examples
+    --------
+    ```{python}
+    import greenwood as gw
+
+    lung = gw.load_dataset("lung", backend="polars")
+    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+    cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+
+    lp = cox.predict(type="lp")
+    gw.integrated_auc(y, lp, times=[180, 365, 540])
+    ```
+    """
+    query = np.atleast_1d(np.asarray(times, dtype=float))
+    if query.shape[0] < 2:
+        raise ValueError("integrated_auc needs at least two times.")
+    auc = time_dependent_auc(surv, marker, query)
+    valid = ~np.isnan(auc)
+    if valid.sum() < 2:
+        raise ValueError(
+            "integrated_auc: fewer than two valid AUC values after dropping nan time points."
+        )
+    t_v = query[valid]
+    a_v = auc[valid]
+    area = float(np.sum(np.diff(t_v) * (a_v[:-1] + a_v[1:]) / 2.0))
+    return area / float(t_v[-1] - t_v[0])

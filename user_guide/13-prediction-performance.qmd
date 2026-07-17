@@ -13,9 +13,10 @@ gd.enable_tbl_preview(n_head=8, n_tail=3)
 
 A model that fits the data in front of it is not necessarily a model that predicts well. To
 judge a survival model as a predictor, or to compare competing models, you need metrics that
-account for censoring. Greenwood provides two complementary ones: the concordance index,
-which measures how well a model ranks subjects by risk, and the Brier score, which measures
-how accurate its probability predictions are. This page explains both and shows how to
+account for censoring. Greenwood provides three complementary ones: (1) the concordance index,
+(measures how well a model ranks subjects by risk), (2) the Brier score (measures how accurate
+its probability predictions are), and (3) the time-dependent AUC (shows how discrimination
+changes over the follow-up horizon). This guide page explains all three and shows how to
 compute them for a fitted model or for any external risk score.
 
 We start from the `lung` outcomes and a Cox model fit to them. This is the model whose
@@ -108,10 +109,10 @@ surv = cox.predict(lung[["age", "sex"]], type="survival", times=times, format="p
 surv.shape
 ```
 
-The returned frame has a leading `time` column and one column per subject, so its shape is 3
-rows (the requested times) by 229 columns (228 subjects plus the time column). The Brier score
-wants the transpose of this: an array with one row per subject and one column per time. We
-drop the `time` column and transpose to get there.
+The returned DataFrame has a leading `time` column and one column per subject, so its shape
+is 3 rows (the requested times) by 229 columns (228 subjects plus the time column). The
+Brier score wants the transpose of this: an array with one row per subject and one column per
+time. We drop the `time` column and transpose to get there.
 
 ```{python}
 probs = surv.drop("time").to_numpy().T
@@ -143,9 +144,43 @@ For an honest assessment, evaluate on a held-out test set or use cross-validatio
 one part of the data and scoring predictions on another.
 :::
 
+## Time-dependent discrimination: AUC over time
+
+The concordance index summarises discrimination with a single number across all event times.
+But a marker's ability to separate early failures from survivors often changes over follow-up:
+a biomarker may identify six-month events well but lose its signal at five years.
+`time_dependent_auc()` gives you a per-horizon view by computing the area under the ROC curve
+separately at each requested time.
+
+At each time $t$, the estimator compares *cases* (subjects who had an event by $t$) against
+*controls* (subjects still at risk after $t$), and measures how well the marker separates the
+two groups. Inverse-probability-of-censoring weights correct for the fact that not all
+subjects are observed to the end of follow-up. The marker must be on a scale where larger
+means higher risk, so, the Cox linear predictor is a natural choice.
+
+```{python}
+lp = cox.predict(type="lp")
+gw.time_dependent_auc(y, lp, times=[180, 365, 540])
+```
+
+Each value is the AUC at one horizon. Values above 0.5 mean the marker separates early
+failures from survivors better than chance at that time. Values close to 0.5 signal that the
+marker has lost predictive power at that horizon.
+
+To reduce these to a single number for model comparison, `integrated_auc()` computes the
+time-averaged AUC using the trapezoidal rule over the supplied time range.
+
+```{python}
+gw.integrated_auc(y, lp, times=[180, 365, 540])
+```
+
+The integrated AUC plays the same role as the integrated Brier score: it collapses
+time-specific discrimination into one comparison-friendly number. Higher is better, and 0.5
+is the random baseline.
+
 ## Cross-validation
 
-Rather than splitting the data by hand, `cross_validate` runs k-fold cross-validation for
+Rather than splitting the data by hand, `cross_validate()` runs k-fold cross-validation for
 you: it fits a fresh copy of the model on each set of training folds and scores its
 predictions on the held-out fold. Pass an unfitted model, the response, and the covariates.
 
@@ -154,7 +189,7 @@ lung = gw.load_dataset("lung", backend="polars")
 
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 
-gw.cross_validate(gw.CoxPH(), y, lung[["age", "sex"]], k=5, metric="concordance", seed=1)
+gw.cross_validate(gw.CoxPH(), y, lung[["age", "sex"]], k=5, metric="concordance", seed=23)
 ```
 
 The result reports the score on each fold plus their mean and standard deviation. The
@@ -167,8 +202,8 @@ an `AFT` model.
 
 Discrimination and the Brier score both summarize a model in a single number. Calibration
 asks a more detailed question: at a chosen time, do the predicted survival probabilities match
-what actually happens? `calibration` groups subjects into bins by their predicted survival at
-a horizon, then compares the mean prediction in each bin against the observed survival, a
+what actually happens? `calibration()` groups subjects into bins by their predicted survival
+at a horizon, then compares the mean prediction in each bin against the observed survival, a
 Kaplan-Meier estimate for that bin.
 
 ```{python}

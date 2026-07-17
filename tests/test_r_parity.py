@@ -535,6 +535,20 @@ def test_brier_score_matches_r() -> None:
     assert_allclose_to_r(gw.brier_score(y, probs, times), fixture["brier"], what="brier")
 
 
+def test_time_dependent_auc_matches_r() -> None:
+    # Validates the Uno IPCW formula against an independent R implementation
+    # (uno_td_auc() in scripts/regenerate_r_fixtures.R, no third-party packages).
+    # The marker values from R's coxph are stored in the fixture so that the test
+    # isolates the AUC formula from Cox LP estimation precision.
+    df = gw.load_dataset("lung", backend="pandas")
+    y = Surv.right(df["time"], event=(df["status"] == 2))
+    fixture = load_fixture("td_auc_lung")
+    times = np.asarray(fixture["times"], dtype=float)
+    marker = np.asarray(fixture["marker"], dtype=float)
+    auc = gw.time_dependent_auc(y, marker, times=times)
+    assert_allclose_to_r(auc, fixture["auc"], atol=1e-9, what="td_auc")
+
+
 def test_concordance_index_matches_r() -> None:
     # concordance_index() of the Cox linear predictor equals the model's concordance.
     df = gw.load_dataset("lung", backend="pandas")
