@@ -32,10 +32,24 @@ Baseline hazard
   the Breslow estimator of the cumulative baseline hazard.
 
 Breslow estimator
-: A non-parametric estimator of the cumulative baseline hazard in a Cox model, computed as a
-  step function that jumps at each event time by the ratio of observed events to the
-  risk-weighted sum of covariate contributions. It is the default baseline hazard in most Cox
-  implementations, including Greenwood.
+: "Breslow" refers to two related but distinct quantities in Cox regression, both introduced
+  by Norman Breslow.
+
+  The first is the **cumulative baseline hazard estimator**: a non-parametric step function
+  that estimates $H_0(t)$ from a fitted Cox model. At each event time $t_i$ it increments by
+  $d_i / \sum_{j \in R(t_i)} \exp(x_j^\top \hat\beta)$, where $d_i$ is the number of events
+  and the denominator is the sum of risk scores over the risk set. The baseline survival
+  $S_0(t) = \exp(-H_0(t))$ follows directly. This estimator underlies
+  `CoxPH.baseline_hazard()` in Greenwood regardless of which tie method is used.
+
+  The second is the **Breslow tie approximation** for the Cox partial likelihood: when
+  multiple subjects share the same event time, the partial likelihood treats the risk set as
+  unchanged across all tied events (i.e., the denominator is computed once using the full
+  risk set). This is computationally simple but can be noticeably biased when the fraction of
+  tied event times is large. The **Efron approximation** is more accurate in those situations
+  and is preferred in practice; see **tied event times** for a comparison. In Greenwood,
+  `ties="breslow"` selects the Breslow approximation and `ties="efron"` (the default) selects
+  the Efron approximation.
 
 Brier score
 : A proper scoring rule that measures the mean squared difference between predicted survival
@@ -67,6 +81,13 @@ Competing risks
   a single cause in the presence of competing risks overestimates the cause-specific
   probability. The correct quantity is the **cumulative incidence function**, estimated by
   `AalenJohansen` and used as the basis for `FineGray` regression.
+
+Conditional survival
+: The probability of surviving beyond time $t$ given that a subject has already survived to
+  a landmark time $c$: $P(T > t \mid T > c) = S(t) / S(c)$ for $t > c$. Conditional survival
+  is useful in landmark analyses, where subjects are only evaluated if they are event-free at
+  a fixed point after study entry. In Greenwood, `CoxPH.predict(type="survival",
+  conditional_after=c)` computes conditional survival curves.
 
 Counting-process form
 : A representation of survival data as a set of intervals $(s_i, t_i]$ with an event
@@ -100,6 +121,16 @@ Cumulative incidence function (CIF)
   one-minus-Kaplan-Meier approach, the CIF is not biased by competing events. Estimated
   non-parametrically by `AalenJohansen` and modeled by `FineGray`.
 
+dfbeta residuals
+: Approximate influence statistics that measure how much each subject's data changes each
+  estimated coefficient. The dfbeta for subject $i$ and coefficient $j$ is the difference
+  between $\hat{\beta}_j$ fitted on the full data and $\hat{\beta}_j$ fitted with subject $i$
+  removed, approximated without refitting the model. In the Cox model, dfbeta residuals are
+  derived from the score (gradient) residuals and the observed information matrix. They are
+  useful for identifying subjects who have disproportionate influence on a specific
+  coefficient. Greenwood's `_score_residuals()` method computes the score-residual building
+  blocks used to form dfbeta values and the **Lin-Wei** robust variance.
+
 Event
 : The outcome of interest in a survival study: death, disease progression, machine failure,
   customer churn, or any other well-defined, non-repeating endpoint. An observation for which
@@ -111,6 +142,15 @@ Event table
   ($n_\text{risk}$), the number of events ($n_\text{event}$), and the number of censorings
   ($n_\text{censor}$). It is the common foundation for Kaplan-Meier, the log-rank test, and
   Cox regression. Available via `event_table()`.
+
+Efron approximation
+: A method for handling **tied event times** in the Cox partial likelihood. When multiple
+  subjects have the same event time, the exact partial likelihood requires summing over all
+  possible orderings, which is computationally infeasible for large ties. The Efron
+  approximation averages the risk-set contributions over the tied events, producing a
+  correction that is close to the exact result and substantially more accurate than the
+  simpler **Breslow** approximation when ties are frequent. It is the default in R's
+  `coxph()` and in Greenwood's `CoxPH` (`ties="efron"`).
 
 Fine-Gray model
 : A regression model for competing-risks data based on the **subdistribution hazard** of a
@@ -186,6 +226,15 @@ Left truncation (late entry)
   $s_i > 0$; if their event had occurred before $s_i$, they would not be in the data at all.
   Handled via the **counting-process form** `Surv.counting(start, stop, event)`.
 
+Lin-Wei sandwich estimator
+: A robust variance estimator for the Cox model, also known as the sandwich or
+  "robust" variance. It replaces the model-based (inverse information) variance with
+  $\hat{V} = I^{-1} M I^{-1}$, where $I$ is the observed information matrix and $M$ is the
+  outer product of score residuals summed across subjects (the "meat" of the sandwich). The
+  Lin-Wei estimator is consistent even when the Cox model is misspecified, and it generalizes
+  to clustered data by summing score residuals within clusters before forming $M$. Activated
+  in Greenwood via `CoxPH.fit(..., robust=True)` or by supplying `cluster=`.
+
 Log-rank test
 : A non-parametric test for equality of survival curves across two or more groups. It sums
   the (observed − expected) event counts at each event time, where expected counts are
@@ -252,8 +301,15 @@ Schoenfeld residuals
 : Residuals from a fitted Cox model used to assess the **proportional hazards assumption**.
   At each event time, the Schoenfeld residual for a covariate is the observed covariate value
   of the subject who had the event minus the risk-set weighted mean. A significant correlation
-  between Schoenfeld residuals and time indicates non-proportional hazards. Computed by
-  `CoxPH.zph()`.
+  between Schoenfeld residuals and time indicates non-proportional hazards. Scaled Schoenfeld
+  residuals (divided by the risk-set covariance at each event time) are the basis of the
+  Grambsch-Therneau test, which regresses them on time to produce a formal chi-squared test
+  per covariate. Computed by `CoxPH.cox_zph()`, returned as a `ZPHResult`.
+
+Strata
+: See **stratification**. In Greenwood's API, the `by=` argument to `CoxPH.fit()`,
+  `KaplanMeier.fit()`, `NelsonAalen.fit()`, and related methods identifies the column or
+  array whose distinct values define the strata.
 
 Stratification
 : A technique in which separate **baseline hazards** are estimated for each level of a
@@ -290,6 +346,17 @@ Time-varying covariates
 : Covariates whose values change during a subject's follow-up period. They are handled by
   splitting each subject into multiple rows in the **counting-process form**, where each row
   covers the interval during which a particular covariate value applies.
+
+Tied event times (ties)
+: The situation in which two or more subjects experience an event at the same recorded time.
+  Ties are common when time is measured in coarse units (whole days, months) or when a
+  registry records all events within a batch. They create an ambiguity in the Cox partial
+  likelihood, which is derived under the assumption that event times are strictly ordered.
+  Two approximations are widely used: the **Breslow** method treats tied events as if they
+  occurred in an arbitrary sequence, which is fast but biased when the tie fraction is large;
+  the **Efron** method averages over the possible orderings of the tied events, which is more
+  accurate and is the default in both R's `coxph` and Greenwood's `CoxPH`. The tie-handling
+  method is set via the `ties=` argument to `CoxPH`.
 
 Trend test
 : A non-parametric test for a monotone (ordered) trend in survival across three or more
