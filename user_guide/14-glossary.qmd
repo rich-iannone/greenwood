@@ -255,6 +255,16 @@ Nelson-Aalen estimator
   Kaplan-Meier is usually preferred for direct survival estimation. Available via
   `NelsonAalen`.
 
+Non-parametric model
+: A model that makes no assumptions about the shape of the underlying survival or hazard
+  function. Instead of fitting a fixed parametric family, it lets the data determine the
+  function's form at each observed event time, producing a step function. Non-parametric
+  estimators are highly flexible and robust to distributional misspecification, but they
+  cannot extrapolate beyond the last observed event time and have no compact summary
+  (such as a scale or shape parameter). The **Kaplan-Meier** and **Nelson-Aalen** estimators
+  and the **Aalen-Johansen** cumulative incidence function are all non-parametric. Contrast
+  with **parametric model** and **semi-parametric model**.
+
 Pairwise log-rank test
 : An extension of the log-rank test that performs all pairwise group comparisons when there
   are more than two groups, with an optional multiplicity correction (e.g., Holm). Avoids
@@ -264,6 +274,17 @@ Pairwise log-rank test
 Pairwise RMST test
 : An extension of the **restricted mean survival time** comparison that performs all pairwise
   group contrasts, with optional multiplicity correction. Available via `pairwise_rmst_test()`.
+
+Parametric model
+: A model that assumes the survival or hazard function follows a specific distributional
+  family (such as Weibull, exponential, log-normal, or log-logistic) characterized by a
+  fixed number of parameters. Parametric models are more statistically efficient than
+  non-parametric alternatives when the distributional assumption holds, and they allow smooth
+  hazard estimation, extrapolation beyond the observed follow-up window, and closed-form
+  expressions for quantities such as the mean survival time. The trade-off is that a poorly
+  chosen distribution can lead to bias. The **AFT** and **Royston-Parmar** models in
+  Greenwood are parametric (or, for Royston-Parmar, flexibly parametric). Contrast with
+  **non-parametric model** and **semi-parametric model**.
 
 Partial likelihood
 : The likelihood function used to estimate Cox model coefficients. It conditions on the
@@ -305,6 +326,16 @@ Schoenfeld residuals
   residuals (divided by the risk-set covariance at each event time) are the basis of the
   Grambsch-Therneau test, which regresses them on time to produce a formal chi-squared test
   per covariate. Computed by `CoxPH.cox_zph()`, returned as a `ZPHResult`.
+
+Semi-parametric model
+: A model that combines a non-parametric component with a parametric one. The **Cox
+  proportional hazards model** is the canonical example: the baseline hazard $h_0(t)$ is
+  left completely unspecified (non-parametric), while covariate effects are estimated through
+  a finite-dimensional parameter vector $\beta$ (parametric). This separation is what makes
+  the **partial likelihood** possible: $\beta$ can be estimated without ever specifying
+  $h_0(t)$. Semi-parametric models are more flexible than fully **parametric models** while
+  retaining interpretable covariate effects, at the cost of not being able to compute
+  quantities (such as mean survival time) that require integrating the full hazard function.
 
 Strata
 : See **stratification**. In Greenwood's API, the `by=` argument to `CoxPH.fit()`,
