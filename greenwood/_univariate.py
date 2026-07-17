@@ -202,3 +202,34 @@ class Parametric:
 
         self.vcov_ = vcov
 
+    # -- prediction methods --------------------------------------------------
+
+    def survival(self, times: Any) -> Array:
+        r"""Survival function $S(t) = P(T > t)$ at the given times.
+
+        Parameters
+        ----------
+        times
+            Query times (array-like of positive floats).
+
+        Returns
+        -------
+        ndarray
+            Survival probabilities, same length as `times=`.
+
+        Examples
+        --------
+        ```{python}
+        import greenwood as gw
+
+        lung = gw.load_dataset("lung", backend="polars")
+        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        fit = gw.Parametric("weibull").fit(y)
+        fit.survival([100, 200, 365, 500])
+        ```
+        """
+        t = np.atleast_1d(np.asarray(times, dtype=float))
+        z = (np.log(t) - self._mu) / self._sigma
+        _, log_s = _log_density_survival(self.dist, z)
+        return np.exp(log_s)
+
