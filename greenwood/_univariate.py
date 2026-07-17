@@ -1,3 +1,59 @@
+r"""Univariate parametric survival distributions.
+
+`Parametric` fits a parametric survival distribution to right-censored data by maximum
+likelihood, without covariates. This is the one-sample analogue of `AFT`: instead of
+modelling how covariates shift the survival-time distribution, `Parametric` estimates the
+distribution parameters themselves (e.g., Weibull shape and scale).
+
+Four families are supported:
+
+- `"weibull"`: shape `k` and scale `\lambda`; $S(t) = \exp\!\bigl(-(t/\lambda)^k\bigr)$.
+- `"exponential"`: rate `\lambda`; constant hazard $h(t) = \lambda$.
+- `"lognormal"`: location `\mu` and scale `\sigma` of $\log T$.
+- `"loglogistic"`: scale `\alpha` and shape `\beta`; $S(t) = 1/(1+(t/\alpha)^\beta)$.
+
+Internally every family is fitted in the AFT location-scale parameterisation
+($\log T = \mu + \sigma\varepsilon$) and results are reported in the natural
+parameterisation of each distribution.
+
+The standalone helper `compare_distributions()` fits all four families to the same data and
+returns an AIC/BIC comparison table for model selection.
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
+
+import numpy as np
+import numpy.typing as npt
+from scipy.optimize import minimize
+from scipy.stats import norm
+
+from ._backends import to_dataframe
+from ._parametric import (
+    _DISTS,
+    _error_quantile,
+    _log_density_survival,
+    _mean_survival_aft,
+    _num_hessian,
+)
+
+if TYPE_CHECKING:
+    from ._surv import Surv
+
+__all__ = ["Parametric", "compare_distributions"]
+
+Array = npt.NDArray[Any]
+
+# Distribution parameter names in display order.
+_PARAM_NAMES: dict[str, list[str]] = {
+    "weibull": ["shape", "scale"],
+    "exponential": ["rate"],
+    "lognormal": ["mu", "sigma"],
+    "loglogistic": ["alpha", "beta"],
+}
+
+
 class Parametric:
     r"""Univariate parametric survival distribution.
 
