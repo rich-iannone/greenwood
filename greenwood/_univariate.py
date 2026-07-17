@@ -329,3 +329,16 @@ class Parametric:
         w = _error_quantile(self.dist, p_arr)
         return np.exp(self._mu + self._sigma * w)
 
+    def mean(self) -> float:
+        r"""Expected survival time $E[T]$.
+
+        Returns `inf` for log-logistic when $\beta \le 1$ (mean undefined).
+
+        Returns
+        -------
+        float
+            The mean survival time under the fitted distribution.
+        """
+        mu_arr = np.array([self._mu])
+        return float(_mean_survival_aft(self.dist, mu_arr, self._sigma)[0])
+
