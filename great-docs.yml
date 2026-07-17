@@ -36,6 +36,7 @@ nav_icons:
     "Competing risks": split
     "Multi-state models": network
     "Prediction performance": target
+    "Glossary": book-open-text
 
 authors:
   - name: Richard Iannone
