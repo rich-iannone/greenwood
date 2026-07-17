@@ -468,3 +468,34 @@ def compare_distributions(
     )
 
 
+# ---------------------------------------------------------------------------
+# Tidy / glance adapters
+# ---------------------------------------------------------------------------
+
+
+def _tidy_parametric(model: Parametric, *, format: str | None = None, **_: Any) -> Any:
+    return model.to_frame(format=format)
+
+
+def _glance_parametric(model: Parametric, *, format: str | None = None, **_: Any) -> Any:
+    return to_dataframe(
+        {
+            "dist": [model.dist],
+            "n": [model.n_],
+            "nevent": [model.n_event_],
+            "loglik": [model.loglik_],
+            "aic": [model.aic_],
+            "bic": [model.bic_],
+        },
+        format=format,
+    )
+
+
+def _register_adapters() -> None:
+    from .summaries import register_glance, register_tidier
+
+    register_tidier("greenwood._univariate.Parametric", _tidy_parametric)
+    register_glance("greenwood._univariate.Parametric", _glance_parametric)
+
+
+_register_adapters()
