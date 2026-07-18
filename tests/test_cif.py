@@ -32,7 +32,8 @@ def test_step_data_t0_anchor() -> None:
     n_causes = len(aj._causes)
     n_groups = len(aj._blocks)
     # Each series starts at t=0
-    zeros = [t for t, e in zip(data["time"], data["estimate"]) if t == 0.0 and e == 0.0]
+    pairs = zip(data["time"], data["estimate"], strict=True)
+    zeros = [t for t, e in pairs if t == 0.0 and e == 0.0]
     assert len(zeros) == n_causes * n_groups
 
 
@@ -61,10 +62,10 @@ def test_step_data_monotone_per_series() -> None:
         for cause in set(data["cause"]):
             vals = [
                 e
-                for g, c, e in zip(data["group"], data["cause"], data["estimate"])
+                for g, c, e in zip(data["group"], data["cause"], data["estimate"], strict=True)
                 if g == group and c == cause
             ]
-            assert all(b >= a - 1e-12 for a, b in zip(vals, vals[1:]))
+            assert all(b >= a - 1e-12 for a, b in zip(vals, vals[1:], strict=False))
 
 
 def test_step_data_estimates_bounded() -> None:
