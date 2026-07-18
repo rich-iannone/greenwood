@@ -11,13 +11,6 @@ public capability roadmap.
 
 Descriptive and exploratory features building on the core estimators.
 
-### Exploratory Plots
-
-Visualization for grouped survival analyses.
-
-- Cumulative incidence function curves (competing risks by group)
-- Aligned at-risk tables for grouped curves
-
 ### Model Validation and Performance
 
 Robust cross-validation and performance assessment for imbalanced survival data.

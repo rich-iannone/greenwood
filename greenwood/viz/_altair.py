@@ -22,7 +22,7 @@ from ._shared import _risk_table_columns, _strata_label
 if TYPE_CHECKING:
     from .._nonparametric import KaplanMeier
 
-__all__ = ["survival_plot", "plot_survival"]
+__all__ = ["plot_survival"]
 
 _SOLID = "#20558A"
 _VALID_CI = "isValid(datum.conf_low) && isValid(datum.conf_high)"
@@ -127,7 +127,7 @@ def _x_scale(alt: Any, km: KaplanMeier) -> Any:
     return alt.Scale(domain=[0.0, _max_time(km)], nice=False, padding=16)
 
 
-def survival_plot(
+def plot_survival(
     km: KaplanMeier,
     *,
     conf_int: bool = True,
@@ -186,10 +186,10 @@ def survival_plot(
     km = gw.KaplanMeier().fit(y, by=lung["sex"])
 
     # Interactive Altair (default)
-    gw.survival_plot(km, risk_table=True)
+    gw.plot_survival(km, risk_table=True)
 
     # ggplot2-style (if plotnine is installed)
-    gw.survival_plot(km, backend="plotnine", risk_table=True)
+    gw.plot_survival(km, backend="plotnine", risk_table=True)
     ```
     """
     if backend == "altair":
@@ -219,10 +219,6 @@ def survival_plot(
         )
     else:
         raise ValueError(f"backend must be 'altair' or 'plotnine', got {backend!r}")
-
-
-# Backward compatibility alias
-plot_survival = survival_plot
 
 
 def _plot_survival_altair(

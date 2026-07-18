@@ -201,8 +201,9 @@ correct. Decide which question you are asking before choosing the model.
 
 You can now estimate and model competing-risks data correctly.
 
+- **Plot the results** with `plot_cif()` from [Visualizing survival](07-visualization.qmd).
+  It accepts a fitted `AalenJohansen` directly and facets by cause, with optional grouping
+  by covariate and an aligned numbers-at-risk table.
 - [Multi-state models](12-multi-state.qmd) generalize competing risks to settings where
-subjects move between several states over time.
-- [Visualizing survival](07-visualization.qmd) shows the grammar-of-graphics approach you
-can reuse to plot cumulative incidence curves.
+  subjects move between several states over time.
 - Revisit [Survival data](03-survival-data.qmd) for the details of the multi-state response.

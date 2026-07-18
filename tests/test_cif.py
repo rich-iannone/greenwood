@@ -1,138 +1,80 @@
-"""Tests for CIF plot visualization."""
+"""Tests for CIF plot data preparation and visualization."""
 
 from __future__ import annotations
 
 import numpy as np
 import pytest
 
-from greenwood.viz._cif import _cif_plot_data, cif_plot
+import greenwood as gw
+from greenwood import AalenJohansen, Surv
+from greenwood.viz._cif import _step_data
 
 
-def test_cif_plot_data_single_group() -> None:
-    """Test cif_plot_data with single group."""
-    times = np.array([30, 60, 90])
-    cif = np.array(
-        [
-            [0.05, 0.02],
-            [0.12, 0.05],
-            [0.20, 0.10],
-        ]
-    )
-
-    data = _cif_plot_data(time=times, cif=cif, event_names=["Event A", "Event B"])
-
-    assert "data" in data
-    assert len(data["data"]) == 6  # 3 times × 2 events
-    assert data["events"] == ["Event A", "Event B"]
-
-    # Check structure
-    for row in data["data"]:
-        assert "time" in row
-        assert "cif" in row
-        assert "event" in row
-        assert "group" in row
+def _make_aj(*, grouped: bool = False) -> AalenJohansen:
+    """Minimal AalenJohansen fit: 4 subjects, 2 competing causes."""
+    y = Surv.multistate([1, 2, 3, 4], event=[1, 2, 1, 0], states=("pcm", "death"))
+    if grouped:
+        by = np.array(["A", "A", "B", "B"])
+        return AalenJohansen().fit(y, by=by)
+    return AalenJohansen().fit(y)
 
 
-def test_cif_plot_data_multiple_groups() -> None:
-    """Test cif_plot_data with multiple groups."""
-    times = np.array([30, 60])
-    cif = {
-        "Group A": np.array([[0.05, 0.02], [0.12, 0.05]]),
-        "Group B": np.array([[0.02, 0.01], [0.06, 0.03]]),
-    }
-
-    data = _cif_plot_data(time=times, cif=cif, event_names=["Event 1", "Event 2"])
-
-    assert len(data["data"]) == 8  # 2 groups × 2 times × 2 events
-    assert data["groups"] == ["Group A", "Group B"]
+def test_step_data_columns() -> None:
+    """_step_data returns the expected column keys."""
+    data = _step_data(_make_aj())
+    assert set(data.keys()) == {"time", "estimate", "conf_low", "conf_high", "cause", "group"}
 
 
-def test_cif_plot_data_default_names() -> None:
-    """Test that default event/group names are created."""
-    times = np.array([30, 60])
-    cif = np.array([[0.05, 0.02], [0.12, 0.05]])
-
-    data = _cif_plot_data(time=times, cif=cif)
-
-    assert data["events"] == ["Event 1", "Event 2"]
-    assert "Overall" in data["groups"]
-
-
-def test_cif_plot_data_group_names_mapping() -> None:
-    """Test custom group name mapping."""
-    times = np.array([30])
-    cif = {
-        1: np.array([[0.05, 0.02]]),
-        2: np.array([[0.02, 0.01]]),
-    }
-
-    group_names = {1: "Control", 2: "Treatment"}
-    data = _cif_plot_data(time=times, cif=cif, group_names=group_names)
-
-    assert data["groups"] == ["Control", "Treatment"]
+def test_step_data_t0_anchor() -> None:
+    """Each (group, cause) pair is prepended with a t=0, CIF=0 anchor row."""
+    aj = _make_aj()
+    data = _step_data(aj)
+    n_causes = len(aj._causes)
+    n_groups = len(aj._blocks)
+    # Each series starts at t=0
+    pairs = zip(data["time"], data["estimate"], strict=True)
+    zeros = [t for t, e in pairs if t == 0.0 and e == 0.0]
+    assert len(zeros) == n_causes * n_groups
 
 
-def test_cif_plot_data_time_dimension() -> None:
-    """Test that time dimension must match CIF."""
-    times = np.array([30, 60])
-    cif = np.array([[0.05, 0.02]])  # Wrong: only 1 time point
-
-    with pytest.raises(ValueError, match="must have 2 rows"):
-        _cif_plot_data(time=times, cif=cif)
+def test_step_data_group_labels_unstratified() -> None:
+    """Unstratified fit labels the single group 'Overall'."""
+    data = _step_data(_make_aj())
+    assert set(data["group"]) == {"Overall"}
 
 
-def test_cif_plot_data_event_names_length() -> None:
-    """Test event_names length must match CIF."""
-    times = np.array([30])
-    cif = np.array([[0.05, 0.02]])  # 2 events
-
-    with pytest.raises(ValueError, match="event_names length"):
-        _cif_plot_data(time=times, cif=cif, event_names=["Only one"])
+def test_step_data_group_labels_stratified() -> None:
+    """Stratified fit uses the by= values as group labels."""
+    data = _step_data(_make_aj(grouped=True))
+    assert set(data["group"]) == {"A", "B"}
 
 
-def test_cif_plot_data_time_format() -> None:
-    """Test that time is converted to 1-D."""
-    times = np.array([[30], [60]])  # 2-D, should raise
-    cif = np.array([[0.05, 0.02], [0.12, 0.05]])
-
-    with pytest.raises(ValueError, match="time must be 1-D"):
-        _cif_plot_data(time=times, cif=cif)
+def test_step_data_cause_labels() -> None:
+    """Cause labels match the state names from the Surv response."""
+    data = _step_data(_make_aj())
+    assert set(data["cause"]) == {"pcm", "death"}
 
 
-def test_cif_plot_data_values_range() -> None:
-    """Test that CIF values are properly captured in tidy format."""
-    times = np.array([30, 60])
-    cif = np.array([[0.05, 0.02], [0.12, 0.05]])
-
-    data = _cif_plot_data(time=times, cif=cif, event_names=["A", "B"])
-
-    # Check first time point, first event
-    row1 = [r for r in data["data"] if r["time"] == 30 and r["event"] == "A"][0]
-    assert row1["cif"] == 0.05
-
-    # Check second time point, second event
-    row2 = [r for r in data["data"] if r["time"] == 60 and r["event"] == "B"][0]
-    assert row2["cif"] == 0.05
+def test_step_data_monotone_per_series() -> None:
+    """CIF values are non-decreasing within each (group, cause) series."""
+    data = _step_data(_make_aj())
+    for group in set(data["group"]):
+        for cause in set(data["cause"]):
+            vals = [
+                e
+                for g, c, e in zip(data["group"], data["cause"], data["estimate"], strict=True)
+                if g == group and c == cause
+            ]
+            assert all(b >= a - 1e-12 for a, b in zip(vals, vals[1:], strict=False))
 
 
-def test_cif_plot_altair_basic() -> None:
-    """Test cif_plot returns an Altair chart with raw parameters."""
-    try:
-        import altair  # noqa: F401
-    except ImportError:
-        pytest.skip("altair not installed")
-
-    times = np.array([30, 60])
-    cif = np.array([[0.05, 0.02], [0.12, 0.05]])
-
-    chart = cif_plot(time=times, cif=cif, event_names=["A", "B"], title="Test CIF")
-    assert chart is not None
+def test_step_data_estimates_bounded() -> None:
+    """All CIF estimates are in [0, 1]."""
+    data = _step_data(_make_aj())
+    assert all(0.0 <= e <= 1.0 for e in data["estimate"])
 
 
-def test_cif_plot_backend_parameter() -> None:
-    """Test cif_plot backend parameter validation."""
-    times = np.array([30, 60])
-    cif = np.array([[0.05, 0.02], [0.12, 0.05]])
-
-    with pytest.raises(ValueError, match="backend must be 'altair'"):
-        cif_plot(time=times, cif=cif, event_names=["A", "B"], backend="invalid")
+def test_plot_cif_invalid_backend() -> None:
+    """An unknown backend raises ValueError."""
+    with pytest.raises(ValueError, match="backend"):
+        gw.plot_cif(_make_aj(), backend="invalid")

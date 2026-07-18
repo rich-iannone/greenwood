@@ -126,7 +126,7 @@ reference:
     contents:
       - plot_survival
       - plot_forest
-      - cif_plot
+      - plot_cif
       - risk_table
 
   - title: Core kernel

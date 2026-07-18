@@ -1,8 +1,4 @@
-"""Cumulative Incidence Function (CIF) plots for competing risks.
-
-CIF plots display the probability of each competing event over time, allowing visual
-comparison of cumulative incidence between groups or for different event types.
-"""
+"""Cumulative Incidence Function (CIF) plots for competing risks."""
 
 from __future__ import annotations
 
@@ -13,319 +9,353 @@ import numpy as np
 from .._backends import to_dataframe
 
 if TYPE_CHECKING:
-    pass
+    from .._competing import AalenJohansen
 
-__all__ = ["cif_plot"]
+__all__ = ["plot_cif"]
+
+# Vega-Lite tableau10 palette — kept in sync with _altair.py.
+_PALETTE = (
+    "#4c78a8",
+    "#f58518",
+    "#e45756",
+    "#72b7b2",
+    "#54a24b",
+    "#eeca3b",
+    "#b279a2",
+    "#ff9da6",
+    "#9d755d",
+    "#bab0ac",
+)
+_SOLID = "#20558A"
+_VALID_CI = "isValid(datum.conf_low) && isValid(datum.conf_high)"
 
 
-def _cif_plot_data(
-    time: Any,
-    cif: Any,
-    event_names: list[str] | None = None,
-    group: Any | None = None,
-    group_names: dict[Any, str] | None = None,
-) -> dict[str, Any]:
-    r"""Prepare cumulative incidence function (CIF) data for visualization.
+def _require_altair() -> Any:
+    try:
+        import altair as alt  # pyright: ignore[reportMissingImports]
+    except ImportError as exc:  # pragma: no cover
+        raise ImportError(
+            "Altair visualization requires altair. Install it with `pip install greenwood[altair]`."
+        ) from exc
+    return alt
 
-    Formats time-indexed CIF estimates into a tidy structure for plotting. Supports
-    stratification by group and multiple competing events.
 
-    Parameters
-    ----------
-    time
-        Event times (1-D array), sorted ascending.
-    cif
-        Cumulative incidence estimates. Either:
-
-        - A 2-D array of shape (n_times, n_events) for a single group
-        - A dict with group keys, each containing a (n_times, n_events) array
-
-    event_names
-        Names for each competing event. If `None`, labeled "Event 1", "Event 2", etc.
-    group
-        Optional group membership (1-D array, same length as number of observations).
-        If provided, CIF should be a dict keyed by group.
-    group_names
-        Dict mapping group values to display names. If `None`, group values used as is.
-
-    Returns
-    -------
-    dict
-        Dictionary with key `"data"` containing a list of dicts, each with:
-
-        - `"time"`: Event time
-        - `"cif"`: Cumulative incidence value
-        - `"event"`: Event name
-        - `"group"`: Group name (if stratified)
-
-        Plus metadata keys `"times"`, `"events"`, `"groups"`.
-
-    Examples
-    --------
-    Single-group CIF (two competing events):
-
-    ```python
-    import greenwood as gw
-    import numpy as np
-
-    # CIF over time for two events
-    times = np.array([30, 60, 90, 120])
-    cif = np.array([
-        [0.05, 0.02],
-        [0.12, 0.05],
-        [0.20, 0.10],
-        [0.28, 0.16],
-    ])
-
-    cif_data = gw.viz._cif_plot_data(
-        time=times,
-        cif=cif,
-        event_names=["Relapse", "Death"],
+def _max_time_aj(aj: AalenJohansen) -> float:
+    """Largest event time across all blocks."""
+    first_cause = aj._causes[0]
+    return max(
+        (
+            float(block[first_cause]["time"][-1])
+            for block in aj._blocks.values()
+            if len(block[first_cause]["time"])
+        ),
+        default=0.0,
     )
-    ```
 
-    Stratified by group:
 
-    ```python
-    # CIF for two groups and two events
-    cif_by_group = {
-        "Control": np.array([
-            [0.05, 0.02],
-            [0.12, 0.05],
-            [0.20, 0.10],
-            [0.28, 0.16],
-        ]),
-        "Treatment": np.array([
-            [0.02, 0.01],
-            [0.06, 0.03],
-            [0.12, 0.07],
-            [0.18, 0.12],
-        ]),
-    }
+def _default_times_aj(aj: AalenJohansen) -> list[float]:
+    """Six evenly spaced, rounded times from 0 to the largest observed time."""
+    max_t = _max_time_aj(aj)
+    raw = np.linspace(0.0, max_t, 6)
+    return sorted({round(float(t)) for t in raw})
 
-    cif_data = gw.viz._cif_plot_data(
-        time=times,
-        cif=cif_by_group,
-        event_names=["Relapse", "Death"],
-    )
-    ```
+
+def _n_at_risk_aj(aj: AalenJohansen, query: np.ndarray) -> dict[str, np.ndarray]:
+    """At-risk counts per group at each query time.
+
+    Because all competing causes share one at-risk set, we use the first cause's `n_risk` array.
+    Logic mirrors `_shared._n_at_risk` for KaplanMeier.
     """
-    time_array = np.asarray(time, dtype=float)
-    if time_array.ndim != 1:
-        raise ValueError("time must be 1-D.")
+    first_cause = aj._causes[0]
+    out: dict[str, np.ndarray] = {}
+    for label, block in aj._blocks.items():
+        group_name = str(label) if label is not None else "Overall"
+        event_times = block[first_cause]["time"]
+        n_risk = block[first_cause]["n_risk"]
+        idx = np.searchsorted(event_times, query, side="left")
+        counts = np.zeros(len(query))
+        valid = idx < len(event_times)
+        counts[valid] = n_risk[idx[valid]]
+        out[group_name] = counts
+    return out
 
-    n_times = len(time_array)
 
-    # Check CIF structure
-    cif_array: np.ndarray | None = None
-    if isinstance(cif, dict):
-        # Stratified by group
-        if group is not None:
-            raise ValueError("If cif is a dict, group parameter should not be provided.")
-        groups = list(cif.keys())
-        group_data_map = cif
-        # Extract shape from first group for n_events calculation
-        if cif:
-            cif_array = list(cif.values())[0]
-    else:
-        # Single group
-        cif_array = np.asarray(cif, dtype=float)
-        if cif_array.ndim != 2:
-            raise ValueError("cif must be 2-D or a dict of 2-D arrays.")
-        if cif_array.shape[0] != n_times:
-            raise ValueError(f"cif must have {n_times} rows matching time length.")
-        groups = [None]
-        group_data_map = {None: cif_array}
+def _risk_table_chart_cif(
+    alt: Any,
+    aj: AalenJohansen,
+    times: Any,
+    xlab: str,
+    x_domain: list[float],
+    total_width: int,
+) -> Any:
+    """Numbers-at-risk text chart to place below the CIF facet."""
+    query = np.asarray(_default_times_aj(aj) if times is None else times, dtype=float)
+    counts = _n_at_risk_aj(aj, query)
 
-    n_events = cif_array.shape[1] if cif_array is not None else 0
+    labels = list(counts.keys())
+    grouped = aj._grouped
+    palette = list(_PALETTE[: len(labels)]) if grouped else [_SOLID]
+    color_scale = alt.Scale(domain=labels, range=palette)
 
-    if event_names is None:
-        event_names = [f"Event {i + 1}" for i in range(n_events)]
-    else:
-        if len(event_names) != n_events:
-            raise ValueError(
-                f"event_names length {len(event_names)} must match number of events {n_events}."
-            )
+    group_col: list[str] = []
+    time_col: list[float] = []
+    label_col: list[str] = []
+    for group_name, cnt_arr in counts.items():
+        for t, n in zip(query, cnt_arr, strict=True):
+            group_col.append(group_name)
+            time_col.append(float(t))
+            label_col.append(f"{int(n):g}")
 
-    if group_names is None:
-        group_names = {g: str(g) if g is not None else "Overall" for g in groups}
+    frame = to_dataframe({"group": group_col, "time": time_col, "label": label_col})
 
-    # Build tidy data
-    data_list = []
-    for group_key in groups:
-        group_cif = group_data_map[group_key]
-        group_label = group_names.get(group_key, str(group_key))
-        for event_idx, event_name in enumerate(event_names):
-            cif_values = group_cif[:, event_idx]
-            for t, cif_val in zip(time_array, cif_values, strict=True):
-                data_list.append(
-                    {
-                        "time": float(t),
-                        "cif": float(cif_val),
-                        "event": event_name,
-                        "group": group_label,
-                    }
-                )
+    return (
+        alt.Chart(frame)
+        .mark_text(size=11)
+        .encode(
+            x=alt.X("time:Q", title=xlab, scale=alt.Scale(domain=x_domain, nice=False)),
+            y=alt.Y("group:N", title=None),
+            text="label:N",
+            color=alt.Color("group:N", scale=color_scale, legend=None),
+        )
+        .properties(width=total_width, height=20 * max(1, len(labels)))
+    )
+
+
+def _step_data(aj: AalenJohansen) -> dict[str, list[Any]]:
+    """Build tidy step-function columns from a fitted AalenJohansen.
+
+    Each (group, cause) pair is prepended with a t=0, CIF=0 anchor so that Vega-Lite's step-after
+    interpolation renders a correct right-continuous step.
+    """
+    time_col: list[float] = []
+    estimate_col: list[float] = []
+    conf_low_col: list[float] = []
+    conf_high_col: list[float] = []
+    cause_col: list[str] = []
+    group_col: list[str] = []
+
+    for label, block in aj._blocks.items():
+        group_name = str(label) if label is not None else "Overall"
+        for cause_int in aj._causes:
+            cause_name = str(aj.states_[cause_int - 1])
+            data = block[cause_int]
+            times = data["time"]
+            estimates = data["estimate"]
+            conf_lows = data["conf_low"]
+            conf_highs = data["conf_high"]
+
+            # t=0 anchor: CIF starts at zero.
+            time_col.append(0.0)
+            estimate_col.append(0.0)
+            conf_low_col.append(0.0)
+            conf_high_col.append(0.0)
+            cause_col.append(cause_name)
+            group_col.append(group_name)
+
+            for i in range(len(times)):
+                time_col.append(float(times[i]))
+                estimate_col.append(float(estimates[i]))
+                conf_low_col.append(float(conf_lows[i]))
+                conf_high_col.append(float(conf_highs[i]))
+                cause_col.append(cause_name)
+                group_col.append(group_name)
 
     return {
-        "data": data_list,
-        "times": list(time_array),
-        "events": event_names,
-        "groups": [group_names.get(g, str(g)) for g in groups],
+        "time": time_col,
+        "estimate": estimate_col,
+        "conf_low": conf_low_col,
+        "conf_high": conf_high_col,
+        "cause": cause_col,
+        "group": group_col,
     }
 
 
-def cif_plot(
-    time: Any,
-    cif: Any,
-    event_names: list[str] | None = None,
-    group: Any | None = None,
-    group_names: dict[Any, str] | None = None,
+def plot_cif(
+    aj: AalenJohansen,
+    *,
+    conf_int: bool = True,
+    risk_table: bool = False,
+    times: Any = None,
     title: str | None = None,
+    xlab: str = "Time",
+    ylab: str = "Cumulative incidence",
     width: int = 400,
     height: int = 300,
     backend: str = "altair",
 ) -> Any:
-    r"""Create an interactive cumulative incidence function (CIF) plot.
+    r"""Plot cumulative incidence functions from a fitted Aalen-Johansen estimator.
 
-    Visualizes cumulative incidence curves for competing events as interactive Altair
-    charts with separate panels for each event type.
+    Renders one cumulative incidence curve per competing cause as a right-continuous step function.
+    The chart is faceted by cause (one panel per event type). Stratified fits (produced by passing
+    `by=` to `AalenJohansen.fit()`) draw one colored line per group within each panel. An optional
+    shaded confidence band shows the point-wise uncertainty.
 
     Parameters
     ----------
-    time
-        Event times (1-D array), sorted ascending.
-    cif
-        Cumulative incidence estimates. Either:
-
-        - A 2-D array of shape (n_times, n_events) for a single group
-        - A dict with group keys, each containing a (n_times, n_events) array
-
-    event_names
-        Names for each competing event. If `None`, labeled "Event 1", "Event 2", etc.
-    group
-        Optional group membership. If provided, data is stratified by group.
-    group_names
-        Dict mapping group values to display names. If `None`, group values used as is.
+    aj
+        A fitted `AalenJohansen` object. Unstratified fits draw a single curve per panel. Stratified
+        fits draw one colored curve per group.
+    conf_int
+        If `True` (default), draw a shaded point-wise confidence band around each curve.
+    risk_table
+        If `True`, stack an aligned numbers-at-risk table beneath the curves.
+    times
+        Query times for the numbers-at-risk table (used only when `risk_table=True`). Defaults to
+        six evenly spaced times from `0` to the largest observed follow-up time.
     title
-        Plot title. If `None`, no title.
+        Optional overall plot title.
+    xlab
+        X-axis label (default `"Time"`).
+    ylab
+        Y-axis label (default `"Cumulative incidence"`).
     width
-        Plot width in pixels (default 400).
+        Width of each cause panel in pixels (default `400`).
     height
-        Plot height in pixels (default 300).
+        Height of each cause panel in pixels (default `300`).
     backend
-        Plotting backend (default `"altair"`). Currently only `"altair"` is supported.
+        Plotting backend. Currently only `"altair"` is supported.
 
     Returns
     -------
-    altair.Chart
-        An Altair chart object, interactive and composable.
+    `altair.Chart`
+        An interactive Altair chart. Each panel corresponds to one competing cause. Groups are
+        distinguished by color.
 
     Examples
     --------
-    Single-group CIF (two competing events):
+    Fit the Aalen-Johansen estimator on the bundled mgus2 dataset, where patients may progress to
+    malignancy (PCM) or die first:
 
     ```{python}
     import numpy as np
     import greenwood as gw
 
-    times = np.array([30, 60, 90, 120])
-    cif = np.array([
-        [0.05, 0.02],
-        [0.12, 0.05],
-        [0.20, 0.10],
-        [0.28, 0.16],
-    ])
+    mg = gw.load_dataset("mgus2", backend="polars")
+    etime = np.where(mg["pstat"] == 1, mg["ptime"], mg["futime"])
+    cause = np.where(mg["pstat"] == 1, 1, 2 * mg["death"])
+    y = gw.Surv.multistate(etime, event=cause, states=("pcm", "death"))
 
-    gw.cif_plot(
-        time=times,
-        cif=cif,
-        event_names=["Relapse", "Death"],
-        title="Cumulative Incidence",
-    )
+    aj = gw.AalenJohansen().fit(y)
+    gw.plot_cif(aj)
     ```
 
-    Stratified by group:
+    Pass `by=` to stratify by a covariate and compare groups across causes:
 
     ```{python}
-    cif_by_group = {
-        "Control": np.array([
-            [0.05, 0.02],
-            [0.12, 0.05],
-            [0.20, 0.10],
-            [0.28, 0.16],
-        ]),
-        "Treatment": np.array([
-            [0.02, 0.01],
-            [0.06, 0.03],
-            [0.12, 0.07],
-            [0.18, 0.12],
-        ]),
-    }
+    aj_sex = gw.AalenJohansen().fit(y, by=mg["sex"])
+    gw.plot_cif(aj_sex, title="Cumulative incidence by sex")
+    ```
 
-    gw.cif_plot(
-        time=times,
-        cif=cif_by_group,
-        event_names=["Relapse", "Death"],
-        title="Cumulative Incidence by Group",
-    )
+    Add an aligned numbers-at-risk table beneath the curves:
+
+    ```{python}
+    gw.plot_cif(aj_sex, risk_table=True)
     ```
     """
     if backend != "altair":
         raise ValueError(f"backend must be 'altair', got {backend!r}")
 
-    # Prepare data internally
-    cif_data = _cif_plot_data(
-        time=time,
-        cif=cif,
-        event_names=event_names,
-        group=group,
-        group_names=group_names,
+    alt = _require_altair()
+
+    data = _step_data(aj)
+    df = to_dataframe(data)
+
+    grouped = aj._grouped
+    labels = [str(k) if k is not None else "Overall" for k in aj._blocks]
+
+    if grouped:
+        color_scale = alt.Scale(domain=labels, range=list(_PALETTE[: len(labels)]))
+        line_color: Any = alt.Color("group:N", title="Group", scale=color_scale)
+        fill_color: Any = alt.Color("group:N", title="Group", scale=color_scale)
+    else:
+        line_color = alt.value(_SOLID)
+        fill_color = alt.value(_SOLID)
+
+    # Pin the x domain so the risk table (if requested) can share the same scale.
+    x_domain = [0.0, _max_time_aj(aj)]
+    x = alt.X("time:Q", title=xlab, scale=alt.Scale(domain=x_domain, nice=False, padding=16))
+    y_enc = alt.Y("estimate:Q", title=ylab, scale=alt.Scale(domain=[0.0, 1.0]))
+
+    base = alt.Chart(df)
+    layers: list[Any] = []
+
+    if conf_int:
+        area = (
+            base.transform_filter(_VALID_CI)
+            .mark_area(interpolate="step-after", opacity=0.18)
+            .encode(
+                x=x,
+                y=alt.Y("conf_low:Q", title=ylab, scale=alt.Scale(domain=[0.0, 1.0])),
+                y2=alt.Y2("conf_high:Q"),
+                fill=fill_color,
+            )
+        )
+        layers.append(area)
+
+    tooltip: list[Any] = [
+        alt.Tooltip("time:Q", title=xlab),
+        alt.Tooltip("estimate:Q", title=ylab, format=".3f"),
+        alt.Tooltip("cause:N", title="Cause"),
+    ]
+    if grouped:
+        tooltip.insert(0, alt.Tooltip("group:N", title="Group"))
+
+    line = base.mark_line(interpolate="step-after").encode(
+        x=x,
+        y=y_enc,
+        color=line_color,
+        tooltip=tooltip,
     )
+    layers.append(line)
 
-    try:
-        import altair as alt
-    except ImportError as exc:
-        raise ImportError("altair required; install with `pip install greenwood[altair]`.") from exc
+    n_causes = len(aj._causes)
 
-    data = cif_data["data"]
-    # Convert to dict format for to_dataframe (transpose the list of dicts)
-    data_dict = {k: [d[k] for d in data] for k in data[0]}
-    # to_dataframe returns pandas/polars/pyarrow; Altair accepts all via Narwhals
-    df = to_dataframe(data_dict)
+    if risk_table:
+        # Suppress the curve's own x-axis labels; the table's axis serves both.
+        x_no_label = alt.X(
+            "time:Q",
+            scale=alt.Scale(domain=x_domain, nice=False, padding=16),
+            axis=alt.Axis(title=None, labels=False, ticks=False),
+        )
+        layers_no_ax = []
+        if conf_int:
+            area_no_ax = (
+                base.transform_filter(_VALID_CI)
+                .mark_area(interpolate="step-after", opacity=0.18)
+                .encode(
+                    x=x_no_label,
+                    y=alt.Y("conf_low:Q", title=ylab, scale=alt.Scale(domain=[0.0, 1.0])),
+                    y2=alt.Y2("conf_high:Q"),
+                    fill=fill_color,
+                )
+            )
+            layers_no_ax.append(area_no_ax)
+        line_no_ax = base.mark_line(interpolate="step-after").encode(
+            x=x_no_label,
+            y=y_enc,
+            color=line_color,
+            tooltip=tooltip,
+        )
+        layers_no_ax.append(line_no_ax)
+        spec = alt.layer(*layers_no_ax).properties(width=width, height=height).interactive()
+    else:
+        spec = alt.layer(*layers).properties(width=width, height=height).interactive()
 
-    # Base chart for lines
-    lines = (
-        alt.Chart(df)
-        .mark_line()
-        .encode(
-            x=alt.X("time:Q", title="Time"),
-            y=alt.Y("cif:Q", title="Cumulative Incidence", scale=alt.Scale(domain=[0, 1])),
-            color=alt.Color("group:N", title="Group"),
-            tooltip=["time:Q", "cif:Q", "event:N", "group:N"],
+    chart = spec.facet(
+        column=alt.Column(
+            "cause:N",
+            title=None,
+            header=alt.Header(title=None, labelFontSize=13),
         )
     )
 
-    # Points
-    points = (
-        alt.Chart(df)
-        .mark_point(size=50)
-        .encode(
-            x="time:Q",
-            y="cif:Q",
-            color="group:N",
-            tooltip=["time:Q", "cif:Q", "event:N", "group:N"],
-        )
-    )
-
-    # Combine lines and points, set width/height on the spec before faceting
-    spec = (lines + points).properties(width=width, height=height)
-
-    # Facet by event, optionally add title
-    chart = spec.facet(column="event:N")
-
-    # Add title if provided (use transform on the facet)
     if title is not None:
         chart = chart.properties(title=title)
 
-    return chart
+    if not risk_table:
+        return chart
+
+    # Approximate total width of the faceted chart for risk table alignment.
+    total_width = width * n_causes
+    table = _risk_table_chart_cif(alt, aj, times, xlab, x_domain, total_width)
+    return alt.vconcat(chart, table).resolve_scale(x="shared")

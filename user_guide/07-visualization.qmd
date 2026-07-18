@@ -11,13 +11,12 @@ import great_docs as gd
 gd.enable_tbl_preview(n_head=8, n_tail=3)
 ```
 
-A survival curve is far easier to understand as a picture than as a table of numbers. By
-default Greenwood draws curves with [Altair](https://altair-viz.github.io/), which produces
-interactive charts (tooltips and zoom) and is Narwhals-native: the numbers flow straight from
-your Polars fit into the chart with no Pandas or Matplotlib in the way, so a pure
-Polars/Narwhals workflow stays pure. This page covers the survival curve plot, confidence
-bands, censoring marks, and the numbers-at-risk table. A [plotnine](https://plotnine.org/)
-backend, for a grammar-of-graphics workflow, is described near the end.
+A survival curve is far easier to understand as a picture than as a table of numbers. By default
+Greenwood draws curves with [Altair](https://altair-viz.github.io/), which produces interactive
+charts (tooltips and zoom) and is Narwhals-native: the numbers flow straight from your Polars fit
+into the chart with no Pandas or Matplotlib in the way, so a pure Polars/Narwhals workflow stays
+that way. This page covers the survival curve plot, confidence bands, censoring marks, and the
+numbers-at-risk table.
 
 Altair is an optional dependency. If you installed Greenwood with the `altair` extra, or with
 `all`, you already have it. We use the `lung` dataset throughout. First we build the response.
@@ -35,8 +34,8 @@ y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 y
 ```
 
-We then fit a Kaplan-Meier estimator stratified by sex, one curve per group, using the
-log-log confidence interval transform. Printing the fitted estimator summarizes each stratum.
+We then fit a Kaplan-Meier estimator stratified by sex, one curve per group, using the log-log
+confidence interval transform. Printing the fitted estimator summarizes each stratum.
 
 ```{python}
 # Fit Kaplan-Meier with log-log CI transform, stratified by sex
@@ -46,28 +45,27 @@ km = gw.KaplanMeier(conf_type="log-log").fit(y, by=lung["sex"])
 km
 ```
 
-Everything below draws from this fitted `km` object. Before plotting, it also helps to see
-the numbers the curve is built from. Calling `to_frame()` on the fitted estimator returns
-the step-function estimates in tidy form, one row per stratum and time, with the survival
-probability and its confidence limits. The preview shows the first and last rows along with
-the full dimensions of the table.
+Everything below draws from this fitted `km` object. Before plotting, it also helps to see the
+numbers the curve is built from. Calling `to_frame()` on the fitted estimator returns the
+step-function estimates in tidy form, one row per stratum and time, with the survival probability
+and its confidence limits. The preview shows the first and last rows along with the full dimensions
+of the table.
 
 ```{python}
 # Export the step-function estimates as a tidy DataFrame (one row per stratum and time)
 km.to_frame(format="polars")
 ```
 
-Each row is a step in one of the curves. The `time` and `estimate` columns give the point at
-which the survival probability drops and its value after the drop, while `conf_low` and
-`conf_high` give the band that the plot will shade. The `strata` column identifies the group,
-so there is one set of steps per sex, and `n_risk`, `n_event`, and `n_censor` record how many
-subjects were at risk, failed, or were censored at each time. The plot turns exactly these
-numbers into a picture.
+Each row is a step in one of the curves. The `time` and `estimate` columns give the point at which
+the survival probability drops and its value after the drop, while `conf_low` and `conf_high` give
+the band that the plot will shade. The `strata` column identifies the group, so there is one set of
+steps per sex, and `n_risk`, `n_event`, and `n_censor` record how many subjects were at risk,
+failed, or were censored at each time. The plot turns exactly these numbers into a picture.
 
 ## The survival curve plot
 
-The main entry point is `survival_plot()`. Given a fitted `KaplanMeier`, it draws the step
-curve for each stratum, a shaded confidence band, and a small notch at each censoring time.
+The main entry point is `plot_survival()`. Given a fitted `KaplanMeier`, it draws the step curve for
+each stratum, a shaded confidence band, and a small notch at each censoring time.
 
 ```{python}
 # Load data and build the response
@@ -78,21 +76,21 @@ y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 km = gw.KaplanMeier(conf_type="log-log").fit(y, by=lung["sex"])
 
 # Draw the interactive survival curve with confidence band and censoring marks
-gw.survival_plot(km)
+gw.plot_survival(km)
 ```
 
-Each element carries meaning. The steps show the estimated survival probability, the band
-shows its uncertainty, and the censoring notches (angled so they sit on the curve without
-obscuring it) show where subjects left the risk set without an event. Because the chart is
-interactive, you can hover a curve to read the survival probability at a time, and drag or
-scroll to zoom. Curves that separate and stay apart suggest a real group difference, which you
-would confirm with a log-rank test from [Comparing groups](06-comparing-groups.qmd).
+Each element carries meaning. The steps show the estimated survival probability, the band shows its
+uncertainty, and the censoring notches (angled so they sit on the curve without obscuring it) show
+where subjects left the risk set without an event. Because the chart is interactive, you can hover a
+curve to read the survival probability at a time, and drag or scroll to zoom. Curves that separate
+and stay apart suggest a real group difference, which you would confirm with a log-rank test from
+[Comparing groups](06-comparing-groups.qmd).
 
 ::: {.callout-tip}
 ## Plotting Cox model baseline hazard with confidence intervals
 
-If you have fit a `CoxPH` model, you can extract the baseline hazard with confidence intervals
-and plot it to visualize the estimated survival trajectory for a reference subject:
+If you have fit a `CoxPH` model, you can extract the baseline hazard with confidence intervals and
+plot it to visualize the estimated survival trajectory for a reference subject:
 
 ```{python}
 cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
@@ -103,35 +101,34 @@ baseline = cox.baseline_hazard(ci=True, format="polars")
 baseline
 ```
 
-The `survival` column represents the baseline survival probability (for a reference subject
-with all covariates at their mean values), and the `survival_lower` and `survival_upper` columns
-give the 95% confidence band. You can plot this as a curve with a confidence band using Altair,
-or integrate it into Great Tables for a publication-ready figure.
+The `survival` column represents the baseline survival probability (for a reference subject with all
+covariates at their mean values), and the `survival_lower` and `survival_upper` columns give the 95%
+confidence band. You can plot this as a curve with a confidence band using Altair, or integrate it
+into Great Tables for a publication-ready figure.
 :::
 
-You can turn individual elements off. Removing the band and the censoring marks produces a
-cleaner curve for a slide or a small figure.
+You can turn individual elements off. Removing the band and the censoring marks produces a cleaner
+curve for a slide or a small figure.
 
 ```{python}
 # Strip the confidence band and censoring marks for a cleaner figure
-gw.survival_plot(km, conf_int=False, censor_marks=False)
+gw.plot_survival(km, conf_int=False, censor_marks=False)
 ```
 
 ## Adding a numbers-at-risk table
 
-A survival plot is much easier to trust when it is accompanied by the number of subjects
-still at risk at regular intervals. As the risk set shrinks, the curve becomes less certain,
-and the table makes that visible. Pass `risk_table=True` to stack an aligned table beneath
-the curve.
+A survival plot is much easier to trust when it is accompanied by the number of subjects still at
+risk at regular intervals. As the risk set shrinks, the curve becomes less certain, and the table
+makes that visible. Pass `risk_table=True` to stack an aligned table beneath the curve.
 
 ```{python}
 # Append an aligned numbers-at-risk table beneath the curve
-gw.survival_plot(km, risk_table=True)
+gw.plot_survival(km, risk_table=True)
 ```
 
-The table shares the horizontal axis with the curve above it, so the counts line up with the
-times they describe. And because they share one *x* scale, panning or zooming the curve moves
-the table with it. You control the times shown with the `times` argument.
+The table shares the horizontal axis with the curve above it, so the counts line up with the times
+they describe. And because they share one *x* scale, panning or zooming the curve moves the table
+with it. You control the times shown with the `times=` argument.
 
 ```{python}
 # Show risk counts at specific time points; the table x-axis stays synced with the curve
@@ -139,17 +136,17 @@ gw.plot_survival(km, risk_table=True, times=[0, 250, 500, 750, 1000])
 ```
 
 If you only need the numbers, `get_risk_table_frame()` returns them as a tidy frame, which you can
-render however you like, including through Great Tables. It is backend-neutral, so it works
-whether or not you have a plotting library installed.
+render however you like, including through Great Tables. It is backend-neutral, so it works whether
+or not you have a plotting library installed.
 
 ```{python}
 # Return the risk counts as a tidy DataFrame (backend-neutral, no plotting required)
 gw.get_risk_table_frame(km, times=[0, 250, 500, 750, 1000], format="polars")
 ```
 
-To display a publication-ready table of numbers at risk, use `risk_table()`. It returns a
-Great Tables object that you can view interactively in notebooks or export to HTML, LaTeX, or
-other formats.
+To display a publication-ready table of numbers at risk, use `risk_table()`. It returns a Great
+Tables object that you can view interactively in notebooks or export to HTML, LaTeX, or other
+formats.
 
 ```{python}
 # Render a publication-ready Great Tables object showing numbers at risk
@@ -158,8 +155,9 @@ gw.risk_table(km, times=[0, 250, 500, 750, 1000])
 
 ## Customizing the plot
 
-`plot_survival()` returns an ordinary Altair chart, so you refine it with Altair's API. Chaining
-`.properties` sets the title and dimensions, and you can keep layering or restyling from there.
+The `plot_survival()` function returns an ordinary Altair chart, so you refine it with Altair's API.
+Chaining `.properties()` sets the title and dimensions, and you can keep layering or restyling from
+there.
 
 ```{python}
 # Refine the chart with Altair's .properties() — title and dimensions
@@ -172,16 +170,16 @@ gw.plot_survival(km).properties(
 ## The plot is a chart object, not an image
 
 `plot_survival()` returns an Altair chart (an `alt.LayerChart`, or an `alt.VConcatChart` when
-`risk_table=True`). It renders interactively in notebooks and browsers, and you keep composing
-it with Altair's API. Nothing about the figure is locked down.
+`risk_table=True`). It renders interactively in notebooks and browsers, and you keep composing it
+with Altair's API. Nothing about the figure is locked down.
 :::
 
 ::: {.callout-tip}
 ## Saving figures
 
-Call `save()` on the returned chart. Use `chart.save("survival.html")` for the interactive
-version, or `chart.save("survival.png")` (also `.svg`, `.pdf`) for a static image. Static
-export uses `vl-convert`, which ships with the `altair` extra.
+Call `save()` on the returned chart. Use `chart.save("survival.html")` for the interactive version,
+or `chart.save("survival.png")` (also `.svg`, `.pdf`) for a static image. Static export uses
+`vl-convert`, which ships with the `altair` extra.
 :::
 
 ## Forest plots
@@ -194,16 +192,16 @@ commonly used to show:
 - RMST differences: difference in restricted mean survival time between groups
 - Any comparison of two distributions: as long as you have a point estimate and CI
 
-The forest plot arranges estimates vertically, one per row, with the interval shown as a line
-and the point estimate as a dot. A reference line (usually at 1 for ratios, 0 for differences)
-marks the boundary between protective and harmful effects.
+The forest plot arranges estimates vertically, one per row, with the interval shown as a line and
+the point estimate as a dot. A reference line (usually at 1 for ratios, 0 for differences) marks the
+boundary between protective and harmful effects.
 
 ### Cox model forest plots with `plot_forest`
 
-The easiest way to produce a forest plot from a fitted Cox model is `plot_forest()`. Pass the
-fitted `CoxPH` object directly; the function extracts hazard ratios, confidence intervals, and
-p-values automatically and draws an interactive Altair chart with a log-scaled x-axis and a
-dashed reference line at HR = 1.
+The easiest way to produce a forest plot from a fitted Cox model is `plot_forest()`. Pass the fitted
+`CoxPH` object directly; the function extracts hazard ratios, confidence intervals, and p-values
+automatically and draws an interactive Altair chart with a log-scaled x-axis and a dashed reference
+line at HR = 1.
 
 ```{python}
 # Load data and build the response
@@ -217,17 +215,16 @@ cox = gw.CoxPH().fit(y, lung[["age", "sex", "ph.ecog"]])
 gw.plot_forest(cox)
 ```
 
-Hazard ratios below 1 indicate a reduced hazard relative to the reference (e.g. sex = 2,
-female, has a lower hazard than male), and the position of the CI relative to the reference
-line shows whether the effect is statistically distinguishable from zero at the chosen
-confidence level. The tooltip on each row shows the formatted "HR (lower–upper)" text and the
-p-value.
+Hazard ratios below 1 indicate a reduced hazard relative to the reference (e.g. sex = 2, female, has
+a lower hazard than male), and the position of the CI relative to the reference line shows whether
+the effect is statistically distinguishable from zero at the chosen confidence level. The tooltip on
+each row shows the formatted "HR (lower–upper)" text and the p-value.
 
 ### Renaming terms for display
 
-Column names from the data often need to be rewritten for a publication figure. Pass
-`term_labels=` as a dict mapping internal names to display labels. Only the terms you list are
-renamed; the rest keep their original names.
+Column names from the data often need to be rewritten for a publication figure. Pass `term_labels=`
+as a dict mapping internal names to display labels. Only the terms you list are renamed. The rest
+keep their original names.
 
 ```{python}
 # Rename internal covariate labels to publication-friendly display strings
@@ -244,10 +241,10 @@ gw.plot_forest(
 
 ### Subgroup forest plots
 
-`plot_forest()` also accepts any tidy DataFrame with `term`, `estimate`, `ci_lower`, and
-`ci_upper` columns. This makes it straightforward to build subgroup forest plots where you
-have already assembled the estimates (for example, by fitting one Cox model per subgroup and
-calling `gw.tidy()` on each, then stacking the results).
+The `plot_forest()` function also accepts any tidy DataFrame with `term`, `estimate`, `ci_lower`,
+and `ci_upper` columns. This makes it straightforward to build subgroup forest plots where you have
+already assembled the estimates (for example, by fitting one Cox model per subgroup and calling
+`gw.tidy()` on each, then stacking the results).
 
 ```{python}
 import pandas as pd
@@ -266,8 +263,8 @@ gw.plot_forest(subgroups, title="Subgroup Analysis")
 
 ### Explicit scale control
 
-When passing a DataFrame, the scale defaults to linear. Pass `scale="log"` for a DataFrame
-of hazard ratios, or `scale="linear"` for RMST differences and other contrasts.
+When passing a DataFrame, the scale defaults to linear. Pass `scale="log"` for a DataFrame of hazard
+ratios, or `scale="linear"` for RMST differences and other contrasts.
 
 ```{python}
 # Hazard ratios in a DataFrame: use scale="log"
@@ -295,95 +292,121 @@ gw.plot_forest(rmst_df, title="RMST Differences vs. Placebo")
 
 ## Cumulative incidence plots
 
-In studies with competing risks (e.g., death from disease vs. death from other causes), the
-Kaplan-Meier survival estimate is not appropriate. Instead, use the cumulative incidence
-function (CIF), which estimates the probability of an event occurring before any competing
-event. A cumulative incidence plot shows one curve per competing event, within each group.
+In studies with competing risks (e.g., death from disease vs. death from other causes), the ordinary
+Kaplan-Meier estimator gives biased results if you analyze each event type in isolation, because it
+treats competing events as censored. The correct tool is the cumulative incidence function (CIF):
+for each cause, it estimates the probability that a subject experiences that specific event by time
+$t$, accounting for the fact that experiencing any other cause first makes the target cause
+impossible. The CIFs for all causes sum to the overall event probability at every time.
 
-Greenwood computes CIF through the competing risks analysis functions. This section covers how
-to visualize them with `cif_plot()`.
+The `plot_cif()` function accepts a fitted `AalenJohansen` estimator and renders the result as an
+interactive faceted chart, one panel per competing cause. Each panel is a right-continuous step
+function on the $[0, 1]$ probability scale with a shaded confidence band.
 
-### Preparing CIF data
+### Single group
 
-To create a CIF plot, pass time points and CIF estimates directly to `cif_plot()`. The function
-accepts either a single group or stratified data by group.
-
-**Single group (multiple competing events):**
+Fit the Aalen-Johansen estimator first, then pass it directly to `plot_cif()`. We use the `mgus2`
+dataset, which follows patients with monoclonal gammopathy (a precursor plasma-cell disorder). Each
+patient either progresses to overt plasma-cell malignancy (`pcm`), dies from an unrelated cause
+(`death`), or is censored (two competing events).
 
 ```{python}
 import numpy as np
 
-# Define time points and cumulative incidence values for two competing events
-times = np.array([30, 60, 90, 120, 180])
+# Load the monoclonal gammopathy dataset
+mg = gw.load_dataset("mgus2", backend="polars")
 
-# Each row is a time point; each column is one competing event
-cif = np.array([
-    [0.05, 0.02],
-    [0.12, 0.05],
-    [0.20, 0.08],
-    [0.28, 0.12],
-    [0.42, 0.18],
-])
+# Build a single event-time per subject: progression time if they progressed,
+# otherwise total follow-up time.
+etime = np.where(mg["pstat"] == 1, mg["ptime"], mg["futime"])
 
-# Draw a CIF plot with one facet per event type
-gw.cif_plot(
-    time=times,
-    cif=cif,
-    event_names=["Disease", "Other causes"],
-    title="Cumulative Incidence by Event Type"
-)
+# Encode the cause: 0 = censored, 1 = pcm progression, 2 = death without progression
+cause = np.where(mg["pstat"] == 1, 1, 2 * mg["death"])
+
+# Build the multi-state response, naming the two competing causes
+y = gw.Surv.multistate(etime, event=cause, states=("pcm", "death"))
+
+# Fit the Aalen-Johansen estimator (no grouping variable — overall population)
+aj = gw.AalenJohansen().fit(y)
+gw.plot_cif(aj)
 ```
 
-**Stratified by group:**
+Each panel shows the cumulative incidence for one cause over follow-up time in months. The shaded
+band is the point-wise confidence interval from the Aalen-Johansen variance estimator. Notice that
+the `pcm` curve climbs slowly while the `death` curve rises more steeply, reflecting that death is
+the more common outcome in this cohort. Because the two causes compete, neither curve can reach `1`:
+a subject who has already died cannot later progress, so the two CIFs are bounded above by the
+overall event probability, not by `1` individually.
+
+### Grouped by covariate
+
+To compare cumulative incidence between subgroups, pass `by=` to `AalenJohansen.fit()`. The
+estimator computes separate CIF curves for each level of the grouping variable. When you then call
+`plot_cif()`, it automatically colors the curves by group and adds a legend, keeping each cause in
+its own panel so you can see both differences side by side.
 
 ```{python}
-# CIF arrays keyed by group name: each value is (n_times x n_events)
-cif_by_group = {
-    "Treatment A": np.array([
-        [0.05, 0.02],
-        [0.12, 0.05],
-        [0.20, 0.08],
-        [0.28, 0.12],
-        [0.42, 0.18],
-    ]),
-    "Treatment B": np.array([
-        [0.02, 0.01],
-        [0.06, 0.03],
-        [0.12, 0.06],
-        [0.18, 0.10],
-        [0.28, 0.15],
-    ]),
-}
+# Stratify by sex: fit separate CIF curves for each group
+aj_sex = gw.AalenJohansen().fit(y, by=mg["sex"])
 
-# Draw CIF curves for both groups, faceted by event type
-gw.cif_plot(
-    time=times,
-    cif=cif_by_group,
-    event_names=["Disease", "Other causes"],
-    title="Cumulative Incidence by Group"
-)
+# plot_cif detects the grouping and draws one colored line per group per panel
+gw.plot_cif(aj_sex, title="Cumulative incidence by sex")
 ```
 
-### Drawing the CIF plot
+Each panel now shows one colored curve per sex. Reading across both panels at the same time reveals
+whether males and females differ in the *rate* of progression versus the *rate* of death (two
+separate clinical questions answered in a single view).
 
-The examples above create interactive Altair charts directly. The plot arranges one facet
-(small multiple) per competing event, with one line per group per event, colored by group.
+### Numbers at risk
 
-### Customizing CIF plots
-
-Like the other visualization functions, `cif_plot()` returns an Altair chart:
+Pass `risk_table=True` to stack an aligned numbers-at-risk table beneath the faceted panels. The
+table shows how many subjects remain event-free in each group at each query time, using the same
+color coding as the curves above it.
 
 ```{python}
-# Customize figure dimensions via width= and height=
-gw.cif_plot(
-    time=times,
-    cif=cif_by_group,
-    event_names=["Disease", "Other causes"],
-    title="Cumulative Incidence: Disease vs. Other Causes",
-    width=700,
-    height=400
+# Add a numbers-at-risk table below the CIF panels
+gw.plot_cif(aj_sex, risk_table=True)
+```
+
+The default query times are six evenly spaced points from zero to the largest observed follow-up
+time. Supply `times=` to use specific time points instead:
+
+```{python}
+# Choose specific months for the at-risk table
+gw.plot_cif(aj_sex, risk_table=True, times=[0, 24, 60, 120, 180])
+```
+
+### Customizing the plot
+
+The `plot_cif()` function returns an Altair chart object, so it composes with the rest of the Altair
+grammar. The most common adjustments are available directly as keyword arguments:
+
+```{python}
+# Suppress the confidence band (conf_int=False) and tighten the panel dimensions
+gw.plot_cif(
+    aj_sex,
+    conf_int=False,   # hide the shaded CI band for a cleaner comparison
+    width=350,        # width of each cause panel in pixels
+    height=250,       # height of each cause panel in pixels
 )
 ```
+
+::: {.callout-tip}
+## CIF versus 1 − Kaplan-Meier
+
+A common mistake is to estimate the cumulative incidence of cause $k$ as $1 - \hat{S}_k(t)$, where
+$\hat{S}_k$ is the Kaplan-Meier curve treating all other causes as censored. This overestimates the
+CIF because censoring competing events inflates the at-risk set. The Aalen-Johansen CIF is the
+correct estimate. See [Competing risks](11-competing-risks.qmd) for the full explanation.
+:::
+
+::: {.callout-note}
+## Connecting the plot to a formal test
+
+If the grouped curves look different, you can confirm the difference with Gray's test, the
+competing-risks analogue of the log-rank test. That is covered in
+[Competing risks](11-competing-risks.qmd).
+:::
 
 ## Next steps
 

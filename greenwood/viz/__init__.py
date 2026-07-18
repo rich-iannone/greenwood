@@ -5,8 +5,8 @@ from __future__ import annotations
 from . import _altair as altair
 from . import _cif, _forest, _gt
 from . import _curves as plotnine
-from ._altair import plot_survival, survival_plot
-from ._cif import cif_plot
+from ._altair import plot_survival
+from ._cif import plot_cif
 from ._forest import plot_forest, theme_forest
 from ._gt import risk_table
 from ._shared import get_risk_table_frame
@@ -14,13 +14,12 @@ from ._shared import get_risk_table_frame
 __all__ = [
     "altair",
     "plotnine",
-    "survival_plot",
     "plot_survival",
     "risk_table",
     "get_risk_table_frame",
     "plot_forest",
     "theme_forest",
-    "cif_plot",
+    "plot_cif",
     "_cif",
     "_forest",
     "_gt",
