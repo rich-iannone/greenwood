@@ -37,12 +37,11 @@ from ._univariate import Parametric, compare_distributions
 from .data import available_datasets, load_dataset
 from .summaries import augment, glance, tidy
 from .viz import (
-    cif_plot,
     get_risk_table_frame,
+    plot_cif,
     plot_forest,
     plot_survival,
     risk_table,
-    survival_plot,
     theme_forest,
 )
 
@@ -87,13 +86,12 @@ __all__ = [
     "rmst_diff",
     "pairwise_rmst_test",
     "RMSTResult",
-    "survival_plot",
     "plot_survival",
     "risk_table",
     "get_risk_table_frame",
     "plot_forest",
     "theme_forest",
-    "cif_plot",
+    "plot_cif",
     "load_dataset",
     "available_datasets",
     "tidy",

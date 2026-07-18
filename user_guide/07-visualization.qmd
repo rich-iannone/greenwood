@@ -66,7 +66,7 @@ numbers into a picture.
 
 ## The survival curve plot
 
-The main entry point is `survival_plot()`. Given a fitted `KaplanMeier`, it draws the step
+The main entry point is `plot_survival()`. Given a fitted `KaplanMeier`, it draws the step
 curve for each stratum, a shaded confidence band, and a small notch at each censoring time.
 
 ```{python}
@@ -78,7 +78,7 @@ y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 km = gw.KaplanMeier(conf_type="log-log").fit(y, by=lung["sex"])
 
 # Draw the interactive survival curve with confidence band and censoring marks
-gw.survival_plot(km)
+gw.plot_survival(km)
 ```
 
 Each element carries meaning. The steps show the estimated survival probability, the band
@@ -114,7 +114,7 @@ cleaner curve for a slide or a small figure.
 
 ```{python}
 # Strip the confidence band and censoring marks for a cleaner figure
-gw.survival_plot(km, conf_int=False, censor_marks=False)
+gw.plot_survival(km, conf_int=False, censor_marks=False)
 ```
 
 ## Adding a numbers-at-risk table
@@ -126,7 +126,7 @@ the curve.
 
 ```{python}
 # Append an aligned numbers-at-risk table beneath the curve
-gw.survival_plot(km, risk_table=True)
+gw.plot_survival(km, risk_table=True)
 ```
 
 The table shares the horizontal axis with the curve above it, so the counts line up with the
@@ -301,11 +301,11 @@ function (CIF), which estimates the probability of an event occurring before any
 event. A cumulative incidence plot shows one curve per competing event, within each group.
 
 Greenwood computes CIF through the competing risks analysis functions. This section covers how
-to visualize them with `cif_plot()`.
+to visualize them with `plot_cif()`.
 
 ### Preparing CIF data
 
-To create a CIF plot, pass time points and CIF estimates directly to `cif_plot()`. The function
+To create a CIF plot, pass time points and CIF estimates directly to `plot_cif()`. The function
 accepts either a single group or stratified data by group.
 
 **Single group (multiple competing events):**
@@ -326,7 +326,7 @@ cif = np.array([
 ])
 
 # Draw a CIF plot with one facet per event type
-gw.cif_plot(
+gw.plot_cif(
     time=times,
     cif=cif,
     event_names=["Disease", "Other causes"],
@@ -356,7 +356,7 @@ cif_by_group = {
 }
 
 # Draw CIF curves for both groups, faceted by event type
-gw.cif_plot(
+gw.plot_cif(
     time=times,
     cif=cif_by_group,
     event_names=["Disease", "Other causes"],
@@ -371,11 +371,11 @@ The examples above create interactive Altair charts directly. The plot arranges 
 
 ### Customizing CIF plots
 
-Like the other visualization functions, `cif_plot()` returns an Altair chart:
+Like the other visualization functions, `plot_cif()` returns an Altair chart:
 
 ```{python}
 # Customize figure dimensions via width= and height=
-gw.cif_plot(
+gw.plot_cif(
     time=times,
     cif=cif_by_group,
     event_names=["Disease", "Other causes"],

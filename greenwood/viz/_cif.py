@@ -175,7 +175,7 @@ def _cif_plot_data(
     }
 
 
-def cif_plot(
+def plot_cif(
     time: Any,
     cif: Any,
     event_names: list[str] | None = None,
