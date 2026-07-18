@@ -197,14 +197,19 @@ class AalenJohansen:
     ```
     """
 
-    def __init__(self, *, conf_level: float = 0.95) -> None:
+    def __init__(self, *, conf_type: str = "plain", conf_level: float = 0.95) -> None:
+        if conf_type not in _CIF_CONF_TYPES:
+            raise ValueError(
+                f"conf_type must be one of {sorted(_CIF_CONF_TYPES)}, got {conf_type!r}."
+            )
         if not 0.0 < conf_level < 1.0:
             raise ValueError(f"conf_level must be in (0, 1), got {conf_level}.")
+        self.conf_type = conf_type
         self.conf_level = conf_level
 
     def __repr__(self) -> str:
         if getattr(self, "states_", None) is None:
-            return "AalenJohansen() <unfitted>"
+            return f"AalenJohansen(conf_type={self.conf_type!r}) <unfitted>"
         states = ", ".join(str(s) for s in self.states_)
         head = [
             "AalenJohansen (Aalen-Johansen cumulative incidence)",
