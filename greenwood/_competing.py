@@ -92,7 +92,7 @@ def _cif_confidence(cif: Array, se: Array, conf_type: str, z: float) -> tuple[Ar
 
 
 def _cif_block(
-    exit_: Array, status: Array, causes: list[int], z: float
+    exit_: Array, status: Array, causes: list[int], z: float, conf_type: str
 ) -> dict[int, dict[str, Array]]:
     """Cumulative incidence, delta-method SE, and CI for each cause in one group."""
     times = np.unique(exit_)
