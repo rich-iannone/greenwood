@@ -29,6 +29,8 @@ __all__ = ["AalenJohansen", "FineGray", "MultiState"]
 
 Array = npt.NDArray[Any]
 
+_CIF_CONF_TYPES = frozenset({"plain", "log", "log-log"})
+
 
 def _censoring_km(time: Array, cause: Array) -> tuple[Array, Array]:
     """Nudged censoring Kaplan-Meier: (drop times, survival after each drop).
