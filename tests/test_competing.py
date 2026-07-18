@@ -43,6 +43,47 @@ def test_invalid_conf_level() -> None:
         AalenJohansen(conf_level=2.0)
 
 
+def test_invalid_conf_type() -> None:
+    with pytest.raises(ValueError, match="conf_type"):
+        AalenJohansen(conf_type="bogus")
+
+
+def test_conf_type_plain_brackets_estimate() -> None:
+    aj = AalenJohansen(conf_type="plain").fit(_simple_multistate())
+    table = aj.to_frame(format="pandas")
+    assert np.all(table["conf_low"].to_numpy() <= table["estimate"].to_numpy() + 1e-12)
+    assert np.all(table["estimate"].to_numpy() <= table["conf_high"].to_numpy() + 1e-12)
+    assert np.all((table["conf_low"] >= 0) & (table["conf_high"] <= 1))
+
+
+def test_conf_type_log_brackets_estimate() -> None:
+    aj = AalenJohansen(conf_type="log").fit(_simple_multistate())
+    table = aj.to_frame(format="pandas")
+    finite = ~table["conf_low"].isna()
+    assert np.all(
+        table.loc[finite, "conf_low"].to_numpy() <= table.loc[finite, "estimate"].to_numpy() + 1e-12
+    )
+    assert np.all(
+        table.loc[finite, "estimate"].to_numpy()
+        <= table.loc[finite, "conf_high"].to_numpy() + 1e-12
+    )
+    assert np.all((table.loc[finite, "conf_low"] >= 0) & (table.loc[finite, "conf_high"] <= 1))
+
+
+def test_conf_type_loglog_brackets_estimate() -> None:
+    aj = AalenJohansen(conf_type="log-log").fit(_simple_multistate())
+    table = aj.to_frame(format="pandas")
+    finite = ~table["conf_low"].isna()
+    assert np.all(
+        table.loc[finite, "conf_low"].to_numpy() <= table.loc[finite, "estimate"].to_numpy() + 1e-12
+    )
+    assert np.all(
+        table.loc[finite, "estimate"].to_numpy()
+        <= table.loc[finite, "conf_high"].to_numpy() + 1e-12
+    )
+    assert np.all((table.loc[finite, "conf_low"] >= 0) & (table.loc[finite, "conf_high"] <= 1))
+
+
 def test_to_pandas_columns() -> None:
     table = AalenJohansen().fit(_simple_multistate()).to_frame(format="pandas")
     assert list(table.columns) == [
