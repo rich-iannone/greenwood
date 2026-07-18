@@ -51,6 +51,46 @@ def _censoring_km(time: Array, cause: Array) -> tuple[Array, Array]:
     return np.array(drop_times), np.array(drop_surv)
 
 
+def _cif_confidence(cif: Array, se: Array, conf_type: str, z: float) -> tuple[Array, Array]:
+    r"""Confidence limits for the CIF on the requested scale.
+
+    `se` is the standard error of $F$ (the CIF estimate). Limits are clipped to $[0, 1]$. At
+    $F = 0$ (no events yet) the interval is $[0, 0]$; at $F = 1$ it is $\mathrm{NaN}$, matching R's
+    `survfit`.
+    """
+    with np.errstate(divide="ignore", invalid="ignore"):
+        if conf_type == "plain":
+            lower = cif - z * se
+            upper = cif + z * se
+        elif conf_type == "log":
+            # CI on log(F): F * exp(∓ z * se / F)
+            lower = cif * np.exp(-z * se / cif)
+            upper = cif * np.exp(z * se / cif)
+        else:  # "log-log"
+            # CI on log(-log(F)), treating the CIF like a survival function.
+            # R's survfit applies the same transform to F that it applies to S.
+            log_f = np.log(cif)
+            theta = np.log(-log_f)
+            se_theta = se / (cif * np.abs(log_f))
+            # Higher theta → lower F, so the signs are reversed vs. survival.
+            lower = np.exp(-np.exp(theta + z * se_theta))
+            upper = np.exp(-np.exp(theta - z * se_theta))
+
+    at_zero = cif <= 0.0
+    at_one = cif >= 1.0
+    # For `plain` the natural computation gives 0 ± 0 = 0 at CIF=0, which is correct.
+    # For `log` and `log-log` the computation produces NaN at CIF=0 (undefined transforms),
+    # matching R. Only override for `plain` to guarantee [0, 0] rather than a spurious NaN.
+    if conf_type == "plain":
+        lower = np.where(at_zero, 0.0, lower)
+        upper = np.where(at_zero, 0.0, upper)
+    lower = np.clip(lower, 0.0, 1.0)
+    upper = np.clip(upper, 0.0, 1.0)
+    lower = np.where(at_one, np.nan, lower)
+    upper = np.where(at_one, np.nan, upper)
+    return lower, upper
+
+
 def _cif_block(
     exit_: Array, status: Array, causes: list[int], z: float
 ) -> dict[int, dict[str, Array]]:
