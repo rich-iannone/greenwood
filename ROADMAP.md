@@ -40,15 +40,6 @@ Systematic confidence interval and standard error support across all estimators.
 - Bootstrap and analytical methods for uncertainty quantification
 - Predictive intervals for time-varying Cox model forecasts
 
-### Univariate Parametric Models
-
-Standalone parametric distributions for data exploration and model selection.
-
-- Weibull, exponential, log-normal, and log-logistic distributional models
-- Goodness-of-fit assessment and model comparison
-- Maximum likelihood parameter estimation with standard errors
-- Survival, hazard, and quantile predictions from fitted models
-
 ---
 
 ## Planned — Medium Term
