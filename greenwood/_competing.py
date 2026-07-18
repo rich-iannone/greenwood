@@ -121,13 +121,14 @@ def _cif_block(
         var = cif**2 * c_a - 2 * cif * c_ac + c_ac2 + c_b - 2 * cif * c_c + 2 * c_cc
         se = np.sqrt(np.clip(var, 0.0, None))
 
+        conf_low, conf_high = _cif_confidence(cif, se, conf_type, z)
         out[cause] = {
             "time": times,
             "n_risk": n_risk,
             "estimate": cif,
             "std_error": se,
-            "conf_low": np.clip(cif - z * se, 0.0, 1.0),
-            "conf_high": np.clip(cif + z * se, 0.0, 1.0),
+            "conf_low": conf_low,
+            "conf_high": conf_high,
         }
     return out
 
