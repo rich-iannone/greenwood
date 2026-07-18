@@ -266,8 +266,8 @@ gw.plot_forest(subgroups, title="Subgroup Analysis")
 
 ### Explicit scale control
 
-When passing a DataFrame, the scale defaults to linear. Pass `scale="log"` for a DataFrame
-of hazard ratios, or `scale="linear"` for RMST differences and other contrasts.
+When passing a DataFrame, the scale defaults to linear. Pass `scale="log"` for a DataFrame of hazard
+ratios, or `scale="linear"` for RMST differences and other contrasts.
 
 ```{python}
 # Hazard ratios in a DataFrame: use scale="log"
@@ -295,95 +295,103 @@ gw.plot_forest(rmst_df, title="RMST Differences vs. Placebo")
 
 ## Cumulative incidence plots
 
-In studies with competing risks (e.g., death from disease vs. death from other causes), the
-Kaplan-Meier survival estimate is not appropriate. Instead, use the cumulative incidence
-function (CIF), which estimates the probability of an event occurring before any competing
-event. A cumulative incidence plot shows one curve per competing event, within each group.
+In studies with competing risks (e.g., death from disease vs. death from other causes), the ordinary
+Kaplan-Meier estimator gives biased results if you analyze each event type in isolation, because it
+treats competing events as censored. The correct tool is the cumulative incidence function (CIF):
+for each cause, it estimates the probability that a subject experiences that specific event by time
+$t$, accounting for the fact that experiencing any other cause first makes the target cause
+impossible. The CIFs for all causes sum to the overall event probability at every time.
 
-Greenwood computes CIF through the competing risks analysis functions. This section covers how
-to visualize them with `plot_cif()`.
+The `plot_cif()` function accepts a fitted `AalenJohansen` estimator and renders the result as an
+interactive faceted chart, one panel per competing cause. Each panel is a right-continuous step
+function on the $[0, 1]$ probability scale with a shaded confidence band.
 
-### Preparing CIF data
+### Single group
 
-To create a CIF plot, pass time points and CIF estimates directly to `plot_cif()`. The function
-accepts either a single group or stratified data by group.
-
-**Single group (multiple competing events):**
+Fit the Aalen-Johansen estimator first, then pass it directly to `plot_cif()`. We use the `mgus2`
+dataset, which follows patients with monoclonal gammopathy (a precursor plasma-cell disorder). Each
+patient either progresses to overt plasma-cell malignancy (`pcm`), dies from an unrelated cause
+(`death`), or is censored (two competing events).
 
 ```{python}
 import numpy as np
 
-# Define time points and cumulative incidence values for two competing events
-times = np.array([30, 60, 90, 120, 180])
+# Load the monoclonal gammopathy dataset
+mg = gw.load_dataset("mgus2", backend="polars")
 
-# Each row is a time point; each column is one competing event
-cif = np.array([
-    [0.05, 0.02],
-    [0.12, 0.05],
-    [0.20, 0.08],
-    [0.28, 0.12],
-    [0.42, 0.18],
-])
+# Build a single event-time per subject: progression time if they progressed,
+# otherwise total follow-up time.
+etime = np.where(mg["pstat"] == 1, mg["ptime"], mg["futime"])
 
-# Draw a CIF plot with one facet per event type
-gw.plot_cif(
-    time=times,
-    cif=cif,
-    event_names=["Disease", "Other causes"],
-    title="Cumulative Incidence by Event Type"
-)
+# Encode the cause: 0 = censored, 1 = pcm progression, 2 = death without progression
+cause = np.where(mg["pstat"] == 1, 1, 2 * mg["death"])
+
+# Build the multi-state response, naming the two competing causes
+y = gw.Surv.multistate(etime, event=cause, states=("pcm", "death"))
+
+# Fit the Aalen-Johansen estimator (no grouping variable — overall population)
+aj = gw.AalenJohansen().fit(y)
+gw.plot_cif(aj)
 ```
 
-**Stratified by group:**
+Each panel shows the cumulative incidence for one cause over follow-up time in months. The shaded
+band is the point-wise confidence interval from the Aalen-Johansen variance estimator. Notice that
+the `pcm` curve climbs slowly while the `death` curve rises more steeply, reflecting that death is
+the more common outcome in this cohort. Because the two causes compete, neither curve can reach `1`:
+a subject who has already died cannot later progress, so the two CIFs are bounded above by the
+overall event probability, not by `1` individually.
+
+### Grouped by covariate
+
+To compare cumulative incidence between subgroups, pass `by=` to `AalenJohansen.fit()`. The
+estimator computes separate CIF curves for each level of the grouping variable. When you then call
+`plot_cif()`, it automatically colors the curves by group and adds a legend, keeping each cause in
+its own panel so you can see both differences side by side.
 
 ```{python}
-# CIF arrays keyed by group name: each value is (n_times x n_events)
-cif_by_group = {
-    "Treatment A": np.array([
-        [0.05, 0.02],
-        [0.12, 0.05],
-        [0.20, 0.08],
-        [0.28, 0.12],
-        [0.42, 0.18],
-    ]),
-    "Treatment B": np.array([
-        [0.02, 0.01],
-        [0.06, 0.03],
-        [0.12, 0.06],
-        [0.18, 0.10],
-        [0.28, 0.15],
-    ]),
-}
+# Stratify by sex: fit separate CIF curves for each group
+aj_sex = gw.AalenJohansen().fit(y, by=mg["sex"])
 
-# Draw CIF curves for both groups, faceted by event type
-gw.plot_cif(
-    time=times,
-    cif=cif_by_group,
-    event_names=["Disease", "Other causes"],
-    title="Cumulative Incidence by Group"
-)
+# plot_cif detects the grouping and draws one colored line per group per panel
+gw.plot_cif(aj_sex, title="Cumulative incidence by sex")
 ```
 
-### Drawing the CIF plot
+Each panel now shows one colored curve per sex. Reading across both panels at the same time
+reveals whether males and females differ in the *rate* of progression versus the *rate* of
+death (two separate clinical questions answered in a single view).
 
-The examples above create interactive Altair charts directly. The plot arranges one facet
-(small multiple) per competing event, with one line per group per event, colored by group.
+### Customizing the plot
 
-### Customizing CIF plots
-
-Like the other visualization functions, `plot_cif()` returns an Altair chart:
+The `plot_cif()` function returns an Altair chart object, so it composes with the rest of the Altair
+grammar. The most common adjustments are available directly as keyword arguments:
 
 ```{python}
-# Customize figure dimensions via width= and height=
+# Suppress the confidence band (conf_int=False) and tighten the panel dimensions
 gw.plot_cif(
-    time=times,
-    cif=cif_by_group,
-    event_names=["Disease", "Other causes"],
-    title="Cumulative Incidence: Disease vs. Other Causes",
-    width=700,
-    height=400
+    aj_sex,
+    conf_int=False,   # hide the shaded CI band for a cleaner comparison
+    width=350,        # width of each cause panel in pixels
+    height=250,       # height of each cause panel in pixels
 )
 ```
+
+::: {.callout-tip}
+## CIF versus 1 − Kaplan-Meier
+
+A common mistake is to estimate the cumulative incidence of cause $k$ as $1 - \hat{S}_k(t)$,
+where $\hat{S}_k$ is the Kaplan-Meier curve treating all other causes as censored. This
+overestimates the CIF because censoring competing events inflates the at-risk set. The
+Aalen-Johansen CIF is the correct estimate. See [Competing risks](11-competing-risks.qmd)
+for the full explanation.
+:::
+
+::: {.callout-note}
+## Connecting the plot to a formal test
+
+If the grouped curves look different, you can confirm the difference with Gray's test, the
+competing-risks analogue of the log-rank test. That is covered in
+[Competing risks](11-competing-risks.qmd).
+:::
 
 ## Next steps
 
