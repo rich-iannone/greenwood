@@ -476,6 +476,46 @@ def test_aalen_johansen_cif_matches_r() -> None:
     )
 
 
+_CIF_CONF = [("plain", "plain"), ("log", "log"), ("log-log", "loglog")]
+
+
+def test_aalen_johansen_cif_ci_matches_r() -> None:
+    df = gw.load_dataset("mgus2", backend="pandas")
+    etime = np.where(df["pstat"] == 1, df["ptime"], df["futime"])
+    event = np.where(df["pstat"] == 1, 1, 2 * df["death"])
+    y = Surv.multistate(etime, event=event, states=("pcm", "death"))
+    fixture = load_fixture("cif_mgus2")
+
+    for conf_type, key in _CIF_CONF:
+        table = gw.AalenJohansen(conf_type=conf_type).fit(y).to_frame(format="pandas")
+        pcm = table[table["cause"] == "pcm"].sort_values("time")
+        death = table[table["cause"] == "death"].sort_values("time")
+        assert_allclose_to_r(
+            pcm["conf_low"].to_numpy(),
+            fixture[f"lower_pcm_{key}"],
+            atol=1e-8,
+            what=f"pcm lower {conf_type}",
+        )
+        assert_allclose_to_r(
+            pcm["conf_high"].to_numpy(),
+            fixture[f"upper_pcm_{key}"],
+            atol=1e-8,
+            what=f"pcm upper {conf_type}",
+        )
+        assert_allclose_to_r(
+            death["conf_low"].to_numpy(),
+            fixture[f"lower_death_{key}"],
+            atol=1e-8,
+            what=f"death lower {conf_type}",
+        )
+        assert_allclose_to_r(
+            death["conf_high"].to_numpy(),
+            fixture[f"upper_death_{key}"],
+            atol=1e-8,
+            what=f"death upper {conf_type}",
+        )
+
+
 def test_finegray_matches_r() -> None:
     df = gw.load_dataset("mgus2", backend="pandas")
     etime = np.where(df["pstat"] == 1, df["ptime"], df["futime"])
