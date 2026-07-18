@@ -420,6 +420,48 @@ for (d in c("weibull", "exponential", "lognormal", "loglogistic")) {
   write_json_fixture(aft_fixture(d), paste0("aft_", d))
 }
 
+# -- Univariate parametric distributions (intercept-only survreg) -------------------
+
+parametric_pred_p <- c(0.1, 0.25, 0.5, 0.75, 0.9)
+parametric_pred_times <- c(100, 200, 365, 500, 730)
+
+parametric_fixture <- function(dist) {
+  m <- survreg(Surv(time, status) ~ 1, data = lung, dist = dist)
+  se <- sqrt(diag(m$var))
+  ncoef <- length(m$coef)
+  pred_q <- as.numeric(predict(m, data.frame(row.names = 1), type = "quantile",
+                               p = parametric_pred_p))
+  # Parametric S(t) at specified times.
+  lp <- m$coefficients[1]
+  sigma <- m$scale
+  z <- (log(parametric_pred_times) - lp) / sigma
+  if (dist %in% c("weibull", "exponential")) {
+    surv <- exp(-exp(z))
+  } else if (dist == "lognormal") {
+    surv <- pnorm(-z)
+  } else {
+    surv <- 1 / (1 + exp(z))
+  }
+  list(
+    dist = dist,
+    mu = unname(m$coef[1]),
+    mu_se = unname(se[1]),
+    scale = unname(m$scale),
+    log_scale_se = if (dist == "exponential") NA else unname(se[ncoef + 1]),
+    loglik = m$loglik[2],
+    n = m$df.residual + ncoef + (if (dist == "exponential") 0 else 1),
+    nevent = sum(lung$status == 2),
+    pred_p = parametric_pred_p,
+    pred_quantile = pred_q,
+    pred_times = parametric_pred_times,
+    pred_survival = as.numeric(surv)
+  )
+}
+
+for (d in c("weibull", "exponential", "lognormal", "loglogistic")) {
+  write_json_fixture(parametric_fixture(d), paste0("parametric_", d))
+}
+
 # Weibull anchor for the Royston-Parmar model: with df=1 (no internal knots) the flexible
 # parametric model is a Weibull, so it must reproduce survreg's log-likelihood and predicted
 # survival. Store S(t|x) = 1 - pweibull(t, shape=1/scale, scale=exp(lp)).
