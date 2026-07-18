@@ -320,7 +320,7 @@ class AalenJohansen:
 
         if by is None:
             self._grouped = False
-            self._blocks = {None: _cif_block(exit_, status, causes, z)}
+            self._blocks = {None: _cif_block(exit_, status, causes, z, self.conf_type)}
         else:
             from ._surv import _to_1d_array
 
@@ -331,7 +331,9 @@ class AalenJohansen:
             self._blocks = {}
             for level in dict.fromkeys(labels.tolist()):
                 mask = labels == level
-                self._blocks[level] = _cif_block(exit_[mask], status[mask], causes, z)
+                self._blocks[level] = _cif_block(
+                    exit_[mask], status[mask], causes, z, self.conf_type
+                )
         self._causes = causes
         return self
 
