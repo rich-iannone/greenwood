@@ -69,8 +69,10 @@ trunc <- data.frame(
   event = c(1, 0, 1, 1, 0, 1, 1, 0)
 )
 write_json_fixture(
-  c(tabulate_survfit(survfit(Surv(start, stop, event) ~ 1, data = trunc)),
-    list(data = as.list(trunc))),
+  c(
+    tabulate_survfit(survfit(Surv(start, stop, event) ~ 1, data = trunc)),
+    list(data = as.list(trunc))
+  ),
   "counting_truncation"
 )
 
@@ -124,22 +126,26 @@ write_json_fixture(
 rmst_twogroup_lung <- function() {
   sf1 <- summary(survfit(Surv(time, status) ~ 1, data = lung[lung$sex == 1, ]), rmean = 365)$table
   sf2 <- summary(survfit(Surv(time, status) ~ 1, data = lung[lung$sex == 2, ]), rmean = 365)$table
-  rmst1 <- unname(sf1["rmean"]); se1 <- unname(sf1["se(rmean)"])
-  rmst2 <- unname(sf2["rmean"]); se2 <- unname(sf2["se(rmean)"])
+  rmst1 <- unname(sf1["rmean"])
+  se1 <- unname(sf1["se(rmean)"])
+  rmst2 <- unname(sf2["rmean"])
+  se2 <- unname(sf2["se(rmean)"])
 
   # Stratified by ph.ecog: inverse-variance pooling of per-stratum differences.
   l_clean <- lung[!is.na(lung$ph.ecog), ]
   strata_levels <- sort(unique(l_clean$ph.ecog))
-  d_vals <- numeric(0); var_vals <- numeric(0)
+  d_vals <- numeric(0)
+  var_vals <- numeric(0)
   for (s in strata_levels) {
     ls <- l_clean[l_clean$ph.ecog == s, ]
     if (length(unique(ls$sex)) < 2) next
     s1 <- summary(survfit(Surv(time, status) ~ 1, data = ls[ls$sex == 1, ]), rmean = 365)$table
     s2 <- summary(survfit(Surv(time, status) ~ 1, data = ls[ls$sex == 2, ]), rmean = 365)$table
-    d_vals  <- c(d_vals,  s1["rmean"]        - s2["rmean"])
+    d_vals <- c(d_vals, s1["rmean"] - s2["rmean"])
     var_vals <- c(var_vals, s1["se(rmean)"]^2 + s2["se(rmean)"]^2)
   }
-  w <- 1 / var_vals; W <- sum(w)
+  w <- 1 / var_vals
+  W <- sum(w)
 
   list(
     tau = 365, group1 = 1, group2 = 2,
@@ -192,8 +198,10 @@ logrank_stratified_fixture <- function() {
   l <- lung[!is.na(lung$ph.ecog), ]
   sd <- survdiff(Surv(time, status) ~ sex + strata(ph.ecog), data = l)
   df <- length(sd$n) - 1
-  list(chisq = as.numeric(sd$chisq), df = df,
-       p = pchisq(as.numeric(sd$chisq), df, lower.tail = FALSE))
+  list(
+    chisq = as.numeric(sd$chisq), df = df,
+    p = pchisq(as.numeric(sd$chisq), df, lower.tail = FALSE)
+  )
 }
 write_json_fixture(logrank_stratified_fixture(), "logrank_stratified_lung_sex_ecog")
 
@@ -209,9 +217,11 @@ pairwise_logrank_fixture <- function() {
     sdi <- survdiff(Surv(time, status) ~ celltype, data = v[mask, ])
     raw[k] <- pchisq(as.numeric(sdi$chisq), 1, lower.tail = FALSE)
   }
-  list(group1 = pairs[1, ], group2 = pairs[2, ], p_value = raw,
-       holm = p.adjust(raw, "holm"), bh = p.adjust(raw, "BH"),
-       bonferroni = p.adjust(raw, "bonferroni"))
+  list(
+    group1 = pairs[1, ], group2 = pairs[2, ], p_value = raw,
+    holm = p.adjust(raw, "holm"), bh = p.adjust(raw, "BH"),
+    bonferroni = p.adjust(raw, "bonferroni")
+  )
 }
 write_json_fixture(pairwise_logrank_fixture(), "pairwise_logrank_veteran")
 
@@ -429,8 +439,10 @@ parametric_fixture <- function(dist) {
   m <- survreg(Surv(time, status) ~ 1, data = lung, dist = dist)
   se <- sqrt(diag(m$var))
   ncoef <- length(m$coef)
-  pred_q <- as.numeric(predict(m, data.frame(row.names = 1), type = "quantile",
-                               p = parametric_pred_p))
+  pred_q <- as.numeric(predict(m, data.frame(row.names = 1),
+    type = "quantile",
+    p = parametric_pred_p
+  ))
   # Parametric S(t) at specified times.
   lp <- m$coefficients[1]
   sigma <- m$scale
@@ -490,17 +502,29 @@ mg$event_f <- factor(mg$event, 0:2, c("censor", "pcm", "death"))
 
 sf <- survfit(Surv(etime, event_f) ~ 1, data = mg)
 # pstate columns: (s0), pcm, death; std.err aligned.
-write_json_fixture(
+# Export CIs for all three conf.type values so Python can validate each transform.
+cif_ci_by_type <- function(ct) {
+  s <- survfit(Surv(etime, event_f) ~ 1, data = mg, conf.type = ct)
+  key <- gsub("-", "", ct) # "log-log" -> "loglog"
+  stats::setNames(
+    list(s$lower[, 2], s$upper[, 2], s$lower[, 3], s$upper[, 3]),
+    paste0(c("lower_pcm_", "upper_pcm_", "lower_death_", "upper_death_"), key)
+  )
+}
+cif_fixture <- c(
   list(
-    time = sf$time,
-    n_risk = sf$n.risk[, 1],
-    cif_pcm = sf$pstate[, 2],
+    time      = sf$time,
+    n_risk    = sf$n.risk[, 1],
+    cif_pcm   = sf$pstate[, 2],
     cif_death = sf$pstate[, 3],
-    se_pcm = sf$std.err[, 2],
-    se_death = sf$std.err[, 3]
+    se_pcm    = sf$std.err[, 2],
+    se_death  = sf$std.err[, 3]
   ),
-  "cif_mgus2"
+  cif_ci_by_type("plain"),
+  cif_ci_by_type("log"),
+  cif_ci_by_type("log-log")
 )
+write_json_fixture(cif_fixture, "cif_mgus2")
 
 fg <- finegray(Surv(etime, event_f) ~ age + sex + id, data = mg, etype = "pcm")
 fgmod <- coxph(
@@ -575,23 +599,23 @@ uno_td_auc <- function(T, delta, marker, times) {
   # as Python's greenwood._competing._censoring_km:
   #   At each censoring time c, events tied at c are excluded from the risk set
   #   (treated as having left just before c).  This matches the Python implementation.
-  delta_int   <- as.integer(delta)
+  delta_int <- as.integer(delta)
   censor_times <- sort(unique(T[delta_int == 0L]))
-  g_surv_val  <- 1.0
+  g_surv_val <- 1.0
   g_times_vec <- numeric(0)
-  g_surv_vec  <- numeric(0)
+  g_surv_vec <- numeric(0)
   for (c in censor_times) {
     n_risk <- sum(T > c) + sum(delta_int == 0L & T == c)
-    d      <- sum(delta_int == 0L & T == c)
-    g_surv_val  <- g_surv_val * (1.0 - d / n_risk)
+    d <- sum(delta_int == 0L & T == c)
+    g_surv_val <- g_surv_val * (1.0 - d / n_risk)
     g_times_vec <- c(g_times_vec, c)
-    g_surv_vec  <- c(g_surv_vec, g_surv_val)
+    g_surv_vec <- c(g_surv_vec, g_surv_val)
   }
 
   # G(t-): censoring survival just before t (left-continuous).
   g_left <- function(t_vec) {
     sapply(t_vec, function(t) {
-      idx <- which(g_times_vec < t)    # strictly less than t
+      idx <- which(g_times_vec < t) # strictly less than t
       if (length(idx) == 0L) 1.0 else g_surv_vec[max(idx)]
     })
   }
@@ -599,10 +623,12 @@ uno_td_auc <- function(T, delta, marker, times) {
   sapply(times, function(t) {
     cases <- which(T <= t & delta_int == 1L)
     ctrls <- which(T > t)
-    if (length(cases) == 0L || length(ctrls) == 0L) return(NA_real_)
+    if (length(cases) == 0L || length(ctrls) == 0L) {
+      return(NA_real_)
+    }
 
     g_case <- g_left(T[cases])
-    w      <- ifelse(g_case > 0, 1.0 / g_case^2, 0.0)
+    w <- ifelse(g_case > 0, 1.0 / g_case^2, 0.0)
 
     eta_c <- marker[cases]
     eta_k <- marker[ctrls]
@@ -612,7 +638,7 @@ uno_td_auc <- function(T, delta, marker, times) {
       sum(d > 0) + 0.5 * sum(d == 0)
     }, numeric(1))
 
-    num   <- sum(w * conc_per_case)
+    num <- sum(w * conc_per_case)
     denom <- sum(w) * length(ctrls)
     if (denom == 0) NA_real_ else num / denom
   })
@@ -620,10 +646,10 @@ uno_td_auc <- function(T, delta, marker, times) {
 
 # Use the Cox LP (age + sex, Efron) on the lung dataset as the risk marker —
 # the same model validated elsewhere in the test suite.
-auc_cm    <- coxph(Surv(time, status) ~ age + sex, data = lung, ties = "efron")
-auc_lp    <- unname(predict(auc_cm, type = "lp"))
+auc_cm <- coxph(Surv(time, status) ~ age + sex, data = lung, ties = "efron")
+auc_lp <- unname(predict(auc_cm, type = "lp"))
 auc_times <- c(180, 365, 540)
-auc_vals  <- uno_td_auc(
+auc_vals <- uno_td_auc(
   T      = lung$time,
   delta  = as.integer(lung$status == 2),
   marker = auc_lp,
