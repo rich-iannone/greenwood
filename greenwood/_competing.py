@@ -152,19 +152,23 @@ class AalenJohansen:
     The estimator uses the formula $\mathrm{CIF}_j(t) = \sum_{s \le t} \hat{S}(s^-) P_{0j}(s)$,
     where $\hat{S}(s^-)$ is the probability of being event-free before time $s$, and
     $P_{0j}(s)$ is the transition probability from censoring to cause $j$. Confidence intervals
-    use the Greenwood-style variance estimator on the complementary log-log scale for improved
-    coverage.
+    use the Aalen (Marubini-Valsecchi) delta-method variance, with a choice of CI transforms
+    matching R's `survfit` (`"plain"`, `"log"`, `"log-log"`).
 
     Parameters
     ----------
+    conf_type
+        Confidence-interval transform: `"plain"` (default, linear Wald), `"log"`
+        (CI on log F, then back-transform), or `"log-log"` (CI on log(-log(F)),
+        the same transform R's `survfit` applies to the CIF).
     conf_level
-        Confidence level for the (Wald) confidence intervals (default 0.95).
+        Confidence level for the confidence intervals (default is `0.95`).
 
     Returns
     -------
     Fitted estimator
-        Call `fit()` to produce a fitted estimator with cached results (`states_`, and
-        internal transition matrices), accessible as tidy DataFrames.
+        Call `fit()` to produce a fitted estimator with cached results (`states_`, and internal
+        transition matrices), accessible as tidy DataFrames.
 
     Details
     -------
