@@ -100,8 +100,16 @@ Extended methods for cause-specific and multi-state analyses.
 
 Random-effects and regularized Cox models.
 
-- Shared frailty models (random intercept) for clustered or familial data
-- Frailty variance estimation and inference
+- **Cox shared frailty model** (random cluster-level intercept) for repeated-events,
+  multi-centre, or familial data where within-cluster correlation must be modelled, not
+  merely accounted for via robust SEs (`cluster=`)
+- **Gamma shared frailty** (first priority): the conjugate prior allows analytic
+  marginalization (estimation via EM algorithm or penalized partial likelihood with an outer
+  profile-likelihood search over the frailty variance $\theta$)
+- **Log-normal shared frailty** (follow-on): more flexible hazard heterogeneity, which requires
+  Laplace approximation over the random effects (analogous to `coxme` in R)
+- Frailty variance estimation, inference, and likelihood-ratio test for $\theta = 0$
+- Conditional and marginal predictions for known and new clusters
 - Elastic-net Cox regression (ridge, lasso, elastic-net) for high-dimensional covariates
 - Regularization parameter selection via cross-validation
 
