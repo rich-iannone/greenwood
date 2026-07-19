@@ -11,13 +11,13 @@ import great_docs as gd
 gd.enable_tbl_preview(n_head=8, n_tail=3)
 ```
 
-So far every method has assumed a single kind of event. Often that is not realistic. A
-patient with a precancerous condition might progress to cancer, but they might also die of
-something else first, and death from another cause prevents the progression from ever being
-observed. These are competing risks: mutually exclusive event types where the occurrence of
-one removes the possibility of the others. Analyzing them with ordinary survival methods, one
-event type at a time, gives biased and even nonsensical results. This page explains why, and
-shows the two standard tools Greenwood provides.
+So far every method has assumed a single kind of event. Often that is not realistic. A patient with
+a precancerous condition might progress to cancer, but they might also die of something else first,
+and death from another cause prevents the progression from ever being observed. These are competing
+risks: mutually exclusive event types where the occurrence of one removes the possibility of the
+others. Analyzing them with ordinary survival methods, one event type at a time, gives biased and
+even nonsensical results. This page explains why, and shows the two standard tools Greenwood
+provides.
 
 ```{mermaid}
 %%| label: fig-competing
@@ -27,44 +27,51 @@ flowchart LR
     A --> C[Death]
 ```
 
-We use the bundled `mgus2` dataset, which follows patients with monoclonal gammopathy. The
-competing events are progression to a plasma-cell malignancy and death without progression.
-We first build the competing-risks endpoint from two intermediate arrays: a single event time
-and a cause code that is 0 for censored, 1 for progression, and 2 for death.
+We use the bundled `mgus2` dataset, which follows patients with monoclonal gammopathy. The competing
+events are progression to a plasma-cell malignancy and death without progression. We first build the
+competing-risks endpoint from two intermediate arrays: a single event time and a cause code that is
+`0` for censored, `1` for progression, and `2` for death.
 
 ```{python}
 import numpy as np
 import greenwood as gw
 
+# Load the mgus2 dataset: monoclonal-gammopathy patients with competing-risk follow-up
 mg = gw.load_dataset("mgus2", backend="polars")
 
+# Event time: progression time if progressed, otherwise overall follow-up time
 etime = np.where(mg["pstat"] == 1, mg["ptime"], mg["futime"])
-cause = np.where(mg["pstat"] == 1, 1, 2 * mg["death"])   # 0 censor, 1 pcm, 2 death
+
+# Cause code: 1 = pcm progression, 2 = death without progression, 0 = censored
+cause = np.where(mg["pstat"] == 1, 1, 2 * mg["death"])
 ```
 
-The `etime` array picks each subject's event time: the progression time `ptime` when the
-subject progressed (`pstat == 1`), and otherwise the follow-up time `futime`. Because a
-subject can experience only the first of the competing events, one time per subject is all we
-need. Here are the first several values, in months.
+The `etime` array picks each subject's event time: the progression time `ptime` when the subject
+progressed (`pstat == 1`), and otherwise the follow-up time `futime`. Because a subject can
+experience only the first of the competing events, one time per subject is all we need. Here are the
+first several values, in months.
 
 ```{python}
+# Show the first eight event times (in months)
 etime[:8]
 ```
 
-The `cause` array records which event that time refers to, using the coding noted in the
-comment above. Where a subject progressed it is 1 (`pcm`); otherwise it is `2 * death`, which
-is 2 when the subject died without progressing and 0 when the subject was censored. Reading
-`etime` and `cause` position by position gives each subject's (time, cause) pair.
+The `cause` array records which event that time refers to, using the coding noted in the comment
+above. Where a subject progressed it is `1` (`pcm`); otherwise it is `2 * death`, which is `2` when
+the subject died without progressing and `0` when the subject was censored. Reading `etime` and
+`cause` position by position gives each subject's (time, cause) pair.
 
 ```{python}
+# Show the first eight cause codes (0 censored, 1 pcm, 2 death)
 cause[:8]
 ```
 
 We pass both arrays to `gw.Surv.multistate`, mapping cause code 1 to `pcm` and code 2 to `death`,
-with code 0 left as censoring. The resulting response object shows the event times alongside
-their decoded states.
+with code 0 left as censoring. The resulting response object shows the event times alongside their
+decoded states.
 
 ```{python}
+# Build the multi-state response, naming the two competing causes
 y = gw.Surv.multistate(etime, event=cause, states=("pcm", "death"))
 y
 ```
@@ -73,99 +80,205 @@ y
 
 The intuitive but wrong approach is to treat one cause as the event, censor the other, run
 Kaplan-Meier, and report one minus the survival curve as the probability of that cause. This
-overestimates the probability, sometimes badly, because it treats subjects who died of the
-other cause as if they could still progress. The correct quantity is the cumulative incidence
-function, which gives the probability of experiencing a specific cause by a given time while
-accounting for the competing cause.
+overestimates the probability, sometimes badly, because it treats subjects who died of the other
+cause as if they could still progress. The correct quantity is the cumulative incidence function,
+which gives the probability of experiencing a specific cause by a given time while accounting for
+the competing cause.
 
-The Aalen-Johansen estimator computes it. You fit it to the multi-state response, and it
-returns a curve for every cause.
+The Aalen-Johansen estimator computes it. You fit it to the multi-state response, and it returns a
+curve for every cause.
 
 ```{python}
+# Rebuild the dataset and competing-risks response
 mg = gw.load_dataset("mgus2", backend="polars")
 
 etime = np.where(mg["pstat"] == 1, mg["ptime"], mg["futime"])
 cause = np.where(mg["pstat"] == 1, 1, 2 * mg["death"])   # 0 censor, 1 pcm, 2 death
 y = gw.Surv.multistate(etime, event=cause, states=("pcm", "death"))
 
+# Fit the Aalen-Johansen estimator to get a CIF for each competing cause
 aj = gw.AalenJohansen().fit(y)
 aj
 ```
 
 The fitted estimator holds a cumulative incidence curve for each cause. To inspect it we call
-`to_frame()` and take the first couple of rows within each cause, so both curves are
-visible side by side.
+`to_frame()` and take the first couple of rows within each cause, so both curves are visible side by
+side.
 
 ```{python}
+# Export to a tidy frame and show the first two rows per cause
 aj.to_frame(format="polars").group_by("cause").head(2)
 ```
 
-Each cause has its own cumulative incidence estimate, standard error, and confidence
-interval at every event time. Because the causes are competing, their cumulative incidences
-plus the event-free probability sum to one at every time, which is exactly the accounting
-that one-minus-Kaplan-Meier gets wrong.
+Each cause has its own cumulative incidence estimate, standard error, and confidence interval at
+every event time. Because the causes are competing, their cumulative incidences plus the event-free
+probability sum to one at every time, which is exactly the accounting that one-minus-Kaplan-Meier
+gets wrong.
 
 ::: {.callout-warning}
 ## Do not use one-minus-Kaplan-Meier for a competing cause
 
-Censoring the competing event and applying Kaplan-Meier treats those subjects as if they
-remained at risk for the cause of interest, which they do not. Always use the cumulative
-incidence function for competing-risks probabilities.
+Censoring the competing event and applying Kaplan-Meier treats those subjects as if they remained at
+risk for the cause of interest, which they do not. Always use the cumulative incidence function for
+competing-risks probabilities.
 :::
 
-You can stratify by a grouping variable, just as with Kaplan-Meier, to compare cumulative
-incidence across groups.
+### Stratified cumulative incidence
+
+You can compare cumulative incidence across groups by passing `by=` to `fit()`, just as with
+Kaplan-Meier. Each group receives its own independent set of CIF curves, estimated and stored
+together in the fitted object.
 
 ```{python}
+# Fit separate CIFs for each level of sex
 aj_sex = gw.AalenJohansen().fit(y, by=mg["sex"])
 aj_sex
 ```
 
-The stratified fit carries a separate set of curves for each level of `sex`. Here we pull the
-`pcm` cause and keep the last row within each stratum, which is the cumulative incidence of
-progression at the final event time in that group.
+The summary shows the final cumulative incidence per cause for each sex group. To drill into a
+specific cause across strata, filter the tidy frame and keep the last row per stratum, which is the
+cumulative incidence at the final observed event time in that group.
 
 ```{python}
 import polars as pl
 
+# Final pcm cumulative incidence by sex stratum (last event time in each group)
 aj_sex.to_frame(format="polars").filter(pl.col("cause") == "pcm").group_by("strata").tail(1)
 ```
 
-## Modeling with the Fine-Gray model
+Each row gives the probability of pcm progression accumulated by the last observed event time in
+that sex group. The Aalen-Johansen estimator handles both the unstratified and stratified case
+through the same interface: construct the estimator, then call `fit()` with an optional `by=`
+argument to produce all group curves in one step.
 
-The cumulative incidence function describes groups. To model how covariates affect the
-incidence of a specific cause, use the Fine-Gray model. It is a regression on the
-subdistribution hazard, constructed so that its coefficients describe the effect of
-covariates on the cumulative incidence itself, which is usually what you want to report.
+## Confidence intervals
+
+The confidence band around each CIF curve is computed from the Aalen (Marubini-Valsecchi)
+delta-method variance. Greenwood supports three transforms for the interval, chosen with
+`conf_type=`. The default is `"plain"`, which gives a symmetric Wald interval directly on the
+probability scale, matching R's `survfit` default for competing risks. The `"log"` transform
+constructs the interval on the log-CIF scale before back-transforming, and `"log-log"` uses the same
+`log(-log(F))` scale that R applies to the CIF.
+
+You set the transform at construction time.
 
 ```{python}
+# Rebuild the dataset and competing-risks response
+mg = gw.load_dataset("mgus2", backend="polars")
+
+etime = np.where(mg["pstat"] == 1, mg["ptime"], mg["futime"])
+cause = np.where(mg["pstat"] == 1, 1, 2 * mg["death"])
+y = gw.Surv.multistate(etime, event=cause, states=("pcm", "death"))
+
+# Fit with the log-log confidence interval transform
+aj_loglog = gw.AalenJohansen(conf_type="log-log").fit(y)
+
+# Inspect the pcm curve with its log-log bounds
+aj_loglog.to_frame(format="polars").filter(pl.col("cause") == "pcm").head(5)[
+    ["cause", "time", "estimate", "conf_low", "conf_high"]
+]
+```
+
+The point estimates are identical across transforms; only the interval limits differ. At `time = 0`
+(before any events), `conf_low` and `conf_high` are `NaN` for the `"log"` and `"log-log"`
+transforms, since `log(0)` is undefined.
+
+### Comparing confidence interval transforms
+
+Three transforms are available, all built on the same delta-method standard error. The code below
+fits all three to the same data and assembles a comparison frame from sampled rows of the `pcm`
+curve.
+
+```{python}
+# Fit all three CI transforms
+aj_plain  = gw.AalenJohansen(conf_type="plain").fit(y)
+aj_log    = gw.AalenJohansen(conf_type="log").fit(y)
+aj_loglog = gw.AalenJohansen(conf_type="log-log").fit(y)
+
+# PCM curve: take a handful of rows from each to compare limits
+rows = []
+for aj, name in [(aj_plain, "plain"), (aj_log, "log"), (aj_loglog, "log-log")]:
+    df = aj.to_frame(format="polars").filter(pl.col("cause") == "pcm")
+    rows.append(
+        df[::40]
+        .select(["time", "estimate", "conf_low", "conf_high"])
+        .with_columns(pl.lit(name).alias("transform"))
+    )
+
+pl.concat(rows)
+```
+
+**Transform summary:**
+
+- **plain** (default): symmetric interval on the probability scale. Can stray outside `[0, 1]` at
+very early or late times, but is clipped.
+- **log**: interval on the log-CIF scale (bounds stay positive).
+- **log-log**: interval on the `log(-log(F))` scale; matches R's `conf.type = "log-log"`. Produces
+`NaN` at `F = 0`.
+
+Choose the transform before fitting and report which one you used. The `"plain"` option is easiest
+to explain to a non-statistical audience. The `"log"` and `"log-log"` options give more reliable
+bounds near the edges of the probability scale.
+
+### Adjusting the confidence level
+
+By default, Greenwood computes 95% confidence intervals. You can change this with `conf_level=`.
+
+```{python}
+# Fit with a 90% confidence level instead of the default 95%
+aj_90 = gw.AalenJohansen(conf_level=0.90).fit(y)
+
+# Inspect the narrower interval on the first three rows of the pcm curve
+aj_90.to_frame(format="polars").filter(pl.col("cause") == "pcm").head(3)[
+    ["time", "estimate", "conf_low", "conf_high"]
+]
+```
+
+Narrowing the confidence level to 0.90 tightens the bounds on both sides of the estimate. The
+`conf_level=` parameter applies uniformly to whichever `conf_type` is in use.
+
+The `conf_type=` and `conf_level=` parameters are independent: mix and match any combination to suit
+your reporting requirements. All choices produce the same point estimate. Only the interval width
+and its scale transform differ.
+
+## Modeling with the Fine-Gray model
+
+The cumulative incidence function describes groups. To model how covariates affect the incidence of
+a specific cause, use the Fine-Gray model. It is a regression on the subdistribution hazard,
+constructed so that its coefficients describe the effect of covariates on the cumulative incidence
+itself, which is usually what you want to report.
+
+```{python}
+# Rebuild the dataset and response
 mg = gw.load_dataset("mgus2", backend="polars")
 
 etime = np.where(mg["pstat"] == 1, mg["ptime"], mg["futime"])
 cause = np.where(mg["pstat"] == 1, 1, 2 * mg["death"])   # 0 censor, 1 pcm, 2 death
 y = gw.Surv.multistate(etime, event=cause, states=("pcm", "death"))
 
+# Fit the Fine-Gray model for the pcm cause with age and sex as covariates
 fg = gw.FineGray("pcm").fit(y, mg[["age", "sex"]])
 fg
 ```
 
-We name `pcm` as the target cause and fit against age and sex. To read the fitted model we
-tidy it into a coefficient table, asking for exponentiated estimates so the numbers are on the
-hazard-ratio scale rather than the log scale.
+We name `pcm` as the target cause and fit against age and sex. To read the fitted model we tidy it
+into a coefficient table, asking for exponentiated estimates so the numbers are on the hazard-ratio
+scale rather than the log scale.
 
 ```{python}
+# Exponentiate to get subdistribution hazard ratios
 gw.tidy(fg, exponentiate=True, format="polars")
 ```
 
-The exponentiated coefficients are subdistribution hazard ratios. A value above 1 means the
-covariate increases the cumulative incidence of the target cause, `pcm` here, over time. The
-model reports clustered robust standard errors by default, which are appropriate given the
+The exponentiated coefficients are subdistribution hazard ratios. A value above `1` means the
+covariate increases the cumulative incidence of the target cause, `pcm` here, over time. The model
+reports clustered robust standard errors by default, which are appropriate given the
 inverse-probability weighting it uses internally.
 
 ### Modeling multiple competing causes
 
-In a competing-risks study with more than one cause of interest, you can fit separate
-Fine-Gray models, one for each cause, to compare the covariate effects across causes.
+In a competing-risks study with more than one cause of interest, you can fit separate Fine-Gray
+models, one for each cause, to compare the covariate effects across causes.
 
 ```{python}
 import pandas as pd
@@ -184,9 +297,9 @@ death_tidy["cause"] = "Death"
 pd.concat([pcm_tidy, death_tidy])
 ```
 
-This comparison reveals how covariates affect each cause differently. A covariate might
-increase the incidence of progression to PCM while decreasing the incidence of death from
-other causes (or vice versa) which both tell important clinical stories.
+This comparison reveals how covariates affect each cause differently. A covariate might increase the
+incidence of progression to PCM while decreasing the incidence of death from other causes (or vice
+versa) which both tell important clinical stories.
 
 ::: {.callout-note}
 ## Two kinds of hazard, two kinds of question
@@ -202,8 +315,8 @@ correct. Decide which question you are asking before choosing the model.
 You can now estimate and model competing-risks data correctly.
 
 - **Plot the results** with `plot_cif()` from [Visualizing survival](07-visualization.qmd).
-  It accepts a fitted `AalenJohansen` directly and facets by cause, with optional grouping
-  by covariate and an aligned numbers-at-risk table.
-- [Multi-state models](12-multi-state.qmd) generalize competing risks to settings where
-  subjects move between several states over time.
+It accepts a fitted `AalenJohansen` directly and facets by cause, with optional grouping by
+covariate and an aligned numbers-at-risk table.
+- [Multi-state models](12-multi-state.qmd) generalize competing risks to settings where subjects
+move between several states over time.
 - Revisit [Survival data](03-survival-data.qmd) for the details of the multi-state response.

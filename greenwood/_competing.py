@@ -29,6 +29,8 @@ __all__ = ["AalenJohansen", "FineGray", "MultiState"]
 
 Array = npt.NDArray[Any]
 
+_CIF_CONF_TYPES = frozenset({"plain", "log", "log-log"})
+
 
 def _censoring_km(time: Array, cause: Array) -> tuple[Array, Array]:
     """Nudged censoring Kaplan-Meier: (drop times, survival after each drop).
@@ -51,8 +53,48 @@ def _censoring_km(time: Array, cause: Array) -> tuple[Array, Array]:
     return np.array(drop_times), np.array(drop_surv)
 
 
+def _cif_confidence(cif: Array, se: Array, conf_type: str, z: float) -> tuple[Array, Array]:
+    r"""Confidence limits for the CIF on the requested scale.
+
+    `se` is the standard error of $F$ (the CIF estimate). Limits are clipped to $[0, 1]$. At
+    $F = 0$ (no events yet) the interval is $[0, 0]$; at $F = 1$ it is $\mathrm{NaN}$, matching R's
+    `survfit`.
+    """
+    with np.errstate(divide="ignore", invalid="ignore"):
+        if conf_type == "plain":
+            lower = cif - z * se
+            upper = cif + z * se
+        elif conf_type == "log":
+            # CI on log(F): F * exp(∓ z * se / F)
+            lower = cif * np.exp(-z * se / cif)
+            upper = cif * np.exp(z * se / cif)
+        else:  # "log-log"
+            # CI on log(-log(F)), treating the CIF like a survival function.
+            # R's survfit applies the same transform to F that it applies to S.
+            log_f = np.log(cif)
+            theta = np.log(-log_f)
+            se_theta = se / (cif * np.abs(log_f))
+            # Higher theta → lower F, so the signs are reversed vs. survival.
+            lower = np.exp(-np.exp(theta + z * se_theta))
+            upper = np.exp(-np.exp(theta - z * se_theta))
+
+    at_zero = cif <= 0.0
+    at_one = cif >= 1.0
+    # For `plain` the natural computation gives 0 ± 0 = 0 at CIF=0, which is correct.
+    # For `log` and `log-log` the computation produces NaN at CIF=0 (undefined transforms),
+    # matching R. Only override for `plain` to guarantee [0, 0] rather than a spurious NaN.
+    if conf_type == "plain":
+        lower = np.where(at_zero, 0.0, lower)
+        upper = np.where(at_zero, 0.0, upper)
+    lower = np.clip(lower, 0.0, 1.0)
+    upper = np.clip(upper, 0.0, 1.0)
+    lower = np.where(at_one, np.nan, lower)
+    upper = np.where(at_one, np.nan, upper)
+    return lower, upper
+
+
 def _cif_block(
-    exit_: Array, status: Array, causes: list[int], z: float
+    exit_: Array, status: Array, causes: list[int], z: float, conf_type: str
 ) -> dict[int, dict[str, Array]]:
     """Cumulative incidence, delta-method SE, and CI for each cause in one group."""
     times = np.unique(exit_)
@@ -81,13 +123,14 @@ def _cif_block(
         var = cif**2 * c_a - 2 * cif * c_ac + c_ac2 + c_b - 2 * cif * c_c + 2 * c_cc
         se = np.sqrt(np.clip(var, 0.0, None))
 
+        conf_low, conf_high = _cif_confidence(cif, se, conf_type, z)
         out[cause] = {
             "time": times,
             "n_risk": n_risk,
             "estimate": cif,
             "std_error": se,
-            "conf_low": np.clip(cif - z * se, 0.0, 1.0),
-            "conf_high": np.clip(cif + z * se, 0.0, 1.0),
+            "conf_low": conf_low,
+            "conf_high": conf_high,
         }
     return out
 
@@ -111,19 +154,23 @@ class AalenJohansen:
     The estimator uses the formula $\mathrm{CIF}_j(t) = \sum_{s \le t} \hat{S}(s^-) P_{0j}(s)$,
     where $\hat{S}(s^-)$ is the probability of being event-free before time $s$, and
     $P_{0j}(s)$ is the transition probability from censoring to cause $j$. Confidence intervals
-    use the Greenwood-style variance estimator on the complementary log-log scale for improved
-    coverage.
+    use the Aalen (Marubini-Valsecchi) delta-method variance, with a choice of CI transforms
+    matching R's `survfit` (`"plain"`, `"log"`, `"log-log"`).
 
     Parameters
     ----------
+    conf_type
+        Confidence-interval transform: `"plain"` (default, linear Wald), `"log"`
+        (CI on log F, then back-transform), or `"log-log"` (CI on log(-log(F)),
+        the same transform R's `survfit` applies to the CIF).
     conf_level
-        Confidence level for the (Wald) confidence intervals (default 0.95).
+        Confidence level for the confidence intervals (default is `0.95`).
 
     Returns
     -------
     Fitted estimator
-        Call `fit()` to produce a fitted estimator with cached results (`states_`, and
-        internal transition matrices), accessible as tidy DataFrames.
+        Call `fit()` to produce a fitted estimator with cached results (`states_`, and internal
+        transition matrices), accessible as tidy DataFrames.
 
     Details
     -------
@@ -152,14 +199,19 @@ class AalenJohansen:
     ```
     """
 
-    def __init__(self, *, conf_level: float = 0.95) -> None:
+    def __init__(self, *, conf_type: str = "plain", conf_level: float = 0.95) -> None:
+        if conf_type not in _CIF_CONF_TYPES:
+            raise ValueError(
+                f"conf_type must be one of {sorted(_CIF_CONF_TYPES)}, got {conf_type!r}."
+            )
         if not 0.0 < conf_level < 1.0:
             raise ValueError(f"conf_level must be in (0, 1), got {conf_level}.")
+        self.conf_type = conf_type
         self.conf_level = conf_level
 
     def __repr__(self) -> str:
         if getattr(self, "states_", None) is None:
-            return "AalenJohansen() <unfitted>"
+            return f"AalenJohansen(conf_type={self.conf_type!r}) <unfitted>"
         states = ", ".join(str(s) for s in self.states_)
         head = [
             "AalenJohansen (Aalen-Johansen cumulative incidence)",
@@ -270,7 +322,7 @@ class AalenJohansen:
 
         if by is None:
             self._grouped = False
-            self._blocks = {None: _cif_block(exit_, status, causes, z)}
+            self._blocks = {None: _cif_block(exit_, status, causes, z, self.conf_type)}
         else:
             from ._surv import _to_1d_array
 
@@ -281,7 +333,9 @@ class AalenJohansen:
             self._blocks = {}
             for level in dict.fromkeys(labels.tolist()):
                 mask = labels == level
-                self._blocks[level] = _cif_block(exit_[mask], status[mask], causes, z)
+                self._blocks[level] = _cif_block(
+                    exit_[mask], status[mask], causes, z, self.conf_type
+                )
         self._causes = causes
         return self
 

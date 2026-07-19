@@ -27,8 +27,6 @@ Robust cross-validation and performance assessment for imbalanced survival data.
 Systematic confidence interval and standard error support across all estimators.
 
 - Confidence intervals for Cox model coefficients and hazard ratios (analytical)
-- Kaplan-Meier survival function confidence intervals (Greenwood method and alternatives)
-- Cumulative incidence function confidence intervals (competing risks)
 - Standard errors and CIs for parametric model predictions
 - Bootstrap and analytical methods for uncertainty quantification
 - Predictive intervals for time-varying Cox model forecasts
