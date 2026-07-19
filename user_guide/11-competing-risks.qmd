@@ -140,6 +140,8 @@ specific cause across strata, filter the tidy frame and keep the last row per st
 cumulative incidence at the final observed event time in that group.
 
 ```{python}
+import polars as pl
+
 # Final pcm cumulative incidence by sex stratum (last event time in each group)
 aj_sex.to_frame(format="polars").filter(pl.col("cause") == "pcm").group_by("strata").tail(1)
 ```
@@ -161,8 +163,6 @@ constructs the interval on the log-CIF scale before back-transforming, and `"log
 You set the transform at construction time.
 
 ```{python}
-import polars as pl
-
 # Rebuild the dataset and competing-risks response
 mg = gw.load_dataset("mgus2", backend="polars")
 
