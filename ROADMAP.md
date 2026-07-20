@@ -15,12 +15,7 @@ Descriptive and exploratory features building on the core estimators.
 
 Robust cross-validation and performance assessment for imbalanced survival data.
 
-- Stratified k-fold cross-validation ensuring balanced event representation across folds
-- Handling of highly imbalanced datasets (common in survival analysis) to prevent singular matrix errors
-- Performance metrics (concordance, Brier score) computed reliably with stratified splits
-- Documentation and examples for model selection with imbalanced event data
 - Performance optimization for large datasets (memory efficiency, computation speed)
-- Numerical stability benchmarks and recommendations for data scale
 
 ### Confidence Intervals & Inference
 
