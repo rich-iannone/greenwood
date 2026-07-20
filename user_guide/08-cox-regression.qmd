@@ -235,7 +235,9 @@ lung = gw.load_dataset("lung", backend="polars")
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 
 # Fit with Breslow tie handling and show just the term and estimate columns
-gw.CoxPH(ties="breslow").fit(y, lung[["age", "sex"]]).to_frame(format="polars")[["term", "estimate"]]
+gw.CoxPH(ties="breslow").fit(y, lung[["age", "sex"]]).to_frame(format="polars")[
+    ["term", "estimate"]
+]
 ```
 
 Unless you have a specific reason to match another tool's Breslow output, the Efron default
@@ -247,41 +249,40 @@ is the right choice.
 Greenwood's support for both Efron and Breslow tie-handling methods gives you flexibility
 that is useful in several situations:
 
-- matching textbook examples: if you're learning from a textbook that uses SAS (which
-defaults to Breslow), you can use `ties="breslow"` to get results that match exactly.
-- comparing across tools: if you're validating results across R, SAS, and Python, you
-can switch the tie method in Greenwood to match any tool's output with a single parameter
-change, rather than rewriting your analysis in a different language.
-- sensitivity analysis: you can easily compare whether your results change substantially
-between the two methods, which is a good diagnostic when ties are very common.
+- matching textbook examples: if you're learning from a textbook that uses SAS (which defaults to
+Breslow), you can use `ties="breslow"` to get results that match exactly.
+- comparing across tools: if you're validating results across R, SAS, and Python, you can switch the
+tie method in Greenwood to match any tool's output with a single parameter change, rather than
+rewriting your analysis in a different language.
+- sensitivity analysis: you can easily compare whether your results change substantially between the
+two methods, which is a good diagnostic when ties are very common.
 
-Most analyses will stick with the default Efron method (which matches R), but this flexibility
-means you're never locked into one approach.
+Most analyses will stick with the default Efron method (which matches R), but this flexibility means
+you're never locked into one approach.
 :::
 
 ## Time-varying covariates
 
-Some covariates change during follow-up: a treatment that starts partway through, a lab value
-that is remeasured, or a status that switches once. The Cox model handles these through the
+Some covariates change during follow-up: a treatment that starts partway through, a lab value that
+is remeasured, or a status that switches once. The Cox model handles these through the
 counting-process form, where each subject contributes one row per interval over which their
-covariates are constant. Each row records the interval `(start, stop]`, whether the event
-happened at its end, and the covariate values that held during it.
+covariates are constant. Each row records the interval `(start, stop]`, whether the event happened
+at its end, and the covariate values that held during it.
 
 ::: {.callout-warning}
 ## Immortal time bias
 
 A common mistake in observational studies is to assign treatment status based on what happens
-*after* study entry. For example: classifying patients as "treated" if they ever received a
-drug, and then analysing survival from enrolment. The time between enrolment and when they
-actually started the drug is **immortal time**. Those patients were guaranteed to be alive
-during that interval (because they had to survive long enough to receive the drug), yet the
-time is credited to the treated group. This artificially inflates apparent survival for the
-treated group.
+*after* study entry. For example: classifying patients as "treated" if they ever received a drug,
+and then analysing survival from enrolment. The time between enrolment and when they actually
+started the drug is **immortal time**. Those patients were guaranteed to be alive during that
+interval (because they had to survive long enough to receive the drug), yet the time is credited to
+the treated group. This artificially inflates apparent survival for the treated group.
 
-**The fix is to use the counting-process form.** Represent each patient as untreated from
-enrolment to the moment they start treatment, and treated from that moment onward. This way
-the "treated" rows only enter the risk set after treatment actually begins, and the immortal
-time is correctly attributed to the untreated period.
+**The fix is to use the counting-process form.** Represent each patient as untreated from enrolment
+to the moment they start treatment, and treated from that moment onward. This way the "treated" rows
+only enter the risk set after treatment actually begins, and the immortal time is correctly
+attributed to the untreated period.
 
 ```python
 # Wrong: classify as treated from day 0 even though treatment starts at day 30
@@ -295,8 +296,8 @@ df["treated"] = 1   # all time counted as exposed
 The example below shows the correct layout.
 :::
 
-We build a small illustrative dataset where a treatment switches on for some subjects. The
-response is a `gw.Surv.counting` object rather than `gw.Surv.right`.
+We build a small illustrative dataset where a treatment switches on for some subjects. The response
+is a `gw.Surv.counting` object rather than `gw.Surv.right`.
 
 ```{python}
 # Build the time-varying covariate dataset: one row per (subject, interval)
@@ -314,28 +315,31 @@ intervals = pd.DataFrame(
 intervals
 ```
 
-Subject 1, for example, is untreated over `(0, 4]` and treated over `(4, 10]`, with the event
-at day 10. We pass the interval endpoints to `gw.Surv.counting` and fit as usual.
+Subject 1, for example, is untreated over `(0, 4]` and treated over `(4, 10]`, with the event at day
+10. We pass the interval endpoints to `gw.Surv.counting` and fit as usual.
 
 ```{python}
 # Build the counting-process response from the interval endpoints
-y_tv = gw.Surv.counting(start=intervals["start"], stop=intervals["stop"], event=intervals["event"])
+y_tv = gw.Surv.counting(
+    start=intervals["start"], stop=intervals["stop"], event=intervals["event"]
+)
 
 # Fit the Cox model on the time-varying covariate layout
-gw.CoxPH().fit(y_tv, intervals[["treated"]]).to_frame(format="polars")[["term", "estimate", "p_value"]]
+gw.CoxPH().fit(y_tv, intervals[["treated"]]).to_frame(format="polars")[
+    ["term", "estimate", "p_value"]
+]
 ```
 
 The risk set at each event time correctly includes only the intervals that span it, using each
-subject's covariate values as of that moment. This is exactly R's start-stop `coxph`, and
-Greenwood matches it to tolerance.
+subject's covariate values as of that moment. This is exactly R's start-stop `coxph`, and Greenwood
+matches it to tolerance.
 
 ::: {.callout-note}
 ## One row per interval, not per subject
 
-The only change from an ordinary Cox fit is the data layout: a subject with a covariate that
-changes `k` times contributes `k + 1` rows, and the event indicator is 1 only on the interval
-where the event occurred. Left truncation and delayed entry use the same counting-process
-response.
+The only change from an ordinary Cox fit is the data layout: a subject with a covariate that changes
+`k` times contributes `k + 1` rows, and the event indicator is 1 only on the interval where the
+event occurred. Left truncation and delayed entry use the same counting-process response.
 :::
 
 ::: {.callout-important}
@@ -353,27 +357,29 @@ Each subject needs their own timeline starting at 0 (subject-relative time), not
 - Subject 1: (2024-01-01, 2024-01-04], (2024-01-04, 2024-01-10]
 - Subject 2: (2024-06-15, 2024-06-22] (different calendar dates)
 
-If your data uses calendar time (e.g., from a wide dataset where subjects enroll on different dates),
-subtract each subject's entry date from their start/stop times.
+If your data uses calendar time (e.g., from a wide dataset where subjects enroll on different
+dates), subtract each subject's entry date from their start/stop times.
 
 **Pandas**:
 
 ```{python}
 # Example data in calendar time (subjects enroll at different dates)
-df = pd.DataFrame({
-    'subject': [1, 1, 2, 2, 3, 3],
-    'start': [0, 10, 365, 375, 730, 740],   # Different enrollment dates
-    'stop': [10, 25, 375, 390, 740, 755],
-    'event': [0, 1, 0, 1, 0, 1]
-})
+df = pd.DataFrame(
+    {
+        "subject": [1, 1, 2, 2, 3, 3],
+        "start": [0, 10, 365, 375, 730, 740],  # Different enrollment dates
+        "stop": [10, 25, 375, 390, 740, 755],
+        "event": [0, 1, 0, 1, 0, 1],
+    }
+)
 
 # Convert calendar time to subject-relative time (Pandas)
-df['entry_date'] = df.groupby('subject')['start'].transform('min')
-df['start_relative'] = df['start'] - df['entry_date']
-df['stop_relative'] = df['stop'] - df['entry_date']
+df["entry_date"] = df.groupby("subject")["start"].transform("min")
+df["start_relative"] = df["start"] - df["entry_date"]
+df["stop_relative"] = df["stop"] - df["entry_date"]
 
 # Drop helper column
-df = df.drop(columns=['entry_date'])
+df = df.drop(columns=["entry_date"])
 df
 ```
 
@@ -383,20 +389,26 @@ df
 import polars as pl
 
 # Example data in calendar time (subjects enroll at different dates)
-df = pl.DataFrame({
-    'subject': [1, 1, 2, 2, 3, 3],
-    'start': [0, 10, 365, 375, 730, 740],      # Different enrollment dates
-    'stop': [10, 25, 375, 390, 740, 755],
-    'event': [0, 1, 0, 1, 0, 1]
-})
+df = pl.DataFrame(
+    {
+        "subject": [1, 1, 2, 2, 3, 3],
+        "start": [0, 10, 365, 375, 730, 740],  # Different enrollment dates
+        "stop": [10, 25, 375, 390, 740, 755],
+        "event": [0, 1, 0, 1, 0, 1],
+    }
+)
 
 # Convert calendar time to subject-relative time (polars)
-df = df.with_columns([
-    pl.col('start').min().over('subject').alias('entry_date')
-]).with_columns([
-    (pl.col('start') - pl.col('entry_date')).alias('start_relative'),
-    (pl.col('stop') - pl.col('entry_date')).alias('stop_relative')
-]).drop('entry_date')
+df = (
+    df.with_columns([pl.col("start").min().over("subject").alias("entry_date")])
+    .with_columns(
+        [
+            (pl.col("start") - pl.col("entry_date")).alias("start_relative"),
+            (pl.col("stop") - pl.col("entry_date")).alias("stop_relative"),
+        ]
+    )
+    .drop("entry_date")
+)
 
 df
 ```
@@ -407,15 +419,15 @@ Now you can use `start_relative` and `stop_relative` in `Surv.counting()`.
 as this usually indicates an error in data preparation.
 
 This matters because risk sets are formed by subjects at risk at each event time. Using calendar
-time instead of subject-relative time creates an imbalance where early times have many subjects
-at risk and late times have few, distorting the baseline hazard and model coefficients.
+time instead of subject-relative time creates an imbalance where early times have many subjects at
+risk and late times have few, distorting the baseline hazard and model coefficients.
 :::
 
 ## Robust and clustered standard errors
 
-By default, the Cox model uses the model-based (Fisher information) standard errors. When the
-model may be misspecified, or when observations are not independent (e.g., repeated measures,
-family data), use the sandwich (robust) variance estimator by setting `robust=True`:
+By default, the Cox model uses the model-based (Fisher information) standard errors. When the model
+may be misspecified, or when observations are not independent (e.g., repeated measures, family
+data), use the sandwich (robust) variance estimator by setting `robust=True`:
 
 ```{python}
 # Load data and build the response
@@ -429,20 +441,21 @@ cox_robust = gw.CoxPH().fit(y, lung[["age", "sex"]], robust=True)
 gw.tidy(cox_robust, format="polars")
 ```
 
-The standard errors adjust upward (more conservative) if there is overdispersion, or
-downward if there is underdispersion. For clustered data (e.g., family members, multiple
-measurements per subject), pass the cluster variable to ensure standard errors account for
-within-cluster dependence:
+The standard errors adjust upward (more conservative) if there is overdispersion, or downward if
+there is underdispersion. For clustered data (e.g., family members, multiple measurements per
+subject), pass the cluster variable to ensure standard errors account for within-cluster dependence:
 
 ```{python}
 # Simulate a cluster variable: assign subjects to families of 10
-lung_with_cluster = lung.with_columns(
-    family=((pl.int_range(len(lung)) % 10) + 1)
-)
+lung_with_cluster = lung.with_columns(family=((pl.int_range(len(lung)) % 10) + 1))
 
 # Fit with clustered sandwich standard errors
-cox_cluster = gw.CoxPH().fit(y, lung_with_cluster[["age", "sex"]],
-                              robust=True, cluster=lung_with_cluster["family"])
+cox_cluster = gw.CoxPH().fit(
+    y,
+    lung_with_cluster[["age", "sex"]],
+    robust=True,
+    cluster=lung_with_cluster["family"],
+)
 
 # Display the coefficient table; SEs reflect within-cluster correlation
 gw.tidy(cox_cluster, format="polars")
@@ -453,34 +466,37 @@ information from within-cluster correlation.
 
 Instead of selecting columns yourself, you can describe the model with a formula, passing the
 right-hand side as a string and the data frame as `data`. This is convenient for categorical
-variables, interactions, and transformations, and it mirrors the notation used in R. The
-formula support uses [formulaic](https://matthewwardrop.github.io/formulaic/), installed with
-the `formula` extra.
+variables, interactions, and transformations, and it mirrors the notation used in R. The formula
+support uses [formulaic](https://matthewwardrop.github.io/formulaic/), installed with the `formula`
+extra.
 
 ```{python}
 # Fit using a Wilkinson formula string; categorical columns are dummy-coded automatically
-gw.CoxPH().fit(y, "age + sex", data=lung).to_frame(format="polars")[["term", "estimate"]]
+gw.CoxPH().fit(y, "age + sex", data=lung).to_frame(format="polars")[
+    ["term", "estimate"]
+]
 ```
 
-Categorical columns are expanded into indicator terms automatically, and interactions are
-written with `*` (which expands to the main effects plus their product) or `:` (the product
-alone). A term like `C(ph.ecog)` forces a column to be treated as categorical.
+Categorical columns are expanded into indicator terms automatically, and interactions are written
+with `*` (which expands to the main effects plus their product) or `:` (the product alone). A term
+like `C(ph.ecog)` forces a column to be treated as categorical.
 
 ```{python}
 # The * operator expands to main effects plus their interaction term
-gw.CoxPH().fit(y, "age * sex", data=lung).to_frame(format="polars")[["term", "estimate"]]
+gw.CoxPH().fit(y, "age * sex", data=lung).to_frame(format="polars")[
+    ["term", "estimate"]
+]
 ```
 
-Rows with a missing value in any formula term are dropped, the same complete-case rule used
-when you pass columns directly. The formula interface is also available on `AFT`.
+Rows with a missing value in any formula term are dropped, the same complete-case rule used when you
+pass columns directly. The formula interface is also available on `AFT`.
 
 ## Penalized regression
 
 When you have many covariates, or they are collinear, an unpenalized fit can overfit or become
-unstable. `CoxNet` fits an elastic-net penalized Cox model: it shrinks the coefficients and,
-for the lasso, sets some of them to exactly zero, which selects variables. The `penalizer`
-argument sets the overall strength, and `l1_ratio` mixes the lasso (`1.0`) and ridge (`0.0`)
-penalties.
+unstable. `CoxNet` fits an elastic-net penalized Cox model: it shrinks the coefficients and, for the
+lasso, sets some of them to exactly zero, which selects variables. The `penalizer` argument sets the
+overall strength, and `l1_ratio` mixes the lasso (`1.0`) and ridge (`0.0`) penalties.
 
 ```{python}
 # Load data and build the response
@@ -497,11 +513,11 @@ lasso = gw.CoxNet(penalizer=0.05, l1_ratio=1.0).fit(y, lung[cols])
 lasso
 ```
 
-The printed summary reports how many coefficients survived: the lasso has driven the weakest
-ones to exactly zero, leaving a smaller model. A pure ridge penalty (`l1_ratio=0.0`) instead
-shrinks every coefficient toward zero without removing any. Because penalized estimates are
-biased on purpose, `CoxNet` reports coefficients for prediction and selection but not
-p-values, and with `penalizer=0` it reduces to the ordinary Cox fit.
+The printed summary reports how many coefficients survived: the lasso has driven the weakest ones to
+exactly zero, leaving a smaller model. A pure ridge penalty (`l1_ratio=0.0`) instead shrinks every
+coefficient toward zero without removing any. Because penalized estimates are biased on purpose,
+`CoxNet` reports coefficients for prediction and selection but not p-values, and with `penalizer=0`
+it reduces to the ordinary Cox fit.
 
 ### Choosing the penalty by cross-validation
 
@@ -579,10 +595,10 @@ and use them exactly as you would from `CoxPH`.
 
 ## Baseline hazard with confidence intervals
 
-The baseline hazard is the estimated hazard rate for a reference subject with all covariates
-at their mean values. It describes the underlying risk trajectory estimated by the model and is
-useful for predictions and visualization. While the point estimate is always available,
-confidence intervals quantify the uncertainty in the baseline hazard estimate.
+The baseline hazard is the estimated hazard rate for a reference subject with all covariates at
+their mean values. It describes the underlying risk trajectory estimated by the model and is useful
+for predictions and visualization. While the point estimate is always available, confidence
+intervals quantify the uncertainty in the baseline hazard estimate.
 
 You can retrieve the baseline hazard with confidence intervals using the `ci=True` parameter:
 
@@ -611,14 +627,14 @@ The returned DataFrame includes:
 
 The `conf_type=` parameter controls the confidence interval transform:
 
-- `"log-log"` (default): uses a log-log transformation that ensures bounds respect the
-survival probability constraint (staying between `0` and `1`). Recommended for most applications.
-- `"plain"`: Wald confidence intervals without transformation. Simpler but may produce
-invalid bounds (negative cumulative hazard or survival > 1).
+- `"log-log"` (default): uses a log-log transformation that ensures bounds respect the survival
+probability constraint (staying between `0` and `1`). Recommended for most applications.
+- `"plain"`: Wald confidence intervals without transformation. Simpler but may produce invalid
+bounds (negative cumulative hazard or survival > 1).
 
 The baseline hazard can be combined with individual predictions to compute personalized survival
-curves with uncertainty bands. For stratified models, each stratum has its own baseline hazard
-and corresponding confidence intervals.
+curves with uncertainty bands. For stratified models, each stratum has its own baseline hazard and
+corresponding confidence intervals.
 
 ```{python}
 # For stratified models, each stratum gets its own baseline hazard and CI
@@ -633,10 +649,9 @@ baseline_strat
 
 You can now fit a Cox model, read hazard ratios, and assess overall fit.
 
-- [Cox model diagnostics](09-cox-diagnostics.qmd) checks the proportional hazards
-assumption, computes residuals, predicts survival curves, and adds robust variance and
-stratification.
-- [Parametric survival models](10-parametric-models.qmd) offers an alternative modeling
-approach when you are willing to specify the shape of the survival distribution.
+- [Cox model diagnostics](09-cox-diagnostics.qmd) checks the proportional hazards assumption,
+computes residuals, predicts survival curves, and adds robust variance and stratification.
+- [Parametric survival models](10-parametric-models.qmd) offers an alternative modeling approach
+when you are willing to specify the shape of the survival distribution.
 - [Prediction performance](13-prediction-performance.qmd) evaluates how well a fitted model
 discriminates and calibrates.
