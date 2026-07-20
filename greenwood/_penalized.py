@@ -18,6 +18,7 @@ reduces to the ordinary `CoxPH` (Breslow) fit.
 
 from __future__ import annotations
 
+import warnings
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -29,7 +30,7 @@ from ._cox import _cox_terms, _design_matrix
 if TYPE_CHECKING:
     from ._surv import Surv
 
-__all__ = ["CoxNet"]
+__all__ = ["CoxNet", "CoxNetCVResult", "cv_coxnet"]
 
 Array = npt.NDArray[Any]
 
@@ -145,17 +146,17 @@ class CoxNet:
     def fit(self, surv: Surv, covariates: Any, *, data: Any = None) -> CoxNet:
         r"""Fit the elastic-net penalized Cox model to survival data.
 
-        Fits a Cox proportional-hazards model with elastic-net penalty (L1 + L2
-        regularization) to a right-censored or counting-process response and covariates.
-        The penalty shrinks coefficients toward zero, selecting a sparse subset of important
-        variables (when L1 dominates) or smoothly shrinking all coefficients (when L2
-        dominates). An intercept is added automatically.
+        Fits a Cox proportional-hazards model with elastic-net penalty (L1 + L2 regularization) to a
+        right-censored or counting-process response and covariates. The penalty shrinks coefficients
+        toward zero, selecting a sparse subset of important variables (when L1 dominates) or
+        smoothly shrinking all coefficients (when L2 dominates). An intercept is added
+        automatically.
 
-        The CoxNet model is useful for high-dimensional covariate spaces where unpenalized
-        Cox fails to converge or produces unstable estimates. It maintains the
-        proportional-hazards interpretation of hazard ratios while controlling model
-        complexity. Tuning the `penalizer` strength and `l1_ratio` mixing parameter enables
-        variable selection and regularized estimation.
+        The CoxNet model is useful for high-dimensional covariate spaces where unpenalized Cox fails
+        to converge or produces unstable estimates. It maintains the proportional-hazards
+        interpretation of hazard ratios while controlling model complexity. Tuning the `penalizer`
+        strength and `l1_ratio` mixing parameter enables variable selection and regularized
+        estimation.
 
         Parameters
         ----------
@@ -180,16 +181,16 @@ class CoxNet:
         The elastic-net penalty is $\lambda(\alpha L_1 + (1 - \alpha) L_2)$, where
         $\lambda$ = `penalizer` and $\alpha$ = `l1_ratio`. Setting `l1_ratio=1` gives lasso
         ($L_1$ only, induces sparsity); `l1_ratio=0` gives ridge ($L_2$ only, smooth
-        shrinkage); intermediate values blend both effects.
+        shrinkage); and intermediate values blend both effects.
 
-        Estimation uses proximal gradient descent (FISTA) to optimize the penalized
-        partial likelihood. Covariates are centered and optionally standardized before
-        fitting; standardization affects the penalty scale but not the fitted hazard ratios.
+        Estimation uses proximal gradient descent (FISTA) to optimize the penalized partial
+        likelihood. Covariates are centered and optionally standardized before fitting.
+        Standardization affects the penalty scale but not the fitted hazard ratios.
 
         Examples
         --------
-        Fit a ridge-penalized Cox model (L2 penalty, smooth shrinkage) on the bundled
-        `lung` dataset:
+        Fit a ridge-penalized Cox model (L2 penalty, smooth shrinkage) on the included `lung`
+        dataset:
 
         ```{python}
         import greenwood as gw
@@ -301,29 +302,29 @@ class CoxNet:
     ) -> Any:
         r"""Predict log-hazard, risk, or survival probabilities from the penalized Cox model.
 
-        Generates predictions from a fitted elastic-net penalized Cox model. Pass `newdata=None`
-        to predict for the training data (fitted subjects).
+        Generates predictions from a fitted elastic-net penalized Cox model. Pass `newdata=None` to
+        predict for the training data (fitted subjects).
 
         Three prediction types are available:
 
         1. **Linear predictor** (`type="lp"`): the centered log-hazard $X\beta$, a risk score
-           showing how covariates affect hazard. Higher values indicate higher risk. Centered
-           means the baseline is set such that $\exp(\text{lp}) = 1$ for an average subject
-           (average covariate values).
+        showing how covariates affect hazard. Higher values indicate higher risk. Centered means the
+        baseline is set such that $\exp(\text{lp}) = 1$ for an average subject (average covariate
+        values).
 
-        2. **Risk** (`type="risk"`): the relative hazard $\exp(\text{lp})$, comparing each
-           subject's hazard to the baseline (average). A value of 2.0 means 2x baseline hazard.
+        2. **Risk** (`type="risk"`): the relative hazard $\exp(\text{lp})$, comparing each subject's
+        hazard to the baseline (average). A value of `2.0` means 2x baseline hazard.
 
         3. **Survival** (`type="survival"`): survival probabilities $S(t \mid x)$ at specified
-           times, returned as a DataFrame. Uses the baseline cumulative hazard from the training
-           data and applies the covariate adjustment via relative risk.
+        times, returned as a DataFrame. Uses the baseline cumulative hazard from the training data
+        and applies the covariate adjustment via relative risk.
 
         Parameters
         ----------
         newdata
             Covariate values for prediction. A dataframe (Pandas or Polars), 2-D array, or
-            None (default). If `None`, uses the training data (design matrix used at fit time).
-            Must have the same columns/features as the training data. Covariates are centered
+            `None` (the default). If `None`, uses the training data (design matrix used at fit
+            time). Must have the same columns/features as the training data. Covariates are centered
             using the centering from the training data.
         type
             Prediction type (default `"lp"`):
@@ -331,24 +332,24 @@ class CoxNet:
             - `"lp"`: Centered linear predictor $X\beta$ (log-hazard). Returns an array.
             - `"risk"`: Relative risk $\exp(\text{lp})$. Returns an array (always positive).
             - `"survival"`: Survival probabilities $S(t \mid x)$ at times in `times`. Returns a
-              frame with `time` column and one column per subject.
+            DataFrame with the `time` column and one column per subject.
         times
-            Query times for `type="survival"` (ignored for other types). An array-like of
-            floats. If `None` (the default), uses the event times from the training data
-            (baseline cumulative hazard times).
+            Query times for `type="survival"` (ignored for other types). An array-like of floats. If
+            `None` (the default), uses the event times from the training data (baseline cumulative
+            hazard times).
         format
-            Output format for the returned frame (`type="survival"`): `None` (default),
-            `"pandas"`, `"polars"`, or `"pyarrow"`. When `None`, a backend is auto-detected
-            (Polars, then Pandas, then PyArrow). Ignored for `type="lp"` and `type="risk"`.
+            Output format for the returned frame (`type="survival"`): `None` (default), `"pandas"`,
+            `"polars"`, or `"pyarrow"`. When `None`, a backend is auto-detected (Polars, then
+            Pandas, then PyArrow). Ignored for `type="lp"` and `type="risk"`.
 
         Returns
         -------
         ndarray or DataFrame
-            For `type="lp"` or `type="risk"`: an array of shape (n_subjects,) containing
-            centered log-hazard or relative risk values respectively. For `type="survival"`:
-            a DataFrame with columns `time` (query times) and `subject_1`, `subject_2`, etc.
-            containing survival probabilities at each time. Column names match the input row
-            index if `newdata` has a row index.
+            For `type="lp"` or `type="risk"`: an array of shape (n_subjects,) containing centered
+            log-hazard or relative risk values respectively. For `type="survival"`: a DataFrame with
+            columns `time` (query times) and `subject_1`, `subject_2`, etc. containing survival
+            probabilities at each time. Column names match the input row index if `newdata` has a
+            row index.
 
         Raises
         ------
@@ -359,18 +360,17 @@ class CoxNet:
         -------
         The penalized Cox model estimates $\exp(\text{lp})$ as a multiplier on the baseline
         cumulative hazard: $H(t \mid x) = H_0(t)\,\exp(\text{lp})$. Survival is then
-        $S(t \mid x) = \exp(-H(t \mid x))$. The baseline cumulative hazard $H_0(t)$ is
-        estimated using the Breslow estimator from the training data, and is fixed for new
-        predictions.
+        $S(t \mid x) = \exp(-H(t \mid x))$. The baseline cumulative hazard $H_0(t)$ is estimated
+        using the Breslow estimator from the training data, and is fixed for new predictions.
 
-        Centering ensures that the linear predictor at the average covariate level is 0,
-        making relative risks and survival curves interpretable. Predictions assume the model
-        is well-specified and that the proportional-hazards assumption holds.
+        Centering ensures that the linear predictor at the average covariate level is 0, making
+        relative risks and survival curves interpretable. Predictions assume the model is
+        well-specified and that the proportional-hazards assumption holds.
 
         Examples
         --------
-        The default `type="lp"` returns the centered linear predictor (log-hazard). Here are
-        the values for the first five subjects:
+        The default `type="lp"` returns the centered linear predictor (log-hazard). Here are the
+        values for the first five subjects:
 
         ```{python}
         import greenwood as gw
@@ -389,8 +389,8 @@ class CoxNet:
         coxnet.predict(lung[cols], type="risk")[:5]
         ```
 
-        Pass `type="survival"` for predicted survival curves at specified times or at the
-        event times from training data; pass `format=` to choose the backend (here, Polars):
+        Pass `type="survival"` for predicted survival curves at specified times or at the event
+        times from training data. Pass `format=` to choose the backend (here, Polars):
 
         ```{python}
         coxnet.predict(lung[cols][:2], type="survival", times=[180, 365], format="polars")
@@ -424,14 +424,14 @@ class CoxNet:
     def to_frame(self, *, format: str | None = None) -> Any:
         """Return the penalized coefficient table as a DataFrame.
 
-        Exports one row per term with the penalized coefficient estimate and its hazard
-        ratio. Terms set to zero by the lasso remain in the table with zero estimates.
+        Exports one row per term with the penalized coefficient estimate and its hazard ratio. Terms
+        set to zero by the lasso remain in the table with zero estimates.
 
         Parameters
         ----------
         format
-            Output format: `None` (default), `"pandas"`, `"polars"`, or `"pyarrow"`. When
-            `None`, a backend is auto-detected (Polars, then Pandas, then PyArrow).
+            Output format: `None` (default), `"pandas"`, `"polars"`, or `"pyarrow"`. When `None`, a
+            backend is auto-detected (Polars, then Pandas, then PyArrow).
 
         Returns
         -------
@@ -441,8 +441,7 @@ class CoxNet:
         Raises
         ------
         ImportError
-            If the requested (or, when auto-detecting, any) DataFrame library is not
-            installed.
+            If the requested (or, when auto-detecting, any) DataFrame library is not installed.
 
         Examples
         --------
