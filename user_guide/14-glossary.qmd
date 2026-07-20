@@ -95,6 +95,24 @@ Counting-process form
   0$) and **time-varying covariates** (a subject contributes multiple rows with $s_i$ = end
   of previous interval). Built with `Surv.counting(start, stop, event)`.
 
+Covariate
+: A measured characteristic of a subject (also called a predictor, feature, or independent variable)
+  used to explain or predict variation in survival outcomes. In a regression model such as `CoxPH`
+  or `AFT`, each covariate has an associated coefficient $\beta_j$ whose exponentiated value
+  $e^{\beta_j}$ is the **hazard ratio** (or acceleration factor in AFT) for a one-unit increase in
+  that variable. Covariates are passed as the `X` argument to `model.fit(y, X)`.
+
+  Covariates are distinct from **strata**. A covariate enters the model parametrically: its effect
+  is summarized by a single estimated coefficient that applies uniformly across all subjects, and
+  the model assumes that effect is constant over time (the **proportional hazards assumption**). A
+  stratification variable, by contrast, is handled non-parametrically: a completely separate
+  **baseline hazard** is estimated for each stratum, allowing the hazard shape to differ freely
+  between groups. The practical consequence is that stratification absorbs a variable's effect
+  rather than quantifying it (you get no coefficient or hazard ratio for a stratification variable).
+  Use stratification when a variable's time-varying effect violates proportional hazards and you do
+  not need to estimate its magnitude. Use a covariate when you want an interpretable effect
+  estimate. See also **stratification**.
+
 Cox proportional hazards model
 : A semi-parametric regression model that expresses the hazard as $h(t \mid x) = h_0(t)
   \exp(\beta^\top x)$, where $h_0(t)$ is an unspecified baseline hazard and $\exp(\beta_j)$
