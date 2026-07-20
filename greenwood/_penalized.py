@@ -498,7 +498,7 @@ def _lambda_max_cox(
 
 
 class CoxNetCVResult:
-    r"""Result of cross-validated penalizer selection for :class:`CoxNet`.
+    r"""Result of cross-validated penalizer selection for `CoxNet`.
 
     Returned by `cv_coxnet()`. Stores the cross-validation scores at every tested penalizer value,
     identifies the best penalizer (highest concordance or lowest Brier score), and applies the
