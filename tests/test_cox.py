@@ -600,3 +600,34 @@ def test_weight_invariance_many_covariates(lung_surv) -> None:  # type: ignore[n
     cox_weighted = CoxPH().fit(y_weighted, df[covariates])
 
     np.testing.assert_allclose(cox_weighted.coef_, coef_unweighted, rtol=1e-10)
+
+
+def test_poorly_scaled_covariates_warns() -> None:
+    """CoxPH.fit() should warn when covariates have very different standard deviations."""
+
+    import numpy as np
+
+    lung = gw.load_dataset("lung", backend="pandas")
+    y = Surv.right(lung["time"], event=(lung["status"] == 2))
+
+    # 'age' has std ~10; add an independent covariate with std ~10,000 (income-like).
+    # Using a random column ensures no collinearity with age.
+    rng = np.random.default_rng(99)
+    x = lung[["age"]].copy()
+    x["income"] = rng.normal(50_000, 15_000, size=len(lung))  # std ~15,000
+
+    with pytest.warns(UserWarning, match="very different scales"):
+        CoxPH().fit(y, x)
+
+
+def test_well_scaled_covariates_no_warning() -> None:
+    """CoxPH.fit() should not warn when covariates are on comparable scales."""
+    import warnings
+
+    lung = gw.load_dataset("lung", backend="pandas")
+    y = Surv.right(lung["time"], event=(lung["status"] == 2))
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", UserWarning)
+        # age (std ~10) and sex (std ~0.5): ratio ~20, well below the 100 threshold
+        CoxPH().fit(y, lung[["age", "sex"]])
