@@ -128,6 +128,17 @@ CoxNet
   Useful when the number of covariates is large relative to the number of events. Available
   via `CoxNet`.
 
+Cross-validation (k-fold)
+: A resampling procedure for estimating model performance or selecting hyperparameters. The
+  data are partitioned into $k$ roughly equal-sized folds; the model is trained on $k - 1$
+  folds and evaluated on the held-out fold, rotating through all $k$ folds so every
+  observation is used for evaluation exactly once. The $k$ evaluation scores are then averaged
+  to give a single performance estimate. In survival analysis, **stratified** k-fold splits
+  preserve the event rate across folds so that no fold is dominated by censored observations.
+  In Greenwood, `cv_coxnet()` uses k-fold cross-validation to select the optimal
+  **penalizer** for `CoxNet` by maximising concordance or minimising the integrated Brier
+  score.
+
 Cumulative hazard function
 : The integral of the hazard function over time: $H(t) = \int_0^t h(u)\,du$. It is related
   to the survival function by $S(t) = \exp(-H(t))$. The **Nelson-Aalen estimator** targets
@@ -180,11 +191,31 @@ Efron approximation
   simpler **Breslow** approximation when ties are frequent. It is the default in R's
   `coxph()` and in Greenwood's `CoxPH` (`ties="efron"`).
 
+Elastic-net penalty
+: A regularization penalty that blends **lasso** (L1) and **ridge** (L2) penalties:
+  $\lambda[\alpha \|\beta\|_1 + (1 - \alpha)\|\beta\|_2^2]$, where $\lambda$ is the overall
+  regularization strength (the **penalizer**) and $\alpha$ (the `l1_ratio`) is the mixing
+  parameter. Setting $\alpha = 1$ gives pure lasso; $\alpha = 0$ gives pure ridge. Values
+  strictly between 0 and 1 blend both penalties: lasso's sparsity (some coefficients are
+  driven exactly to zero) is combined with ridge's stability when predictors are correlated.
+  The elastic-net is the penalty used by Greenwood's `CoxNet`, with `l1_ratio=1.0` (lasso)
+  as the default.
+
 Fine-Gray model
 : A regression model for competing-risks data based on the **subdistribution hazard** of a
   specific cause. It models how covariates affect the cumulative incidence function directly,
   rather than the cause-specific hazard. Implemented in Greenwood as `FineGray`, which accepts
   a multi-state `Surv` response and a target cause.
+
+FISTA (Fast Iterative Shrinkage-Thresholding Algorithm)
+: A proximal gradient optimization algorithm used to minimize composite objectives of the
+  form $f(\beta) + g(\beta)$, where $f$ is a smooth, differentiable loss (such as the
+  negative Cox partial likelihood) and $g$ is a convex but non-smooth penalty (such as the
+  lasso L1 term). FISTA extends basic proximal gradient descent with a Nesterov-style
+  momentum correction that accelerates convergence from $O(1/k)$ to $O(1/k^2)$ in the
+  objective value, where $k$ is the iteration count. In Greenwood, FISTA is the solver
+  underlying `CoxNet` and `max_iter=` and `tol=` control the iteration limit and convergence
+  tolerance for each inner fit during **cross-validation** and the final model.
 
 Fleming-Harrington test
 : A family of weighted log-rank tests parameterized by $(\rho, \gamma)$ that apply time-varying
@@ -339,6 +370,16 @@ Partial likelihood
   observed event times and considers only the identity of the subject who had the event
   relative to those still at risk, thereby eliminating the unspecified **baseline hazard**
   from the estimation.
+
+Penalizer
+: The regularization strength parameter $\lambda$ that scales the penalty added to a model's
+  log-likelihood. A larger penalizer shrinks coefficients more aggressively toward zero,
+  increasing bias but reducing variance and guarding against overfitting; a penalizer of zero
+  recovers the unpenalized model. In Greenwood's `CoxNet` the penalizer is the primary tuning
+  parameter, and `cv_coxnet()` selects it automatically via **cross-validation** over a
+  log-spaced grid spanning from a data-derived maximum ($\lambda_{\max}$, below which at
+  least one coefficient becomes non-zero) down to `eps * lambda_max`. See also
+  **elastic-net penalty**, **lasso**, and **ridge**.
 
 Proportional hazards assumption
 : The assumption in the Cox model that the hazard ratio between any two subjects is constant
