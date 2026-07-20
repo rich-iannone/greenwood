@@ -132,3 +132,34 @@ def test_cross_validate_stratified_parameter(lung, y) -> None:
     # Results may be different due to different fold assignments, but both valid
     assert all(0.4 < s < 1.0 for s in r_strat["scores"])
     assert all(0.4 < s < 1.0 for s in r_random["scores"])
+
+
+def test_low_event_rate_warns(lung, y) -> None:
+    """cross_validate should warn when there are very few events relative to k."""
+    # Build a highly imbalanced dataset: 200 subjects, only 6 events.
+    rng = np.random.default_rng(0)
+    n = 200
+    time = rng.exponential(500, size=n)
+    event = np.zeros(n, dtype=bool)
+    event[rng.choice(n, size=6, replace=False)] = True  # 3% event rate
+    y_sparse = Surv.right(time, event=event)
+    x_sparse = rng.standard_normal((n, 2))
+
+    with pytest.warns(UserWarning, match="fewer than 2"):
+        cross_validate(gw.CoxPH(), y_sparse, x_sparse, k=5, seed=1)
+
+
+def test_imbalanced_data_no_error(lung, y) -> None:
+    """cross_validate on low-event data should produce valid scores (not crash)."""
+    rng = np.random.default_rng(42)
+    n = 300
+    time = rng.exponential(400, size=n)
+    event = np.zeros(n, dtype=bool)
+    # ~8% event rate — just above the 2*k=10 threshold for k=5
+    event[rng.choice(n, size=25, replace=False)] = True
+    y_sparse = Surv.right(time, event=event)
+    x_sparse = rng.standard_normal((n, 2))
+
+    result = cross_validate(gw.CoxPH(), y_sparse, x_sparse, k=5, seed=42)
+    assert len(result["scores"]) == 5
+    assert all(np.isfinite(s) for s in result["scores"])

@@ -8,6 +8,7 @@ using the censoring-aware metrics in `greenwood._metrics`.
 from __future__ import annotations
 
 import copy
+import warnings
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -305,6 +306,22 @@ def cross_validate(
         if stratified
         else np.array_split(np.random.default_rng(seed).permutation(surv.n), k)
     )
+
+    # Warn when there are very few events relative to the number of folds.  With fewer
+    # than k events in total, some test folds will contain zero events, making concordance
+    # undefined and Brier score unreliable.  The practical threshold for a reliable
+    # per-fold estimate is at least ~5 events per fold, so we warn at < 2 * k.
+    n_events = int(surv.event.astype(bool).sum())
+    if n_events < 2 * k:
+        warnings.warn(
+            f"Only {n_events} events found for {k}-fold cross-validation "
+            f"(fewer than 2 × k = {2 * k}). "
+            "Some folds may contain too few events for reliable evaluation. "
+            "Consider reducing k or collecting more data with observed events.",
+            UserWarning,
+            stacklevel=2,
+        )
+
     scores: list[float] = []
     for i in range(k):
         test = folds[i]

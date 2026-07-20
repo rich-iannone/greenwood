@@ -528,6 +528,26 @@ class CoxPH:
         if not event.any():
             raise ValueError("No events remain after dropping missing rows.")
 
+        # Warn when covariates are on wildly different scales. Poorly-scaled inputs can slow or
+        # prevent Newton-Raphson convergence and inflate coefficient standard errors. We check the
+        # ratio of the largest to smallest non-constant column standard deviation; a ratio above 100
+        # is a strong signal that at least one column needs rescaling.
+        if x.shape[1] > 0:
+            col_stds = x.std(axis=0)
+            varying = col_stds[col_stds > 0]
+            if varying.size >= 2:
+                scale_ratio = float(varying.max() / varying.min())
+                if scale_ratio > 100:
+                    warnings.warn(
+                        f"Covariates appear to be on very different scales "
+                        f"(max/min standard deviation ratio: {scale_ratio:.0f}). "
+                        "Consider standardizing covariates before fitting (e.g. subtract the "
+                        "mean and divide by the standard deviation) to improve numerical "
+                        "stability and convergence.",
+                        UserWarning,
+                        stacklevel=2,
+                    )
+
         # Group members by stratum (a single group when unstratified).
         # Check for counting-process data with subjects not starting at time 0
         # (a common data preparation error when converting from calendar time)
