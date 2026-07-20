@@ -198,6 +198,66 @@ data, which is exactly the optimism we are trying to remove. Set `metric="brier"
 of `times` to cross-validate the integrated Brier score instead, and the same call works for
 an `AFT` model.
 
+```{python}
+gw.cross_validate(
+    gw.CoxPH(), y, lung[["age", "sex"]], k=5,
+    metric="brier", times=[180, 365, 540], seed=23
+)
+```
+
+### Stratified folds for imbalanced data
+
+By default, `cross_validate()` uses stratified k-fold splitting. Rather than randomly assigning
+subjects to folds, it groups subjects by event status first, then draws from each group
+proportionally. This ensures that each fold contains roughly the same fraction of events as the
+overall dataset.
+
+This matters whenever events are rare. In a dataset where only 10% of subjects have the event, pure
+random splitting could easily put all events in one fold and none in another, leaving training sets
+without enough events to fit the model at all. Stratification prevents that. You can opt out with
+`stratified=False`, but there is rarely a good reason to.
+
+::: {.callout-warning}
+## Watch the event count
+
+`cross_validate()` warns when the total number of events is less than twice the number of folds. At
+that point, some test folds will contain only one event, making per-fold scores unreliable:
+
+```
+UserWarning: Only 6 events found for 5-fold cross-validation
+(fewer than 2 × k = 10). Some folds may contain too few events
+for reliable evaluation. Consider reducing k or collecting more
+data with observed events.
+```
+
+If you see this warning, either reduce `k=` to match the event count (e.g., `k=3` with 6 events) or
+treat the cross-validated scores with caution.
+:::
+
+### Comparing models
+
+Cross-validation is most useful as a comparison tool. Fit the same folds on two competing models,
+keeping the same `seed`, and compare their mean scores directly. The model with higher mean
+concordance (or lower mean Brier score) generalizes better to unseen subjects.
+
+```{python}
+lung = gw.load_dataset("lung", backend="polars")
+y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+
+cols_simple = lung[["age", "sex"]]
+cols_full = lung[["age", "sex", "ph.ecog"]]
+
+simple_cv = gw.cross_validate(gw.CoxPH(), y, cols_simple, seed=1)
+full_cv = gw.cross_validate(gw.CoxPH(), y, cols_full, seed=1)
+
+print(f"Simple model  C-index: {simple_cv['mean']:.3f} ± {simple_cv['std']:.3f}")
+print(f"Full model    C-index: {full_cv['mean']:.3f} ± {full_cv['std']:.3f}")
+```
+
+The standard deviation across folds gives a rough sense of how stable the estimate is. Large
+fold-to-fold variation (relative to the difference between models) means the data do not contain
+enough information to reliably distinguish the two models on this metric alone.
+
 ## Calibration
 
 Discrimination and the Brier score both summarize a model in a single number. Calibration
