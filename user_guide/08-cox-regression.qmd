@@ -503,22 +503,78 @@ shrinks every coefficient toward zero without removing any. Because penalized es
 biased on purpose, `CoxNet` reports coefficients for prediction and selection but not
 p-values, and with `penalizer=0` it reduces to the ordinary Cox fit.
 
-The penalty strength is usually chosen by cross-validation. `cross_validate` accepts a
-`CoxNet` directly, so you can compare candidate values by held-out concordance.
+### Choosing the penalty by cross-validation
+
+Rather than guessing a penalizer value, you can use `cv_coxnet()` to search a full log-spaced grid
+automatically. It runs stratified k-fold cross-validation across all candidate values and returns
+the one with the best held-out performance.
 
 ```{python}
-# Choose the penalty strength by 5-fold cross-validated concordance
-for lam in [0.02, 0.05, 0.1]:
-    cv = gw.cross_validate(gw.CoxNet(penalizer=lam, l1_ratio=1.0), y, lung[cols], k=5, seed=1)
-    print(f"penalizer={lam}: CV concordance = {cv['mean']:.4f}")
+# Search a 50-value log-spaced lambda path with 5-fold CV (lasso, concordance metric)
+cv_result = gw.cv_coxnet(y, lung[cols], l1_ratio=1.0, seed=23)
+cv_result
+```
+
+The summary shows two selected penalizers. The **best penalizer** maximises the mean concordance
+across folds. The **1-SE penalizer** is the largest value (most regularized, fewest non-zero
+coefficients) whose mean concordance falls within one standard error of the best (following the 1-SE
+rule). It often produces a sparser, more interpretable model at no meaningful loss of predictive
+accuracy.
+
+Inspect the full path as a tidy DataFrame to see how the score and sparsity evolve:
+
+```{python}
+# All 50 tested values: penalizer, mean CV score, its SD, and mean non-zero count
+cv_result.to_frame(format="polars")
+```
+
+Once you have selected a penalizer, fit the final model on all of the data:
+
+```{python}
+# Fit a final lasso model at the best CV penalizer
+final_lasso = gw.CoxNet(penalizer=cv_result.best_penalizer_, l1_ratio=1.0).fit(y, lung[cols])
+final_lasso
+```
+
+To prefer parsimony, use the 1-SE penalizer instead:
+
+```{python}
+# Sparser model: same l1_ratio, stricter regularisation
+sparse_lasso = gw.CoxNet(penalizer=cv_result.penalizer_1se_, l1_ratio=1.0).fit(y, lung[cols])
+sparse_lasso
+```
+
+::: {.callout-tip}
+## The 1-SE rule
+
+The `best_penalizer_` minimises the CV error. `penalizer_1se_` is the largest penalizer whose mean
+score is within one standard error of the minimum (the *1-SE rule*). It gives a sparser, more
+interpretable model whose performance is statistically indistinguishable from the best in terms of
+fold-to-fold variability. When in doubt, prefer `penalizer_1se_` for final reporting.
+:::
+
+The `cv_coxnet()` function also supports the Brier score metric for calibration-focused tuning. Pass
+`metric="brier"` together with evaluation time points:
+
+```{python}
+# Tune for calibration (integrated Brier score) instead of discrimination
+cv_brier = gw.cv_coxnet(
+    y,
+    lung[cols],
+    l1_ratio=1.0,
+    metric="brier",
+    times=[180, 365, 540],
+    seed=23,
+)
+cv_brier
 ```
 
 ::: {.callout-note}
 ## Standardization
 
-`CoxNet` standardizes covariates to unit variance before applying the penalty, as glmnet
-does, so that the penalty treats variables on comparable scales. Coefficients are returned on
-the original scale, so you read and use them exactly as you would from `CoxPH`.
+`CoxNet` standardizes covariates to unit variance before applying the penalty so that the penalty
+treats variables on comparable scales. Coefficients are returned on the original scale, so you read
+and use them exactly as you would from `CoxPH`.
 :::
 
 ## Baseline hazard with confidence intervals

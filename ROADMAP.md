@@ -21,7 +21,6 @@ Robust cross-validation and performance assessment for imbalanced survival data.
 
 Systematic confidence interval and standard error support across all estimators.
 
-- Confidence intervals for Cox model coefficients and hazard ratios (analytical)
 - Standard errors and CIs for parametric model predictions
 - Bootstrap and analytical methods for uncertainty quantification
 - Predictive intervals for time-varying Cox model forecasts
@@ -56,16 +55,13 @@ Extended testing of the Cox model assumptions.
 
 - `cox_zph` with Kaplan-Meier and rank-based time transforms
 - Time-stratified tests for non-proportional hazards
-- Robust sandwich variance for model misspecification
 
 ### Flexible Parametric Models
 
 Semi-parametric and parametric spline-based hazard regression.
 
-- Royston-Parmar restricted cubic spline models for hazard and survival
 - Piecewise exponential models with optimal knot selection
 - Generalized gamma regression (encompasses Weibull, log-normal, exponential)
-- Parametric predictions: survival, hazard, and quantiles at arbitrary times
 
 ---
 
@@ -91,12 +87,12 @@ Extended methods for cause-specific and multi-state analyses.
 - Pseudo-observation approach for CIF and multi-state occupancy regression
 - Custom estimands via pseudo-observations framework
 
-### Frailty and Penalized Regression
+### Frailty Models
 
-Random-effects and regularized Cox models.
+Random-effects Cox models for correlated survival data.
 
 - **Cox shared frailty model** (random cluster-level intercept) for repeated-events,
-  multi-centre, or familial data where within-cluster correlation must be modelled, not
+  multi-centre, or familial data where within-cluster correlation must be modeled, not
   merely accounted for via robust SEs (`cluster=`)
 - **Gamma shared frailty** (first priority): the conjugate prior allows analytic
   marginalization (estimation via EM algorithm or penalized partial likelihood with an outer
@@ -105,16 +101,12 @@ Random-effects and regularized Cox models.
   Laplace approximation over the random effects (analogous to `coxme` in R)
 - Frailty variance estimation, inference, and likelihood-ratio test for $\theta = 0$
 - Conditional and marginal predictions for known and new clusters
-- Elastic-net Cox regression (ridge, lasso, elastic-net) for high-dimensional covariates
-- Regularization parameter selection via cross-validation
 
 ### Advanced Performance Metrics
 
 Discrimination and calibration assessment beyond point-in-time.
 
-- Time-dependent AUC (area under cumulative/dynamic ROC curve)
 - Integrated discrimination improvement (IDI) and net reclassification improvement (NRI)
-- Calibration curves and calibration-in-the-large over follow-up time
 - Time-dependent Brier score refinements and sensitivity analyses
 
 ### Platform & Interop

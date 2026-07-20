@@ -674,7 +674,7 @@ def integrated_auc(surv: Surv, marker: Any, times: Any) -> float:
         Risk score for each subject. Higher values indicate higher risk.
     times
         Evaluation times (at least 2). The integrated AUC is computed as the area under the
-        AUC curve from `times[0]` to `times[-1]`, normalised by the time span. `nan` time
+        AUC curve from `times[0]` to `times[-1]`, normalized by the time span. `nan` time
         points (no cases or controls) are dropped before integration.
 
     Returns

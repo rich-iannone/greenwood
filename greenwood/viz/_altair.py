@@ -59,7 +59,7 @@ def _darken(hex_color: str, factor: float = 0.62) -> str:
 def _require_altair() -> Any:
     try:
         import altair as alt  # pyright: ignore[reportMissingImports]
-    except ImportError as exc:  # pragma: no cover - exercised only without the extra
+    except ImportError as exc:  # pragma: no cover (exercised only without the extra)
         raise ImportError(
             "Altair visualization requires altair. Install it with `pip install greenwood[altair]`."
         ) from exc

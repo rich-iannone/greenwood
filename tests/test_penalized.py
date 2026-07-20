@@ -104,3 +104,107 @@ def test_invalid_arguments() -> None:
         CoxNet(penalizer=-1.0)
     with pytest.raises(ValueError, match="l1_ratio"):
         CoxNet(l1_ratio=2.0)
+
+
+# ---------------------------------------------------------------------------
+# cv_coxnet tests
+# ---------------------------------------------------------------------------
+
+from greenwood import CoxNetCVResult, cv_coxnet  # noqa: E402
+
+
+def test_cv_coxnet_returns_valid_result(data) -> None:  # type: ignore[no-untyped-def]
+    y, x = data
+    result = cv_coxnet(y, x, l1_ratio=1.0, n_penalizers=20, k=3, seed=0)
+    assert isinstance(result, CoxNetCVResult)
+    assert len(result.penalizers_) == 20
+    assert len(result.mean_scores_) == 20
+    assert len(result.std_scores_) == 20
+    assert len(result.n_nonzero_) == 20
+    assert result.metric_ == "concordance"
+    assert result.l1_ratio_ == 1.0
+    assert result.k_ == 3
+
+
+def test_cv_coxnet_path_is_sorted_descending(data) -> None:  # type: ignore[no-untyped-def]
+    y, x = data
+    result = cv_coxnet(y, x, l1_ratio=1.0, n_penalizers=20, k=3, seed=0)
+    assert np.all(np.diff(result.penalizers_) <= 0), "penalizers_ must be sorted descending"
+
+
+def test_cv_coxnet_best_penalizer_in_path(data) -> None:  # type: ignore[no-untyped-def]
+    y, x = data
+    result = cv_coxnet(y, x, l1_ratio=1.0, n_penalizers=20, k=3, seed=0)
+    assert result.best_penalizer_ in result.penalizers_
+
+
+def test_cv_coxnet_1se_penalizer_ge_best(data) -> None:  # type: ignore[no-untyped-def]
+    """1-SE penalizer is >= best penalizer (more regularized / sparser)."""
+    y, x = data
+    result = cv_coxnet(y, x, l1_ratio=1.0, n_penalizers=20, k=3, seed=0)
+    assert result.penalizer_1se_ >= result.best_penalizer_
+
+
+def test_cv_coxnet_scores_in_valid_range(data) -> None:  # type: ignore[no-untyped-def]
+    y, x = data
+    result = cv_coxnet(y, x, l1_ratio=1.0, n_penalizers=20, k=3, seed=0)
+    assert np.all((result.mean_scores_ >= 0) & (result.mean_scores_ <= 1))
+    assert np.all(result.std_scores_ >= 0)
+    assert np.all(result.n_nonzero_ >= 0)
+
+
+def test_cv_coxnet_n_nonzero_decreases_with_penalizer(data) -> None:  # type: ignore[no-untyped-def]
+    """More regularisation (larger lambda) should not increase non-zero count on average."""
+    y, x = data
+    result = cv_coxnet(y, x, l1_ratio=1.0, n_penalizers=15, k=3, seed=0)
+    # path is sorted descending; n_nonzero should be non-increasing (large lambda → fewer non-zeros)
+    assert result.n_nonzero_[0] <= result.n_nonzero_[-1]
+
+
+def test_cv_coxnet_custom_penalizers(data) -> None:  # type: ignore[no-untyped-def]
+    y, x = data
+    custom = [0.01, 0.05, 0.1, 0.2]
+    result = cv_coxnet(y, x, penalizers=custom, k=3, seed=0)
+    # Custom path is sorted descending
+    np.testing.assert_array_equal(result.penalizers_, sorted(custom, reverse=True))
+    assert len(result.mean_scores_) == 4
+
+
+def test_cv_coxnet_ridge(data) -> None:  # type: ignore[no-untyped-def]
+    """Ridge (l1_ratio=0) should produce no sparsity but still return a valid result."""
+    y, x = data
+    result = cv_coxnet(y, x, l1_ratio=0.0, n_penalizers=10, k=3, seed=0)
+    assert isinstance(result, CoxNetCVResult)
+    # Ridge never zeros coefficients — n_nonzero should be p everywhere (or at least nonzero)
+    assert np.all(result.n_nonzero_ > 0)
+
+
+def test_cv_coxnet_to_frame_columns(data) -> None:  # type: ignore[no-untyped-def]
+    y, x = data
+    result = cv_coxnet(y, x, l1_ratio=1.0, n_penalizers=10, k=3, seed=0)
+    df = result.to_frame(format="pandas")
+    assert list(df.columns) == ["penalizer", "mean_score", "std_score", "n_nonzero"]
+    assert len(df) == 10
+
+
+def test_cv_coxnet_repr(data) -> None:  # type: ignore[no-untyped-def]
+    y, x = data
+    result = cv_coxnet(y, x, l1_ratio=1.0, n_penalizers=10, k=3, seed=0)
+    text = repr(result)
+    assert "CoxNetCV" in text
+    assert "concordance" in text
+    assert "best penalizer" in text
+    assert "1-SE" in text
+    assert "object at 0x" not in text
+
+
+def test_cv_coxnet_invalid_args(data) -> None:  # type: ignore[no-untyped-def]
+    y, x = data
+    with pytest.raises(ValueError, match="l1_ratio"):
+        cv_coxnet(y, x, l1_ratio=1.5)
+    with pytest.raises(ValueError, match="k must be at least 2"):
+        cv_coxnet(y, x, k=1)
+    with pytest.raises(ValueError, match="metric"):
+        cv_coxnet(y, x, metric="invalid")
+    with pytest.raises(ValueError, match="times"):
+        cv_coxnet(y, x, metric="brier")
