@@ -160,6 +160,6 @@ def test_imbalanced_data_no_error(lung, y) -> None:
     y_sparse = Surv.right(time, event=event)
     x_sparse = rng.standard_normal((n, 2))
 
-    result = cross_validate(gw.CoxPH(), y_sparse, x_sparse, k=5, seed=42)
+    result = cross_validate(gw.CoxPH(), y_sparse, x_sparse, k=5, seed=23)
     assert len(result["scores"]) == 5
     assert all(np.isfinite(s) for s in result["scores"])
