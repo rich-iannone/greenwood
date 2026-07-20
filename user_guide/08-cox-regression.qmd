@@ -113,6 +113,54 @@ pd.DataFrame({
 })
 ```
 
+### Covariate scaling
+
+The Cox model's Newton-Raphson solver computes second derivatives of the log partial likelihood.
+When covariates differ wildly in scale (for example, a binary indicator with values `0`/`1`
+alongside an income variable measured in tens of thousands) the Hessian becomes ill-conditioned and
+the solver may converge slowly, converge to a poor solution, or produce unreliable standard errors.
+
+Greenwood detects this automatically. If the ratio of the largest to smallest column standard
+deviation exceeds 100, `CoxPH.fit()` emits a warning:
+
+```
+UserWarning: Covariates appear to be on very different scales
+(max/min standard deviation ratio: 1500). Consider standardizing
+covariates before fitting ...
+```
+
+The fix is to standardize the offending columns before fitting. In machine learning this operation
+is called **z-score standardization** (or **feature standardization**): subtract the mean
+(centering) and divide by the standard deviation (scaling) so that each column has mean `0` and
+standard deviation `1`:
+
+```{python}
+import numpy as np
+
+lung = gw.load_dataset("lung", backend="pandas")
+y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+
+cols = lung[["age", "sex"]].copy()
+
+# Standardize to zero mean, unit variance
+cols_std = (cols - cols.mean()) / cols.std()
+
+gw.CoxPH().fit(y, cols_std).to_frame(format="polars")[["term", "estimate", "conf_low", "conf_high"]]
+```
+
+Standardized coefficients are on a different scale than the original: each coefficient represents
+the log hazard ratio for a one-standard-deviation increase in the covariate. This makes the
+coefficients harder to interpret directly but often makes the model fit more stably, especially when
+variables span very different numeric ranges.
+
+::: {.callout-tip}
+## Penalized Cox automatically standardizes
+
+`CoxNet` (the elastic-net Cox model) always standardizes covariates internally before
+applying the penalty and returns coefficients on the original scale, so you do not need to
+standardize by hand when using penalized regression.
+:::
+
 ## Hazard ratios and their interpretation
 
 To interpret the model you exponentiate the coefficients, which turns log hazard ratios into
