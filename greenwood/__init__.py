@@ -27,7 +27,7 @@ from ._metrics import (
 )
 from ._nonparametric import KaplanMeier, NelsonAalen
 from ._parametric import AFT
-from ._penalized import CoxNet
+from ._penalized import CoxNet, CoxNetCVResult, cv_coxnet
 from ._power import logrank_n_events, logrank_power, logrank_sample_size
 from ._resample import cross_validate
 from ._rmst import RMSTResult, pairwise_rmst_test, rmst_diff, rmst_test
@@ -61,6 +61,8 @@ __all__ = [
     "Parametric",
     "CoxPH",
     "CoxNet",
+    "CoxNetCVResult",
+    "cv_coxnet",
     "RoystonParmar",
     "ZPHResult",
     "AFT",
