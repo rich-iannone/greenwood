@@ -277,7 +277,7 @@ class KaplanMeier:
     km
     ```
 
-    The full step function, one row per event time, is available with `to_frame`; pass
+    The full step function, one row per event time, is available with `to_frame`. Pass
     `format=` to choose the backend (here, Polars):
 
     ```{python}
@@ -334,9 +334,9 @@ class KaplanMeier:
 
         Computes the product-limit survival estimate from a `Surv` response (time-to-event
         data, possibly right-censored). The estimator remains in the fitted object after
-        calling `fit()`; access it via attributes like `surv`, `time`, `n_risk`, etc., or
+        calling `fit()`. Access it via attributes like `surv`, `time`, `n_risk`, etc., or
         access raw tables with `to_frame()` (optionally `format=`). Pass `by=` to
-        produce separate curves per group (stratified analysis); each group's fit is stored
+        produce separate curves per group (stratified analysis). Each group's fit is stored
         independently and can be visualized with `plot_survival()`.
 
         The fit is exact and no distributional assumptions are made. Optionally supply
@@ -371,7 +371,7 @@ class KaplanMeier:
         The Kaplan-Meier estimator is a non-parametric maximum likelihood estimator of the
         survival function $S(t)$. It is defined as the product of $(1 - d/n)$ over all event
         times up to $t$, where $d$ is the number of events and $n$ is the number at risk at
-        each time. Confidence intervals are point-wise; they do not guarantee that the true
+        each time. Confidence intervals are point-wise. They do not guarantee that the true
         curve lies entirely within the band.
 
         Examples
@@ -388,7 +388,7 @@ class KaplanMeier:
         ```
 
         Fit stratified curves by sex by passing `by=lung["sex"]`. This produces one curve per
-        group; the results are stored and can be visualized separately:
+        group. The results are stored and can be visualized separately:
 
         ```{python}
         km_stratified = gw.KaplanMeier().fit(y, by=lung["sex"])
@@ -953,10 +953,10 @@ class NelsonAalen:
 
         Computes the cumulative hazard function $H(t)$ from a `Surv` response (time-to-event
         data). Like Kaplan-Meier, this is a non-parametric estimate requiring no distributional
-        assumptions. The Nelson-Aalen estimator is an alternative to Kaplan-Meier; it estimates
+        assumptions. The Nelson-Aalen estimator is an alternative to Kaplan-Meier. It estimates
         the cumulative hazard directly (sum of $d/n$ at each event time), from which the survival
         probability can be derived via $S(t) = \exp(-H(t))$. Results are stored in the fitted
-        object; access them via attributes or export to a DataFrame with `to_frame()`
+        object. Access them via attributes or export to a DataFrame with `to_frame()`
         (optionally `format=`).
 
         Pass `by=` to produce separate cumulative hazard curves per group (stratified analysis),
