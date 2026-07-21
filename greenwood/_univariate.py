@@ -388,6 +388,9 @@ class Parametric:
 
         Examples
         --------
+        Evaluate the instantaneous hazard rate at several time points under a fitted Weibull
+        model:
+
         ```{python}
         import greenwood as gw
 
