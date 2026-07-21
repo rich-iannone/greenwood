@@ -376,7 +376,15 @@ class Parametric:
         Returns
         -------
         ndarray
-            Hazard rate values, same length as `times=`.
+            Hazard rate values, same length as `times`.
+
+        Details
+        -------
+        The hazard is the ratio of the density to the survival function:
+        $h(t) = f(t) / S(t)$. For a Weibull distribution, the hazard is monotone (increasing
+        when shape > 1, decreasing when shape < 1, constant when shape = 1). For a
+        log-logistic distribution, the hazard is non-monotone (rises then falls when
+        shape > 1).
 
         Examples
         --------
