@@ -140,9 +140,28 @@ def align_table(
     headers
         Column headers for the data columns.
     rows
-        One list of preformatted string cells per row, each the length of `headers`.
+        One list of preformatted string cells per row, each the same length as `headers`.
     row_labels
         Optional left-hand labels (term or stratum names), left-justified.
+
+    Returns
+    -------
+    str
+        The formatted table as a single multi-line string.
+
+    Examples
+    --------
+    Build a small table with two columns and labelled rows:
+
+    ```{python}
+    from greenwood._repr import align_table
+
+    align_table(
+        headers=["estimate", "std_error"],
+        rows=[["1.234", "0.056"], ["0.891", "0.123"]],
+        row_labels=["shape", "scale"],
+    )
+    ```
     """
     widths = [len(h) for h in headers]
     for row in rows:
