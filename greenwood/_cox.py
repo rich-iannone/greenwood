@@ -13,7 +13,8 @@ martingale and Schoenfeld residuals, the Grambsch-Therneau proportional-hazards 
 Stratification (per-stratum baselines with shared coefficients) and the robust (Lin-Wei)
 sandwich variance, with optional clustering, are supported. The risk sets use the same
 entry/exit convention as the rest of Greenwood, so left truncation and counting-process
-data are handled.
+data are handled. Shared gamma frailty by cluster is also available for right-censored
+data with Breslow ties.
 """
 
 from __future__ import annotations
@@ -24,6 +25,7 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import numpy.typing as npt
+from scipy.special import gammaln
 from scipy.stats import chi2, norm
 
 from ._backends import to_dataframe
@@ -172,11 +174,11 @@ def _to_labels(values: Any, n: int, name: str) -> Array:
 def _formula_design(formula: str, data: Any) -> tuple[Array, list[str]]:
     """Build a design matrix from a Wilkinson formula (right-hand side) via formulaic.
 
-    `formula` is the right-hand side only (no `~`), for example
-    `"age + sex + ph.ecog"`, `"age + C(celltype)"`, or `"age * sex"`. The intercept column
-    that formulaic adds is dropped, so the result matches the no-intercept design the models
-    expect (an AFT adds its own intercept). Missing values are preserved so the caller's
-    complete-case handling drops the same rows as the response.
+    `formula` is the right-hand side only (no `~`), for example `"age + sex + ph.ecog"`,
+    `"age + C(celltype)"`, or `"age * sex"`. The intercept column that formulaic adds is dropped,
+    so the result matches the no-intercept design the models expect (an AFT adds its own intercept).
+    Missing values are preserved so the caller's complete-case handling drops the same rows as the
+    response.
     """
     try:
         from formulaic import model_matrix  # pyright: ignore[reportMissingImports]
@@ -242,12 +244,14 @@ def _cox_terms(
     weight: Array,
     strata_groups: list[tuple[Array, Array]],
     ties: str,
+    risk_multiplier: Array | None = None,
+    event_offset: Array | None = None,
 ) -> tuple[float, Array, Array]:
     """Partial log-likelihood, gradient, and observed information at `beta`.
 
-    `strata_groups` is a list of `(member_index, event_times)` pairs; risk sets are
-    confined to a stratum, and the terms are summed across strata (the coefficients are
-    shared). An unstratified model is a single group.
+    `strata_groups=` is a list of `(member_index, event_times)` pairs; risk sets are confined to a
+    stratum, and the terms are summed across strata (the coefficients are shared). An unstratified
+    model is a single group.
     """
     p = beta.shape[0]
     loglik = 0.0
@@ -260,6 +264,8 @@ def _cox_terms(
         xx = exit_[members]
         ev = event[members]
         ws = weight[members]
+        rm = None if risk_multiplier is None else risk_multiplier[members]
+        eo = None if event_offset is None else event_offset[members]
         eta = xs @ beta
 
         for t in event_times:
@@ -273,6 +279,8 @@ def _cox_terms(
             # Use log-sum-exp trick for numerical stability: subtract max eta to prevent overflow
             max_eta_risk = reta.max() if len(reta) > 0 else 0.0
             risk_score = np.exp(reta - max_eta_risk)
+            if rm is not None:
+                risk_score = risk_score * rm[at_risk]
 
             s0 = (risk_score * rw).sum()
             s1 = rx.T @ (risk_score * rw)
@@ -280,7 +288,8 @@ def _cox_terms(
 
             w_d = ws[dying]
             deta = eta[dying]
-            loglik += float((w_d * deta).sum())
+            event_lp = deta if eo is None else deta + eo[dying]
+            loglik += float((w_d * event_lp).sum())
             grad += (xs[dying] * w_d[:, None]).sum(axis=0)
 
             if ties == "breslow":
@@ -295,6 +304,8 @@ def _cox_terms(
                 dx = xs[dying]
                 dr_eta = deta
                 dr = np.exp(dr_eta - max_eta_risk)
+                if rm is not None:
+                    dr = dr * rm[dying]
                 dw = w_d
                 d0 = (dr * dw).sum()
                 d1 = dx.T @ (dr * dw)
@@ -465,6 +476,12 @@ class CoxPH:
         ]
         if self.robust:
             lines.append("Standard errors: robust (sandwich)")
+        if self.frailty_ is not None:
+            lines.append(f"Shared frailty: {self.frailty_} (theta = {num(self.frailty_theta_)})")
+            lines.append(
+                "Frailty variance test (theta = 0): "
+                f"LR = {num(self.frailty_lrt_stat_)}, p = {num(self.frailty_lrt_p_value_)}"
+            )
         return "\n".join(lines)
 
     def fit(
@@ -476,6 +493,10 @@ class CoxPH:
         strata: Any = None,
         robust: bool = False,
         cluster: Any = None,
+        frailty: str | None = None,
+        frailty_cluster: Any = None,
+        frailty_theta: float = 0.5,
+        frailty_max_iter: int = 30,
         max_iter: int = 30,
         tol: float = 1e-9,
     ) -> CoxPH:
@@ -506,6 +527,15 @@ class CoxPH:
         cluster
             Optional cluster labels for grouped robust variance estimation.
             Sums score residuals within groups before forming the sandwich.
+        frailty
+            Optional shared frailty distribution. Currently supports `"gamma"` only.
+            Requires `frailty_cluster=` and `ties="breslow"`.
+        frailty_cluster
+            Cluster labels for shared frailty random effects (one frailty per cluster).
+        frailty_theta
+            Initial value for the gamma frailty variance parameter (must be > 0).
+        frailty_max_iter
+            Maximum number of outer EM iterations for shared frailty fitting.
         max_iter
             Maximum number of iterations for the Newton-Raphson solver. Default is `30`.
         tol
@@ -542,6 +572,29 @@ class CoxPH:
                 f"CoxPH supports right-censored and counting-process responses, "
                 f"not {surv.type.value!r}."
             )
+        if frailty not in (None, "gamma"):
+            raise ValueError("frailty must be None or 'gamma'.")
+        if frailty is None and frailty_cluster is not None:
+            raise ValueError("frailty_cluster requires frailty='gamma'.")
+        if frailty is not None and frailty_cluster is None:
+            raise ValueError("frailty='gamma' requires frailty_cluster labels.")
+        if frailty is not None and frailty_theta <= 0:
+            raise ValueError("frailty_theta must be > 0.")
+        if frailty_max_iter < 1:
+            raise ValueError("frailty_max_iter must be >= 1.")
+        if frailty == "gamma":
+            if surv.type != CensoringType.RIGHT:
+                raise NotImplementedError(
+                    "Shared gamma frailty currently supports right-censored data."
+                )
+            if self.ties != "breslow":
+                raise NotImplementedError("Shared gamma frailty currently requires ties='breslow'.")
+            if strata is not None:
+                raise NotImplementedError("Shared gamma frailty with strata is not yet supported.")
+            if robust or cluster is not None:
+                raise NotImplementedError(
+                    "Shared gamma frailty does not currently combine with robust/cluster variance."
+                )
 
         x, names = _design_matrix(covariates, data)
         if x.shape[0] != surv.n:
@@ -554,13 +607,21 @@ class CoxPH:
 
         strata_labels = None if strata is None else _to_labels(strata, surv.n, "strata")
         cluster_labels = None if cluster is None else _to_labels(cluster, surv.n, "cluster")
+        frailty_labels = (
+            None
+            if frailty_cluster is None
+            else _to_labels(frailty_cluster, surv.n, "frailty_cluster")
+        )
 
-        # Complete-case analysis: drop rows with any missing covariate, stratum, or cluster.
+        # Complete-case analysis: drop rows with missing covariates, stratum,
+        # cluster, or frailty id.
         keep = ~np.isnan(x).any(axis=1)
         if strata_labels is not None:
             keep &= ~_missing_mask(strata_labels)
         if cluster_labels is not None:
             keep &= ~_missing_mask(cluster_labels)
+        if frailty_labels is not None:
+            keep &= ~_missing_mask(frailty_labels)
         x, entry, exit_, event, weight = (
             x[keep],
             entry[keep],
@@ -577,6 +638,8 @@ class CoxPH:
             strata_labels = strata_labels[keep]
         if cluster_labels is not None:
             cluster_labels = cluster_labels[keep]
+        if frailty_labels is not None:
+            frailty_labels = frailty_labels[keep]
         if not event.any():
             raise ValueError("No events remain after dropping missing rows.")
 
@@ -646,30 +709,104 @@ class CoxPH:
                 strata_groups.append((members, ev_times))
         p = x.shape[1]
 
-        def terms(beta: Array) -> tuple[float, Array, Array]:
-            return _cox_terms(beta, x, entry, exit_, event, weight, strata_groups, self.ties)
+        risk_multiplier = np.ones(x.shape[0])
+        self.frailty_ = None
+        self.frailty_theta_ = None
+        self.frailty_effect_ = None
+        self.frailty_levels_ = None
+        self.frailty_lrt_stat_ = None
+        self.frailty_lrt_p_value_ = None
 
-        beta = np.zeros(p)
-        loglik_null, grad0, info0 = terms(beta)
-        loglik = loglik_null
-        for _ in range(max_iter):
-            _, grad, info = terms(beta)
-            step = np.linalg.solve(info, grad)
-            # Newton with step-halving to guarantee the likelihood increases.
-            halving = 0
-            while True:
-                candidate = beta + step
-                new_loglik, _, _ = terms(candidate)
-                if new_loglik >= loglik - 1e-12 or halving >= 20:
+        if frailty == "gamma":
+            assert frailty_labels is not None
+            levels = list(dict.fromkeys(frailty_labels.tolist()))
+            cluster_index = np.empty(x.shape[0], dtype=int)
+            for j, level in enumerate(levels):
+                cluster_index[frailty_labels == level] = j
+            d_cluster = np.bincount(
+                cluster_index, weights=weight * event.astype(float), minlength=len(levels)
+            )
+            h_cluster = np.zeros(len(levels))
+            theta = float(frailty_theta)
+            beta = np.zeros(p)
+            loglik_null = np.nan
+            grad0 = np.zeros(p)
+            info0 = np.eye(p)
+            loglik = np.nan
+            info = np.eye(p)
+            for _ in range(frailty_max_iter):
+                risk_multiplier = (
+                    np.ones(x.shape[0])
+                    if self.frailty_effect_ is None
+                    else self.frailty_effect_[cluster_index]
+                )
+
+                current_risk_multiplier = risk_multiplier
+
+                def terms_gamma(
+                    beta_in: Array, rm: Array = current_risk_multiplier
+                ) -> tuple[float, Array, Array]:
+                    return _cox_terms(
+                        beta_in,
+                        x,
+                        entry,
+                        exit_,
+                        event,
+                        weight,
+                        strata_groups,
+                        self.ties,
+                        risk_multiplier=rm,
+                    )
+
+                beta_prev = beta.copy()
+                theta_prev = theta
+                beta, loglik, loglik_null, grad0, info0, info = _newton_optimize(
+                    terms_gamma, p, max_iter, tol
+                )
+
+                eta = x @ beta
+                ev_times, cumhaz = _breslow_cumhaz(
+                    entry, exit_, event, weight, eta, risk_multiplier
+                )
+                idx = np.searchsorted(ev_times, exit_, side="right") - 1
+                h0_exit = np.where(idx >= 0, cumhaz[idx.clip(min=0)], 0.0)
+                h_cluster = np.bincount(
+                    cluster_index,
+                    weights=h0_exit * np.exp(eta) * weight,
+                    minlength=len(levels),
+                )
+                z_cluster = (d_cluster + (1.0 / theta)) / (h_cluster + (1.0 / theta))
+                self.frailty_effect_ = z_cluster
+                risk_multiplier = z_cluster[cluster_index]
+
+                theta_grid = np.exp(np.linspace(np.log(1e-8), np.log(1e3), 80))
+                profile_vals = np.array(
+                    [_gamma_profile_loglik(float(th), d_cluster, h_cluster) for th in theta_grid]
+                )
+                theta = float(theta_grid[int(np.argmax(profile_vals))])
+
+                if np.max(np.abs(beta - beta_prev)) <= tol and abs(theta - theta_prev) <= tol * (
+                    abs(theta) + tol
+                ):
                     break
-                step = step / 2.0
-                halving += 1
-            converged = abs(new_loglik - loglik) <= tol * (abs(new_loglik) + tol)
-            beta, loglik = candidate, new_loglik
-            if converged:
-                break
 
-        _, _, info = terms(beta)
+            self.frailty_ = "gamma"
+            self.frailty_theta_ = theta
+            self.frailty_levels_ = np.asarray(levels, dtype=object)
+            profile_hat = _gamma_profile_loglik(theta, d_cluster, h_cluster)
+            profile_null = _gamma_profile_loglik(1e-5, d_cluster, h_cluster)
+            self.frailty_lrt_stat_ = max(0.0, 2.0 * (profile_hat - profile_null))
+            # theta = 0 is on the boundary; the one-sided test uses the 50:50 chi-square mixture.
+            self.frailty_lrt_p_value_ = 0.5 * float(chi2.sf(self.frailty_lrt_stat_, 1))
+        else:
+
+            def terms(beta_in: Array) -> tuple[float, Array, Array]:
+                return _cox_terms(beta_in, x, entry, exit_, event, weight, strata_groups, self.ties)
+
+            beta, loglik, loglik_null, grad0, info0, info = _newton_optimize(
+                terms, p, max_iter, tol
+            )
+
         naive_var = np.linalg.inv(info)
 
         # Retain the fitted design for diagnostics, baseline hazard, and prediction.
@@ -678,6 +815,7 @@ class CoxPH:
         self._exit = exit_
         self._event = event
         self._weight = weight
+        self._risk_multiplier = risk_multiplier
         self._strata_groups = strata_groups
         self._strata_labels = strata_labels
         self._xbar = (weight[:, None] * x).sum(axis=0) / weight.sum()
@@ -730,7 +868,7 @@ class CoxPH:
         Returns `(label, times, cumhaz)` per stratum group, reported at all unique exit
         times (matching R's `basehaz`); the hazard increments only at event times.
         """
-        risk_score = np.exp(self._x @ self.coef_) * self._weight
+        risk_score = np.exp(self._x @ self.coef_) * self._weight * self._risk_multiplier
         out: list[tuple[Any, Array, Array]] = []
         for members, _ in self._strata_groups:
             exit_s = self._exit[members]
@@ -809,8 +947,8 @@ class CoxPH:
         format
             Output format: `None` (default), `"pandas"`, `"polars"`, or `"pyarrow"`.
 
-            - `None` (default): Auto-detects and tries Polars first, falls back to
-            Pandas, then Pyarrow. Raises an error if no DataFrame library is installed.
+            - `None` (default): Auto-detects and tries Polars first, falls back to Pandas, then
+            PyArrow. Raises an error if no DataFrame library is installed.
             - `"pandas"`: returns pandas.DataFrame.
             - `"polars"`: returns polars.DataFrame.
             - `"pyarrow"`: returns pyarrow.Table.
@@ -823,30 +961,28 @@ class CoxPH:
             - `time`: Event times at which the baseline hazard is evaluated.
             - `cumhaz`: Cumulative baseline hazard $H_0(t)$ at each time.
             - `survival`: Baseline survival probability $S_0(t) = \exp(-H_0(t))$.
-            - `cumhaz_lower`, `cumhaz_upper` (if `ci=True`): Confidence bounds for
-              cumulative hazard.
-            - `survival_lower`, `survival_upper` (if `ci=True`): Confidence bounds
-              for survival.
+            - `cumhaz_lower`, `cumhaz_upper` (if `ci=True`): Confidence bounds for cumulative
+            hazard.
+            - `survival_lower`, `survival_upper` (if `ci=True`): Confidence bounds for survival.
             - `strata` (if stratified): Stratum label, one baseline hazard per stratum.
 
         Details
         -------
-        The baseline hazard is evaluated only at the event times in the training data.
-        The cumulative hazard is non-decreasing by construction. For stratified models,
-        each stratum has its own baseline hazard while coefficients are shared across
-        strata, allowing different baseline risks for different groups.
+        The baseline hazard is evaluated only at the event times in the training data. The
+        cumulative hazard is non-decreasing by construction. For stratified models, each stratum
+        has its own baseline hazard while coefficients are shared across strata, allowing different
+        baseline risks for different groups.
 
-        The baseline survival $S_0(t)$ is computed from the cumulative hazard using the
-        relationship $S_0(t) = \exp(-H_0(t))$.
+        The baseline survival $S_0(t)$ is computed from the cumulative hazard using the relationship
+        $S_0(t) = \exp(-H_0(t))$.
 
-        When `ci=True`, confidence intervals are computed using the log-log transform
-        (default), which ensures bounds remain valid (cumulative hazard > 0, survival ∈ (0,1)).
-        This matches R's `survfit()` default behavior.
+        When `ci=True`, confidence intervals are computed using the log-log transform (the default),
+        which ensures bounds remain valid (cumulative hazard > 0, survival ∈ (0,1)).
 
         Examples
         --------
-        The baseline cumulative hazard (and the implied baseline survival) is reported at
-        every event time. Pass `format=` to choose the backend (here, Polars):
+        The baseline cumulative hazard (and the implied baseline survival) is reported at every
+        event time. Pass `format=` to choose the backend (here, Polars):
 
         ```{python}
         import greenwood as gw
@@ -863,17 +999,17 @@ class CoxPH:
         cox.baseline_hazard(ci=True, format="polars")
         ```
 
-        The returned DataFrame shows the estimated hazard and survival trajectory for the
-        reference population (covariates at their means). For stratified models, a separate
-        baseline is provided for each stratum:
+        The returned DataFrame shows the estimated hazard and survival trajectory for the reference
+        population (covariates at their means). For stratified models, a separate baseline is
+        provided for each stratum:
 
         ```{python}
         cox_stratified = gw.CoxPH().fit(y, lung[["age", "ph.ecog"]], strata=lung["sex"])
         cox_stratified.baseline_hazard(ci=True, format="polars")
         ```
 
-        The baseline hazard can be combined with individual predictions to compute
-        personalized survival curves (see `predict(type="survival")`).
+        The baseline hazard can be combined with individual predictions to compute personalized
+        survival curves (see `predict(type="survival")`).
         """
         # Collect all data into lists
         times_list = []
@@ -1137,7 +1273,7 @@ class CoxPH:
         """
         xr, entry, exit_, event, w = self._x, self._entry, self._exit, self._event, self._weight
         ev = event.astype(bool)
-        rs = np.exp(xr @ self.coef_) * w
+        rs = np.exp(xr @ self.coef_) * w * self._risk_multiplier
         et = np.unique(exit_[ev])
         p = xr.shape[1]
         s0 = np.empty(len(et))
@@ -1275,7 +1411,7 @@ class CoxPH:
         Iterates strata then event times; risk sets are confined to the stratum. For tied
         Efron events, the risk mean is averaged and the covariance split across the ties.
         """
-        risk_score = np.exp(self._x @ self.coef_) * self._weight
+        risk_score = np.exp(self._x @ self.coef_) * self._weight * self._risk_multiplier
         residuals: list[Array] = []
         times: list[float] = []
         covariances: list[Array] = []
@@ -1432,7 +1568,7 @@ class CoxPH:
             xx = self._exit[members]
             ev = self._event[members]
             ws = self._weight[members]
-            ri = np.exp(xs @ beta)
+            ri = np.exp(xs @ beta) * self._risk_multiplier[members]
             order = np.argsort(event_times)
             etimes = event_times[order]
             xbar = np.zeros((etimes.shape[0], p))
@@ -1532,6 +1668,22 @@ class CoxPH:
                 concordant += 0.5 * float(np.sum(rk[i] == rk[later]))
         return concordant / comparable
 
+    def frailty_test(self) -> dict[str, float]:
+        """Likelihood-ratio test for shared-frailty variance theta = 0.
+
+        Returns a dictionary with the fitted `theta`, LR statistic, and p-value.
+        """
+        if self.frailty_ is None or self.frailty_theta_ is None:
+            raise ValueError("No frailty model is fitted; fit with frailty='gamma' first.")
+        if self.frailty_lrt_stat_ is None or self.frailty_lrt_p_value_ is None:
+            raise ValueError("Frailty variance test is unavailable for this fitted model.")
+        return {
+            "theta": float(self.frailty_theta_),
+            "lr_statistic": float(self.frailty_lrt_stat_),
+            "df": 1.0,
+            "p_value": float(self.frailty_lrt_p_value_),
+        }
+
     # -- interop --------------------------------------------------------------
 
     def _coefficient_columns(self, *, exponentiate: bool = False) -> dict[str, Any]:
@@ -1620,6 +1772,9 @@ def _glance_cox(model: CoxPH, *, format: str | None = None, **_: Any) -> Any:
             "lr_statistic": [model.lr_stat_],
             "df": [model.df_],
             "lr_p_value": [float(chi2.sf(model.lr_stat_, model.df_))],
+            "frailty_theta": [model.frailty_theta_],
+            "frailty_lrt_statistic": [model.frailty_lrt_stat_],
+            "frailty_lrt_p_value": [model.frailty_lrt_p_value_],
         },
         format=format,
     )
