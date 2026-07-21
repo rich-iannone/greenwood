@@ -100,6 +100,26 @@ The `exp(coef)` column holds hazard ratios. For `sex` (coded 1 for male, 2 for f
 hazard ratio is about 0.60, which means women had roughly 40 percent lower risk of death than
 men over the study, holding age fixed. A ratio below 1 is lower risk, above 1 is higher risk.
 
+## Shared frailty for clustered survival data
+
+If subjects are clustered (for example by center, family, or recurrent-event unit), you can make use
+of the shared gamma frailty Cox model.
+
+```{python}
+# Shared frailty Cox model (clustered by institution)
+cox_frailty = gw.CoxPH(ties="breslow").fit(
+    y,
+    lung[["age", "sex"]],
+    frailty="gamma",
+    frailty_cluster=lung["inst"],
+)
+
+# Frailty variance inference (tests theta = 0)
+cox_frailty.frailty_test()
+```
+
+See [Cox regression](08-cox-regression.qmd) for full guidance and interpretation.
+
 ## Next steps
 
 That is the core loop: represent the data, estimate a curve, visualize it, and model an
