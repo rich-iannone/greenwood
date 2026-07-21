@@ -613,7 +613,9 @@ def compare_distributions(
     """Fit multiple parametric distributions and return an AIC/BIC comparison table.
 
     This is the primary model-selection helper for univariate parametric survival analysis. It fits
-    each distribution by maximum likelihood, then ranks them by AIC (lower is better).
+    each distribution by maximum likelihood, then ranks them by AIC (lower is better). Use this
+    early in an analysis to decide which distributional family best describes your data before
+    moving on to regression modelling with `AFT`.
 
     Parameters
     ----------
