@@ -493,7 +493,9 @@ class Parametric:
     def mean(self) -> float:
         r"""Expected survival time $E[T]$.
 
-        Returns `inf` for log-logistic when $\beta \le 1$ (mean undefined).
+        Returns the mean (expected) survival time under the fitted distribution. This is the
+        area under the survival curve from zero to infinity. For skewed survival distributions,
+        the mean can differ substantially from the median.
 
         Returns
         -------
