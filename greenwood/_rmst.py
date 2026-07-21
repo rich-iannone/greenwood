@@ -367,7 +367,7 @@ def rmst_test(
     result
     ```
 
-    Individual components of the result are accessible as attributes — for example, the
+    Individual components of the result are accessible as attributes. For example, the
     point estimate and its p-value:
 
     ```{python}
