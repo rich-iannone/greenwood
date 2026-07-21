@@ -312,6 +312,58 @@ def _cox_terms(
     return loglik, grad, info
 
 
+def _newton_optimize(
+    terms: Any, p: int, max_iter: int, tol: float
+) -> tuple[Array, float, float, Array, Array, Array]:
+    beta = np.zeros(p)
+    loglik_null, grad0, info0 = terms(beta)
+    loglik = loglik_null
+    for _ in range(max_iter):
+        _, grad, info = terms(beta)
+        step = np.linalg.solve(info, grad)
+        # Newton with step-halving to guarantee the likelihood increases.
+        halving = 0
+        while True:
+            candidate = beta + step
+            new_loglik, _, _ = terms(candidate)
+            if new_loglik >= loglik - 1e-12 or halving >= 20:
+                break
+            step = step / 2.0
+            halving += 1
+        converged = abs(new_loglik - loglik) <= tol * (abs(new_loglik) + tol)
+        beta, loglik = candidate, new_loglik
+        if converged:
+            break
+    _, _, info = terms(beta)
+    return beta, float(loglik), float(loglik_null), grad0, info0, info
+
+
+def _breslow_cumhaz(
+    entry: Array,
+    exit_: Array,
+    event: Array,
+    weight: Array,
+    eta: Array,
+    risk_multiplier: Array,
+) -> tuple[Array, Array]:
+    event_times = np.unique(exit_[event])
+    increments = np.zeros(event_times.shape[0])
+    for k, t in enumerate(event_times):
+        at_risk = (entry < t) & (exit_ >= t)
+        dying = (exit_ == t) & event
+        s0 = np.sum(np.exp(eta[at_risk]) * weight[at_risk] * risk_multiplier[at_risk])
+        dw = np.sum(weight[dying])
+        increments[k] = dw / s0
+    return event_times, np.cumsum(increments)
+
+
+def _gamma_profile_loglik(theta: float, d: Array, h: Array) -> float:
+    inv = 1.0 / theta
+    return float(
+        np.sum(gammaln(d + inv) - gammaln(inv) + inv * np.log(inv) - (d + inv) * np.log(inv + h))
+    )
+
+
 class CoxPH:
     r"""Cox proportional hazards model.
 
