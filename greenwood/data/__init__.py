@@ -90,7 +90,7 @@ def load_dataset(name: str, *, backend: str | None = None) -> Any:
         `"colon"`, `"mgus2"`).
     backend
         `"pandas"` or `"polars"`. When left as `None` (the default), Greenwood picks a
-        backend for you: it prefers Polars if it is installed, otherwise uses pandas, and
+        backend for you: it prefers Polars if it is installed, otherwise uses Pandas, and
         raises if neither is available.
 
     Returns
