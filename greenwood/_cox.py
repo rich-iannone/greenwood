@@ -1671,7 +1671,39 @@ class CoxPH:
     def frailty_test(self) -> dict[str, float]:
         r"""Likelihood-ratio test for shared-frailty variance $\theta = 0$.
 
-        Returns a dictionary with the fitted `theta`, LR statistic, and p-value.
+        Tests whether the frailty (random-effect) variance is significantly different from
+        zero. A significant result indicates that there is unexplained heterogeneity across
+        clusters (e.g., centres, families) beyond what the fixed-effect covariates capture.
+
+        The model must have been fitted with `frailty="gamma"` for this test to be available.
+
+        Returns
+        -------
+        dict
+            A dictionary with keys `"theta"` (estimated frailty variance), `"lr_statistic"`
+            (likelihood-ratio test statistic), `"df"` (degrees of freedom, always 1), and
+            `"p_value"`.
+
+        Raises
+        ------
+        ValueError
+            If the model was not fitted with a frailty term.
+
+        Examples
+        --------
+        Fit a Cox model with a gamma frailty term grouped by institution, then test whether
+        the frailty variance is significant:
+
+        ```{python}
+        import greenwood as gw
+
+        kidney = gw.load_dataset("kidney", backend="polars")
+        y = gw.Surv.right(kidney["time"], kidney["status"])
+        cox = gw.CoxPH(frailty="gamma", frailty_groups="id").fit(
+            y, covariates=["age", "sex"], data=kidney
+        )
+        cox.frailty_test()
+        ```
         """
         if self.frailty_ is None or self.frailty_theta_ is None:
             raise ValueError("No frailty model is fitted; fit with frailty='gamma' first.")
