@@ -242,7 +242,7 @@ class AalenJohansen:
         type), the Aalen-Johansen estimator accounts for competing events: subjects who
         experience a competing cause are removed from the risk set, preventing overly optimistic
         estimates of the probability of experiencing the target cause. Results are stored in
-        the fitted object; access them via `to_frame()` (optionally `format=`).
+        the fitted object. Access them via `to_frame()` (optionally `format=`).
 
         The Aalen-Johansen estimator generalizes both Kaplan-Meier and Nelson-Aalen to the
         competing-risks setting. For each cause $j$, it estimates $F_j(t)$, the cumulative
@@ -479,7 +479,7 @@ class FineGray:
     ```
 
     Passing `exponentiate=True` to `tidy` reports the subdistribution hazard ratios (with
-    their confidence limits) instead of the log-scale coefficients; pass `format=` to choose
+    their confidence limits) instead of the log-scale coefficients. Pass `format=` to choose
     the backend (here, Polars):
 
     ```{python}
@@ -982,8 +982,8 @@ class MultiState:
         ms
         ```
 
-        Query occupancy probabilities at specific follow-up times (60, 120, and 240 months);
-        pass `format=` to choose the backend (here, Polars):
+        Query occupancy probabilities at specific follow-up times (60, 120, and 240 months).
+        Pass `format=` to choose the backend (here, Polars):
 
         ```{python}
         ms.predict([60, 120, 240], format="polars")
@@ -1053,8 +1053,8 @@ class MultiState:
         ----------
         times
             Time points at which to evaluate state occupancy. Can be a scalar or array-like of
-            floats. Values before the first transition time use the initial distribution;
-            values after the last transition time use the final distribution.
+            floats. Values before the first transition time use the initial distribution.
+            Values after the last transition time use the final distribution.
         format
             Output format: `None` (default), `"pandas"`, `"polars"`, or `"pyarrow"`. When
             `None`, a backend is auto-detected (Polars, then Pandas, then PyArrow).
