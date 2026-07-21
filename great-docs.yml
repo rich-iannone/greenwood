@@ -74,6 +74,9 @@ reference:
     contents:
       - name: CoxPH
         members: true
+      - name: CoxNetCVResult
+        members: true
+      - cv_coxnet
       - name: CoxNet
         members: true
       - name: ZPHResult
@@ -135,3 +138,29 @@ reference:
       - name: EventTable
         members: true
       - event_table
+
+  - title: Data access
+    desc: Built-in datasets and dataset discovery helpers.
+    contents:
+      - load_dataset
+      - available_datasets
+
+  - title: Tidy summaries
+    desc: Broom-style model summaries and extension points.
+    contents:
+      - tidy
+      - glance
+      - augment
+
+  - title: Visualization helpers
+    desc: Low-level plotting helpers exported at the top level.
+    contents:
+      - get_risk_table_frame
+      - theme_forest
+
+  - title: Package namespaces
+    desc: Exported subpackages for direct access to grouped functionality.
+    contents:
+      - data
+      - summaries
+      - viz
