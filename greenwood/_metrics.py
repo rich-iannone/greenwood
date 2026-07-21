@@ -530,9 +530,9 @@ def time_dependent_auc(surv: Surv, marker: Any, times: Any) -> Array:
     **Interpretation**:
 
     - 0.5: Random discrimination (marker carries no prognostic information at $t$).
-    - > 0.5: Better-than-random; the marker ranks earlier-failing subjects higher.
+    - > 0.5: Better-than-random. The marker ranks earlier-failing subjects higher.
     - 1.0: Perfect discrimination at $t$.
-    - AUC tends to vary with $t$; use `integrated_auc()` for a single summary.
+    - AUC tends to vary with $t$. Use `integrated_auc()` for a single summary.
 
     **Higher marker = higher risk** convention: the marker should be on a scale where larger
     values indicate greater hazard (e.g., a Cox linear predictor, a predicted cumulative
@@ -578,7 +578,7 @@ def time_dependent_auc(surv: Surv, marker: Any, times: Any) -> Array:
     binary problem "case vs. control at $t$".
 
     **Relationship to concordance**: The Harrell C-statistic is closely related to the
-    time-averaged AUC across all event times; use `integrated_auc()` to obtain a single
+    time-averaged AUC across all event times. Use `integrated_auc()` to obtain a single
     time-averaged summary that is directly comparable to the C-index.
 
     References
