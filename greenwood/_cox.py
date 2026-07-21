@@ -1669,7 +1669,7 @@ class CoxPH:
         return concordant / comparable
 
     def frailty_test(self) -> dict[str, float]:
-        """Likelihood-ratio test for shared-frailty variance theta = 0.
+        r"""Likelihood-ratio test for shared-frailty variance $\theta = 0$.
 
         Returns a dictionary with the fitted `theta`, LR statistic, and p-value.
         """
