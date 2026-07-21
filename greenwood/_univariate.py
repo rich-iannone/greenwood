@@ -91,7 +91,8 @@ class Parametric:
 
     Examples
     --------
-    Fit a Weibull distribution to the lung cancer dataset:
+    Fit a Weibull distribution to the lung cancer dataset and inspect the parameter
+    estimates:
 
     ```{python}
     import greenwood as gw
