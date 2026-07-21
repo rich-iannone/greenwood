@@ -286,6 +286,23 @@ def _risk_table_plot(km: KaplanMeier, *, times: Any = None, xlab: str = "Time") 
 def risk_table(km: KaplanMeier, times: Any = None) -> Any:
     """Return the numbers-at-risk table as a standalone plotnine plot.
 
+    Creates a text-based plotnine figure showing how many subjects remain at risk at each
+    time point, per stratum. Designed to be stacked beneath a survival curve (the x-axes
+    align automatically when composed with `plotnine.composition`).
+
+    Parameters
+    ----------
+    km
+        A fitted `KaplanMeier` estimator.
+    times
+        Query times for the numbers-at-risk table. Defaults to an automatic grid of evenly
+        spaced, rounded times from 0 to the last observed time.
+
+    Returns
+    -------
+    plotnine.ggplot
+        A plotnine plot showing the number at risk at each time point.
+
     Examples
     --------
     Fit a stratified Kaplan-Meier estimator on the bundled `lung` dataset, then render the
