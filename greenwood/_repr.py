@@ -12,7 +12,35 @@ from typing import Any
 
 
 def num(x: Any, digits: int = 4) -> str:
-    """Format a number with `digits` significant figures, or `NA` for missing values."""
+    """Format a number with `digits` significant figures, or `"NA"` for missing values.
+
+    Used throughout the estimator `__repr__` methods to produce compact, stable numeric
+    output. `None` and `NaN` are both rendered as `"NA"`.
+
+    Parameters
+    ----------
+    x
+        A numeric value (or `None`).
+    digits
+        Number of significant figures (default `4`).
+
+    Returns
+    -------
+    str
+        The formatted string.
+
+    Examples
+    --------
+    ```{python}
+    from greenwood._repr import num
+
+    num(0.001234567)
+    ```
+
+    ```{python}
+    num(None)
+    ```
+    """
     if x is None:
         return "NA"
     xf = float(x)
