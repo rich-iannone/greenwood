@@ -86,7 +86,8 @@ def load_dataset(name: str, *, backend: str | None = None) -> Any:
     Parameters
     ----------
     name
-        One of `available_datasets` (e.g. `"lung"`, `"veteran"`).
+        One of `available_datasets()` (e.g., `"lung"`, `"veteran"`, `"ovarian"`, `"pbc"`,
+        `"colon"`, `"mgus2"`).
     backend
         `"pandas"` or `"polars"`. When left as `None` (the default), Greenwood picks a
         backend for you: it prefers Polars if it is installed, otherwise uses pandas, and
