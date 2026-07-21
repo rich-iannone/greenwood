@@ -643,6 +643,9 @@ def compare_distributions(
 
     Examples
     --------
+    Compare all four distribution families on the lung cancer dataset and see which one
+    fits best:
+
     ```{python}
     import greenwood as gw
 
