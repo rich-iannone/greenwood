@@ -528,7 +528,11 @@ class Parametric:
         return float(_mean_survival_aft(self.dist, mu_arr, self._sigma)[0])
 
     def median(self) -> float:
-        """Median survival time (the 50th-percentile time).
+        r"""Median survival time (the 50th-percentile time).
+
+        Returns the time at which half of subjects are expected to have experienced the event
+        under the fitted distribution. The median is often preferred over the mean for
+        reporting survival times because it is less sensitive to heavy tails.
 
         Returns
         -------
