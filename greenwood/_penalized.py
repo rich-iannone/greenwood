@@ -627,6 +627,8 @@ class CoxNetCVResult:
 
         Examples
         --------
+        Export the full CV path as a Polars DataFrame for plotting or further analysis:
+
         ```{python}
         import greenwood as gw
 
