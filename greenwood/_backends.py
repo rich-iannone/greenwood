@@ -19,10 +19,14 @@ VALID_FORMATS = ("pandas", "polars", "pyarrow")
 def to_dataframe(data: dict[str, Any], *, format: str | None = None) -> Any:
     """Materialize a dict of columns as a DataFrame in the requested backend.
 
+    This is the single gateway through which all Greenwood functions return tabular output.
+    It keeps DataFrame library imports lazy so that users who only have Polars installed
+    never trigger a Pandas import (and vice versa).
+
     Parameters
     ----------
     data
-        Mapping of column names to arrays/lists.
+        Mapping of column names to arrays or lists. All values must be the same length.
     format
         Output format: `None` (default), `"pandas"`, `"polars"`, or `"pyarrow"`.
 
