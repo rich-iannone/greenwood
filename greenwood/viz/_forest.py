@@ -104,7 +104,7 @@ def theme_forest() -> Any:
     r"""A minimal plotnine theme for forest plots.
 
     Returns a composable plotnine theme object suitable for forest plots of hazard ratios
-    or other contrasts. Horizontal grid lines are suppressed; the y-axis line is removed
+    or other contrasts. Horizontal grid lines are suppressed. The y-axis line is removed
     so the term labels stand alone.
 
     Returns
@@ -179,7 +179,7 @@ def plot_forest(
     term_labels
         Optional mapping from internal term names to display labels, e.g.
         `{"age": "Age (years)", "sex": "Female vs. Male"}`. Only the terms listed are
-        renamed; others keep their original names.
+        renamed. Others keep their original names.
     xlab
         X-axis label. Defaults to `"Hazard Ratio"` for log scale and `"Estimate"`
         for linear scale.
