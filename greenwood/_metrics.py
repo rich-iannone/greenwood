@@ -64,8 +64,8 @@ def concordance_index(surv: Surv, risk: Any) -> float:
     -------
     float
         Concordance index between 0 and 1. Values above 0.5 indicate the model discriminates
-        better than random; below 0.5 indicates worse-than-random discrimination (possibly
-        inverted risk scale).
+        better than random. Below 0.5 indicates worse-than-random discrimination (possibly
+        an inverted risk scale).
 
     Details
     -------
@@ -221,7 +221,7 @@ def brier_score(surv: Surv, survival_prob: Any, times: Any) -> Array:
     unlike naive MSE which would be biased (censored subjects look artificially "correct").
 
     **Time dependence**: Brier scores typically increase with time in chronic-disease settings
-    (longer prediction horizons are harder); they may decrease in acute-illness settings
+    (longer prediction horizons are harder). They may decrease in acute-illness settings
     (events cluster early, predictions stabilize).
 
     Examples
