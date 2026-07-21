@@ -151,7 +151,7 @@ def plot_survival(
         to hide these marks.
     risk_table
         If `True`, return a `plotnine.composition` stacking the curve over an aligned
-        numbers-at-risk table; the table's x-axis aligns with the curve. If `False` (default),
+        numbers-at-risk table. The table's x-axis aligns with the curve. If `False` (default),
         return only the survival curve plot.
     times
         Query times for the numbers-at-risk table (used only if `risk_table=True`). Defaults
