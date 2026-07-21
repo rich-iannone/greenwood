@@ -89,7 +89,33 @@ def fixed(x: Any, digits: int = 3) -> str:
 
 
 def whole(x: Any) -> str:
-    """Format a value that is conceptually an integer (times, counts), or `NA`."""
+    """Format a value that is conceptually an integer (times, counts), or `"NA"`.
+
+    If the value is a whole number (e.g., `365.0`), the decimal is dropped and it is
+    rendered as `"365"`. Non-integer floats fall back to `num()` formatting.
+
+    Parameters
+    ----------
+    x
+        A numeric value (or `None`).
+
+    Returns
+    -------
+    str
+        The formatted string.
+
+    Examples
+    --------
+    ```{python}
+    from greenwood._repr import whole
+
+    whole(365.0)
+    ```
+
+    ```{python}
+    whole(3.14)
+    ```
+    """
     if x is None:
         return "NA"
     xf = float(x)
