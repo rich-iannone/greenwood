@@ -96,7 +96,7 @@ cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
 cox
 ```
 
-The `exp(coef)` column holds hazard ratios. For `sex` (coded 1 for male, 2 for female) the
+The `exp(coef)` column holds hazard ratios. For `sex` (coded `1` for male, `2` for female) the
 hazard ratio is about 0.60, which means women had roughly 40 percent lower risk of death than
 men over the study, holding age fixed. A ratio below 1 is lower risk, above 1 is higher risk.
 
