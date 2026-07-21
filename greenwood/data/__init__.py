@@ -36,7 +36,21 @@ _DATASETS = {
 
 
 def available_datasets() -> list[str]:
-    """Return the names of the bundled datasets."""
+    """Return the names of all bundled datasets.
+
+    Returns
+    -------
+    list[str]
+        Sorted list of dataset names that can be passed to `load_dataset()`.
+
+    Examples
+    --------
+    ```{python}
+    import greenwood as gw
+
+    gw.available_datasets()
+    ```
+    """
     return sorted(_DATASETS)
 
 
