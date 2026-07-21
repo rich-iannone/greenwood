@@ -96,7 +96,24 @@ def load_dataset(name: str, *, backend: str | None = None) -> Any:
     Returns
     -------
     DataFrame
-        A dataframe in the resolved backend.
+        A Polars or Pandas DataFrame with the dataset contents.
+
+    Examples
+    --------
+    Load the NCCTG lung cancer dataset as a Polars DataFrame:
+
+    ```{python}
+    import greenwood as gw
+
+    lung = gw.load_dataset("lung", backend="polars")
+    lung.head()
+    ```
+
+    See all available dataset names:
+
+    ```{python}
+    gw.available_datasets()
+    ```
     """
     if name not in _DATASETS:
         raise ValueError(f"Unknown dataset {name!r}; available: {available_datasets()}.")
