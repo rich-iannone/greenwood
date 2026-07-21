@@ -467,6 +467,11 @@ class Parametric:
         ndarray
             Survival times corresponding to each probability.
 
+        Details
+        -------
+        The quantile is computed analytically by inverting the standardised error distribution:
+        $t_p = \exp\!\bigl(\mu + \sigma\,F_\varepsilon^{-1}(p)\bigr)$.
+
         Examples
         --------
         ```{python}
