@@ -41,7 +41,22 @@ Array = npt.NDArray[Any]
 
 
 class CensoringType(str, Enum):
-    """The censoring flavor of a `Surv` response.
+    """The censoring mechanism of a `Surv` response.
+
+    Each member corresponds to one of the `Surv` constructors and describes how incomplete
+    observations are handled:
+
+    - `RIGHT` — classic right-censoring: all subjects enter at time 0, and some are lost
+      before the event occurs (`Surv.right()`).
+    - `LEFT` — left-censoring: the event is known to have occurred before the observation
+      time (`Surv.left()`).
+    - `INTERVAL` — interval-censoring: the event is known to lie within a time bracket
+      (`Surv.interval()`).
+    - `COUNTING` — counting-process (start, stop] intervals with possible late entry
+      and time-varying covariates (`Surv.counting()`).
+
+    A constructed response reports its censoring type through `Surv(...).type`, which is
+    one of these values.
 
     Examples
     --------
