@@ -455,10 +455,9 @@ def calibration(
 
     Examples
     --------
-    Fit a Cox model on the bundled `lung` dataset and read the predicted survival at a single
-    horizon (one value per subject). Subjects are grouped into bins by their predicted survival,
-    and each bin's mean `predicted` value is compared against the observed Kaplan-Meier survival
-    for that bin's subjects.
+    Fit a Cox model on the bundled `lung` dataset and assess calibration at one year. Each
+    bin's mean predicted survival is compared against the observed Kaplan–Meier survival for
+    that bin's subjects:
 
     ```{python}
     import greenwood as gw
