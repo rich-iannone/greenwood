@@ -40,6 +40,24 @@ def to_dataframe(data: dict[str, Any], *, format: str | None = None) -> Any:
     -------
     pandas.DataFrame, polars.DataFrame, or pyarrow.Table
         The data in the requested (or auto-detected) format.
+
+    Raises
+    ------
+    ImportError
+        If the requested backend is not installed, or if `format=None` and no backend is
+        available at all.
+    ValueError
+        If `format` is not one of the recognised strings.
+
+    Examples
+    --------
+    Create a small table and materialise it as a Polars DataFrame:
+
+    ```{python}
+    from greenwood._backends import to_dataframe
+
+    to_dataframe({"name": ["Alice", "Bob"], "age": [30, 25]}, format="polars")
+    ```
     """
     if format is None:
         # Prefer Polars (most efficient), then Pandas, then PyArrow.
