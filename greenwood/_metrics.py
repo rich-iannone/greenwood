@@ -429,7 +429,7 @@ def calibration(
     time
         The horizon at which predictions are assessed.
     n_bins
-        Number of prediction bins (default 10). Bins are quantile-based; empty bins are
+        Number of prediction bins (default 10). Bins are quantile-based. Empty bins are
         dropped, so ties in `predicted` may yield fewer rows.
     conf_level
         Confidence level for the observed (Kaplan-Meier) interval.
@@ -524,7 +524,7 @@ def time_dependent_auc(surv: Surv, marker: Any, times: Any) -> Array:
     Computes the cumulative-dynamic AUC at each requested time using the inverse-probability-
     of-censoring-weighted (IPCW) estimator of Uno et al. (2011). At each time $t$, *cases*
     are subjects who experienced an event by $t$ and *controls* are subjects still at risk
-    after $t$; the AUC measures how well the marker separates the two groups, correcting for
+    after $t$. The AUC measures how well the marker separates the two groups, correcting for
     censoring bias via IPCW weights.
 
     **Interpretation**:
