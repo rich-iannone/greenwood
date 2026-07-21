@@ -511,8 +511,21 @@ def rmst_diff(
 
     Returns
     -------
-    DataFrame or dict
-        Comparison results in tabular format.
+    DataFrame
+        A single-row DataFrame with columns `group1`, `group2`, `rmst1`, `rmst2`,
+        `difference`, `se`, `lower_ci`, `upper_ci`, `statistic`, and `p_value`.
+
+    Examples
+    --------
+    Compute the one-year RMST difference between sexes in the lung cancer dataset:
+
+    ```{python}
+    import greenwood as gw
+
+    lung = gw.load_dataset("lung", backend="polars")
+    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+    gw.rmst_diff(y, tau=365, group=lung["sex"])
+    ```
     """
     result = rmst_test(
         surv, tau, group, estimand="difference", strata=strata, conf_level=conf_level
@@ -600,8 +613,15 @@ def pairwise_rmst_test(
     Returns
     -------
     DataFrame
-        One row per pair of groups with columns for group1, group2, RMST estimates,
-        difference/ratio, confidence interval, test statistic, p-value, and adjusted p-value.
+        One row per pair of groups with columns `group1`, `group2`, `rmst1`, `rmst2`,
+        `estimate`, `se`, `lower_ci`, `upper_ci`, `statistic`, `p_value`, and `p_adjusted`.
+
+    Details
+    -------
+    All $\binom{k}{2}$ pairwise comparisons are performed, where $k$ is the number of
+    unique group levels. The raw p-values are then adjusted for multiplicity using the
+    chosen correction method. Holm's step-down procedure (the default) controls the
+    family-wise error rate without assuming independence between tests.
 
     Examples
     --------
