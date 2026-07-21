@@ -77,7 +77,30 @@ def _censor_frame(block: Any) -> Any:
 
 
 def theme_survival() -> Any:
-    """A light publication theme for survival plots."""
+    """A light, publication-ready plotnine theme for survival plots.
+
+    Applies a minimal theme with the legend at the top and minor grid lines removed,
+    giving survival curves a clean look suitable for journal figures.
+
+    Returns
+    -------
+    plotnine.theme
+        A composable theme object. Add it to a `ggplot` with `+`.
+
+    Examples
+    --------
+    Apply the survival theme to a Kaplan-Meier plot:
+
+    ```{python}
+    import greenwood as gw
+
+    lung = gw.load_dataset("lung", backend="polars")
+    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+    km = gw.KaplanMeier().fit(y, by=lung["sex"])
+
+    gw.plot_survival(km, backend="plotnine") + gw.theme_survival()
+    ```
+    """
     p9 = _require_plotnine()
     return p9.theme_minimal() + p9.theme(
         legend_position="top",
