@@ -866,7 +866,7 @@ class CoxPH:
         """Uncentered baseline cumulative hazard per stratum.
 
         Returns `(label, times, cumhaz)` per stratum group, reported at all unique exit
-        times (matching R's `basehaz`); the hazard increments only at event times.
+        times (matching R's `basehaz`). The hazard increments only at event times.
         """
         risk_score = np.exp(self._x @ self.coef_) * self._weight * self._risk_multiplier
         out: list[tuple[Any, Array, Array]] = []
@@ -1322,7 +1322,7 @@ class CoxPH:
 
         Residuals measure the difference between observed events and model predictions,
         helping diagnose model fit and identify outliers or influential observations.
-        Martingale residuals are individual-level; Schoenfeld residuals are event-level
+        Martingale residuals are individual-level. Schoenfeld residuals are event-level
         and useful for checking the proportional-hazards assumption. Both types can be
         visualized against time or other variables to detect systematic deviations.
 
