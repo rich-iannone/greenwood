@@ -173,8 +173,10 @@ def plot_survival(
 
     Returns
     -------
-    An Altair `alt.LayerChart` or `alt.VConcatChart` (if `backend="altair"`), or a plotnine
-    `ggplot` object (if `backend="plotnine"`).
+    altair.LayerChart or altair.VConcatChart or plotnine.ggplot
+        An Altair chart (if `backend="altair"`) or a plotnine ggplot object
+        (if `backend="plotnine"`). With `risk_table=True` the Altair variant is a
+        `VConcatChart` stacking the curve over an aligned numbers-at-risk table.
 
     Examples
     --------

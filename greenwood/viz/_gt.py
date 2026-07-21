@@ -33,7 +33,8 @@ def risk_table(km: KaplanMeier, times: Any = None) -> Any:
 
     Returns
     -------
-    A Great Tables `GT` object, which can be displayed in notebooks or exported.
+    great_tables.GT
+        A Great Tables object, which can be displayed in notebooks or exported.
 
     Examples
     --------

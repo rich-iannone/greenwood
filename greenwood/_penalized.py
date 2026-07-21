@@ -729,7 +729,7 @@ def cv_coxnet(
     y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
     cols = ["age", "sex", "ph.ecog", "ph.karno", "wt.loss"]
 
-    result = gw.cv_coxnet(y, lung[cols], l1_ratio=1.0, seed=23)
+    result = gw.cv_coxnet(y, lung[cols], l1_ratio=1.0, n_penalizers=10, k=3, seed=23)
     result
     ```
 

@@ -435,18 +435,14 @@ def calibration(
         Confidence level for the observed (Kaplan-Meier) interval.
     format
         Output format for the returned DataFrame: `None` (default), `"pandas"`, `"polars"`,
-        or `"pyarrow"`.
-
-        - `None` (default): Auto-detects and prefers Polars if available, falls back to
-          Pandas, then Pyarrow. Raises error if no DataFrame library is available.
-        - `"pandas"`: returns pandas.DataFrame.
-        - `"polars"`: returns polars.DataFrame.
-        - `"pyarrow"`: returns pyarrow.Table.
+        or `"pyarrow"`. `None` (the default) will auto-detects and prefer Polars if available (falls
+        back to Pandas, then Pyarrow, and raises an error if no DataFrame library is available).
 
     Returns
     -------
-    A DataFrame with one row per bin: `bin`, `n`, `predicted` (mean), `observed`,
-    `observed_lower`, `observed_upper`. Format depends on `format` parameter.
+    DataFrame
+        One row per bin with columns `bin`, `n`, `predicted` (mean), `observed`,
+        `observed_lower`, `observed_upper`. Format depends on the `format` parameter.
 
     Examples
     --------

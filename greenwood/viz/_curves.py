@@ -141,9 +141,10 @@ def plot_survival(
 
     Returns
     -------
-    A plotnine `ggplot` object (or a `plotnine.composition` combining the curve and table if
-    `risk_table=True`). The returned object is composable: you can add layers, scales, themes,
-    and facets using plotnine's `+` operator or `/` operator for arrangement.
+    plotnine.ggplot or plotnine.composition
+        A composable plotnine object. With `risk_table=True` the result is a
+        `plotnine.composition` stacking the curve over an aligned numbers-at-risk table.
+        Add layers, scales, themes, and facets using plotnine's `+` or `/` operators.
 
     Details
     -------

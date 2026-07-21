@@ -217,7 +217,7 @@ def plot_cif(
 
     Returns
     -------
-    `altair.Chart`
+    altair.Chart
         An interactive Altair chart. Each panel corresponds to one competing cause. Groups are
         distinguished by color.
 

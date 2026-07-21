@@ -76,7 +76,8 @@ def load_dataset(name: str, *, backend: str | None = None) -> Any:
 
     Returns
     -------
-    A dataframe in the resolved backend.
+    DataFrame
+        A dataframe in the resolved backend.
     """
     if name not in _DATASETS:
         raise ValueError(f"Unknown dataset {name!r}; available: {available_datasets()}.")
