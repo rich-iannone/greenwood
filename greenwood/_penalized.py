@@ -55,7 +55,7 @@ class CoxNet:
     Thresholding Algorithm) to optimize the penalized partial likelihood. By default, covariates
     are standardized before penalizing (for fair comparison of penalties across features), but
     coefficients are returned on the original scale. Ridge (`l1_ratio=0`) encourages small,
-    spread-out coefficients; lasso (`l1_ratio=1`) drives some coefficients exactly to zero.
+    spread-out coefficients. Lasso (`l1_ratio=1`) drives some coefficients exactly to zero.
 
     The implementation follows the glmnet model for elastic-net regularization, using coordinate
     descent-like optimization with soft-thresholding. Results include penalized coefficients,
@@ -180,8 +180,8 @@ class CoxNet:
         -------
         The elastic-net penalty is $\lambda(\alpha L_1 + (1 - \alpha) L_2)$, where
         $\lambda$ = `penalizer` and $\alpha$ = `l1_ratio`. Setting `l1_ratio=1` gives lasso
-        ($L_1$ only, induces sparsity); `l1_ratio=0` gives ridge ($L_2$ only, smooth
-        shrinkage); and intermediate values blend both effects.
+        ($L_1$ only, induces sparsity). Setting `l1_ratio=0` gives ridge ($L_2$ only, smooth
+        shrinkage). Intermediate values blend both effects.
 
         Estimation uses proximal gradient descent (FISTA) to optimize the penalized partial
         likelihood. Covariates are centered and optionally standardized before fitting.
