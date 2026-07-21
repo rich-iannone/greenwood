@@ -509,29 +509,29 @@ class CoxNetCVResult:
 
     Attributes
     ----------
-    penalizers_ : ndarray
+    penalizers_
         Penalizer values tested, sorted descending.
-    mean_scores_ : ndarray
+    mean_scores_
         Mean cross-validation score at each penalizer.
-    std_scores_ : ndarray
+    std_scores_
         Standard deviation of per-fold scores at each penalizer.
-    n_nonzero_ : ndarray
+    n_nonzero_
         Average number of non-zero coefficients at each penalizer (averaged over cross-validation
         folds).
-    metric_ : str
+    metric_
         Metric used: `"concordance"` or `"brier"`.
-    l1_ratio_ : float
+    l1_ratio_
         Elastic-net mixing parameter fixed during the path search.
-    k_ : int
+    k_
         Number of folds used.
-    best_penalizer_ : float
+    best_penalizer_
         Penalizer with the best mean cross-validation score.
-    best_score_ : float
+    best_score_
         Mean score at `best_penalizer_`.
-    penalizer_1se_ : float
+    penalizer_1se_
         Largest penalizer (most regularized) whose mean score is within one standard error of
         `best_score_`. Prefer this when parsimony matters.
-    score_1se_ : float
+    score_1se_
         Mean score at `penalizer_1se_`.
     """
 
