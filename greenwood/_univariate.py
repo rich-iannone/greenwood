@@ -633,6 +633,14 @@ def compare_distributions(
         One row per distribution, sorted by AIC, with columns `dist`, `n_params`, `loglik`, `aic`,
         and `bic`.
 
+    Details
+    -------
+    AIC (Akaike Information Criterion) and BIC (Bayesian Information Criterion) both penalise
+    model complexity but differ in how strongly. AIC penalises by $2k$ (where $k$ is the number
+    of parameters), while BIC penalises by $k \log n$, giving a stronger preference for simpler
+    models when the sample size is large. The table is sorted by AIC, but when AIC and BIC
+    disagree the more parsimonious model (favoured by BIC) is often the safer choice.
+
     Examples
     --------
     ```{python}
