@@ -686,6 +686,14 @@ def integrated_auc(surv: Surv, marker: Any, times: Any) -> float:
     float
         Time-averaged AUC in [0, 1]. Higher is better.
 
+    Details
+    -------
+    The integrated AUC is computed as the area under the time-dependent AUC curve
+    (from `time_dependent_auc()`) divided by the time span, giving a single scalar
+    summary of discrimination across the specified horizon. Time points that produce
+    `nan` AUC values (no cases or no controls at that time) are dropped before
+    integration.
+
     Examples
     --------
     ```{python}
