@@ -538,6 +538,19 @@ class Parametric:
         -------
         float
             The time at which $S(t) = 0.5$.
+
+        Examples
+        --------
+        Compute the median survival time under a fitted Weibull model:
+
+        ```{python}
+        import greenwood as gw
+
+        lung = gw.load_dataset("lung", backend="polars")
+        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        fit = gw.Parametric("weibull").fit(y)
+        fit.median()
+        ```
         """
         return float(self.quantile(0.5)[0])
 
