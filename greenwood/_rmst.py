@@ -375,7 +375,15 @@ def rmst_test(
     ```
 
     ```{python}
-    result_ratio = gw.rmst_test(y, tau=365, group=lung["sex"], estimand="ratio")
+    result.p_value
+    ```
+
+    To express the comparison as a ratio instead of a difference, set
+    `estimand="ratio"`. This reports $\text{RMST}_1 / \text{RMST}_2$ with a log-scale
+    confidence interval:
+
+    ```{python}
+    gw.rmst_test(y, tau=365, group=lung["sex"], estimand="ratio")
     ```
     """
     if estimand not in {"difference", "ratio", "percentage_difference"}:
@@ -480,23 +488,26 @@ def rmst_diff(
     strata: Any | None = None,
     conf_level: float = 0.95,
 ) -> Any:
-    """Compute RMST difference between two groups with confidence interval.
+    """Compute the RMST difference between two groups and return a tidy DataFrame.
 
-    Convenience function that calls `rmst_test()` with `estimand="difference"` and returns
-    a DataFrame with the comparison results.
+    A convenience wrapper around `rmst_test()` with `estimand="difference"` that returns the
+    result as a single-row DataFrame rather than an `RMSTResult` object. This is useful when
+    you want to feed the comparison directly into a summary table or pipeline.
 
     Parameters
     ----------
     surv
-        A right-censored `Surv` response.
+        A right-censored `Surv` response built with `Surv.right()`.
     tau
-        The restriction time.
+        The restriction time. Should be a clinically meaningful horizon (e.g., 365 days for
+        one-year RMST).
     group
-        Group membership.
+        Group labels, one per observation. Must have exactly two unique levels.
     strata
-        (Optional) Stratification variable.
+        Stratification variable for stratified RMST comparison. If provided, per-group RMST
+        estimates are computed within each stratum and pooled with inverse-variance weights.
     conf_level
-        Confidence level for intervals.
+        Confidence level for the confidence interval (default `0.95`).
 
     Returns
     -------
