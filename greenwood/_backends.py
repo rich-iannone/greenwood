@@ -31,7 +31,7 @@ def to_dataframe(data: dict[str, Any], *, format: str | None = None) -> Any:
         Output format: `None` (default), `"pandas"`, `"polars"`, or `"pyarrow"`.
 
         - `None` (default): auto-detect, trying Polars first, then Pandas, then PyArrow.
-          Raises if none is installed.
+          Raises `ImportError` if none is installed.
         - `"pandas"`: return a `pandas.DataFrame`.
         - `"polars"`: return a `polars.DataFrame`.
         - `"pyarrow"`: return a `pyarrow.Table`.
