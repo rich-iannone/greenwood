@@ -1790,7 +1790,7 @@ class CoxPH:
 def _tidy_cox(
     model: CoxPH, *, exponentiate: bool = False, format: str | None = None, **_: Any
 ) -> Any:
-    """broom-style `tidy`: one row per term; `exponentiate` gives hazard ratios."""
+    """broom-style `tidy`: one row per term. `exponentiate` gives hazard ratios."""
     return model.to_frame(format=format, exponentiate=exponentiate)
 
 
