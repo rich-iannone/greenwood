@@ -500,7 +500,29 @@ class Parametric:
         Returns
         -------
         float
-            The mean survival time under the fitted distribution.
+            The mean survival time under the fitted distribution. Returns `inf` for
+            log-logistic when $\beta \le 1$ (the mean is undefined in that regime).
+
+        Details
+        -------
+        Closed-form expressions are used for each family:
+
+        - Weibull / Exponential: $E[T] = e^\mu\,\Gamma(1 + \sigma)$
+        - Log-normal: $E[T] = \exp(\mu + \sigma^2/2)$
+        - Log-logistic ($\beta > 1$): $E[T] = \alpha\pi/\beta\,/\,\sin(\pi/\beta)$
+
+        Examples
+        --------
+        Compute the mean survival time under a fitted Weibull model:
+
+        ```{python}
+        import greenwood as gw
+
+        lung = gw.load_dataset("lung", backend="polars")
+        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        fit = gw.Parametric("weibull").fit(y)
+        fit.mean()
+        ```
         """
         mu_arr = np.array([self._mu])
         return float(_mean_survival_aft(self.dist, mu_arr, self._sigma)[0])
