@@ -423,7 +423,26 @@ class Parametric:
         Returns
         -------
         ndarray
-            Density values, same length as `times=`.
+            Density values, same length as `times`.
+
+        Details
+        -------
+        Computed from the standardised density as
+        $f_T(t) = f_\varepsilon(z) / (\sigma\,t)$, where
+        $z = (\log t - \mu)/\sigma$.
+
+        Examples
+        --------
+        Evaluate the Weibull density at a grid of time points:
+
+        ```{python}
+        import greenwood as gw
+
+        lung = gw.load_dataset("lung", backend="polars")
+        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        fit = gw.Parametric("weibull").fit(y)
+        fit.density([100, 200, 365, 500])
+        ```
         """
         t = np.atleast_1d(np.asarray(times, dtype=float))
         z = (np.log(t) - self._mu) / self._sigma
