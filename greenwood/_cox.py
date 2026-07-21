@@ -1557,7 +1557,7 @@ class CoxPH:
     def _score_residuals(self, beta: Array) -> Array:
         """Breslow-form score (dfbeta-precursor) residuals, one per observation.
 
-        Confined to strata; summed over the event times at which each subject is at risk.
+        Confined to strata. Summed over the event times at which each subject is at risk.
         Used to form the robust (Lin-Wei) sandwich variance.
         """
         n, p = self._x.shape
@@ -1637,7 +1637,8 @@ class CoxPH:
         Examples
         --------
         Harrell's C is returned as a single number between 0 and 1. A value of 0.5 means
-        the model is not better than random guessing; 1.0 means perfect discrimination:
+        the model is not better than random guessing. A value of 1.0 means perfect
+        discrimination:
 
         ```{python}
         import greenwood as gw
