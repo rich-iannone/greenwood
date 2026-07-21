@@ -823,10 +823,21 @@ class MultiState:
 
     Returns
     -------
-    Fitted estimator
-        Call `fit()` to produce a fitted estimator with cached results (`states_`,
-        `time_`, `occupancy_`, and internal transition matrices), accessible as tidy
-        DataFrames.
+    MultiState
+        Call `fit()` to produce a fitted estimator with attributes `states_`, `time_`,
+        and `occupancy_`, accessible as tidy DataFrames via `to_frame()`.
+
+    Details
+    -------
+    The data must be in counting-process (long) format: one row per interval `(start, stop]`
+    that a subject spends in a given state. Each row carries the current state and the state
+    transitioned into at `stop` (or `None` / a censoring marker if the subject was censored).
+    A subject who passes through multiple states contributes one row per state-sojourn.
+
+    The Aalen-Johansen estimator generalises the Kaplan-Meier curve to an arbitrary state
+    space. The occupancy probabilities at each event time sum to 1 across states, and the
+    result can be read as "if I start in the initial state at time 0, what is the probability
+    of being in each state at time $t$?"
 
     Examples
     --------
