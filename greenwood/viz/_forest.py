@@ -114,7 +114,9 @@ def theme_forest() -> Any:
 
     Examples
     --------
-    ```python
+    Apply the forest theme to a forest plot of Cox model hazard ratios:
+
+    ```{python}
     import greenwood as gw
 
     lung = gw.load_dataset("lung", backend="polars")
