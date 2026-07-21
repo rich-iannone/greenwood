@@ -284,6 +284,11 @@ class Parametric:
     def survival(self, times: Any) -> Array:
         r"""Survival function $S(t) = P(T > t)$ at the given times.
 
+        Returns the probability that a subject survives beyond each requested time under the
+        fitted parametric distribution. Unlike the non-parametric Kaplan–Meier estimate, this
+        gives a smooth curve that can be evaluated at any time point — including beyond the
+        last observed event.
+
         Parameters
         ----------
         times
