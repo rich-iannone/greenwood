@@ -444,6 +444,15 @@ def calibration(
         One row per bin with columns `bin`, `n`, `predicted` (mean), `observed`,
         `observed_lower`, `observed_upper`. Format depends on the `format` parameter.
 
+    Details
+    -------
+    Bins are formed by splitting subjects into `n_bins` quantile-based groups of their
+    predicted survival probability. Within each bin the Kaplan–Meier estimate at `time`
+    gives the observed survival, and the mean of the predictions gives the predicted value.
+    A well-calibrated model produces points that lie along the 45-degree diagonal when
+    plotted as observed vs. predicted. Systematic departures from the diagonal indicate
+    over- or under-prediction in that probability range.
+
     Examples
     --------
     Fit a Cox model on the bundled `lung` dataset and read the predicted survival at a single
