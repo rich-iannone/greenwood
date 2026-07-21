@@ -1332,7 +1332,7 @@ class CoxPH:
             Type of residuals to return: `"martingale"` (default) or `"schoenfeld"`.
 
             - `"martingale"`: One residual per observation. Ranges from $-\infty$ to 1. Positive
-              values suggest the model underestimated risk; negative values suggest
+              values suggest the model underestimated risk. Negative values suggest
               overestimation. Useful for overall fit assessment.
             - `"schoenfeld"`: One row per event with one column per covariate. Useful for
               checking the proportional-hazards assumption: plot against time to look for
@@ -1408,7 +1408,7 @@ class CoxPH:
     def _event_contributions(self) -> tuple[list[Array], list[float], list[Array]]:
         """Per-event Schoenfeld residual, event time, and risk-set covariance share.
 
-        Iterates strata then event times; risk sets are confined to the stratum. For tied
+        Iterates strata then event times. Risk sets are confined to the stratum. For tied
         Efron events, the risk mean is averaged and the covariance split across the ties.
         """
         risk_score = np.exp(self._x @ self.coef_) * self._weight * self._risk_multiplier
