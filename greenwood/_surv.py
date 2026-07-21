@@ -60,8 +60,7 @@ class CensoringType(str, Enum):
 
     Examples
     --------
-    The members correspond to the `Surv` constructors. A constructed response reports its
-    flavor through `Surv(...).type`, which is one of these values.
+    List all available censoring types:
 
     ```{python}
     from greenwood import CensoringType
@@ -1137,12 +1136,12 @@ class Surv:
 
         Parameters
         ----------
-        text : str
+        text
             A JSON string produced by `to_json()` containing the serialized `Surv` data.
 
         Returns
         -------
-        `Surv`
+        Surv
             A new `Surv` object restored from the JSON representation.
 
         Examples
