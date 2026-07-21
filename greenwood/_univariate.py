@@ -339,7 +339,25 @@ class Parametric:
         Returns
         -------
         ndarray
-            Cumulative hazard values, same length as `times=`.
+            Cumulative hazard values, same length as `times`.
+
+        Details
+        -------
+        Computed as the negative log of the survival function: $H(t) = -\log S(t)$. For
+        a Weibull distribution this simplifies to $H(t) = (t/\lambda)^k$.
+
+        Examples
+        --------
+        Compute the cumulative hazard at several time points under a fitted Weibull model:
+
+        ```{python}
+        import greenwood as gw
+
+        lung = gw.load_dataset("lung", backend="polars")
+        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        fit = gw.Parametric("weibull").fit(y)
+        fit.cumulative_hazard([100, 200, 365, 500])
+        ```
         """
         return -np.log(self.survival(times))
 
