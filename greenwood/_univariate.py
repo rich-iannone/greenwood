@@ -286,7 +286,7 @@ class Parametric:
 
         Returns the probability that a subject survives beyond each requested time under the
         fitted parametric distribution. Unlike the non-parametric Kaplan–Meier estimate, this
-        gives a smooth curve that can be evaluated at any time point — including beyond the
+        gives a smooth curve that can be evaluated at any time point, including beyond the
         last observed event.
 
         Parameters
@@ -366,7 +366,8 @@ class Parametric:
 
         The hazard (or hazard rate) gives the instantaneous risk of the event at time $t$,
         conditional on survival up to that time. Its shape reveals whether risk is increasing,
-        decreasing, or constant over time — a signature feature of each distribution family.
+        decreasing, or constant over time. This shape is a signature feature of each
+        distribution family.
 
         Parameters
         ----------
