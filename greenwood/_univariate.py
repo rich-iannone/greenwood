@@ -574,6 +574,9 @@ class Parametric:
 
         Examples
         --------
+        Export the parameter estimates as a Polars DataFrame for further analysis or
+        reporting:
+
         ```{python}
         import greenwood as gw
 
