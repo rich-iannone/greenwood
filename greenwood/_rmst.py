@@ -625,15 +625,15 @@ def pairwise_rmst_test(
 
     Examples
     --------
-    Compare RMST across multiple groups with pairwise comparisons:
+    Compare one-year RMST across sex groups in the lung cancer dataset with Holm
+    correction:
 
     ```{python}
     import greenwood as gw
 
     lung = gw.load_dataset("lung", backend="polars")
     y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-    # If there are multiple groups, e.g., by stage:
-    # result = gw.pairwise_rmst_test(y, tau=365, group=lung["stage"])
+    gw.pairwise_rmst_test(y, tau=365, group=lung["sex"], format="polars")
     ```
     """
     import itertools
