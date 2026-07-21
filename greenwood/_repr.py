@@ -132,7 +132,7 @@ def align_table(
     """Render a right-aligned numeric table with an optional left label column.
 
     Produces the compact, monospace-friendly table layout used in the R-style `__repr__`
-    of all Greenwood estimators. Column headers and data cells are right-justified; row
+    of all Greenwood estimators. Column headers and data cells are right-justified. Row
     labels (if present) are left-justified.
 
     Parameters
