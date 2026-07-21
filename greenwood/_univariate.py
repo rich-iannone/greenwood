@@ -474,6 +474,9 @@ class Parametric:
 
         Examples
         --------
+        Compute the first quartile, median, and third quartile of survival time under a
+        fitted Weibull model:
+
         ```{python}
         import greenwood as gw
 
