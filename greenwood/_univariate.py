@@ -453,8 +453,9 @@ class Parametric:
     def quantile(self, p: Any) -> Array:
         r"""Quantile function: survival-time quantiles at failure probabilities `p`.
 
-        The quantile $t_p$ satisfies $P(T \le t_p) = p$, so $p = 0.5$ gives the median survival
-        time.
+        The quantile $t_p$ satisfies $P(T \le t_p) = p$, so `p=0.5` gives the median survival
+        time, `p=0.25` the first quartile, etc. This is the inverse of the CDF and provides
+        clinically interpretable time-to-event summaries.
 
         Parameters
         ----------
