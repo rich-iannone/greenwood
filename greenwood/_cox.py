@@ -505,8 +505,8 @@ class CoxPH:
         `covariates` is a dataframe or 2-D array, or a right-hand-side formula string (for
         example `"age + sex + C(ph.ecog)"`) evaluated against `data`. `strata` gives
         per-stratum baseline hazards with shared coefficients. `robust=True` (or providing
-        `cluster` ids) reports the Lin-Wei sandwich variance; `cluster` sums the score
-        residuals within groups before forming the sandwich.
+        `cluster` ids) reports the Lin-Wei sandwich variance. The `cluster` option sums the
+        score residuals within groups before forming the sandwich.
 
         Parameters
         ----------
