@@ -355,7 +355,8 @@ def rmst_test(
 
     Examples
     --------
-    Test RMST difference between two treatment groups:
+    Test whether the two sexes in the lung cancer dataset have significantly different
+    one-year RMST:
 
     ```{python}
     import greenwood as gw
@@ -363,11 +364,15 @@ def rmst_test(
     lung = gw.load_dataset("lung", backend="polars")
     y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
     result = gw.rmst_test(y, tau=365, group=lung["sex"])
-    result.estimate   # RMST difference
-    result.p_value    # significance
+    result
     ```
 
-    Using ratio estimand:
+    Individual components of the result are accessible as attributes — for example, the
+    point estimate and its p-value:
+
+    ```{python}
+    result.estimate
+    ```
 
     ```{python}
     result_ratio = gw.rmst_test(y, tau=365, group=lung["sex"], estimand="ratio")
