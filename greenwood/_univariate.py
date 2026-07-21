@@ -297,10 +297,19 @@ class Parametric:
         Returns
         -------
         ndarray
-            Survival probabilities, same length as `times=`.
+            Survival probabilities, same length as `times`.
+
+        Details
+        -------
+        The survival probability is computed from the fitted location–scale model as
+        $S(t) = 1 - F_\varepsilon\!\bigl((\log t - \mu)/\sigma\bigr)$, where
+        $F_\varepsilon$ is the CDF of the standardised error distribution.
 
         Examples
         --------
+        Evaluate the fitted Weibull survival function at a few clinically relevant time
+        points (100, 200, 365, and 500 days):
+
         ```{python}
         import greenwood as gw
 
