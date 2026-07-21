@@ -103,7 +103,8 @@ class Parametric:
     fit
     ```
 
-    Compare all four distributions:
+    To quickly compare all four distributions and pick the best-fitting family, use the
+    companion function `compare_distributions()`:
 
     ```{python}
     gw.compare_distributions(y, format="polars")
