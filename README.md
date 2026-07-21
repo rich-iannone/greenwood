@@ -51,7 +51,7 @@ Hypothesis testing:
 
 Regression models:
 
-- **Cox proportional hazards** (`CoxPH`): Model covariates as hazard ratios with stratification, robust sandwich variance, clustering, baseline hazard prediction with confidence intervals, and model diagnostics (residuals, proportional-hazards test, concordance).
+- **Cox proportional hazards** (`CoxPH`): Model covariates as hazard ratios with stratification, robust sandwich variance, clustering, baseline hazard prediction with confidence intervals, shared gamma frailty by cluster (`frailty="gamma"`) with frailty-variance LR testing, and model diagnostics (residuals, proportional-hazards test, concordance).
 - **Accelerated failure time** (`AFT`): Parametric models (Weibull, exponential, log-normal, log-logistic) with survival prediction confidence intervals, validated against R's `survreg`.
 - **Competing risks**: Cumulative incidence functions (`AalenJohansen`), subdistribution hazards (`FineGray`), and multi-state transition probabilities.
 

@@ -183,6 +183,20 @@ def test_glance_fields(lung_surv) -> None:  # type: ignore[no-untyped-def]
     assert row["aic"] == pytest.approx(-2 * cox.loglik_ + 2 * 2)
 
 
+def test_glance_includes_frailty_lrt_fields(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    cox = CoxPH(ties="breslow").fit(
+        y,
+        df[["age", "sex"]],
+        frailty="gamma",
+        frailty_cluster=df["inst"],
+    )
+    row = gw.glance(cox, format="pandas").iloc[0]
+    assert row["frailty_theta"] > 0.0
+    assert row["frailty_lrt_statistic"] >= 0.0
+    assert 0.0 <= row["frailty_lrt_p_value"] <= 1.0
+
+
 def test_to_dataframe_columns(lung_surv) -> None:  # type: ignore[no-untyped-def]
     df, y = lung_surv
     cox = CoxPH().fit(y, df[["age", "sex"]])
@@ -302,6 +316,59 @@ def test_cluster_implies_robust(lung_surv) -> None:  # type: ignore[no-untyped-d
     df, y = lung_surv
     cox = CoxPH(ties="breslow").fit(y, df[["age", "sex"]], cluster=df["inst"])
     assert cox.robust is True
+
+
+def test_gamma_frailty_requires_cluster(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    with pytest.raises(ValueError, match="frailty_cluster"):
+        CoxPH(ties="breslow").fit(y, df[["age", "sex"]], frailty="gamma")
+
+
+def test_gamma_frailty_requires_breslow_ties(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    with pytest.raises(NotImplementedError, match="ties='breslow'"):
+        CoxPH(ties="efron").fit(y, df[["age", "sex"]], frailty="gamma", frailty_cluster=df["inst"])
+
+
+def test_gamma_frailty_fit_sets_attributes(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    cox = CoxPH(ties="breslow").fit(
+        y,
+        df[["age", "sex"]],
+        frailty="gamma",
+        frailty_cluster=df["inst"],
+    )
+    assert cox.frailty_ == "gamma"
+    assert cox.frailty_theta_ is not None and cox.frailty_theta_ > 0
+    assert cox.frailty_effect_ is not None
+    assert cox.frailty_levels_ is not None
+    assert len(cox.frailty_effect_) == len(cox.frailty_levels_)
+    assert np.all(cox.frailty_effect_ > 0)
+    assert cox.coef_.shape == (2,)
+    assert cox.frailty_lrt_stat_ is not None and cox.frailty_lrt_stat_ >= 0.0
+    assert cox.frailty_lrt_p_value_ is not None and 0.0 <= cox.frailty_lrt_p_value_ <= 1.0
+
+
+def test_gamma_frailty_variance_test_api(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    cox = CoxPH(ties="breslow").fit(
+        y,
+        df[["age", "sex"]],
+        frailty="gamma",
+        frailty_cluster=df["inst"],
+    )
+    out = cox.frailty_test()
+    assert out["theta"] > 0.0
+    assert out["lr_statistic"] >= 0.0
+    assert out["df"] == 1.0
+    assert 0.0 <= out["p_value"] <= 1.0
+
+
+def test_frailty_test_requires_frailty_fit(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    cox = CoxPH().fit(y, df[["age", "sex"]])
+    with pytest.raises(ValueError, match="frailty"):
+        cox.frailty_test()
 
 
 def test_stratified_survival_prediction_not_supported(lung_surv) -> None:  # type: ignore[no-untyped-def]

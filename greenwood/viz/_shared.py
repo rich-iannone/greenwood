@@ -86,7 +86,7 @@ def get_risk_table_frame(km: KaplanMeier, times: Any = None, *, format: str | No
     y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
     km = gw.KaplanMeier().fit(y, by=lung["sex"])
 
-    gw.viz.risk_table_data(km, times=[0, 250, 500, 750, 1000], format="polars")
+    gw.get_risk_table_frame(km, times=[0, 250, 500, 750, 1000], format="polars")
     ```
     """
     return to_dataframe(_risk_table_columns(km, times), format=format)

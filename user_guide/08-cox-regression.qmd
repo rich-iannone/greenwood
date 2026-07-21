@@ -464,6 +464,74 @@ gw.tidy(cox_cluster, format="polars")
 Clustered sandwich standard errors are wider than model-based ones, reflecting the loss of
 information from within-cluster correlation.
 
+## Shared gamma frailty for clustered hazards
+
+Sometimes cluster correlation is not just a variance issue. If subjects in the same cluster
+(hospital, family, center, repeated-event unit) share unmeasured risk factors, a shared-frailty
+model adds a cluster-level random effect directly to the hazard rather than only correcting standard
+errors.
+
+In Greenwood, this is available through `frailty="gamma"` with a cluster label. The implementation
+supports right-censored data with Breslow ties.
+
+```{python}
+# Load data and build the response
+lung = gw.load_dataset("lung", backend="polars")
+y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+
+# Shared gamma frailty by institution (inst)
+cox_frailty = gw.CoxPH(ties="breslow").fit(
+    y,
+    lung[["age", "sex"]],
+    frailty="gamma",
+    frailty_cluster=lung["inst"],
+)
+
+# Printed summary includes frailty theta and the variance test
+cox_frailty
+```
+
+To get the frailty-variance inference directly, call `frailty_test()`:
+
+```{python}
+cox_frailty.frailty_test()
+```
+
+You can also retrieve these fields in `glance()` output:
+
+```{python}
+gw.glance(cox_frailty, format="polars")[
+    ["frailty_theta", "frailty_lrt_statistic", "frailty_lrt_p_value"]
+]
+```
+
+Interpretation:
+
+- `frailty_theta` is the estimated cluster-level heterogeneity variance.
+- larger values indicate stronger between-cluster hazard heterogeneity.
+- the LR test evaluates the null hypothesis `theta = 0` (no frailty variance).
+
+::: {.callout-note}
+## Frailty vs clustered robust SEs
+
+- `cluster=` / `robust=True` keeps a standard Cox mean structure and adjusts uncertainty.
+- `frailty="gamma"` changes the model itself by adding cluster-level random effects.
+
+Use frailty when latent cluster heterogeneity is scientifically part of the estimand, not only a
+nuisance for inference.
+:::
+
+::: {.callout-important}
+## Current frailty scope
+
+`frailty="gamma"` currently requires:
+
+- right-censored `Surv.right(...)` responses,
+- `ties="breslow"`,
+- no `strata=`, and
+- no simultaneous robust/cluster sandwich variance options.
+:::
+
 Instead of selecting columns yourself, you can describe the model with a formula, passing the
 right-hand side as a string and the data frame as `data`. This is convenient for categorical
 variables, interactions, and transformations, and it mirrors the notation used in R. The formula
@@ -472,9 +540,7 @@ extra.
 
 ```{python}
 # Fit using a Wilkinson formula string; categorical columns are dummy-coded automatically
-gw.CoxPH().fit(y, "age + sex", data=lung).to_frame(format="polars")[
-    ["term", "estimate"]
-]
+gw.CoxPH().fit(y, "age + sex", data=lung).to_frame(format="polars")[["term", "estimate"]]
 ```
 
 Categorical columns are expanded into indicator terms automatically, and interactions are written
@@ -483,9 +549,7 @@ like `C(ph.ecog)` forces a column to be treated as categorical.
 
 ```{python}
 # The * operator expands to main effects plus their interaction term
-gw.CoxPH().fit(y, "age * sex", data=lung).to_frame(format="polars")[
-    ["term", "estimate"]
-]
+gw.CoxPH().fit(y, "age * sex", data=lung).to_frame(format="polars")[["term", "estimate"]]
 ```
 
 Rows with a missing value in any formula term are dropped, the same complete-case rule used when you
