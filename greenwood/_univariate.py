@@ -410,6 +410,11 @@ class Parametric:
     def density(self, times: Any) -> Array:
         r"""Probability density function $f(t)$ at the given times.
 
+        Returns the density of the survival-time distribution. The density is the derivative
+        of the CDF, so $f(t)\,dt$ gives the probability of the event occurring in a small
+        interval around $t$. Useful for plotting the fitted distribution against a histogram
+        of observed times.
+
         Parameters
         ----------
         times
