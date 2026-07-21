@@ -163,6 +163,9 @@ class Parametric:
 
         Examples
         --------
+        Fit a log-normal distribution and view the estimated parameters with their standard
+        errors:
+
         ```{python}
         import greenwood as gw
 
