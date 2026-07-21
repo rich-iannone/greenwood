@@ -73,6 +73,12 @@ def get_risk_table_frame(km: KaplanMeier, times: Any = None, *, format: str | No
         Output format: `None` (default), `"pandas"`, `"polars"`, or `"pyarrow"`. When
         `None`, a backend is auto-detected (Polars, then Pandas, then PyArrow).
 
+    Returns
+    -------
+    DataFrame
+        A tidy frame with columns `strata`, `time`, and `n_risk` (one row per stratum per
+        time point).
+
     Examples
     --------
     Fit a stratified Kaplan-Meier estimator on the bundled `lung` dataset, then tabulate the
