@@ -73,6 +73,22 @@ class Parametric:
     conf_level
         Confidence level for parameter intervals (default `0.95`).
 
+    Returns
+    -------
+    Parametric
+        The fitted estimator (after calling `fit()`), with attributes `params_`, `std_error_`,
+        `conf_low_`, `conf_high_`, `loglik_`, `aic_`, `bic_`, `n_`, and `n_event_`.
+
+    Details
+    -------
+    Internally every family is fitted in the AFT location–scale parameterisation
+    ($\log T = \mu + \sigma\varepsilon$), and results are reported back in the natural
+    parameterisation of each distribution (e.g., Weibull shape and scale). Standard errors
+    are obtained via the delta method applied to the observed information matrix.
+
+    Model selection between families is straightforward: lower AIC (or BIC) indicates a
+    better fit. Use `compare_distributions()` to rank all four families at once.
+
     Examples
     --------
     Fit a Weibull distribution to the lung cancer dataset:
