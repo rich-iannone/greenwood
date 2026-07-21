@@ -696,6 +696,9 @@ def integrated_auc(surv: Surv, marker: Any, times: Any) -> float:
 
     Examples
     --------
+    Compute the integrated AUC of a Cox model's linear predictor across three
+    clinically relevant time horizons (6, 12, and 18 months):
+
     ```{python}
     import greenwood as gw
 
