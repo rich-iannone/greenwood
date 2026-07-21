@@ -841,12 +841,9 @@ class MultiState:
 
     Examples
     --------
-    The `mgus2` patients occupy three states in turn: `"mgus"` at entry, then possibly
-    `"pcm"` (plasma-cell malignancy), then `"death"`. Reshape the wide dataset into
-    counting-process intervals `(start, stop]`, one interval per state occupied, labelled with
-    the state entered next. A patient who progresses before dying contributes two intervals;
-    everyone else contributes one. Fitting reports the occupancy probability of each state
-    over time.
+    The `mgus2` patients occupy three states: `"mgus"` at entry, then possibly `"pcm"`
+    (plasma-cell malignancy), then `"death"`. Reshape the wide dataset into counting-process
+    intervals, fit the multi-state model, and view the occupancy probabilities over time:
 
     ```{python}
     import greenwood as gw
