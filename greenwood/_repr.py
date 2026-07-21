@@ -50,7 +50,36 @@ def num(x: Any, digits: int = 4) -> str:
 
 
 def fixed(x: Any, digits: int = 3) -> str:
-    """Format a number with a fixed number of decimals, or `NA` for missing values."""
+    """Format a number with a fixed number of decimal places, or `"NA"` for missing values.
+
+    Unlike `num()`, which uses significant figures, this always shows exactly `digits`
+    decimal places. Useful for p-values and other quantities where a fixed format is
+    conventional.
+
+    Parameters
+    ----------
+    x
+        A numeric value (or `None`).
+    digits
+        Number of decimal places (default `3`).
+
+    Returns
+    -------
+    str
+        The formatted string.
+
+    Examples
+    --------
+    ```{python}
+    from greenwood._repr import fixed
+
+    fixed(0.04217)
+    ```
+
+    ```{python}
+    fixed(float("nan"))
+    ```
+    """
     if x is None:
         return "NA"
     xf = float(x)
