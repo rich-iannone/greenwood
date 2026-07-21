@@ -407,30 +407,37 @@ class KaplanMeier:
 
     @property
     def time_(self) -> Array:
+        """Event times at which the survival estimate changes (one entry per step)."""
         return self._concat("time")
 
     @property
     def survival_(self) -> Array:
+        """Kaplan–Meier survival estimates at each event time."""
         return self._concat("surv")
 
     @property
     def std_error_(self) -> Array:
+        """Standard errors of the survival estimates (Greenwood's formula)."""
         return self._concat("std_error")
 
     @property
     def conf_low_(self) -> Array:
+        """Lower confidence limits for the survival estimates."""
         return self._concat("conf_low")
 
     @property
     def conf_high_(self) -> Array:
+        """Upper confidence limits for the survival estimates."""
         return self._concat("conf_high")
 
     @property
     def cumhaz_(self) -> Array:
+        """Nelson–Aalen cumulative hazard estimates at each event time."""
         return self._concat("cumhaz")
 
     @property
     def strata_(self) -> Array | None:
+        """Stratum labels for each row, or `None` for unstratified fits."""
         if not self._grouped:
             return None
         return np.concatenate(
@@ -1025,18 +1032,22 @@ class NelsonAalen:
 
     @property
     def time_(self) -> Array:
+        """Event times at which the cumulative hazard estimate changes."""
         return self._concat("time")
 
     @property
     def cumhaz_(self) -> Array:
+        """Nelson–Aalen cumulative hazard estimates at each event time."""
         return self._concat("cumhaz")
 
     @property
     def std_error_(self) -> Array:
+        """Standard errors of the cumulative hazard estimates."""
         return np.sqrt(self._concat("cumhaz_var"))
 
     @property
     def strata_(self) -> Array | None:
+        """Stratum labels for each row, or `None` for unstratified fits."""
         if not self._grouped:
             return None
         return np.concatenate(
