@@ -1475,7 +1475,7 @@ class CoxPH:
             - `"log"`: Use log(time). Regression on log-transformed time.
 
             Both are validated against R's `cox.zph()` (though R defaults to
-            Kaplan-Meier transform; `"km"` and `"rank"` are planned).
+            Kaplan-Meier transform. `"km"` and `"rank"` are planned).
 
         Returns
         -------
@@ -1511,7 +1511,7 @@ class CoxPH:
         ```
 
         The full statistics are available as a tidy frame, one row per term plus a
-        `GLOBAL` row; pass `format=` to choose the backend (here, Polars):
+        `GLOBAL` row. Pass `format=` to choose the backend (here, Polars):
 
         ```{python}
         zph.to_frame(format="polars")
