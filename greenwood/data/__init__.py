@@ -79,6 +79,10 @@ def _resolve_backend(backend: str | None) -> str:
 def load_dataset(name: str, *, backend: str | None = None) -> Any:
     """Load a bundled dataset by name.
 
+    Greenwood ships several classic survival-analysis datasets from R's `survival` package,
+    stored as gzipped CSVs. This function decompresses them on the fly and returns a
+    DataFrame in your preferred backend.
+
     Parameters
     ----------
     name
