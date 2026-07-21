@@ -364,6 +364,10 @@ class Parametric:
     def hazard(self, times: Any) -> Array:
         r"""Hazard function $h(t) = f(t) / S(t)$ at the given times.
 
+        The hazard (or hazard rate) gives the instantaneous risk of the event at time $t$,
+        conditional on survival up to that time. Its shape reveals whether risk is increasing,
+        decreasing, or constant over time — a signature feature of each distribution family.
+
         Parameters
         ----------
         times
