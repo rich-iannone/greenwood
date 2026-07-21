@@ -327,6 +327,10 @@ class Parametric:
     def cumulative_hazard(self, times: Any) -> Array:
         r"""Cumulative hazard function $H(t) = -\log S(t)$ at the given times.
 
+        The cumulative hazard summarises the total accumulated risk up to time $t$. It
+        increases monotonically from zero and is unbounded. A steeper rise indicates higher
+        event rates over that interval.
+
         Parameters
         ----------
         times
