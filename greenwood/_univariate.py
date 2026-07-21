@@ -611,7 +611,7 @@ def compare_distributions(
     dists: list[str] | None = None,
     format: str | None = None,
 ) -> Any:
-    """Fit multiple parametric distributions and return an AIC/BIC comparison table.
+    r"""Fit multiple parametric distributions and return an AIC/BIC comparison table.
 
     This is the primary model-selection helper for univariate parametric survival analysis. It fits
     each distribution by maximum likelihood, then ranks them by AIC (lower is better). Use this
