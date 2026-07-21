@@ -533,6 +533,31 @@ class CoxNetCVResult:
         `best_score_`. Prefer this when parsimony matters.
     score_1se_
         Mean score at `penalizer_1se_`.
+
+    Examples
+    --------
+    Run cross-validated penalizer selection and inspect the result:
+
+    ```{python}
+    import greenwood as gw
+
+    lung = gw.load_dataset("lung", backend="polars")
+    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+    cols = ["age", "sex", "ph.ecog", "ph.karno", "wt.loss"]
+    cv_result = gw.cv_coxnet(y, lung[cols], seed=23)
+    cv_result
+    ```
+
+    The best penalizer and the more conservative one-standard-error penalizer are available
+    as attributes:
+
+    ```{python}
+    cv_result.best_penalizer_
+    ```
+
+    ```{python}
+    cv_result.penalizer_1se_
+    ```
     """
 
     def __init__(
