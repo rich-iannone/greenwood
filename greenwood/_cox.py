@@ -1698,10 +1698,11 @@ class CoxPH:
         ```{python}
         import greenwood as gw
 
-        kidney = gw.load_dataset("kidney", backend="polars")
-        y = gw.Surv.right(kidney["time"], kidney["status"])
-        cox = gw.CoxPH(frailty="gamma", frailty_groups="id").fit(
-            y, covariates=["age", "sex"], data=kidney
+        lung = gw.load_dataset("lung", backend="polars")
+        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        cox = gw.CoxPH(ties="breslow").fit(
+            y, covariates=lung[["age", "sex"]],
+            frailty="gamma", frailty_cluster=lung["inst"],
         )
         cox.frailty_test()
         ```
