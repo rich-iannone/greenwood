@@ -24,6 +24,14 @@ jobs:
           python -m pip install git+https://github.com/posit-dev/great-docs.git@main
       - name: Set up Quarto
         uses: quarto-dev/quarto-actions/setup@v2
+      - name: Restore freeze cache
+        uses: actions/cache@v4
+        with:
+          path: _freeze/
+          key: freeze-${{ hashFiles('**/uv.lock', '**/poetry.lock', '**/requirements*.txt', '**/pyproject.toml') }}-${{ hashFiles('**/*.qmd') }}
+          restore-keys: |
+            freeze-${{ hashFiles('**/uv.lock', '**/poetry.lock', '**/requirements*.txt', '**/pyproject.toml') }}-
+            freeze-
       - name: Build docs
         run: great-docs build
       - name: Save docs artifact
