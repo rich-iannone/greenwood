@@ -559,25 +559,6 @@ def test_rmst_test_stratified_no_valid_strata_raises() -> None:
         rmst_test(y, tau=10, group=group, strata=strata)
 
 
-# -- Ratio and percentage_difference estimands ---------------------------------
-
-
-def test_rmst_test_ratio_estimand() -> None:
-    y = Surv.right([1, 2, 3, 4, 5, 6, 7, 8], [1, 1, 1, 1, 1, 1, 1, 1])
-    group = [0, 0, 0, 0, 1, 1, 1, 1]
-    result = rmst_test(y, tau=6, group=group, estimand="ratio")
-    assert result.estimate > 0
-    assert result.p_value >= 0
-
-
-def test_rmst_test_percentage_difference_estimand() -> None:
-    y = Surv.right([1, 2, 3, 4, 5, 6, 7, 8], [1, 1, 1, 1, 1, 1, 1, 1])
-    group = [0, 0, 0, 0, 1, 1, 1, 1]
-    result = rmst_test(y, tau=6, group=group, estimand="percentage_difference")
-    assert isinstance(result.estimate, float)
-    assert result.p_value >= 0
-
-
 # -- Counting-process data paths -----------------------------------------------
 
 

@@ -947,7 +947,9 @@ def cv_coxnet(
         else:  # pragma: no cover
             mean_scores[lam_idx] = 0.5 if higher_is_better else np.inf  # pragma: no cover
             std_scores[lam_idx] = 0.0  # pragma: no cover
-        n_nonzero_arr[lam_idx] = float(np.mean(fold_nonzero)) if fold_nonzero else 0.0  # pragma: no cover
+        n_nonzero_arr[lam_idx] = (  # pragma: no cover
+            float(np.mean(fold_nonzero)) if fold_nonzero else 0.0
+        )
 
     return CoxNetCVResult(
         penalizers=lam_path,

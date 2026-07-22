@@ -137,7 +137,9 @@ def _subset_surv(surv: Surv, mask: npt.NDArray[np.bool_]) -> Surv:
         return _Surv.right(surv.stop[mask], surv.event[mask])
     if surv.type.value == "counting":
         return _Surv.counting(surv.entry[mask], surv.stop[mask], surv.event[mask])
-    raise NotImplementedError(f"_subset_surv does not support Surv type {surv.type.value!r}")  # pragma: no cover
+    raise NotImplementedError(  # pragma: no cover
+        f"_subset_surv does not support Surv type {surv.type.value!r}"
+    )
 
 
 def _stratified_rmst_group_values(
@@ -234,7 +236,8 @@ def _rmst_group_values(
 
     # The event table has a 'strata' column when group is provided
     if et.strata is None:  # pragma: no cover
-        raise ValueError("event_table should have strata when group is provided")  # pragma: no cover
+        msg = "event_table should have strata when group is provided"
+        raise ValueError(msg)
 
     # Get unique group labels from strata
     group_labels = list(dict.fromkeys(et.strata.tolist()))  # Preserve order of first appearance
@@ -452,7 +455,8 @@ def rmst_test(
         statistic = float(log_estimate / se_log_ratio)
     else:  # percentage_difference
         if rmst2 <= 0:  # pragma: no cover
-            raise ValueError("RMST2 must be positive for percentage_difference estimand")  # pragma: no cover
+            msg = "RMST2 must be positive for percentage_difference estimand"
+            raise ValueError(msg)
         estimate = (rmst1 - rmst2) / rmst2 * 100.0
         # SE = (1/RMST2) * SE(RMST1 - RMST2) * 100
         se = np.sqrt(se1**2 + se2**2) / rmst2 * 100.0
@@ -671,7 +675,9 @@ def pairwise_rmst_test(
         elif surv.type.value == "counting":
             surv_sub = Surv.counting(surv.entry[mask], surv.stop[mask], surv.event[mask])
         else:  # pragma: no cover
-            raise NotImplementedError(f"pairwise_rmst_test does not support {surv.type.value}")  # pragma: no cover
+            raise NotImplementedError(  # pragma: no cover
+                f"pairwise_rmst_test does not support {surv.type.value}"
+            )
 
         group_sub = group_arr[mask]
 
