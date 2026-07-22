@@ -329,3 +329,17 @@ def test_trend_identical_to_logrank_for_two_groups() -> None:
     assert trend_result.df == 1
     assert logrank_result.df == 1
     np.testing.assert_allclose(trend_result.statistic, logrank_result.statistic, rtol=1e-10)
+
+
+def test_trend_test_rejects_interval() -> None:
+    y = Surv.interval(lower=[1, 2, 3, 4], upper=[2, 3, 4, 5])
+    with pytest.raises(NotImplementedError, match="right-censored"):
+        trend_test(y, group=["A", "A", "B", "B"])
+
+
+def test_trend_test_array_scores() -> None:
+    y = Surv.right([1, 2, 3, 4, 5, 6], [1, 1, 1, 1, 1, 1])
+    group = ["A", "A", "B", "B", "C", "C"]
+    result = trend_test(y, group=group, scores=[0.0, 1.0, 2.0])
+    assert result.statistic >= 0
+    assert 0 <= result.p_value <= 1

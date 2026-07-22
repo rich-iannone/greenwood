@@ -73,6 +73,16 @@ def test_risk_table_plot_returns_ggplot(km_grouped: gw.KaplanMeier) -> None:
     assert isinstance(gw.viz.plotnine.risk_table(km_grouped), p9.ggplot)
 
 
+def test_plot_survival_plotnine_backend(km_overall: gw.KaplanMeier) -> None:
+    plot = gw.plot_survival(km_overall, backend="plotnine")
+    assert plot is not None
+
+
+def test_plot_survival_invalid_backend(km_overall: gw.KaplanMeier) -> None:
+    with pytest.raises(ValueError, match="backend must be"):
+        gw.plot_survival(km_overall, backend="matplotlib")
+
+
 def test_risk_table_data_shape(km_grouped: gw.KaplanMeier) -> None:
     rtd = gw.get_risk_table_frame(km_grouped, times=[0, 250, 500])
     assert list(rtd.columns) == ["strata", "time", "n_risk"]

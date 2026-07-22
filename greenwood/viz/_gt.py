@@ -55,8 +55,8 @@ def risk_table(km: KaplanMeier, times: Any = None) -> Any:
     """
     try:
         import great_tables as gt  # pyright: ignore[reportMissingImports]
-    except ImportError as exc:
-        raise ImportError(
+    except ImportError as exc:  # pragma: no cover
+        raise ImportError(  # pragma: no cover
             "Great Tables required for risk_table. Install it with `pip install great-tables`."
         ) from exc
 

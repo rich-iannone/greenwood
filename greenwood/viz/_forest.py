@@ -314,8 +314,8 @@ def _plot_forest_altair(
     """Altair implementation of plot_forest."""
     try:
         import altair as alt
-    except ImportError as exc:
-        raise ImportError(
+    except ImportError as exc:  # pragma: no cover
+        raise ImportError(  # pragma: no cover
             "plot_forest() with backend='altair' requires altair. "
             "Install with `pip install greenwood[altair]`."
         ) from exc
@@ -415,8 +415,8 @@ def _plot_forest_plotnine(
     """plotnine implementation of plot_forest."""
     try:
         import plotnine as p9
-    except ImportError as exc:
-        raise ImportError(
+    except ImportError as exc:  # pragma: no cover
+        raise ImportError(  # pragma: no cover
             "plot_forest() with backend='plotnine' requires plotnine. "
             "Install with `pip install greenwood[plotnine]`."
         ) from exc

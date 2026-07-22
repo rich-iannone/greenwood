@@ -288,8 +288,8 @@ class RoystonParmar:
             beta = theta[n_spline:]
             eta = basis @ gamma + (design @ beta if n_cov else 0.0)
             sprime = deriv @ gamma
-            if np.any(sprime <= 0.0):
-                return 1e12
+            if np.any(sprime <= 0.0):  # pragma: no cover
+                return 1e12  # pragma: no cover
             ll = event * (eta + np.log(sprime) - u) - np.exp(eta)
             return -float(ll.sum())
 

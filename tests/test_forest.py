@@ -263,6 +263,18 @@ def test_plot_forest_in_gw_namespace() -> None:
     assert not hasattr(gw, "forest_plot")  # consolidated into plot_forest
 
 
+def test_plot_forest_dict_input() -> None:
+    data = {
+        "term": ["age", "sex"],
+        "estimate": [1.02, 0.58],
+        "ci_lower": [1.00, 0.42],
+        "ci_upper": [1.04, 0.81],
+        "p_value": [0.01, 0.001],
+    }
+    chart = plot_forest(data)
+    assert chart is not None
+
+
 def test_theme_forest_in_gw_namespace() -> None:
     assert hasattr(gw, "theme_forest")
     assert "theme_forest" in gw.__all__

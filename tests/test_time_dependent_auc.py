@@ -202,3 +202,19 @@ def test_integrated_auc_exceeds_random_for_strong_marker() -> None:
     iauc = gw.integrated_auc(y, marker, times=times)
     # Strong marker should give clearly better-than-random AUC.
     assert iauc > 0.65
+
+
+def test_integrated_auc_few_valid_values_input(lung_surv, lung) -> None:  # type: ignore[no-untyped-def]
+    from greenwood import CoxPH
+
+    cox = CoxPH().fit(lung_surv, lung[["age", "sex"]])
+    lp = cox.predict(type="lp")
+    with pytest.raises(ValueError, match="at least two times"):
+        gw.integrated_auc(lung_surv, lp, times=[180])
+
+
+def test_integrated_auc_few_valid_values_after_nan() -> None:
+    y = Surv.right([1, 2, 3, 4, 5], [1, 1, 1, 0, 0])
+    marker = np.array([0.5, 0.3, 0.8, 0.2, 0.6])
+    with pytest.raises(ValueError, match="fewer than two valid AUC"):
+        gw.integrated_auc(y, marker, times=[1000, 2000, 3000])

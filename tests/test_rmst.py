@@ -557,3 +557,68 @@ def test_rmst_test_stratified_no_valid_strata_raises() -> None:
 
     with pytest.raises(ValueError, match="No usable strata"):
         rmst_test(y, tau=10, group=group, strata=strata)
+
+
+# -- Ratio and percentage_difference estimands ---------------------------------
+
+
+def test_rmst_test_ratio_estimand() -> None:
+    y = Surv.right([1, 2, 3, 4, 5, 6, 7, 8], [1, 1, 1, 1, 1, 1, 1, 1])
+    group = [0, 0, 0, 0, 1, 1, 1, 1]
+    result = rmst_test(y, tau=6, group=group, estimand="ratio")
+    assert result.estimate > 0
+    assert result.p_value >= 0
+
+
+def test_rmst_test_percentage_difference_estimand() -> None:
+    y = Surv.right([1, 2, 3, 4, 5, 6, 7, 8], [1, 1, 1, 1, 1, 1, 1, 1])
+    group = [0, 0, 0, 0, 1, 1, 1, 1]
+    result = rmst_test(y, tau=6, group=group, estimand="percentage_difference")
+    assert isinstance(result.estimate, float)
+    assert result.p_value >= 0
+
+
+# -- Counting-process data paths -----------------------------------------------
+
+
+def test_rmst_test_counting_process() -> None:
+    entry = np.array([0, 0, 0, 0, 0, 0, 0, 0])
+    exit_ = np.array([1, 2, 3, 4, 5, 6, 7, 8])
+    event = np.array([1, 1, 1, 1, 1, 1, 1, 1])
+    y = Surv.counting(entry, exit_, event)
+    group = [0, 0, 0, 0, 1, 1, 1, 1]
+    result = rmst_test(y, tau=6, group=group)
+    assert isinstance(result.estimate, float)
+
+
+def test_rmst_test_counting_process_stratified() -> None:
+    entry = np.zeros(16)
+    exit_ = np.array([1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8], dtype=float)
+    event = np.ones(16, dtype=int)
+    y = Surv.counting(entry, exit_, event)
+    group = np.array([0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1])
+    strata = np.array(["S1"] * 8 + ["S2"] * 8)
+    result = rmst_test(y, tau=6, group=group, strata=strata)
+    assert isinstance(result.estimate, float)
+
+
+def test_pairwise_rmst_counting_process() -> None:
+    entry = np.zeros(12)
+    exit_ = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], dtype=float)
+    event = np.ones(12, dtype=int)
+    y = Surv.counting(entry, exit_, event)
+    group = np.array(["A"] * 4 + ["B"] * 4 + ["C"] * 4)
+    result = pairwise_rmst_test(y, tau=8, group=group)
+    assert result.shape[0] == 3
+
+
+def test_pairwise_rmst_with_strata() -> None:
+    rng = np.random.default_rng(42)
+    n = 60
+    times = rng.exponential(5, size=n)
+    events = np.ones(n, dtype=int)
+    group = np.array(["A"] * 20 + ["B"] * 20 + ["C"] * 20)
+    strata = np.tile(["S1", "S2"], 30)
+    y = Surv.right(times, events)
+    result = pairwise_rmst_test(y, tau=4, group=group, strata=strata)
+    assert result.shape[0] == 3

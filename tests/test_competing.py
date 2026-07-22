@@ -201,6 +201,15 @@ def test_multistate_predict_step_function() -> None:
     np.testing.assert_allclose(pred[["a", "b"]].sum(axis=1).to_numpy(), 1.0)
 
 
+def test_aalen_johansen_rejects_truncated() -> None:
+    y_trunc = Surv.multistate(
+        [5, 6, 7, 8], event=[1, 2, 1, 0], states=("pcm", "death"),
+        start=[1, 2, 1, 2],
+    )
+    with pytest.raises(NotImplementedError, match="Left truncation"):
+        AalenJohansen().fit(y_trunc)
+
+
 def test_multistate_infers_states() -> None:
     from greenwood import MultiState
 

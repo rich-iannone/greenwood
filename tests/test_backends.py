@@ -67,6 +67,13 @@ def test_pyarrow_columns_and_frame(lung_pd: Any, reference: Reference) -> None:
     np.testing.assert_allclose(cox, ref_cox)
 
 
+def test_to_dataframe_unknown_format_raises() -> None:
+    from greenwood._backends import to_dataframe
+
+    with pytest.raises(ValueError, match="Unknown format"):
+        to_dataframe({"a": [1, 2]}, format="invalid")
+
+
 def test_numpy_and_list_columns_agree(lung_pd: Any, reference: Reference) -> None:
     # Plain NumPy arrays and Python lists are also valid column inputs.
     ref_km, _ = reference

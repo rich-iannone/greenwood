@@ -687,6 +687,85 @@ def test_poorly_scaled_covariates_warns() -> None:
         CoxPH().fit(y, x)
 
 
+def test_cox_frailty_repr(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    cox = CoxPH(ties="breslow").fit(
+        y, df[["age", "sex"]], frailty="gamma", frailty_cluster=df["inst"]
+    )
+    text = repr(cox)
+    assert "Shared frailty" in text
+    assert "theta" in text
+
+
+def test_cox_frailty_invalid_type(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    with pytest.raises(ValueError, match="frailty must be None or 'gamma'"):
+        CoxPH().fit(y, df[["age", "sex"]], frailty="invalid")
+
+
+def test_cox_frailty_cluster_without_frailty(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    with pytest.raises(ValueError, match="frailty_cluster requires frailty='gamma'"):
+        CoxPH().fit(y, df[["age", "sex"]], frailty_cluster=df["inst"])
+
+
+def test_cox_frailty_theta_nonpositive(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    with pytest.raises(ValueError, match="frailty_theta must be > 0"):
+        CoxPH().fit(
+            y, df[["age", "sex"]], frailty="gamma",
+            frailty_cluster=df["inst"], frailty_theta=-1.0,
+        )
+
+
+def test_cox_frailty_max_iter_zero(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    with pytest.raises(ValueError, match="frailty_max_iter must be >= 1"):
+        CoxPH().fit(
+            y, df[["age", "sex"]], frailty="gamma",
+            frailty_cluster=df["inst"], frailty_max_iter=0,
+        )
+
+
+def test_cox_frailty_counting_process_not_supported(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, _ = lung_surv
+    y_cp = Surv.counting(
+        np.zeros(df.shape[0]), df["time"].values, (df["status"] == 2).values
+    )
+    with pytest.raises(NotImplementedError, match="right-censored"):
+        CoxPH(ties="breslow").fit(
+            y_cp, df[["age", "sex"]], frailty="gamma", frailty_cluster=df["inst"]
+        )
+
+
+def test_cox_frailty_with_strata_not_supported(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    with pytest.raises(NotImplementedError, match="strata"):
+        CoxPH(ties="breslow").fit(
+            y, df[["age", "sex"]], frailty="gamma",
+            frailty_cluster=df["inst"], strata=df["sex"],
+        )
+
+
+def test_cox_frailty_with_robust_not_supported(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    with pytest.raises(NotImplementedError, match="robust"):
+        CoxPH(ties="breslow").fit(
+            y, df[["age", "sex"]], frailty="gamma",
+            frailty_cluster=df["inst"], robust=True,
+        )
+
+
+def test_cox_frailty_test_unavailable_guard() -> None:
+    cox = CoxPH()
+    cox.frailty_ = "gamma"
+    cox.frailty_theta_ = 0.5
+    cox.frailty_lrt_stat_ = None
+    cox.frailty_lrt_p_value_ = None
+    with pytest.raises(ValueError, match="unavailable"):
+        cox.frailty_test()
+
+
 def test_well_scaled_covariates_no_warning() -> None:
     """CoxPH.fit() should not warn when covariates are on comparable scales."""
     import warnings

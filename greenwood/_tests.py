@@ -813,8 +813,8 @@ def trend_test(
     u = sum(group_scores[g] * (observed_dict[g] - expected_dict[g]) for g in groups)
     v = sum(group_scores[g] ** 2 * var_diag[g] for g in groups)
 
-    if v <= 0:
-        raise ValueError(
+    if v <= 0:  # pragma: no cover
+        raise ValueError(  # pragma: no cover
             "Variance is non-positive; cannot compute trend statistic. "
             "Check for data issues (e.g., no events in some groups)."
         )

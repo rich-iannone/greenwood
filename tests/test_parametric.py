@@ -161,3 +161,71 @@ def test_predict_conditional_after_identity(lung_surv) -> None:  # type: ignore[
     np.testing.assert_allclose(
         s0[["subject_1", "subject_2"]].to_numpy(), s_t[["subject_1", "subject_2"]].to_numpy()
     )
+
+
+# -- loglogistic sigma >= 1 edge cases ----------------------------------------
+
+
+def test_mean_survival_aft_loglogistic_sigma_ge_1() -> None:
+    from greenwood._parametric import _mean_survival_aft
+
+    mu = np.array([2.0, 3.0])
+    result = _mean_survival_aft("loglogistic", mu, sigma=1.5)
+    assert np.all(np.isinf(result))
+
+
+def test_tail_partial_moment_loglogistic_sigma_ge_1() -> None:
+    from greenwood._parametric import _tail_partial_moment
+
+    mu = np.array([5.0, 6.0])
+    t0 = np.array([1.0, 1.0])
+    result = _tail_partial_moment("loglogistic", mu, sigma=1.5, t0=t0)
+    assert result.shape == (2,)
+    assert np.all(np.isfinite(result))
+
+
+def test_aft_loglogistic_predict_mean_conditional(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    aft = AFT(dist="loglogistic").fit(y, df[["age", "sex"]])
+    original_scale = aft.scale_
+    aft.scale_ = 1.5
+    try:
+        nd = df[["age", "sex"]].iloc[:3]
+        result = aft.predict(nd, type="mean")
+        assert np.all(np.isinf(result))
+        result_cond = aft.predict(nd, type="mean", conditional_after=10.0)
+        assert result_cond.shape == (3,)
+        with pytest.raises(ValueError, match="conditional_after must be a scalar"):
+            aft.predict(nd, type="mean", conditional_after=[1.0, 2.0])
+    finally:
+        aft.scale_ = original_scale
+
+
+def test_aft_loglogistic_predict_mean_remaining(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    aft = AFT(dist="loglogistic").fit(y, df[["age", "sex"]])
+    original_scale = aft.scale_
+    aft.scale_ = 1.5
+    try:
+        nd = df[["age", "sex"]].iloc[:3]
+        result = aft.predict(nd, type="mean_remaining", conditional_after=10.0)
+        assert result.shape == (3,)
+        assert np.all(np.isfinite(result))
+        with pytest.raises(ValueError, match="conditional_after must be a scalar"):
+            aft.predict(nd, type="mean_remaining", conditional_after=[1.0, 2.0])
+    finally:
+        aft.scale_ = original_scale
+
+
+def test_aft_loglogistic_predict_rmst_sigma_ge_1(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    aft = AFT(dist="loglogistic").fit(y, df[["age", "sex"]])
+    original_scale = aft.scale_
+    aft.scale_ = 1.5
+    try:
+        nd = df[["age", "sex"]].iloc[:3]
+        result = aft.predict(nd, type="rmst", tau=365.0)
+        assert result.shape == (3,)
+        assert np.all(result > 0)
+    finally:
+        aft.scale_ = original_scale

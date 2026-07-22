@@ -208,3 +208,69 @@ def test_cv_coxnet_invalid_args(data) -> None:  # type: ignore[no-untyped-def]
         cv_coxnet(y, x, metric="invalid")
     with pytest.raises(ValueError, match="times"):
         cv_coxnet(y, x, metric="brier")
+
+
+def test_cv_coxnet_brier_requires_two_times(data) -> None:  # type: ignore[no-untyped-def]
+    y, x = data
+    with pytest.raises(ValueError, match="at least two time points"):
+        cv_coxnet(y, x, metric="brier", times=[100.0])
+
+
+def test_cv_coxnet_rejects_interval_censored() -> None:
+    y_int = Surv.interval(lower=[1, 2, 3, 4], upper=[2, 3, 4, 5])
+    with pytest.raises(NotImplementedError, match="right-censored"):
+        cv_coxnet(y_int, np.zeros((4, 1)))
+
+
+def test_cv_coxnet_row_mismatch(data) -> None:  # type: ignore[no-untyped-def]
+    y, _ = data
+    with pytest.raises(ValueError, match="same number of rows"):
+        cv_coxnet(y, np.zeros((5, 1)))
+
+
+def test_cv_coxnet_no_events() -> None:
+    y_no_events = Surv.right([1, 2, 3, 4], [0, 0, 0, 0])
+    with pytest.raises(ValueError, match="No events"):
+        cv_coxnet(y_no_events, np.array([[1.0], [2.0], [3.0], [4.0]]))
+
+
+def test_cv_coxnet_negative_penalizer(data) -> None:  # type: ignore[no-untyped-def]
+    y, x = data
+    with pytest.raises(ValueError, match="non-negative"):
+        cv_coxnet(y, x, penalizers=[-1.0, 0.1])
+
+
+def test_cv_coxnet_n_penalizers_zero(data) -> None:  # type: ignore[no-untyped-def]
+    y, x = data
+    with pytest.raises(ValueError, match="n_penalizers must be at least 1"):
+        cv_coxnet(y, x, n_penalizers=0)
+
+
+def test_cv_coxnet_few_events_warning() -> None:
+    times = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0])
+    events = np.array([1, 1, 0, 0, 0, 0, 0, 0, 0, 0])
+    y = Surv.right(times, events)
+    x = np.random.default_rng(42).standard_normal((10, 2))
+    with pytest.warns(UserWarning, match="fewer than"):
+        cv_coxnet(y, x, k=5, penalizers=[0.1], seed=42)
+
+
+def test_cv_coxnet_missing_rows_filtered(data) -> None:  # type: ignore[no-untyped-def]
+    y, x = data
+    import pandas as pd
+
+    x_df = pd.DataFrame(x) if not isinstance(x, pd.DataFrame) else x.copy()
+    x_df.iloc[0, 0] = np.nan
+    result = cv_coxnet(y, x_df, penalizers=[0.1], k=2, seed=42)
+    assert result.best_penalizer_ > 0
+
+
+def test_cv_coxnet_brier_metric(data) -> None:  # type: ignore[no-untyped-def]
+    y, x = data
+    result = cv_coxnet(
+        y, x, metric="brier",
+        times=[100, 200, 300], penalizers=[0.1, 0.01], k=2, seed=42,
+    )
+    assert result.metric_ == "brier"
+    assert result.best_score_ >= 0
+    assert result.penalizer_1se_ > 0

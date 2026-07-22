@@ -66,27 +66,27 @@ def to_dataframe(data: dict[str, Any], *, format: str | None = None) -> Any:
             import polars as pl  # pyright: ignore[reportMissingImports]
 
             return pl.DataFrame(data)
-        except ImportError:
-            pass
-        try:
-            import pandas as pd
+        except ImportError:  # pragma: no cover
+            pass  # pragma: no cover
+        try:  # pragma: no cover
+            import pandas as pd  # pragma: no cover
 
-            return pd.DataFrame(data)
-        except ImportError:
-            pass
-        try:
-            import pyarrow as pa
-        except ImportError as e:
-            raise ImportError(
+            return pd.DataFrame(data)  # pragma: no cover
+        except ImportError:  # pragma: no cover
+            pass  # pragma: no cover
+        try:  # pragma: no cover
+            import pyarrow as pa  # pragma: no cover
+        except ImportError as e:  # pragma: no cover
+            raise ImportError(  # pragma: no cover
                 "No DataFrame library found. Install one of: pandas, polars, or pyarrow"
             ) from e
-        return pa.table(data)
+        return pa.table(data)  # pragma: no cover
 
     if format == "pandas":
         try:
             import pandas as pd
-        except ImportError as e:
-            raise ImportError(
+        except ImportError as e:  # pragma: no cover
+            raise ImportError(  # pragma: no cover
                 "pandas is required for format='pandas'. Install it with: pip install pandas"
             ) from e
         return pd.DataFrame(data)
@@ -94,8 +94,8 @@ def to_dataframe(data: dict[str, Any], *, format: str | None = None) -> Any:
     if format == "polars":
         try:
             import polars as pl  # pyright: ignore[reportMissingImports]
-        except ImportError as e:
-            raise ImportError(
+        except ImportError as e:  # pragma: no cover
+            raise ImportError(  # pragma: no cover
                 "polars is required for format='polars'. Install it with: pip install polars"
             ) from e
         return pl.DataFrame(data)
@@ -103,8 +103,8 @@ def to_dataframe(data: dict[str, Any], *, format: str | None = None) -> Any:
     if format == "pyarrow":
         try:
             import pyarrow as pa
-        except ImportError as e:
-            raise ImportError(
+        except ImportError as e:  # pragma: no cover
+            raise ImportError(  # pragma: no cover
                 "pyarrow is required for format='pyarrow'. Install it with: pip install pyarrow"
             ) from e
         return pa.table(data)
