@@ -1,0 +1,12 @@
+{
+  "hash": "733e35f716d9ef3df70f3595cc9312e2",
+  "result": {
+    "engine": "jupyter",
+    "markdown": "---\ntitle: \"[summaries.register_glance()]{.doc-object-name .doc-function .doc-label .doc-label-function}\"\nbody-classes: doc-api-page\npage-navigation: false\nhtml-table-processing: none\n---\n\n::: {.doc-subject}\n\nRegister a `glance` adapter for a model class.\n:::\n\n::: {.doc-usage-source}\nUsage\n\n[Source](https://github.com/rich-iannone/greenwood/blob/main/greenwood/summaries/_registry.py#L83-L113){target=\"_blank\" rel=\"noopener\"}\n:::\n\n::: {.doc-signature .doc-Kind.FUNCTION}\n```python\nsummaries.register_glance(class_path, fn)\n```\n:::\n\n::: {.doc-text}\n\nThis is the extension point for adding `glance()` support to new estimator classes. Each\nadapter is a callable that accepts a fitted model and returns a one-row summary DataFrame\nwith model-level statistics (e.g., log-likelihood, AIC, number of observations).\n:::\n\n## Parameters {.doc-parameters}\n\n::: {.doc-definition-items}\n<code>[class_path]{.doc-parameter-name}[:]{.doc-parameter-annotation-sep} [str]{.doc-parameter-annotation}</code>\n\n:   Fully qualified class name used as the registry key, e.g.,\n    `\"greenwood._cox.CoxPH\"`.\n\n<code>[fn]{.doc-parameter-name}[:]{.doc-parameter-annotation-sep} [Tidier]{.doc-parameter-annotation}</code>\n\n:   Callable with signature `fn(model, *, format=None, **kwargs) -> DataFrame`.\n:::\n\n## Examples {.doc-examples}\n\nRegister a custom glance adapter:\n\n::: {#8d8f82ff .cell execution_count=1}\n``` {.python .cell-code}\nfrom greenwood.summaries import register_glance\n\ndef _glance_my_model(model, *, format=None, **kwargs):\n    from greenwood._backends import to_dataframe\n\n    return to_dataframe({\"n\": [model.n_], \"loglik\": [model.loglik_]}, format=format)\n\nregister_glance(\"mypackage.MyModel\", _glance_my_model)\n```\n:::\n\n\n",
+    "supporting": [
+      "summaries.register_glance_files"
+    ],
+    "filters": [],
+    "includes": {}
+  }
+}

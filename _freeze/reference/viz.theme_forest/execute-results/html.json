@@ -1,0 +1,12 @@
+{
+  "hash": "5e537f4a386420e5d2d385126cc9a743",
+  "result": {
+    "engine": "jupyter",
+    "markdown": "---\ntitle: \"[viz.theme_forest()]{.doc-object-name .doc-function .doc-label .doc-label-function}\"\nbody-classes: doc-api-page\npage-navigation: false\nhtml-table-processing: none\n---\n\n::: {.doc-subject}\n\nA minimal plotnine theme for forest plots.\n:::\n\n::: {.doc-usage-source}\nUsage\n\n[Source](https://github.com/rich-iannone/greenwood/blob/main/greenwood/viz/_forest.py#L103-L140){target=\"_blank\" rel=\"noopener\"}\n:::\n\n::: {.doc-signature .doc-Kind.FUNCTION}\n```python\nviz.theme_forest()\n```\n:::\n\n::: {.doc-text}\n\nReturns a composable plotnine theme object suitable for forest plots of hazard ratios\nor other contrasts. Horizontal grid lines are suppressed. The y-axis line is removed\nso the term labels stand alone.\n:::\n\n## Returns {.doc-returns}\n\n::: {.doc-definition-items}\n<code> [plotnine.theme]{.doc-parameter-annotation}</code>\n\n:   A composable theme object. Add it to a `ggplot` with `+`.\n:::\n\n## Examples {.doc-examples}\n\nApply the forest theme to a forest plot of Cox model hazard ratios:\n\n::: {#e31de7ab .cell execution_count=1}\n``` {.python .cell-code}\nimport greenwood as gw\n\nlung = gw.load_dataset(\"lung\", backend=\"polars\")\ny = gw.Surv.right(lung[\"time\"], event=(lung[\"status\"] == 2))\ncox = gw.CoxPH().fit(y, lung[[\"age\", \"sex\"]])\n\ngw.plot_forest(cox, backend=\"plotnine\") + gw.theme_forest()\n```\n\n::: {.cell-output .cell-output-display execution_count=1}\n![](viz.theme_forest_files/figure-html/cell-2-output-1.png){width=672 height=480}\n:::\n:::\n\n\n",
+    "supporting": [
+      "viz.theme_forest_files"
+    ],
+    "filters": [],
+    "includes": {}
+  }
+}

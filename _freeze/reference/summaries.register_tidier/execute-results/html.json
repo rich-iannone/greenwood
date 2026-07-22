@@ -1,0 +1,12 @@
+{
+  "hash": "263baa707059abd5562d78b09af46285",
+  "result": {
+    "engine": "jupyter",
+    "markdown": "---\ntitle: \"[summaries.register_tidier()]{.doc-object-name .doc-function .doc-label .doc-label-function}\"\nbody-classes: doc-api-page\npage-navigation: false\nhtml-table-processing: none\n---\n\n::: {.doc-subject}\n\nRegister a `tidy` adapter for a model class.\n:::\n\n::: {.doc-usage-source}\nUsage\n\n[Source](https://github.com/rich-iannone/greenwood/blob/main/greenwood/summaries/_registry.py#L52-L80){target=\"_blank\" rel=\"noopener\"}\n:::\n\n::: {.doc-signature .doc-Kind.FUNCTION}\n```python\nsummaries.register_tidier(class_path, fn)\n```\n:::\n\n::: {.doc-text}\n\nThis is the extension point for adding `tidy()` support to new estimator classes. Each\nadapter is a callable that accepts a fitted model as its first argument (plus optional\nkeyword arguments like `format=`) and returns a tidy DataFrame.\n:::\n\n## Parameters {.doc-parameters}\n\n::: {.doc-definition-items}\n<code>[class_path]{.doc-parameter-name}[:]{.doc-parameter-annotation-sep} [str]{.doc-parameter-annotation}</code>\n\n:   Fully qualified class name used as the registry key, e.g.,\n    `\"greenwood._cox.CoxPH\"`. Using the string path avoids eager imports.\n\n<code>[fn]{.doc-parameter-name}[:]{.doc-parameter-annotation-sep} [Tidier]{.doc-parameter-annotation}</code>\n\n:   Callable with signature `fn(model, *, format=None, **kwargs) -> DataFrame`.\n:::\n\n## Examples {.doc-examples}\n\nRegister a custom tidy adapter for a new estimator class:\n\n::: {#245d2230 .cell execution_count=1}\n``` {.python .cell-code}\nfrom greenwood.summaries import register_tidier\n\ndef _tidy_my_model(model, *, format=None, **kwargs):\n    return model.to_frame(format=format)\n\nregister_tidier(\"mypackage.MyModel\", _tidy_my_model)\n```\n:::\n\n\n",
+    "supporting": [
+      "summaries.register_tidier_files"
+    ],
+    "filters": [],
+    "includes": {}
+  }
+}
