@@ -222,8 +222,11 @@ class AFT:
     ```{python}
     import greenwood as gw
 
+    # Load data and build a right-censored response
     lung = gw.load_dataset("lung", backend="polars")
     y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+
+    # Fit a Weibull AFT model with age and sex as covariates
     aft = gw.AFT("weibull").fit(y, lung[["age", "sex"]])
     aft
     ```
@@ -313,8 +316,11 @@ class AFT:
         ```{python}
         import greenwood as gw
 
+        # Load data and build a right-censored response
         lung = gw.load_dataset("lung", backend="polars")
         y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+
+        # Fit a log-normal AFT model
         aft = gw.AFT(dist="lognormal").fit(y, lung[["age", "sex"]])
         aft
         ```
@@ -322,6 +328,7 @@ class AFT:
         Use a formula string with the `data` argument:
 
         ```{python}
+        # Fit via a formula string instead of a DataFrame
         aft_formula = gw.AFT(dist="weibull").fit(y, "age + sex", data=lung)
         aft_formula
         ```
@@ -581,10 +588,12 @@ class AFT:
         ```{python}
         import greenwood as gw
 
+        # Load data and fit a Weibull AFT model
         lung = gw.load_dataset("lung", backend="polars")
         y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
         aft = gw.AFT("weibull").fit(y, lung[["age", "sex"]])
 
+        # Predict the linear predictor for the first two subjects
         aft.predict(lung[["age", "sex"]][:2], type="lp")
         ```
 
@@ -592,6 +601,7 @@ class AFT:
         median, and upper quartile (a table, so pass `format=`):
 
         ```{python}
+        # Predict survival-time quartiles for the first two subjects
         aft.predict(lung[["age", "sex"]][:2], type="quantile", p=[0.25, 0.5, 0.75],
                     format="polars")
         ```
@@ -600,6 +610,7 @@ class AFT:
         estimates at 180 and 365 days for those same two subjects:
 
         ```{python}
+        # Predict survival probabilities at 180 and 365 days
         aft.predict(lung[["age", "sex"]][:2], type="survival", times=[180, 365],
                     format="polars")
         ```
@@ -607,6 +618,7 @@ class AFT:
         Predict conditional survival given already having survived to 100 days:
 
         ```{python}
+        # Predict conditional survival given survival to 100 days
         aft.predict(lung[["age", "sex"]][:2], type="survival", times=[180, 365],
                     conditional_after=100, format="polars")
         ```
@@ -614,6 +626,7 @@ class AFT:
         Add confidence intervals with `ci=True`:
 
         ```{python}
+        # Include confidence intervals for the survival predictions
         aft.predict(lung[["age", "sex"]][:2], type="survival", times=[180, 365],
                     ci=True, format="polars")
         ```
@@ -621,12 +634,14 @@ class AFT:
         Unconditional mean survival time per subject:
 
         ```{python}
+        # Predict unconditional mean survival time
         aft.predict(lung[["age", "sex"]][:2], type="mean")
         ```
 
         Expected remaining lifetime given the subject has already survived 100 days:
 
         ```{python}
+        # Predict expected remaining lifetime given survival past 100 days
         aft.predict(lung[["age", "sex"]][:2], type="mean_remaining",
                     conditional_after=100)
         ```
@@ -634,6 +649,7 @@ class AFT:
         Restricted mean survival time up to 365 days:
 
         ```{python}
+        # Predict restricted mean survival time up to 365 days
         aft.predict(lung[["age", "sex"]][:2], type="rmst", tau=365)
         ```
         """
@@ -805,16 +821,19 @@ class AFT:
         ```{python}
         import greenwood as gw
 
+        # Load data and fit a Weibull AFT model
         lung = gw.load_dataset("lung", backend="polars")
         y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
         aft = gw.AFT("weibull").fit(y, lung[["age", "sex"]])
 
+        # Export the coefficient table as a Polars DataFrame
         aft.to_frame(format="polars")
         ```
 
         Request a different backend with `format=`:
 
         ```{python}
+        # Export as a Pandas DataFrame instead
         aft.to_frame(format="pandas")
         ```
         """

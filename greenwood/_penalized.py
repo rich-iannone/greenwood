@@ -98,9 +98,12 @@ class CoxNet:
     ```{python}
     import greenwood as gw
 
+    # Load data and build a right-censored response
     lung = gw.load_dataset("lung", backend="polars")
     y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
     cols = ["age", "sex", "ph.ecog", "ph.karno", "wt.loss"]
+
+    # Fit a lasso-penalized Cox model
     coxnet = gw.CoxNet(penalizer=0.05, l1_ratio=1.0).fit(y, lung[cols])
     coxnet
     ```
@@ -195,9 +198,12 @@ class CoxNet:
         ```{python}
         import greenwood as gw
 
+        # Load data and build a right-censored response
         lung = gw.load_dataset("lung", backend="polars")
         y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
         cols = ["age", "sex", "ph.ecog", "ph.karno", "wt.loss"]
+
+        # Fit a ridge-penalized Cox model
         coxnet_ridge = gw.CoxNet(penalizer=0.05, l1_ratio=0.0).fit(y, lung[cols])
         coxnet_ridge
         ```
@@ -205,6 +211,7 @@ class CoxNet:
         Fit a lasso-penalized Cox model (L1 penalty, sparse selection):
 
         ```{python}
+        # Fit a lasso-penalized Cox model for variable selection
         coxnet_lasso = gw.CoxNet(penalizer=0.05, l1_ratio=1.0).fit(y, lung[cols])
         coxnet_lasso
         ```
@@ -375,10 +382,13 @@ class CoxNet:
         ```{python}
         import greenwood as gw
 
+        # Load data and fit a lasso-penalized Cox model
         lung = gw.load_dataset("lung", backend="polars")
         y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
         cols = ["age", "sex", "ph.ecog", "ph.karno", "wt.loss"]
         coxnet = gw.CoxNet(penalizer=0.05, l1_ratio=1.0).fit(y, lung[cols])
+
+        # Predict the linear predictor for the first five subjects
         coxnet.predict(lung[cols], type="lp")[:5]
         ```
 
@@ -386,6 +396,7 @@ class CoxNet:
         baseline hazard each subject has:
 
         ```{python}
+        # Predict relative risk for the first five subjects
         coxnet.predict(lung[cols], type="risk")[:5]
         ```
 
@@ -393,6 +404,7 @@ class CoxNet:
         times from training data. Pass `format=` to choose the backend (here, Polars):
 
         ```{python}
+        # Predict survival probabilities for two subjects at 180 and 365 days
         coxnet.predict(lung[cols][:2], type="survival", times=[180, 365], format="polars")
         ```
         """
@@ -450,16 +462,20 @@ class CoxNet:
         ```{python}
         import greenwood as gw
 
+        # Load data and fit a lasso-penalized Cox model
         lung = gw.load_dataset("lung", backend="polars")
         y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
         cols = ["age", "sex", "ph.ecog", "ph.karno", "wt.loss"]
         coxnet = gw.CoxNet(penalizer=0.05, l1_ratio=1.0).fit(y, lung[cols])
+
+        # Export the penalized coefficients as a Polars DataFrame
         coxnet.to_frame(format="polars")
         ```
 
         Request a different backend with `format=`:
 
         ```{python}
+        # Export as a Pandas DataFrame instead
         coxnet.to_frame(format="pandas")
         ```
         """
@@ -541,9 +557,12 @@ class CoxNetCVResult:
     ```{python}
     import greenwood as gw
 
+    # Load data and build a right-censored response
     lung = gw.load_dataset("lung", backend="polars")
     y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
     cols = ["age", "sex", "ph.ecog", "ph.karno", "wt.loss"]
+
+    # Run cross-validated penalizer selection
     cv_result = gw.cv_coxnet(y, lung[cols], seed=23)
     cv_result
     ```
@@ -552,10 +571,12 @@ class CoxNetCVResult:
     as attributes:
 
     ```{python}
+    # Retrieve the best penalizer value
     cv_result.best_penalizer_
     ```
 
     ```{python}
+    # Retrieve the more conservative one-standard-error penalizer
     cv_result.penalizer_1se_
     ```
     """
@@ -632,10 +653,13 @@ class CoxNetCVResult:
         ```{python}
         import greenwood as gw
 
+        # Load data and run cross-validated penalizer selection
         lung = gw.load_dataset("lung", backend="polars")
         y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
         cols = ["age", "sex", "ph.ecog", "ph.karno", "wt.loss"]
         result = gw.cv_coxnet(y, lung[cols], seed=23)
+
+        # Export the CV path as a Polars DataFrame
         result.to_frame(format="polars")
         ```
         """
@@ -752,10 +776,12 @@ def cv_coxnet(
     ```{python}
     import greenwood as gw
 
+    # Load data and build a right-censored response
     lung = gw.load_dataset("lung", backend="polars")
     y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
     cols = ["age", "sex", "ph.ecog", "ph.karno", "wt.loss"]
 
+    # Run cross-validated lasso selection with 3 folds
     result = gw.cv_coxnet(y, lung[cols], l1_ratio=1.0, n_penalizers=10, k=3, seed=23)
     result
     ```
@@ -763,12 +789,14 @@ def cv_coxnet(
     Inspect the full penalizer path:
 
     ```{python}
+    # Inspect the full penalizer path
     result.to_frame(format="polars")
     ```
 
     Fit the final model at the best penalizer:
 
     ```{python}
+    # Refit at the best penalizer on all data
     final = gw.CoxNet(penalizer=result.best_penalizer_, l1_ratio=1.0).fit(y, lung[cols])
     final
     ```
@@ -776,6 +804,7 @@ def cv_coxnet(
     Use the 1-SE rule for a sparser model:
 
     ```{python}
+    # Refit at the 1-SE penalizer for a sparser model
     sparse = gw.CoxNet(penalizer=result.penalizer_1se_, l1_ratio=1.0).fit(y, lung[cols])
     sparse
     ```

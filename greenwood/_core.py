@@ -46,8 +46,11 @@ class EventTable:
     ```{python}
     import greenwood as gw
 
+    # Load data and build a right-censored response
     lung = gw.load_dataset("lung", backend="polars")
     y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+
+    # Tabulate the risk set at each event time
     et = gw.event_table(y)
     et.to_frame(format="polars")
     ```
@@ -104,15 +107,19 @@ class EventTable:
         ```{python}
         import greenwood as gw
 
+        # Load data and build a right-censored response
         lung = gw.load_dataset("lung", backend="polars")
         y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
         et = gw.event_table(y)
+
+        # Export the event table as a Polars DataFrame
         et.to_frame(format="polars")
         ```
 
         Request a different backend with `format=`:
 
         ```{python}
+        # Export as a Pandas DataFrame instead
         et.to_frame(format="pandas")
         ```
         """
@@ -225,8 +232,11 @@ def event_table(surv: Surv, *, group: Any = None, weights: Any = None) -> EventT
     ```{python}
     import greenwood as gw
 
+    # Load data and build a right-censored response
     lung = gw.load_dataset("lung", backend="polars")
     y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+
+    # Tabulate risk sets, events, and censorings at each time
     et = gw.event_table(y)
     et.to_frame(format="polars").head(10)
     ```
@@ -238,6 +248,7 @@ def event_table(surv: Surv, *, group: Any = None, weights: Any = None) -> EventT
     Stratify by sex to see event patterns for each group separately:
 
     ```{python}
+    # Stratify the event table by sex
     et_sex = gw.event_table(y, group=lung["sex"])
     et_sex.to_frame(format="polars").head(15)
     ```
@@ -251,6 +262,8 @@ def event_table(surv: Surv, *, group: Any = None, weights: Any = None) -> EventT
 
     ```{python}
     import numpy as np
+
+    # Compute the Kaplan-Meier estimate manually from risk-set counts
     et = gw.event_table(y)
     df = et.to_frame(format="pandas")
     # Kaplan-Meier survival at each time

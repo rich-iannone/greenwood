@@ -119,10 +119,12 @@ def theme_forest() -> Any:
     ```{python}
     import greenwood as gw
 
+    # Load data and fit a Cox model with two covariates
     lung = gw.load_dataset("lung", backend="polars")
     y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
     cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
 
+    # Draw a forest plot and apply the minimal forest theme
     gw.plot_forest(cox, backend="plotnine") + gw.theme_forest()
     ```
     """
@@ -204,16 +206,19 @@ def plot_forest(
     ```{python}
     import greenwood as gw
 
+    # Load data and fit a Cox model with three covariates
     lung = gw.load_dataset("lung", backend="polars")
     y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
     cox = gw.CoxPH().fit(y, lung[["age", "sex", "ph.ecog"]])
 
+    # Draw a forest plot of hazard ratios with confidence intervals
     gw.plot_forest(cox)
     ```
 
     Rename terms for publication display:
 
     ```{python}
+    # Relabel terms and add a title for publication display
     gw.plot_forest(
         cox,
         term_labels={"age": "Age (years)", "sex": "Female vs. Male", "ph.ecog": "ECOG PS"},
@@ -227,12 +232,15 @@ def plot_forest(
     ```{python}
     import pandas as pd
 
+    # Define subgroup hazard ratios as a tidy DataFrame
     subgroups = pd.DataFrame({
         "term": ["Age < 60", "Age \u2265 60", "Male", "Female"],
         "estimate": [0.72, 0.91, 0.85, 0.68],
         "ci_lower": [0.51, 0.74, 0.68, 0.50],
         "ci_upper": [1.01, 1.12, 1.06, 0.92],
     })
+
+    # Plot on a log scale since the estimates are hazard ratios
     gw.plot_forest(subgroups, scale="log")
     ```
 
@@ -240,18 +248,22 @@ def plot_forest(
     `scale="linear"` explicitly):
 
     ```{python}
+    # Define RMST differences for two treatment arms
     rmst = pd.DataFrame({
         "term": ["Drug A vs Placebo", "Drug B vs Placebo"],
         "estimate": [45, 25],
         "ci_lower": [-10, -20],
         "ci_upper": [95, 70],
     })
+
+    # Plot on the default linear scale (reference line at 0)
     gw.plot_forest(rmst)
     ```
 
     Use a plotnine backend for a static, composable ggplot object:
 
     ```{python}
+    # Use the plotnine backend for a static, composable ggplot object
     gw.plot_forest(cox, backend="plotnine")
     ```
     """

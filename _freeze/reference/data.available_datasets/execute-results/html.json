@@ -1,10 +1,10 @@
 {
-  "hash": "bfd906c2b84468d1ff1f4bcc37f5d329",
+  "hash": "cbc5f80e749a6807f951fcd8f9a58aef",
   "result": {
     "engine": "jupyter",
-    "markdown": "---\ntitle: \"[data.available_datasets()]{.doc-object-name .doc-function .doc-label .doc-label-function}\"\nbody-classes: doc-api-page\npage-navigation: false\nhtml-table-processing: none\n---\n\n::: {.doc-subject}\n\nReturn the names of all bundled datasets.\n:::\n\n::: {.doc-usage-source}\nUsage\n\n[Source](https://github.com/rich-iannone/greenwood/blob/main/greenwood/data/__init__.py#L38-L54){target=\"_blank\" rel=\"noopener\"}\n:::\n\n::: {.doc-signature .doc-Kind.FUNCTION}\n```python\ndata.available_datasets()\n```\n:::\n\n## Returns {.doc-returns}\n\n::: {.doc-definition-items}\n<code> [list[str]]{.doc-parameter-annotation}</code>\n\n:   Sorted list of dataset names that can be passed to `load_dataset()`.\n:::\n\n## Examples {.doc-examples}\n\n::: {#59f5ee33 .cell execution_count=1}\n``` {.python .cell-code}\nimport greenwood as gw\n\ngw.available_datasets()\n```\n\n::: {.cell-output .cell-output-display execution_count=1}\n```\n['colon', 'lung', 'mgus2', 'ovarian', 'pbc', 'veteran']\n```\n:::\n:::\n\n\n",
+    "markdown": "---\ntitle: \"[data.available_datasets()]{.doc-object-name .doc-function .doc-label .doc-label-function}\"\nbody-classes: doc-api-page\npage-navigation: false\nhtml-table-processing: none\n---\n\n::: {.doc-subject}\n\nReturn the names of all bundled datasets.\n:::\n\n::: {.doc-usage-source}\nUsage\n\n[Source](https://github.com/rich-iannone/greenwood/blob/main/greenwood/data/__init__.py#L38-L55){target=\"_blank\" rel=\"noopener\"}\n:::\n\n::: {.doc-signature .doc-Kind.FUNCTION}\n```python\ndata.available_datasets()\n```\n:::\n\n## Returns {.doc-returns}\n\n::: {.doc-definition-items}\n<code> [list[str]]{.doc-parameter-annotation}</code>\n\n:   Sorted list of dataset names that can be passed to `load_dataset()`.\n:::\n\n## Examples {.doc-examples}\n\n::: {#fa2bdb5d .cell execution_count=1}\n``` {.python .cell-code}\nimport greenwood as gw\n\n# List all bundled dataset names\ngw.available_datasets()\n```\n\n::: {.cell-output .cell-output-display execution_count=1}\n```\n['colon', 'lung', 'mgus2', 'ovarian', 'pbc', 'veteran']\n```\n:::\n:::\n\n\n",
     "supporting": [
-      "data.available_datasets_files"
+      "data.available_datasets_files/figure-html"
     ],
     "filters": [],
     "includes": {}

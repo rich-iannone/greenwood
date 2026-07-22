@@ -88,10 +88,12 @@ def get_risk_table_frame(km: KaplanMeier, times: Any = None, *, format: str | No
     ```{python}
     import greenwood as gw
 
+    # Load data and fit a stratified Kaplan-Meier estimator
     lung = gw.load_dataset("lung", backend="polars")
     y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
     km = gw.KaplanMeier().fit(y, by=lung["sex"])
 
+    # Get the numbers at risk as a tidy Polars DataFrame
     gw.get_risk_table_frame(km, times=[0, 250, 500, 750, 1000], format="polars")
     ```
     """

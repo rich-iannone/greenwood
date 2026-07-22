@@ -76,9 +76,12 @@ class ZPHResult:
     ```{python}
     import greenwood as gw
 
+    # Load data and fit a Cox model
     lung = gw.load_dataset("lung", backend="polars")
     y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
     cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+
+    # Run the proportional-hazards test
     zph = cox.cox_zph()
     zph
     ```
@@ -135,10 +138,13 @@ class ZPHResult:
         ```{python}
         import greenwood as gw
 
+        # Load data and fit a Cox model
         lung = gw.load_dataset("lung", backend="polars")
         y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
         cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+        # Run the proportional-hazards test
         zph = cox.cox_zph()
+        # Export the test results as a Polars DataFrame
         zph.to_frame(format="polars")
         ```
 
@@ -147,6 +153,7 @@ class ZPHResult:
         with `format=`:
 
         ```{python}
+        # Export as a pandas DataFrame instead
         zph.to_frame(format="pandas")
         ```
         """
@@ -427,8 +434,11 @@ class CoxPH:
     ```{python}
     import greenwood as gw
 
+    # Load data and build a right-censored response
     lung = gw.load_dataset("lung", backend="polars")
     y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+
+    # Fit a Cox model with age and sex as covariates
     cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
     cox
     ```
@@ -437,6 +447,7 @@ class CoxPH:
     pass `format=` to choose the backend (here, Polars):
 
     ```{python}
+    # Extract hazard ratios as a tidy Polars DataFrame
     gw.tidy(cox, exponentiate=True, format="polars")
     ```
     """
@@ -555,8 +566,11 @@ class CoxPH:
         ```{python}
         import greenwood as gw
 
+        # Load data and build a right-censored response
         lung = gw.load_dataset("lung", backend="polars")
         y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+
+        # Fit a stratified Cox model and export the coefficients
         gw.CoxPH().fit(y, lung[["age", "ph.ecog"]], strata=lung["sex"]).to_frame(
             format="polars"
         )
@@ -987,15 +1001,19 @@ class CoxPH:
         ```{python}
         import greenwood as gw
 
+        # Load data and fit a Cox model
         lung = gw.load_dataset("lung", backend="polars")
         y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
         cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+
+        # Export the baseline cumulative hazard as a Polars DataFrame
         cox.baseline_hazard(format="polars")
         ```
 
         Add confidence intervals with `ci=True`:
 
         ```{python}
+        # Include confidence intervals for the baseline hazard
         cox.baseline_hazard(ci=True, format="polars")
         ```
 
@@ -1004,6 +1022,7 @@ class CoxPH:
         provided for each stratum:
 
         ```{python}
+        # Fit a stratified model and get per-stratum baselines
         cox_stratified = gw.CoxPH().fit(y, lung[["age", "ph.ecog"]], strata=lung["sex"])
         cox_stratified.baseline_hazard(ci=True, format="polars")
         ```
@@ -1200,9 +1219,12 @@ class CoxPH:
         ```{python}
         import greenwood as gw
 
+        # Load data and fit a Cox model
         lung = gw.load_dataset("lung", backend="polars")
         y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
         cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+
+        # Predict the centered linear predictor for the first five subjects
         cox.predict(type="lp")[:5]
         ```
 
@@ -1211,6 +1233,7 @@ class CoxPH:
         to choose the backend (here, Polars):
 
         ```{python}
+        # Predict survival probabilities for three subjects at 180 and 365 days
         cox.predict(
             lung[["age", "sex"]][:3], type="survival", times=[180, 365], format="polars"
         )
@@ -1375,9 +1398,12 @@ class CoxPH:
         ```{python}
         import greenwood as gw
 
+        # Load data and fit a Cox model
         lung = gw.load_dataset("lung", backend="polars")
         y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
         cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+
+        # Compute martingale residuals for the first five observations
         cox.residuals("martingale")[:5]
         ```
 
@@ -1385,6 +1411,7 @@ class CoxPH:
         by plotting against time or other variables:
 
         ```{python}
+        # Export Schoenfeld residuals as a Polars DataFrame
         cox.residuals("schoenfeld", format="polars")
         ```
         """
@@ -1503,9 +1530,12 @@ class CoxPH:
         ```{python}
         import greenwood as gw
 
+        # Load data and fit a Cox model
         lung = gw.load_dataset("lung", backend="polars")
         y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
         cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+
+        # Test the proportional-hazards assumption
         zph = cox.cox_zph()
         zph
         ```
@@ -1514,6 +1544,7 @@ class CoxPH:
         `GLOBAL` row. Pass `format=` to choose the backend (here, Polars):
 
         ```{python}
+        # Export the test statistics as a Polars DataFrame
         zph.to_frame(format="polars")
         ```
         """
@@ -1698,12 +1729,17 @@ class CoxPH:
         ```{python}
         import greenwood as gw
 
+        # Load data and build a right-censored response
         lung = gw.load_dataset("lung", backend="polars")
         y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+
+        # Fit a Cox model with shared gamma frailty by institution
         cox = gw.CoxPH(ties="breslow").fit(
             y, covariates=lung[["age", "sex"]],
             frailty="gamma", frailty_cluster=lung["inst"],
         )
+
+        # Test whether the frailty variance is significant
         cox.frailty_test()
         ```
         """
@@ -1773,15 +1809,19 @@ class CoxPH:
         ```{python}
         import greenwood as gw
 
+        # Load data and fit a Cox model
         lung = gw.load_dataset("lung", backend="polars")
         y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
         cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+
+        # Export the coefficient table as a Polars DataFrame
         cox.to_frame(format="polars")
         ```
 
         With `exponentiate=True`, estimates become hazard ratios:
 
         ```{python}
+        # Export hazard ratios instead of log-hazard coefficients
         cox.to_frame(format="polars", exponentiate=True)
         ```
         """

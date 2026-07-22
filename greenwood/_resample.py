@@ -222,8 +222,11 @@ def cross_validate(
     ```{python}
     import greenwood as gw
 
+    # Load data and build a right-censored response
     lung = gw.load_dataset("lung", backend="polars")
     y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+
+    # Run 5-fold cross-validation with concordance
     result = gw.cross_validate(
         gw.CoxPH(), y, lung[["age", "sex"]], k=5, metric="concordance", seed=1
     )
@@ -233,24 +236,28 @@ def cross_validate(
     Access individual components. The mean concordance across folds:
 
     ```{python}
+    # Mean concordance across folds
     result["mean"]
     ```
 
     Per-fold scores (variability check):
 
     ```{python}
+    # Per-fold concordance scores
     result["scores"]
     ```
 
     Standard deviation (estimate of generalization uncertainty):
 
     ```{python}
+    # Standard deviation of fold scores
     result["std"]
     ```
 
     Use Brier score (calibration) instead of concordance (discrimination):
 
     ```{python}
+    # Evaluate calibration with the integrated Brier score
     result_brier = gw.cross_validate(
         gw.CoxPH(), y, lung[["age", "sex"]], k=5,
         metric="brier", times=[180, 365, 540], seed=1
@@ -262,6 +269,7 @@ def cross_validate(
     mean Brier) generalizes better:
 
     ```{python}
+    # Compare a simple vs. complex model (uncomment to run)
     # simple_model = gw.CoxPH()
     # complex_model = gw.CoxPH()
     # simple_cv = gw.cross_validate(simple_model, y, lung[["age"]], seed=1)

@@ -71,9 +71,11 @@ def register_tidier(class_path: str, fn: Tidier) -> None:
     ```{python}
     from greenwood.summaries import register_tidier
 
+    # Define a tidy adapter that delegates to the model's own output
     def _tidy_my_model(model, *, format=None, **kwargs):
         return model.to_frame(format=format)
 
+    # Register the adapter for the custom model class
     register_tidier("mypackage.MyModel", _tidy_my_model)
     ```
     """
@@ -102,11 +104,13 @@ def register_glance(class_path: str, fn: Tidier) -> None:
     ```{python}
     from greenwood.summaries import register_glance
 
+    # Define a glance adapter that returns model-level statistics
     def _glance_my_model(model, *, format=None, **kwargs):
         from greenwood._backends import to_dataframe
 
         return to_dataframe({"n": [model.n_], "loglik": [model.loglik_]}, format=format)
 
+    # Register the adapter for the custom model class
     register_glance("mypackage.MyModel", _glance_my_model)
     ```
     """
@@ -135,12 +139,14 @@ def register_augment(class_path: str, fn: Tidier) -> None:
     ```{python}
     from greenwood.summaries import register_augment
 
+    # Define an augment adapter that appends per-row predictions
     def _augment_my_model(model, data=None, *, format=None, **kwargs):
         from greenwood._backends import to_dataframe
 
         preds = model.predict(data)
         return to_dataframe({"prediction": preds}, format=format)
 
+    # Register the adapter for the custom model class
     register_augment("mypackage.MyModel", _augment_my_model)
     ```
     """
@@ -174,9 +180,12 @@ def tidy(model: object, **kwargs: Any) -> Any:
     ```{python}
     import greenwood as gw
 
+    # Load data, build a right-censored response, and fit a Cox model
     lung = gw.load_dataset("lung", backend="polars")
     y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
     cox = gw.CoxPH().fit(y, covariates=lung[["age", "sex"]])
+
+    # Tidy the coefficients into a Polars DataFrame
     gw.tidy(cox, format="polars")
     ```
     """
@@ -209,9 +218,12 @@ def glance(model: object, **kwargs: Any) -> Any:
     ```{python}
     import greenwood as gw
 
+    # Load data, build a right-censored response, and fit a Cox model
     lung = gw.load_dataset("lung", backend="polars")
     y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
     cox = gw.CoxPH().fit(y, covariates=lung[["age", "sex"]])
+
+    # Glance at overall model-fit statistics
     gw.glance(cox, format="polars")
     ```
     """

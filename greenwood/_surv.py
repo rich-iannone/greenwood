@@ -46,17 +46,17 @@ class CensoringType(str, Enum):
     Each member corresponds to one of the `Surv` constructors and describes how incomplete
     observations are handled:
 
-    - `RIGHT`: Classic right-censoring. All subjects enter at time 0, and some are lost
-      before the event occurs (`Surv.right()`).
-    - `LEFT`: Left-censoring. The event is known to have occurred before the observation
-      time (`Surv.left()`).
+    - `RIGHT`: Classic right-censoring. All subjects enter at time 0, and some are lost before the
+    event occurs (`Surv.right()`).
+    - `LEFT`: Left-censoring. The event is known to have occurred before the observation time
+    (`Surv.left()`).
     - `INTERVAL`: Interval-censoring. The event is known to lie within a time bracket
-      (`Surv.interval()`).
-    - `COUNTING`: Counting-process (start, stop] intervals with possible late entry
-      and time-varying covariates (`Surv.counting()`).
+    (`Surv.interval()`).
+    - `COUNTING`: Counting-process (start, stop] intervals with possible late entry and time-varying
+    covariates (`Surv.counting()`).
 
-    A constructed response reports its censoring type through `Surv(...).type`, which is
-    one of these values.
+    A constructed response reports its censoring type through `Surv(...).type`, which is one of
+    these values.
 
     Examples
     --------
@@ -65,6 +65,7 @@ class CensoringType(str, Enum):
     ```{python}
     from greenwood import CensoringType
 
+    # List all supported censoring mechanisms
     list(CensoringType)
     ```
     """
@@ -94,9 +95,9 @@ def _to_1d_array(x: Any, *, dtype: Any = float) -> Array:
 
 
 def _coerce_event(event: Any, n: int) -> Array:
-    """Coerce an event indicator to an int status array (0 = censored, 1 = event).
+    """Coerce an event indicator to an int status array (`0` = censored, `1` = event).
 
-    Accepts booleans or 0/1 integers. R's 1/2 coding (as in `survival::lung`) is *not*
+    Accepts booleans or `0`/`1` integers. R's `1`/`2` coding (as in `survival::lung`) is *not*
     auto-detected. Convert it explicitly, e.g., `event=(status == 2)`.
     """
     if event is None:
@@ -118,23 +119,22 @@ class Surv:
     """A validated time-to-event response for survival analysis.
 
     `Surv` represents the outcome in survival models: a time at which each subject either
-    experienced an event (observed) or was censored (did not experience the event during
-    follow-up). `Surv` supports multiple censoring types:
+    experienced an event (observed) or was censored (did not experience the event during follow-up).
+    `Surv` supports multiple censoring types:
 
-    - **Right-censored** (most common): The event time is at or after the recorded time.
-      Use `Surv.right(time, event)`.
-    - **Left-censored**: The event time is before the recorded time.
-      Use `Surv.left(time, event)`.
-    - **Counting-process** (left truncation, time-varying): Each subject enters the risk set
-      at `start` and exits at `stop`. Use `Surv.counting(start, stop, event)`.
-    - **Interval-censored**: The event occurred within a time interval `[lower, upper)`.
-      Use `Surv.interval(lower, upper)`.
-    - **Multi-state / competing risks**: Multiple mutually exclusive events.
-      Use `Surv.multistate(time, event, states)`.
+    - **Right-censored** (most common): The event time is at or after the recorded time. Use
+    `Surv.right(time, event)`.
+    - **Left-censored**: The event time is before the recorded time. Use `Surv.left(time, event)`.
+    - **Counting-process** (left truncation, time-varying): Each subject enters the risk set at
+    `start` and exits at `stop`. Use `Surv.counting(start, stop, event)`.
+    - **Interval-censored**: The event occurred within a time interval `[lower, upper)`. Use
+    `Surv.interval(lower, upper)`.
+    - **Multi-state / competing risks**: Multiple mutually exclusive events. Use
+    `Surv.multistate(time, event, states)`.
 
-    **Use the class methods** (`right`, `left`, `counting`, `interval`, `multistate`)
-    to construct `Surv` objects. They validate your input and set the censoring type
-    appropriately. As such, direct instantiation is not recommended.
+    **Use the class methods** (`right`, `left`, `counting`, `interval`, `multistate`) to construct
+    `Surv` objects. They validate your input and set the censoring type appropriately. As such,
+    direct instantiation is not recommended.
 
     Attributes
     ----------
@@ -143,17 +143,17 @@ class Surv:
     stop
         Exit time (for interval censoring, the upper bound).
     status
-        Integer event code per observation: 0 = censored, 1+ = event code (for multi-state,
-        codes >= 1 index into `states`).
+        Integer event code per observation: 0 = censored, 1+ = event code (for multi-state, codes
+        >= 1 index into `states`).
     start
-        Entry time for the counting-process form (left truncation); `None` otherwise.
+        Entry time for the counting-process form (left truncation) (`None` otherwise).
     lower
-        Lower bound for interval censoring; `None` otherwise.
+        Lower bound for interval censoring (`None` otherwise).
     states
-        Event-state labels for multi-state/competing-risks endpoints; `None` for the
-        single-event case.
+        Event-state labels for multi-state/competing-risks endpoints (`None` for the single-event
+        case).
     weights
-        Optional case weights (strictly positive); `None` if no weights provided.
+        Optional case weights (strictly positive) (`None` if no weights provided).
 
     Examples
     --------
@@ -163,6 +163,7 @@ class Surv:
     import greenwood as gw
     import numpy as np
 
+    # Build a right-censored response via direct instantiation
     y = gw.Surv(
         type=gw.CensoringType.RIGHT,
         stop=np.array([5, 6, 4, 9]),
@@ -174,10 +175,10 @@ class Surv:
     While this is fine, the preferred approach is to use the class method constructors for each
     censoring type. They handle validation and conversion automatically.
 
-    Right-censored (the most common case): each subject has an exit time and an event
-    indicator.
+    Right-censored (the most common case): each subject has an exit time and an event indicator.
 
     ```{python}
+    # Build a right-censored response
     y = gw.Surv.right(time=[5, 6, 4, 9], event=[1, 0, 1, 0])
     y
     ```
@@ -185,6 +186,7 @@ class Surv:
     Counting-process form with left truncation (late entry):
 
     ```{python}
+    # Build a counting-process response with late entry
     y = gw.Surv.counting(start=[0, 2, 1], stop=[5, 6, 4], event=[1, 0, 1])
     y
     ```
@@ -192,6 +194,7 @@ class Surv:
     Interval-censored (event known to occur in a time window):
 
     ```{python}
+    # Build an interval-censored response
     y = gw.Surv.interval(lower=[1, 3], upper=[3, 8])
     y
     ```
@@ -199,6 +202,7 @@ class Surv:
     Multi-state (competing risks, multiple mutually exclusive events):
 
     ```{python}
+    # Build a multi-state competing-risks response
     y = gw.Surv.multistate(time=[5, 6, 4], event=[1, 0, 2], states=("pcm", "death"))
     y
     ```
@@ -258,40 +262,39 @@ class Surv:
     def right(cls, time: Any, event: Any = None, *, weights: Any = None) -> Self:
         """Right-censored response: the standard and most common form of survival data.
 
-        Right censoring is the default in survival analysis. It occurs when follow-up
-        ends before the event happens (a subject is still event-free when we last observed
-        them). This is the most common censoring mechanism in practice:
+        Right censoring is the default in survival analysis. It occurs when follow-up ends before
+        the event happens (a subject is still event-free when we last observed them). This is the
+        most common censoring mechanism in practice:
 
         - **Study ends**: A clinical trial concludes while some patients are still healthy
         - **Loss to follow-up**: A subject drops out, moves away, or stops visiting the clinic
         - **Administrative censoring**: Follow-up ends at a fixed time regardless of status
 
-        Right censoring is called "censoring from the right" because we know the event
-        happened *after* the censoring time. We record that a subject was event-free at
-        their last observation but don't know how much longer they could have gone.
+        Right censoring is called "censoring from the right" because we know the event happened
+        *after* the censoring time. We record that a subject was event-free at their last
+        observation but don't know how much longer they could have gone.
 
-        This simple form assumes all subjects enter follow-up at the same reference time
-        (typically time 0). If subjects enter at different times or follow-up is complex,
-        use `counting()` or `interval()` instead.
+        This simple form assumes all subjects enter follow-up at the same reference time (typically
+        time 0). If subjects enter at different times or follow-up is complex, use `counting()` or
+        `interval()` instead.
 
         Parameters
         ----------
         time
-            Exit times when follow-up ends (one per subject). Must be finite and
-            non-negative. This is the time of either the event or censoring, whichever
-            came first.
+            Exit times when follow-up ends (one per subject). Must be finite and non-negative. This
+            is the time of either the event or censoring, whichever came first.
         event
             Event indicators:
 
-            - 1 = event occurred (fully observed)
-            - 0 = censored (event time unknown but > time)
+            - `1` = event occurred (fully observed)
+            - `0` = censored (event time unknown but > time)
 
-            If `None`, all subjects are treated as having experienced the event
-            (useful for testing or descriptive purposes).
+            If `None`, all subjects are treated as having experienced the event (useful for testing
+            or descriptive purposes).
         weights
-            Case weights (strictly positive, one per subject). Used to weight subjects
-            differently in survival analysis (e.g., inverse probability weighting).
-            Default is `None` (all weights = 1).
+            Case weights (strictly positive, one per subject). Used to weight subjects differently
+            in survival analysis (e.g., inverse probability weighting). The default is `None` (all
+            weights are `1`).
 
         Returns
         -------
@@ -300,12 +303,13 @@ class Surv:
 
         Examples
         --------
-        The most common case: subjects have an exit `time` and an `event` indicator
-        (1 if event occurred, 0 if censored):
+        The most common case: subjects have an exit `time` and an `event` indicator (`1` if event
+        occurred, `0` if censored):
 
         ```{python}
         import greenwood as gw
 
+        # Build a right-censored response with two events and two censorings
         y = gw.Surv.right(time=[5, 6, 4, 9], event=[1, 0, 1, 0])
         y
         ```
@@ -313,18 +317,11 @@ class Surv:
         The display shows 4 observations with 2 events and 2 censored observations:
 
         - Subjects 1 and 3: Event observed (no marker or `*` depending on visualization)
-        - Subjects 2 and 4: Censored (indicated by `+` marker, still event-free at times 6 and 9)
+        - Subjects 2 and 4: Censored (indicated by a `/` marker, still event-free at times 6 and 9)
 
-        This is the default input format for nearly all survival analysis methods.
-        Right-censored data is so ubiquitous that "survival data" often refers specifically
-        to right-censored observations.
-
-        See Also
-        --------
-        left : Event occurred before the observation time.
-        interval : Event time is known to lie in a range.
-        counting : Late entry and time-varying covariates.
-        multistate : Track multiple competing outcomes.
+        This is the default input format for nearly all survival analysis methods. Right-censored
+        data is so ubiquitous that "survival data" often refers specifically to right-censored
+        observations.
         """
         stop = _to_1d_array(time)
         status = _coerce_event(event, stop.shape[0])
@@ -335,30 +332,29 @@ class Surv:
     def left(cls, time: Any, event: Any = None, *, weights: Any = None) -> Self:
         """Left-censored response: event occurred before the observation time.
 
-        Left censoring occurs when all you know is that an event happened *before* you
-        observed the subject. For example, an infection that must have occurred before a
-        patient was tested, or a failure that was known to have happened sometime before
-        equipment was inspected. The exact event time is unknown, but you know it was no
-        later than the recorded `time`.
+        Left censoring occurs when all you know is that an event happened *before* you observed the
+        subject. For example, an infection that must have occurred before a patient was tested, or a
+        failure that was known to have happened sometime before equipment was inspected. The exact
+        event time is unknown, but you know it was no later than the recorded `time`.
 
-        This is less common than right censoring, but important in scenarios where you
-        cannot pinpoint when something happened, only that it already had.
+        This is less common than right censoring, but important in scenarios where you cannot
+        pinpoint when something happened, only that it already had.
 
         Parameters
         ----------
         time
-            Observation times (the upper bound on when the event occurred). Must be
-            finite and non-negative. Each value represents "the event happened by this time".
+            Observation times (the upper bound on when the event occurred). Must be finite and
+            non-negative. Each value represents "the event happened by this time".
         event
             Event indicators:
 
-            - 1 = event occurred before `time` (left-censored)
-            - 0 = subject was event-free at `time` (not censored)
+            - `1` = event occurred before `time` (left-censored)
+            - `0` = subject was event-free at `time` (not censored)
 
             If `None`, all subjects are treated as having experienced the event.
         weights
-            Case weights (strictly positive, one per subject). Used to weight subjects
-            differently in survival analysis. Default is `None` (all weights = 1).
+            Case weights (strictly positive, one per subject). Used to weight subjects differently
+            in survival analysis. Default is `None` (all weights are `1`).
 
         Returns
         -------
@@ -367,12 +363,13 @@ class Surv:
 
         Examples
         --------
-        Here we have 3 subjects. Two experienced the event before the recorded time
-        (event=1), and one was event-free at observation (event=0):
+        Here we have 3 subjects. Two experienced the event before the recorded time (event=1), and
+        one was event-free at observation (event=0):
 
         ```{python}
         import greenwood as gw
 
+        # Build a left-censored response
         y = gw.Surv.left(time=[5, 6, 4], event=[1, 0, 1])
         y
         ```
@@ -382,12 +379,6 @@ class Surv:
         - The `<` symbol indicates left-censored observations (event occurred before time)
         - The `+` symbol indicates subjects who were still event-free at the observation time
         - The left-censoring type `"left"` is displayed at the top
-
-        See Also
-        --------
-        right : Right-censored response (event after the observation time).
-        counting : Time intervals with late entry.
-        interval : Event lies in a known interval.
         """
         stop = _to_1d_array(time)
         status = _coerce_event(event, stop.shape[0])
@@ -417,18 +408,18 @@ class Surv:
         ----------
         start
             Entry times (when each subject becomes at risk). Must be finite and non-negative.
-            Represents when the subject enters the risk set. In standard studies this is 0.
+            Represents when the subject enters the risk set. In standard studies this is `0`.
             In studies with late entry, it is the age or time at enrollment.
         stop
             Exit times (when follow-up ends). Must be finite, non-negative, and strictly
             greater than the corresponding `start`. Represents when the subject leaves follow-up
             (event, censoring, or end of study).
         event
-            Event indicators (1 = event occurred, 0 = censored at `stop` time).
+            Event indicators (`1` = event occurred, `0` = censored at `stop` time).
             If `None`, all subjects are treated as having experienced the event.
         weights
             Case weights (strictly positive, one per subject). Used to weight subjects
-            differently in survival analysis. Default is `None` (all weights = 1).
+            differently in survival analysis. Default is `None` (all weights are `1`).
 
         Returns
         -------
@@ -442,6 +433,7 @@ class Surv:
         ```{python}
         import greenwood as gw
 
+        # Build a counting-process response with different entry times
         y = gw.Surv.counting(start=[0, 2, 1], stop=[5, 6, 4], event=[1, 0, 1])
         y
         ```
@@ -456,12 +448,6 @@ class Surv:
         form elegantly handles all cases uniformly. This representation is also essential
         for studies with time-varying covariates, where you create multiple rows per subject
         as their covariate values change.
-
-        See Also
-        --------
-        right : Simple right-censored response (all subjects start at time 0).
-        interval : Event lies in a known interval.
-        multistate : Track transitions to multiple competing states.
         """
         start_a = _to_1d_array(start)
         stop_a = _to_1d_array(stop)
@@ -475,33 +461,33 @@ class Surv:
     def interval(cls, lower: Any, upper: Any, *, weights: Any = None) -> Self:
         """Interval-censored response: event time is known to lie within a range.
 
-        Interval censoring occurs when you know the event happened sometime between two
-        observation times, but not exactly when. Common in:
+        Interval censoring occurs when you know the event happened sometime between two observation
+        times, but not exactly when. Common in:
 
-        - **Medical follow-up**: Disease detection between clinic visits. You might know
-          a patient's disease status at two checkups, but not the exact time of onset.
-        - **Equipment reliability**: Failure detected between inspections. You know failure
-          happened between the last working inspection and the current failed one.
+        - **Medical follow-up**: Disease detection between clinic visits. You might know a patient's
+        disease status at two checkups, but not the exact time of onset.
+        - **Equipment reliability**: Failure detected between inspections. You know failure happened
+        between the last working inspection and the current failed one.
         - **Longitudinal surveys**: Event reported between survey waves but exact timing unknown.
 
-        The interval-censored form captures this uncertainty. The event happened somewhere
-        in the interval (lower, upper]. If lower == upper, it's an exact (uncensored) event.
-        Use infinity for upper to represent right-censoring, and 0 for lower to represent
+        The interval-censored form captures this uncertainty. The event happened somewhere in the
+        interval (lower, upper]. If lower == upper, it's an exact (uncensored) event. Use
+        `numpy.inf` for upper to represent right-censoring, and `0` for lower to represent
         left-censoring.
 
         Parameters
         ----------
         lower
-            Interval lower bounds (one per subject). Must be finite and non-negative.
-            Event happened *after* this time (possibly at this time).
-            Set to 0 to mark left-censored subjects (event happened before first observation).
+            Interval lower bounds (one per subject). Must be finite and non-negative. Event happened
+            *after* this time (possibly at this time). Set to `0` to mark left-censored subjects
+            (event happened before first observation).
         upper
             Interval upper bounds (one per subject). Must be finite, non-negative, and >= `lower`.
             Event happened *by* this time. Set to `numpy.inf` to mark right-censored subjects (no
             event observed by end of study).
         weights
-            Case weights (strictly positive, one per subject). Used to weight subjects
-            differently in survival analysis. Default is `None` (all weights = 1).
+            Case weights (strictly positive, one per subject). Used to weight subjects differently
+            in survival analysis. Default is `None` (all weights are `1`).
 
         Returns
         -------
@@ -516,26 +502,22 @@ class Surv:
         import greenwood as gw
         import numpy as np
 
+        # Build an interval-censored response with mixed precision
         y = gw.Surv.interval(lower=[1, 2, 3], upper=[2, np.inf, 5])
         y
         ```
 
         The display shows:
+
         - Subject 1: Exact event at time 2 (lower == upper)
         - Subject 2: Right-censored at time 2 (upper = infinity means event never observed)
-        - Subject 3: Interval-censored between times 3 and 5 (event happened somewhere in
-          that window)
+        - Subject 3: Interval-censored between times 3 and 5 (event happened somewhere in that
+        window)
 
         Interval censoring gives you more information than right censoring alone. Rather than
         just knowing "no event by time X," you may know "event was definitely before time Y
-        but after time X," which allows for more precise estimation when multiple observations
+        but after time X", which allows for more precise estimation when multiple observations
         bracket the event.
-
-        See Also
-        --------
-        left : Event occurred before the observation time.
-        right : Event occurred after the observation time.
-        counting : Track subjects entering and exiting at different times.
         """
         lower_a = _to_1d_array(lower)
         upper_a = _to_1d_array(upper)
@@ -626,6 +608,7 @@ class Surv:
         ```{python}
         import greenwood as gw
 
+        # Build a competing-risks response with two outcomes
         y = gw.Surv.multistate(
             time=[5, 6, 7, 8],
             event=[1, 2, 0, 1],
@@ -645,12 +628,6 @@ class Surv:
         You can then estimate the probability of each outcome separately, capturing the
         full picture: not just "will something happen?" but "which specific outcome is most likely?"
         This avoids the bias of artificially grouping competing outcomes together.
-
-        See Also
-        --------
-        right : Simple right-censored `Surv` response object (only one possible outcome).
-        counting : Time intervals with late entry.
-        left : Event occurred before the observation time.
         """
         stop = _to_1d_array(time)
         status = _to_1d_array(event, dtype=int).astype(np.int64)
@@ -667,8 +644,8 @@ class Surv:
     def n(self) -> int:
         """Number of observations in the response.
 
-        Returns the total count of subjects/observations, regardless of event status.
-        Equivalent to `len(surv_object)`.
+        Returns the total count of subjects/observations, regardless of event status. Equivalent to
+        `len(surv_object)`.
 
         Returns
         -------
@@ -681,11 +658,13 @@ class Surv:
         import greenwood as gw
 
         y = gw.Surv.right(time=[5, 6, 4, 9], event=[1, 0, 1, 0])
+
+        # Get the number of observations
         y.n
         ```
 
-        This is useful for loops, validation, or allocating arrays. Often used to determine
-        sample size or for sanity checks on data shape.
+        This is useful for loops, validation, or allocating arrays. Often used to determine sample
+        size or for sanity checks on data shape.
         """
         return int(self.stop.shape[0])
 
@@ -693,9 +672,9 @@ class Surv:
     def entry(self) -> Array:
         r"""Entry times for each observation (or $-\infty$ if no left truncation).
 
-        For counting-process data (late entry), this returns the `start` time when each
-        subject became at risk. For standard right-censored data with no left truncation,
-        all values are $-\infty$, indicating subjects entered at the beginning of follow-up.
+        For counting-process data (late entry), this returns the `start` time when each subject
+        became at risk. For standard right-censored data with no left truncation, all values are
+        $-\infty$, indicating subjects entered at the beginning of follow-up.
 
         Returns
         -------
@@ -711,6 +690,8 @@ class Surv:
         import greenwood as gw
 
         y_right = gw.Surv.right(time=[5, 6, 4], event=[1, 0, 1])
+
+        # Entry times are -inf when there is no left truncation
         y_right.entry
         ```
 
@@ -720,6 +701,8 @@ class Surv:
         import greenwood as gw
 
         y_counting = gw.Surv.counting(start=[0, 2, 1], stop=[5, 6, 4], event=[1, 0, 1])
+
+        # Entry times reflect each subject's actual start
         y_counting.entry
         ```
 
@@ -734,14 +717,14 @@ class Surv:
     def event(self) -> Array:
         """Boolean event indicator: True if any event occurred, False if censored.
 
-        Converts the integer `status` codes to a simple boolean: 1 or more -> True (event),
-        0 -> False (censored). This is a convenient summary when you only care about
+        Converts the integer `status` codes to a simple boolean: `1` or more -> True (event),
+        `0` -> False (censored). This is a convenient summary when you only care about
         event occurrence, not which specific state occurred in multi-state data.
 
         Returns
         -------
         Array
-            Boolean array with shape (n,). `True` where status >= 1, `False` otherwise.
+            Boolean array with shape (n,). `True` where status >= `1`, `False` otherwise.
 
         Examples
         --------
@@ -749,6 +732,8 @@ class Surv:
         import greenwood as gw
 
         y = gw.Surv.right(time=[5, 6, 4, 9], event=[1, 0, 1, 0])
+
+        # Boolean indicator: True where any event occurred
         y.event
         ```
 
@@ -765,6 +750,7 @@ class Surv:
             states=("relapse", "death")
         )
 
+        # Collapses all competing causes into a single indicator
         y_multi.event
         ```
         """
@@ -791,6 +777,7 @@ class Surv:
         ```{python}
         import greenwood as gw
 
+        # Right-censored data has no left truncation
         y_right = gw.Surv.right(time=[5, 6, 4], event=[1, 0, 1])
         y_right.is_truncated
         ```
@@ -798,6 +785,7 @@ class Surv:
         Counting-process data with late entry is truncated:
 
         ```{python}
+        # Counting-process data with late entry is truncated
         y_counting = gw.Surv.counting(start=[0, 2, 1], stop=[5, 6, 4], event=[1, 0, 1])
         y_counting.is_truncated
         ```
@@ -827,6 +815,7 @@ class Surv:
         ```{python}
         import greenwood as gw
 
+        # Single-event data is not multi-state
         y_right = gw.Surv.right(time=[5, 6, 4], event=[1, 0, 1])
         y_right.is_multistate
         ```
@@ -834,6 +823,7 @@ class Surv:
         Multi-state data with competing risks:
 
         ```{python}
+        # Competing-risks data is multi-state
         y_multi = gw.Surv.multistate(
             time=[5, 6, 7, 8],
             event=[1, 2, 0, 1],
@@ -867,6 +857,8 @@ class Surv:
         import greenwood as gw
 
         y = gw.Surv.right(time=[5, 6, 4, 9], event=[1, 0, 1, 0])
+
+        # Count of observed events
         y.n_events
         ```
 
@@ -881,6 +873,8 @@ class Surv:
             event=[1, 2, 0, 1],
             states=("relapse", "death")
         )
+
+        # Total events across all competing causes
         y_multi.n_events
         ```
         """
@@ -905,6 +899,8 @@ class Surv:
         import greenwood as gw
 
         y = gw.Surv.right(time=[5, 6, 4, 9], event=[1, 0, 1, 0])
+
+        # Count of censored observations
         y.n_censored
         ```
 
@@ -912,6 +908,7 @@ class Surv:
         out of 4 total." Can validate data quality:
 
         ```{python}
+        # Verify that events plus censorings equal the total
         assert y.n_events + y.n_censored == y.n
         ```
 
@@ -981,12 +978,15 @@ class Surv:
         import greenwood as gw
 
         y = gw.Surv.right(time=[5, 6, 4, 9], event=[1, 0, 1, 0])
+
+        # Export the response as a Polars DataFrame
         y.to_frame(format="polars")
         ```
 
         Request a different backend with `format=`:
 
         ```{python}
+        # Export as a Pandas DataFrame instead
         y.to_frame(format="pandas")
         ```
         """
@@ -1017,6 +1017,8 @@ class Surv:
         import greenwood as gw
 
         y = gw.Surv.right(time=[5, 6, 4, 9], event=[1, 0, 1, 0])
+
+        # Serialize the response to a plain dictionary
         y.to_dict()
         ```
 
@@ -1065,6 +1067,8 @@ class Surv:
         import greenwood as gw
 
         y = gw.Surv.right(time=[5, 6, 4, 9], event=[1, 0, 1, 0])
+
+        # Round-trip through dictionary serialization
         reconstructed = gw.Surv.from_dict(y.to_dict())
         print("Objects equal:", y.to_dict() == reconstructed.to_dict())
         ```
@@ -1116,6 +1120,8 @@ class Surv:
         import greenwood as gw
 
         y = gw.Surv.right(time=[5, 6, 4, 9], event=[1, 0, 1, 0])
+
+        # Serialize to compact JSON
         json_compact = y.to_json(indent=None)
         print(json_compact[:120])
         ```
@@ -1153,6 +1159,8 @@ class Surv:
         import greenwood as gw
 
         y = gw.Surv.right(time=[5, 6, 4, 9], event=[1, 0, 1, 0])
+
+        # Round-trip through JSON serialization
         json_text = y.to_json()
         restored = gw.Surv.from_json(json_text)
         print("Round-trip successful:", y.to_json() == restored.to_json())

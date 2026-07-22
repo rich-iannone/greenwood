@@ -97,8 +97,11 @@ class Parametric:
     ```{python}
     import greenwood as gw
 
+    # Load data and build a right-censored response
     lung = gw.load_dataset("lung", backend="polars")
     y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+
+    # Fit a Weibull distribution and display the parameter estimates
     fit = gw.Parametric("weibull").fit(y)
     fit
     ```
@@ -107,6 +110,7 @@ class Parametric:
     companion function `compare_distributions()`:
 
     ```{python}
+    # Compare all four distribution families by AIC
     gw.compare_distributions(y, format="polars")
     ```
     """
@@ -169,8 +173,11 @@ class Parametric:
         ```{python}
         import greenwood as gw
 
+        # Load data and build a right-censored response
         lung = gw.load_dataset("lung", backend="polars")
         y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+
+        # Fit a log-normal distribution
         gw.Parametric("lognormal").fit(y)
         ```
         """
@@ -313,9 +320,11 @@ class Parametric:
         ```{python}
         import greenwood as gw
 
+        # Load data and fit a Weibull distribution
         lung = gw.load_dataset("lung", backend="polars")
         y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
         fit = gw.Parametric("weibull").fit(y)
+        # Evaluate survival probabilities at selected time points
         fit.survival([100, 200, 365, 500])
         ```
         """
@@ -353,9 +362,12 @@ class Parametric:
         ```{python}
         import greenwood as gw
 
+        # Load data and fit a Weibull distribution
         lung = gw.load_dataset("lung", backend="polars")
         y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
         fit = gw.Parametric("weibull").fit(y)
+
+        # Compute cumulative hazard at selected time points
         fit.cumulative_hazard([100, 200, 365, 500])
         ```
         """
@@ -395,9 +407,12 @@ class Parametric:
         ```{python}
         import greenwood as gw
 
+        # Load data and fit a Weibull distribution
         lung = gw.load_dataset("lung", backend="polars")
         y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
         fit = gw.Parametric("weibull").fit(y)
+
+        # Evaluate the instantaneous hazard rate at selected time points
         fit.hazard([100, 200, 365, 500])
         ```
         """
@@ -439,9 +454,12 @@ class Parametric:
         ```{python}
         import greenwood as gw
 
+        # Load data and fit a Weibull distribution
         lung = gw.load_dataset("lung", backend="polars")
         y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
         fit = gw.Parametric("weibull").fit(y)
+
+        # Evaluate the density at selected time points
         fit.density([100, 200, 365, 500])
         ```
         """
@@ -481,9 +499,12 @@ class Parametric:
         ```{python}
         import greenwood as gw
 
+        # Load data and fit a Weibull distribution
         lung = gw.load_dataset("lung", backend="polars")
         y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
         fit = gw.Parametric("weibull").fit(y)
+
+        # Compute the quartile survival times
         fit.quantile([0.25, 0.5, 0.75])
         ```
         """
@@ -519,9 +540,12 @@ class Parametric:
         ```{python}
         import greenwood as gw
 
+        # Load data and fit a Weibull distribution
         lung = gw.load_dataset("lung", backend="polars")
         y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
         fit = gw.Parametric("weibull").fit(y)
+
+        # Compute the expected survival time
         fit.mean()
         ```
         """
@@ -547,9 +571,12 @@ class Parametric:
         ```{python}
         import greenwood as gw
 
+        # Load data and fit a Weibull distribution
         lung = gw.load_dataset("lung", backend="polars")
         y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
         fit = gw.Parametric("weibull").fit(y)
+
+        # Compute the median survival time
         fit.median()
         ```
         """
@@ -581,9 +608,12 @@ class Parametric:
         ```{python}
         import greenwood as gw
 
+        # Load data and fit a Weibull distribution
         lung = gw.load_dataset("lung", backend="polars")
         y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
         fit = gw.Parametric("weibull").fit(y)
+
+        # Export the parameter estimates as a Polars DataFrame
         fit.to_frame(format="polars")
         ```
         """
@@ -650,8 +680,11 @@ def compare_distributions(
     ```{python}
     import greenwood as gw
 
+    # Load data and build a right-censored response
     lung = gw.load_dataset("lung", backend="polars")
     y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+
+    # Compare all four distributions by AIC
     gw.compare_distributions(y, format="polars")
     ```
     """

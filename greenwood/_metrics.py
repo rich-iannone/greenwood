@@ -95,10 +95,12 @@ def concordance_index(surv: Surv, risk: Any) -> float:
     ```{python}
     import greenwood as gw
 
+    # Load data and build a right-censored response
     lung = gw.load_dataset("lung", backend="polars")
     y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
     cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
 
+    # Compute the concordance index from the Cox linear predictor
     lp = cox.predict(type="lp")
     c_index = gw.concordance_index(y, lp)
     c_index
@@ -109,6 +111,8 @@ def concordance_index(surv: Surv, risk: Any) -> float:
 
     ```{python}
     import numpy as np
+
+    # Compare model discrimination against a naive baseline
     baseline_c = gw.concordance_index(y, np.zeros(len(y)))
     print(f"Baseline: {baseline_c:.3f}")
     print(f"Cox model: {c_index:.3f}")
@@ -233,10 +237,12 @@ def brier_score(surv: Surv, survival_prob: Any, times: Any) -> Array:
     import greenwood as gw
     import numpy as np
 
+    # Load data and build a right-censored response
     lung = gw.load_dataset("lung", backend="polars")
     y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
     cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
 
+    # Compute Brier scores at three clinically relevant horizons
     times = [180, 365, 540]
     surv_pred = cox.predict(lung[["age", "sex"]], type="survival", times=times, format="pandas")
     probs = surv_pred.iloc[:, 1:].to_numpy().T
@@ -248,6 +254,7 @@ def brier_score(surv: Surv, survival_prob: Any, times: Any) -> Array:
     null model (all subjects at 50% survival) to assess improvement:
 
     ```{python}
+    # Compare model calibration against a naive 50% baseline
     null_probs = np.full_like(probs, 0.5)
     null_brier = gw.brier_score(y, null_probs, times)
     print(f"Null model Brier: {null_brier}")
@@ -258,6 +265,7 @@ def brier_score(surv: Surv, survival_prob: Any, times: Any) -> Array:
     Summarize Brier scores across times into a single summary via time-averaged Brier score:
 
     ```{python}
+    # Summarize calibration as a single integrated Brier score
     ibs = gw.integrated_brier_score(y, probs, times)
     print(f"Integrated Brier Score: {ibs:.3f}")
     ```
@@ -350,10 +358,12 @@ def integrated_brier_score(surv: Surv, survival_prob: Any, times: Any) -> float:
     ```{python}
     import greenwood as gw
 
+    # Load data and build a right-censored response
     lung = gw.load_dataset("lung", backend="polars")
     y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
     cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
 
+    # Compute the integrated Brier score across three time horizons
     times = [180, 365, 540]
     surv_pred = cox.predict(lung[["age", "sex"]], type="survival", times=times, format="pandas")
     probs = surv_pred.iloc[:, 1:].to_numpy().T
@@ -376,6 +386,7 @@ def integrated_brier_score(surv: Surv, survival_prob: Any, times: Any) -> float:
     assessment:
 
     ```{python}
+    # Use a finer time grid for a more robust calibration summary
     times_wide = list(range(100, 700, 50))
     surv_pred_wide = cox.predict(
         lung[["age", "sex"]], type="survival", times=times_wide, format="pandas"
@@ -462,10 +473,12 @@ def calibration(
     ```{python}
     import greenwood as gw
 
+    # Load data and build a right-censored response
     lung = gw.load_dataset("lung", backend="polars")
     y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
     cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
 
+    # Assess one-year calibration across five prediction bins
     surv = cox.predict(lung[["age", "sex"]], type="survival", times=[365.0], format="pandas")
     predicted = surv.iloc[0, 1:].to_numpy()
     gw.calibration(y, predicted, 365.0, n_bins=5, format="polars")
@@ -595,10 +608,12 @@ def time_dependent_auc(surv: Surv, marker: Any, times: Any) -> Array:
     ```{python}
     import greenwood as gw
 
+    # Load data and build a right-censored response
     lung = gw.load_dataset("lung", backend="polars")
     y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
     cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
 
+    # Compute time-dependent AUC at three clinically relevant horizons
     lp = cox.predict(type="lp")
     auc = gw.time_dependent_auc(y, lp, times=[180, 365, 540])
     auc
@@ -607,6 +622,7 @@ def time_dependent_auc(surv: Surv, marker: Any, times: Any) -> Array:
     Compare discrimination of two models via `integrated_auc()`:
 
     ```{python}
+    # Summarize discrimination as a single time-averaged AUC
     ibs = gw.integrated_auc(y, lp, times=[180, 365, 540])
     ibs
     ```
@@ -702,10 +718,12 @@ def integrated_auc(surv: Surv, marker: Any, times: Any) -> float:
     ```{python}
     import greenwood as gw
 
+    # Load data and build a right-censored response
     lung = gw.load_dataset("lung", backend="polars")
     y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
     cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
 
+    # Compute the time-averaged AUC across three horizons
     lp = cox.predict(type="lp")
     gw.integrated_auc(y, lp, times=[180, 365, 540])
     ```

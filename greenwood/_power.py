@@ -134,18 +134,21 @@ def logrank_n_events(
     ```{python}
     import greenwood as gw
 
+    # Compute events needed to detect a 50% hazard reduction
     gw.logrank_n_events(hazard_ratio=0.5)
     ```
 
     Repeat for higher power (90%) to see the increase:
 
     ```{python}
+    # Increase power to 90%
     gw.logrank_n_events(hazard_ratio=0.5, power=0.9)
     ```
 
     Explore sensitivity to effect size. Smaller effects (HR closer to 1) require more events:
 
     ```{python}
+    # Show how required events increase as the effect size shrinks
     for hr in [0.5, 0.6, 0.7, 0.8]:
         events = gw.logrank_n_events(hazard_ratio=hr)
         print(f"HR {hr}: {events} events needed")
@@ -154,12 +157,14 @@ def logrank_n_events(
     Use `sides=1` for one-sided testing (higher power, fewer events, but assumes direction):
 
     ```{python}
+    # Use a one-sided test to reduce the required event count
     gw.logrank_n_events(hazard_ratio=0.5, sides=1)
     ```
 
     Use `allocation=0.33` for unbalanced assignment (e.g., 1 treated per 2 control):
 
     ```{python}
+    # Use 1:2 allocation (one-third of subjects in group 1)
     gw.logrank_n_events(hazard_ratio=0.5, allocation=0.33)
     ```
 
@@ -167,6 +172,7 @@ def logrank_n_events(
     For instance, if 40% of subjects are expected to have events, divide by 0.4:
 
     ```{python}
+    # Convert event count to total enrollment given 40% event probability
     events = gw.logrank_n_events(hazard_ratio=0.5)
     subjects = gw.logrank_sample_size(hazard_ratio=0.5, prob_event=0.4)
     print(f"Events needed: {events}")
@@ -258,6 +264,7 @@ def logrank_power(
     ```{python}
     import greenwood as gw
 
+    # Compute power to detect HR=0.5 with 60 events
     gw.logrank_power(hazard_ratio=0.5, n_events=60)
     ```
 
@@ -266,6 +273,7 @@ def logrank_power(
     effect sizes to understand study sensitivity:
 
     ```{python}
+    # Show how power decreases as the effect size shrinks
     for hr in [0.5, 0.6, 0.7, 0.8]:
         power = gw.logrank_power(hazard_ratio=hr, n_events=60)
         print(f"HR {hr}: power = {power:.2%}")
@@ -274,12 +282,14 @@ def logrank_power(
     Use `sides=1` for a one-sided test (higher power, but assumes direction is known):
 
     ```{python}
+    # Compute one-sided power for the same scenario
     gw.logrank_power(hazard_ratio=0.5, n_events=60, sides=1)
     ```
 
     Use unbalanced allocation if one group is larger. Power decreases with imbalance:
 
     ```{python}
+    # Show the power loss from unbalanced allocation
     gw.logrank_power(hazard_ratio=0.5, n_events=60, allocation=0.3)
     ```
     """
@@ -395,6 +405,7 @@ def logrank_sample_size(
     ```{python}
     import greenwood as gw
 
+    # Compute enrollment needed for 90% power with 40% event probability
     gw.logrank_sample_size(hazard_ratio=0.5, prob_event=0.4, power=0.9)
     ```
 
@@ -405,6 +416,7 @@ def logrank_sample_size(
     if only 30% or 50% of subjects have events?
 
     ```{python}
+    # Vary event probability to see how enrollment requirements change
     for prob in [0.3, 0.4, 0.5]:
         n = gw.logrank_sample_size(hazard_ratio=0.5, prob_event=prob, power=0.9)
         print(f"prob_event={prob}: n={n} subjects, {int(prob * n)} events")
@@ -413,6 +425,7 @@ def logrank_sample_size(
     Compare sample size for different effect sizes (smaller HR → fewer subjects):
 
     ```{python}
+    # Vary effect size to see how enrollment requirements change
     for hr in [0.5, 0.6, 0.7]:
         n = gw.logrank_sample_size(hazard_ratio=hr, prob_event=0.4, power=0.9)
         print(f"HR {hr}: n={n} subjects")
@@ -421,12 +434,14 @@ def logrank_sample_size(
     Use higher power (0.95) if you want to be very confident the effect is detected:
 
     ```{python}
+    # Increase power to 95% for greater confidence
     gw.logrank_sample_size(hazard_ratio=0.5, prob_event=0.4, power=0.95)
     ```
 
     Use unbalanced allocation (e.g., 2:1 control:treatment) if logistics require it:
 
     ```{python}
+    # Use 1:2 allocation to see the sample size increase
     gw.logrank_sample_size(hazard_ratio=0.5, prob_event=0.4, power=0.9, allocation=1/3)
     ```
     """

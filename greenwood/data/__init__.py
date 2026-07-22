@@ -48,6 +48,7 @@ def available_datasets() -> list[str]:
     ```{python}
     import greenwood as gw
 
+    # List all bundled dataset names
     gw.available_datasets()
     ```
     """
@@ -105,6 +106,7 @@ def load_dataset(name: str, *, backend: str | None = None) -> Any:
     ```{python}
     import greenwood as gw
 
+    # Load the NCCTG lung cancer dataset as a Polars DataFrame
     lung = gw.load_dataset("lung", backend="polars")
     lung.head()
     ```
@@ -112,6 +114,7 @@ def load_dataset(name: str, *, backend: str | None = None) -> Any:
     See all available dataset names:
 
     ```{python}
+    # List all available dataset names
     gw.available_datasets()
     ```
     """

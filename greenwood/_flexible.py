@@ -131,8 +131,11 @@ class RoystonParmar:
     ```{python}
     import greenwood as gw
 
+    # Load data and build a right-censored response
     lung = gw.load_dataset("lung", backend="polars")
     y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+
+    # Fit a flexible model with three spline terms
     rp = gw.RoystonParmar(df=3).fit(y, lung[["age", "sex"]])
     rp
     ```
@@ -219,8 +222,11 @@ class RoystonParmar:
         ```{python}
         import greenwood as gw
 
+        # Load data and build a right-censored response
         lung = gw.load_dataset("lung", backend="polars")
         y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+
+        # Fit the model with three spline degrees of freedom
         rp = gw.RoystonParmar(df=3).fit(y, lung[["age", "sex"]])
         rp
         ```
@@ -228,6 +234,7 @@ class RoystonParmar:
         Fit a more flexible model with five degrees of freedom:
 
         ```{python}
+        # Increase spline flexibility to five degrees of freedom
         rp_flexible = gw.RoystonParmar(df=5).fit(y, lung[["age", "sex"]])
         rp_flexible
         ```
@@ -235,6 +242,7 @@ class RoystonParmar:
         Fit a univariate flexible model without covariates:
 
         ```{python}
+        # Fit a baseline-only model with no covariates
         rp_univariate = gw.RoystonParmar(df=3).fit(y)
         rp_univariate
         ```
@@ -410,9 +418,12 @@ class RoystonParmar:
         ```{python}
         import greenwood as gw
 
+        # Load data and build a right-censored response
         lung = gw.load_dataset("lung", backend="polars")
         y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
         rp = gw.RoystonParmar(df=3).fit(y, lung[["age", "sex"]])
+
+        # Predict survival probabilities at 180 and 365 days for two subjects
         rp.predict(
             lung[["age", "sex"]][:2], type="survival", times=[180, 365], format="polars"
         )
@@ -421,6 +432,7 @@ class RoystonParmar:
         Predict the instantaneous hazard (force of mortality) at those same times:
 
         ```{python}
+        # Predict instantaneous hazard at the same time points
         rp.predict(
             lung[["age", "sex"]][:2], type="hazard", times=[180, 365], format="polars"
         )
@@ -429,6 +441,7 @@ class RoystonParmar:
         Predict cumulative hazard (total risk accumulated by time t):
 
         ```{python}
+        # Predict cumulative hazard at the same time points
         rp.predict(
             lung[["age", "sex"]][:2], type="cumhaz", times=[180, 365], format="polars"
         )
@@ -437,6 +450,7 @@ class RoystonParmar:
         Predict for a baseline subject (covariates all zero):
 
         ```{python}
+        # Predict for a baseline subject with all covariates set to zero
         rp.predict(type="survival", times=[180, 365], format="polars")
         ```
         """
@@ -503,15 +517,19 @@ class RoystonParmar:
         ```{python}
         import greenwood as gw
 
+        # Load data and build a right-censored response
         lung = gw.load_dataset("lung", backend="polars")
         y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
         rp = gw.RoystonParmar(df=3).fit(y, lung[["age", "sex"]])
+
+        # Export the coefficient table as a Polars DataFrame
         rp.to_frame(format="polars")
         ```
 
         Request a different backend with `format=`:
 
         ```{python}
+        # Export the same table as a Pandas DataFrame
         rp.to_frame(format="pandas")
         ```
         """

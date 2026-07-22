@@ -56,6 +56,7 @@ def to_dataframe(data: dict[str, Any], *, format: str | None = None) -> Any:
     ```{python}
     from greenwood._backends import to_dataframe
 
+    # Materialize a dict of columns as a Polars DataFrame
     to_dataframe({"name": ["Alice", "Bob"], "age": [30, 25]}, format="polars")
     ```
     """

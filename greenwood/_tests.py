@@ -72,8 +72,11 @@ class TestResult:
     ```{python}
     import greenwood as gw
 
+    # Load data and build a right-censored response
     lung = gw.load_dataset("lung", backend="polars")
     y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+
+    # Run a log-rank test comparing survival by sex
     result = gw.logrank_test(y, group=lung["sex"])
     result
     ```
@@ -313,8 +316,11 @@ def logrank_test(
     ```{python}
     import greenwood as gw
 
+    # Load data and build a right-censored response
     lung = gw.load_dataset("lung", backend="polars")
     y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+
+    # Test whether survival differs between the two sex groups
     result = gw.logrank_test(y, group=lung["sex"])
     result
     ```
@@ -336,6 +342,7 @@ def logrank_test(
     Use the Peto-Peto (Wilcoxon) weighted test to emphasize differences in early survival:
 
     ```{python}
+    # Use Peto-Peto weighting to emphasize early event times
     gw.logrank_test(y, group=lung["sex"], rho=1, gamma=0)
     ```
 
@@ -509,8 +516,11 @@ def pairwise_logrank_test(
     ```{python}
     import greenwood as gw
 
+    # Load data and build a right-censored response
     vet = gw.load_dataset("veteran", backend="polars")
     y = gw.Surv.right(vet["time"], event=vet["status"])
+
+    # Run a global log-rank test across all cell types
     gw.logrank_test(y, group=vet["celltype"])
     ```
 
@@ -519,6 +529,7 @@ def pairwise_logrank_test(
     choose the backend (here, Polars); use `p_adjusted` for significance testing:
 
     ```{python}
+    # Compare all pairs of cell types with Holm-adjusted p-values
     pairs = gw.pairwise_logrank_test(y, group=vet["celltype"], format="polars")
     pairs
     ```
@@ -527,6 +538,7 @@ def pairwise_logrank_test(
     we can use boolean-mask filtering:
 
     ```{python}
+    # Filter to pairs with statistically significant differences
     pairs = gw.pairwise_logrank_test(y, group=vet["celltype"], format="pandas")
     pairs[pairs["p_adjusted"] < 0.05]
     ```
@@ -534,6 +546,7 @@ def pairwise_logrank_test(
     Use the Peto-Peto (Wilcoxon) weighting to emphasize early survival differences:
 
     ```{python}
+    # Use Peto-Peto weighting to emphasize early event times
     gw.pairwise_logrank_test(y, group=vet["celltype"], rho=1, format="polars")
     ```
 
@@ -541,6 +554,7 @@ def pairwise_logrank_test(
     show evidence of differences (false-discovery rate control rather than family-wise error):
 
     ```{python}
+    # Use Benjamini-Hochberg correction for false-discovery rate control
     gw.pairwise_logrank_test(y, group=vet["celltype"], correction="bh", format="polars")
     ```
     """
@@ -675,6 +689,7 @@ def trend_test(
     ```{python}
     import greenwood as gw
 
+    # Load data and build a right-censored response
     vet = gw.load_dataset("veteran", backend="polars")
     y = gw.Surv.right(vet["time"], event=vet["status"])
 
@@ -708,6 +723,7 @@ def trend_test(
     Stratified by treatment to control for treatment effects:
 
     ```{python}
+    # Stratify by treatment arm to adjust for treatment effects
     gw.trend_test(y, group=vet["celltype"], strata=vet["trt"])
     ```
     """

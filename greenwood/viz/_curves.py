@@ -94,10 +94,12 @@ def theme_survival() -> Any:
     ```{python}
     import greenwood as gw
 
+    # Load data and fit a stratified Kaplan-Meier estimator
     lung = gw.load_dataset("lung", backend="polars")
     y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
     km = gw.KaplanMeier().fit(y, by=lung["sex"])
 
+    # Apply the survival theme to the plot
     gw.plot_survival(km, backend="plotnine") + gw.theme_survival()
     ```
     """
@@ -188,16 +190,19 @@ def plot_survival(
     ```{python}
     import greenwood as gw
 
+    # Load data and fit a stratified Kaplan-Meier estimator
     lung = gw.load_dataset("lung", backend="polars")
     y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
     km = gw.KaplanMeier().fit(y, by=lung["sex"])
 
+    # Plot the survival curves
     gw.plot_survival(km)
     ```
 
     Add a numbers-at-risk table by passing `risk_table=True`:
 
     ```{python}
+    # Add a numbers-at-risk table beneath the curves
     gw.plot_survival(km, risk_table=True)
     ```
 
@@ -205,6 +210,7 @@ def plot_survival(
     custom times for the risk table, or adding plotnine layers:
 
     ```{python}
+    # Plot without confidence bands or censor marks, with custom risk-table times
     gw.plot_survival(km, conf_int=False, censor_marks=False, risk_table=True,
                      times=[0, 200, 400, 600])
     ```
@@ -312,10 +318,12 @@ def risk_table(km: KaplanMeier, times: Any = None) -> Any:
     ```{python}
     import greenwood as gw
 
+    # Load data and fit a stratified Kaplan-Meier estimator
     lung = gw.load_dataset("lung", backend="polars")
     y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
     km = gw.KaplanMeier().fit(y, by=lung["sex"])
 
+    # Render the numbers-at-risk table at specified time points
     gw.risk_table(km, times=[0, 250, 500, 750, 1000])
     ```
     """

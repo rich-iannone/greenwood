@@ -230,11 +230,13 @@ def plot_cif(
     import numpy as np
     import greenwood as gw
 
+    # Load data and build a competing-risks response
     mg = gw.load_dataset("mgus2", backend="polars")
     etime = np.where(mg["pstat"] == 1, mg["ptime"], mg["futime"])
     cause = np.where(mg["pstat"] == 1, 1, 2 * mg["death"])
     y = gw.Surv.multistate(etime, event=cause, states=("pcm", "death"))
 
+    # Fit the Aalen-Johansen estimator and plot cumulative incidence
     aj = gw.AalenJohansen().fit(y)
     gw.plot_cif(aj)
     ```
@@ -242,6 +244,7 @@ def plot_cif(
     Pass `by=` to stratify by a covariate and compare groups across causes:
 
     ```{python}
+    # Stratify by sex and compare groups across causes
     aj_sex = gw.AalenJohansen().fit(y, by=mg["sex"])
     gw.plot_cif(aj_sex, title="Cumulative incidence by sex")
     ```
@@ -249,6 +252,7 @@ def plot_cif(
     Add an aligned numbers-at-risk table beneath the curves:
 
     ```{python}
+    # Add a numbers-at-risk table beneath the curves
     gw.plot_cif(aj_sex, risk_table=True)
     ```
     """

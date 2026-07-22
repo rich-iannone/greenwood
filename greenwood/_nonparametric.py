@@ -271,8 +271,11 @@ class KaplanMeier:
     ```{python}
     import greenwood as gw
 
+    # Load data and build a right-censored response
     lung = gw.load_dataset("lung", backend="polars")
     y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+
+    # Fit the Kaplan-Meier estimator
     km = gw.KaplanMeier().fit(y)
     km
     ```
@@ -281,6 +284,7 @@ class KaplanMeier:
     `format=` to choose the backend (here, Polars):
 
     ```{python}
+    # Export the survival curve as a Polars DataFrame
     km.to_frame(format="polars")
     ```
     """
@@ -381,8 +385,11 @@ class KaplanMeier:
         ```{python}
         import greenwood as gw
 
+        # Load data and build a right-censored response
         lung = gw.load_dataset("lung", backend="polars")
         y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+
+        # Fit a single unstratified survival curve
         km = gw.KaplanMeier().fit(y)
         km
         ```
@@ -391,6 +398,7 @@ class KaplanMeier:
         group. The results are stored and can be visualized separately:
 
         ```{python}
+        # Fit stratified curves by sex and plot them
         km_stratified = gw.KaplanMeier().fit(y, by=lung["sex"])
         gw.plot_survival(km_stratified)
         ```
@@ -488,9 +496,12 @@ class KaplanMeier:
         ```{python}
         import greenwood as gw
 
+        # Load data and fit the Kaplan-Meier estimator
         lung = gw.load_dataset("lung", backend="polars")
         y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
         km = gw.KaplanMeier().fit(y)
+
+        # Compute the first-quartile survival time with confidence limits
         km.quantile(0.25, ci=True)
         ```
         """
@@ -545,9 +556,12 @@ class KaplanMeier:
         ```{python}
         import greenwood as gw
 
+        # Load data and fit the Kaplan-Meier estimator
         lung = gw.load_dataset("lung", backend="polars")
         y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
         km = gw.KaplanMeier().fit(y)
+
+        # Compute the median survival time with confidence limits
         km.median(ci=True)
         ```
         """
@@ -602,9 +616,12 @@ class KaplanMeier:
         ```{python}
         import greenwood as gw
 
+        # Load data and fit the Kaplan-Meier estimator
         lung = gw.load_dataset("lung", backend="polars")
         y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
         km = gw.KaplanMeier().fit(y)
+
+        # Compute the restricted mean survival time over 365 days
         km.rmst(365, ci=True)
         ```
         """
@@ -674,9 +691,12 @@ class KaplanMeier:
         ```{python}
         import greenwood as gw
 
+        # Load data and fit the Kaplan-Meier estimator
         lung = gw.load_dataset("lung", backend="polars")
         y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
         km = gw.KaplanMeier().fit(y)
+
+        # Compute the restricted mean residual life at 180 days
         km.rmrl(180, 730, ci=True)
         ```
         """
@@ -739,15 +759,19 @@ class KaplanMeier:
         ```{python}
         import greenwood as gw
 
+        # Load data and fit the Kaplan-Meier estimator
         lung = gw.load_dataset("lung", backend="polars")
         y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
         km = gw.KaplanMeier().fit(y)
+
+        # Read survival probabilities at specific time points
         km.predict([180, 365, 730])
         ```
 
         Pass `what="cumhaz"` instead to evaluate the cumulative hazard at those same times:
 
         ```{python}
+        # Evaluate the cumulative hazard at the same time points
         km.predict([180, 365, 730], what="cumhaz")
         ```
         """
@@ -816,15 +840,19 @@ class KaplanMeier:
         ```{python}
         import greenwood as gw
 
+        # Load data and fit the Kaplan-Meier estimator
         lung = gw.load_dataset("lung", backend="polars")
         y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
         km = gw.KaplanMeier().fit(y)
+
+        # Export the survival curve as a Polars DataFrame
         km.to_frame(format="polars")
         ```
 
         Pass a different `format=` for pandas or PyArrow output:
 
         ```{python}
+        # Export as a pandas DataFrame instead
         km.to_frame(format="pandas")
         ```
         """
@@ -905,8 +933,11 @@ class NelsonAalen:
     ```{python}
     import greenwood as gw
 
+    # Load data and build a right-censored response
     lung = gw.load_dataset("lung", backend="polars")
     y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+
+    # Fit the Nelson-Aalen estimator
     na = gw.NelsonAalen().fit(y)
     na
     ```
@@ -1008,8 +1039,11 @@ class NelsonAalen:
         ```{python}
         import greenwood as gw
 
+        # Load data and build a right-censored response
         lung = gw.load_dataset("lung", backend="polars")
         y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+
+        # Fit a single unstratified cumulative hazard curve
         na = gw.NelsonAalen().fit(y)
         na
         ```
@@ -1017,6 +1051,7 @@ class NelsonAalen:
         Fit stratified curves by sex to compare cumulative hazard accumulation:
 
         ```{python}
+        # Fit stratified cumulative hazard curves by sex
         na_stratified = gw.NelsonAalen().fit(y, by=lung["sex"])
         na_stratified
         ```
@@ -1082,27 +1117,26 @@ class NelsonAalen:
     def to_frame(self, *, format: str | None = None) -> Any:
         """Return the fitted cumulative hazard as a DataFrame.
 
-        Exports the Nelson-Aalen estimate with one row per event time, including risk-set
-        counts, the cumulative hazard estimate, its standard error, confidence limits, and
-        optional strata labels.
+        Exports the Nelson-Aalen estimate with one row per event time, including risk-set counts,
+        the cumulative hazard estimate, its standard error, confidence limits, and optional strata
+        labels.
 
         Parameters
         ----------
         format
-            Output format: `None` (default), `"pandas"`, `"polars"`, or `"pyarrow"`. When
-            `None`, a backend is auto-detected (Polars, then Pandas, then PyArrow).
+            Output format: `None` (default), `"pandas"`, `"polars"`, or `"pyarrow"`. When `None`, a
+            backend is auto-detected (Polars, then Pandas, then PyArrow).
 
         Returns
         -------
         pandas.DataFrame, polars.DataFrame, or pyarrow.Table
-            A tidy table with columns `time`, `n_risk`, `n_event`, `estimate`,
-            `std_error`, `conf_low`, `conf_high`, and optionally `strata`.
+            A tidy table with columns `time`, `n_risk`, `n_event`, `estimate`, `std_error`,
+            `conf_low`, `conf_high`, and optionally `strata`.
 
         Raises
         ------
         ImportError
-            If the requested (or, when auto-detecting, any) DataFrame library is not
-            installed.
+            If the requested (or, when auto-detecting, any) DataFrame library is not installed.
 
         Examples
         --------
@@ -1112,15 +1146,19 @@ class NelsonAalen:
         ```{python}
         import greenwood as gw
 
+        # Load data and fit the Nelson-Aalen estimator
         lung = gw.load_dataset("lung", backend="polars")
         y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
         na = gw.NelsonAalen().fit(y)
+
+        # Export the cumulative hazard as a Polars DataFrame
         na.to_frame(format="polars")
         ```
 
         Pass a different `format=` for pandas or PyArrow output:
 
         ```{python}
+        # Export as a pandas DataFrame instead
         na.to_frame(format="pandas")
         ```
         """

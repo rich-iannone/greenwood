@@ -34,10 +34,12 @@ def num(x: Any, digits: int = 4) -> str:
     ```{python}
     from greenwood._repr import num
 
+    # Format to four significant figures (the default)
     num(0.001234567)
     ```
 
     ```{python}
+    # Missing values render as "NA"
     num(None)
     ```
     """
@@ -52,16 +54,15 @@ def num(x: Any, digits: int = 4) -> str:
 def fixed(x: Any, digits: int = 3) -> str:
     """Format a number with a fixed number of decimal places, or `"NA"` for missing values.
 
-    Unlike `num()`, which uses significant figures, this always shows exactly `digits`
-    decimal places. Useful for p-values and other quantities where a fixed format is
-    conventional.
+    Unlike `num()`, which uses significant figures, this always shows exactly `digits=` decimal
+    places. Useful for p-values and other quantities where a fixed format is conventional.
 
     Parameters
     ----------
     x
         A numeric value (or `None`).
     digits
-        Number of decimal places (default `3`).
+        Number of decimal places (the default is `3`).
 
     Returns
     -------
@@ -73,10 +74,12 @@ def fixed(x: Any, digits: int = 3) -> str:
     ```{python}
     from greenwood._repr import fixed
 
+    # Format to three decimal places (the default)
     fixed(0.04217)
     ```
 
     ```{python}
+    # NaN values render as "NA"
     fixed(float("nan"))
     ```
     """
@@ -109,10 +112,12 @@ def whole(x: Any) -> str:
     ```{python}
     from greenwood._repr import whole
 
+    # Whole numbers drop the decimal
     whole(365.0)
     ```
 
     ```{python}
+    # Non-integer floats fall back to significant-figure formatting
     whole(3.14)
     ```
     """
@@ -131,9 +136,9 @@ def align_table(
 ) -> str:
     """Render a right-aligned numeric table with an optional left label column.
 
-    Produces the compact, monospace-friendly table layout used in the R-style `__repr__`
-    of all Greenwood estimators. Column headers and data cells are right-justified. Row
-    labels (if present) are left-justified.
+    Produces the compact, monospace-friendly table layout used in the R-style `__repr__` of all
+    Greenwood estimators. Column headers and data cells are right-justified. Row labels (if present)
+    are left-justified.
 
     Parameters
     ----------
@@ -156,6 +161,7 @@ def align_table(
     ```{python}
     from greenwood._repr import align_table
 
+    # Build a small labelled table with right-aligned columns
     align_table(
         headers=["estimate", "std_error"],
         rows=[["1.234", "0.056"], ["0.891", "0.123"]],
