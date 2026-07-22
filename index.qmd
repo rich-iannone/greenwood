@@ -94,11 +94,11 @@ gw.tidy(cox, exponentiate=True, format="polars")
 
 ## Next steps
 
-- **Installation**: get started with `pip install greenwood` or see [Installation](user_guide/01-installation.qmd).
-- **Quick tour**: new to Greenwood? Start with the [Quick start](user_guide/02-quick-start.qmd) for a fast hands-on tour (5 min read).
-- **Learn survival analysis**: new to survival analysis? Begin with [Survival data and the Surv object](user_guide/03-survival-data.qmd) to understand censoring.
-- **Build models**: jump to [Cox regression](user_guide/08-cox-regression.qmd) or [Parametric models](user_guide/10-parametric-models.qmd).
-- **Explore everything**: see the full [User Guide](user_guide/00-get-started.qmd) for comprehensive coverage of all features.
+- **Installation**: get started with `pip install greenwood` or see [Installation](user-guide/installation.qmd).
+- **Quick tour**: new to Greenwood? Start with the [Quick start](user-guide/quick-start.qmd) for a fast hands-on tour (5 min read).
+- **Learn survival analysis**: new to survival analysis? Begin with [Survival data and the Surv object](user-guide/survival-data.qmd) to understand censoring.
+- **Build models**: jump to [Cox regression](user-guide/cox-regression.qmd) or [Parametric models](user-guide/parametric-models.qmd).
+- **Explore everything**: see the full [User Guide](user-guide/get-started.qmd) for comprehensive coverage of all features.
 - **API reference**: browse the [Python API reference](reference/) for function signatures and detailed documentation.
 
 ## Key features at a glance

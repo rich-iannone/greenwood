@@ -86,7 +86,7 @@ gw.plot_survival(km)
 cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
 ```
 
-That's it! See the [user guide](user_guide/02-quick-start.qmd) for more details on each step, and scroll down for a comprehensive example covering more of Greenwood's capabilities.
+That's it! See the [user guide](user-guide/quick-start.qmd) for more details on each step, and scroll down for a comprehensive example covering more of Greenwood's capabilities.
 
 ## See more
 
