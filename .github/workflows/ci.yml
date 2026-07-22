@@ -48,7 +48,7 @@ jobs:
       - name: Run tests
         # The R-parity suite compares against checked-in fixtures, so it needs no
         # R toolchain here; R is only used offline to regenerate those fixtures.
-        run: pytest tests
+        run: pytest tests -n auto
 
   build:
     name: Build distribution

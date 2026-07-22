@@ -67,6 +67,7 @@ dev = [
     "pytest-cov",
     "pytest-snapshot",
     "pytest-randomly",
+    "pytest-xdist>=3.6.1",
     "hypothesis>=6.100",
     "ruff",
     "pyright",
@@ -121,7 +122,7 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 
 [tool.pytest.ini_options]
 minversion = "8.0"
-addopts = "-ra --cov=greenwood --cov-report=term-missing --durations 10"
+addopts = "-ra -n auto --cov=greenwood --cov-report=term-missing --durations 10"
 testpaths = ["tests"]
 markers = [
     "rparity: numeric validation against R fixtures",

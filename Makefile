@@ -14,17 +14,18 @@ install: ## Install the package with dev extras into .venv
 .PHONY: test
 test: ## Run the full test suite with coverage
 	@$(PYTHON) -m pytest tests \
+		-n auto \
 		--cov=greenwood \
 		--cov-report=term-missing \
 		--durations 10
 
 .PHONY: test-unit
 test-unit: ## Run tests excluding slow and R-parity suites
-	@$(PYTHON) -m pytest tests -m "not slow and not rparity" --durations 10
+	@$(PYTHON) -m pytest tests -n auto -m "not slow and not rparity" --durations 10
 
 .PHONY: test-rparity
 test-rparity: ## Run the R-parity numeric validation suite
-	@$(PYTHON) -m pytest tests -m rparity --durations 10
+	@$(PYTHON) -m pytest tests -n auto -m rparity --durations 10
 
 .PHONY: lint
 lint: ## Run ruff formatter and linter (with fixes)
