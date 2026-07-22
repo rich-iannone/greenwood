@@ -12,7 +12,35 @@ from typing import Any
 
 
 def num(x: Any, digits: int = 4) -> str:
-    """Format a number with `digits` significant figures, or `NA` for missing values."""
+    """Format a number with `digits` significant figures, or `"NA"` for missing values.
+
+    Used throughout the estimator `__repr__` methods to produce compact, stable numeric
+    output. `None` and `NaN` are both rendered as `"NA"`.
+
+    Parameters
+    ----------
+    x
+        A numeric value (or `None`).
+    digits
+        Number of significant figures (default `4`).
+
+    Returns
+    -------
+    str
+        The formatted string.
+
+    Examples
+    --------
+    ```{python}
+    from greenwood._repr import num
+
+    num(0.001234567)
+    ```
+
+    ```{python}
+    num(None)
+    ```
+    """
     if x is None:
         return "NA"
     xf = float(x)
@@ -22,7 +50,36 @@ def num(x: Any, digits: int = 4) -> str:
 
 
 def fixed(x: Any, digits: int = 3) -> str:
-    """Format a number with a fixed number of decimals, or `NA` for missing values."""
+    """Format a number with a fixed number of decimal places, or `"NA"` for missing values.
+
+    Unlike `num()`, which uses significant figures, this always shows exactly `digits`
+    decimal places. Useful for p-values and other quantities where a fixed format is
+    conventional.
+
+    Parameters
+    ----------
+    x
+        A numeric value (or `None`).
+    digits
+        Number of decimal places (default `3`).
+
+    Returns
+    -------
+    str
+        The formatted string.
+
+    Examples
+    --------
+    ```{python}
+    from greenwood._repr import fixed
+
+    fixed(0.04217)
+    ```
+
+    ```{python}
+    fixed(float("nan"))
+    ```
+    """
     if x is None:
         return "NA"
     xf = float(x)
@@ -32,7 +89,33 @@ def fixed(x: Any, digits: int = 3) -> str:
 
 
 def whole(x: Any) -> str:
-    """Format a value that is conceptually an integer (times, counts), or `NA`."""
+    """Format a value that is conceptually an integer (times, counts), or `"NA"`.
+
+    If the value is a whole number (e.g., `365.0`), the decimal is dropped and it is
+    rendered as `"365"`. Non-integer floats fall back to `num()` formatting.
+
+    Parameters
+    ----------
+    x
+        A numeric value (or `None`).
+
+    Returns
+    -------
+    str
+        The formatted string.
+
+    Examples
+    --------
+    ```{python}
+    from greenwood._repr import whole
+
+    whole(365.0)
+    ```
+
+    ```{python}
+    whole(3.14)
+    ```
+    """
     if x is None:
         return "NA"
     xf = float(x)
@@ -48,14 +131,37 @@ def align_table(
 ) -> str:
     """Render a right-aligned numeric table with an optional left label column.
 
+    Produces the compact, monospace-friendly table layout used in the R-style `__repr__`
+    of all Greenwood estimators. Column headers and data cells are right-justified. Row
+    labels (if present) are left-justified.
+
     Parameters
     ----------
     headers
         Column headers for the data columns.
     rows
-        One list of preformatted string cells per row, each the length of `headers`.
+        One list of preformatted string cells per row, each the same length as `headers`.
     row_labels
         Optional left-hand labels (term or stratum names), left-justified.
+
+    Returns
+    -------
+    str
+        The formatted table as a single multi-line string.
+
+    Examples
+    --------
+    Build a small table with two columns and labelled rows:
+
+    ```{python}
+    from greenwood._repr import align_table
+
+    align_table(
+        headers=["estimate", "std_error"],
+        rows=[["1.234", "0.056"], ["0.891", "0.123"]],
+        row_labels=["shape", "scale"],
+    )
+    ```
     """
     widths = [len(h) for h in headers]
     for row in rows:

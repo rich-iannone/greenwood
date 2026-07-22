@@ -242,7 +242,7 @@ class AalenJohansen:
         type), the Aalen-Johansen estimator accounts for competing events: subjects who
         experience a competing cause are removed from the risk set, preventing overly optimistic
         estimates of the probability of experiencing the target cause. Results are stored in
-        the fitted object; access them via `to_frame()` (optionally `format=`).
+        the fitted object. Access them via `to_frame()` (optionally `format=`).
 
         The Aalen-Johansen estimator generalizes both Kaplan-Meier and Nelson-Aalen to the
         competing-risks setting. For each cause $j$, it estimates $F_j(t)$, the cumulative
@@ -479,7 +479,7 @@ class FineGray:
     ```
 
     Passing `exponentiate=True` to `tidy` reports the subdistribution hazard ratios (with
-    their confidence limits) instead of the log-scale coefficients; pass `format=` to choose
+    their confidence limits) instead of the log-scale coefficients. Pass `format=` to choose
     the backend (here, Polars):
 
     ```{python}
@@ -823,19 +823,27 @@ class MultiState:
 
     Returns
     -------
-    Fitted estimator
-        Call `fit()` to produce a fitted estimator with cached results (`states_`,
-        `time_`, `occupancy_`, and internal transition matrices), accessible as tidy
-        DataFrames.
+    MultiState
+        Call `fit()` to produce a fitted estimator with attributes `states_`, `time_`,
+        and `occupancy_`, accessible as tidy DataFrames via `to_frame()`.
+
+    Details
+    -------
+    The data must be in counting-process (long) format: one row per interval `(start, stop]`
+    that a subject spends in a given state. Each row carries the current state and the state
+    transitioned into at `stop` (or `None` / a censoring marker if the subject was censored).
+    A subject who passes through multiple states contributes one row per state-sojourn.
+
+    The Aalen-Johansen estimator generalises the Kaplan-Meier curve to an arbitrary state
+    space. The occupancy probabilities at each event time sum to 1 across states, and the
+    result can be read as "if I start in the initial state at time 0, what is the probability
+    of being in each state at time $t$?"
 
     Examples
     --------
-    The `mgus2` patients occupy three states in turn: `"mgus"` at entry, then possibly
-    `"pcm"` (plasma-cell malignancy), then `"death"`. Reshape the wide dataset into
-    counting-process intervals `(start, stop]`, one interval per state occupied, labelled with
-    the state entered next. A patient who progresses before dying contributes two intervals;
-    everyone else contributes one. Fitting reports the occupancy probability of each state
-    over time.
+    The `mgus2` patients occupy three states: `"mgus"` at entry, then possibly `"pcm"`
+    (plasma-cell malignancy), then `"death"`. Reshape the wide dataset into counting-process
+    intervals, fit the multi-state model, and view the occupancy probabilities over time:
 
     ```{python}
     import greenwood as gw
@@ -974,8 +982,8 @@ class MultiState:
         ms
         ```
 
-        Query occupancy probabilities at specific follow-up times (60, 120, and 240 months);
-        pass `format=` to choose the backend (here, Polars):
+        Query occupancy probabilities at specific follow-up times (60, 120, and 240 months).
+        Pass `format=` to choose the backend (here, Polars):
 
         ```{python}
         ms.predict([60, 120, 240], format="polars")
@@ -1045,8 +1053,8 @@ class MultiState:
         ----------
         times
             Time points at which to evaluate state occupancy. Can be a scalar or array-like of
-            floats. Values before the first transition time use the initial distribution;
-            values after the last transition time use the final distribution.
+            floats. Values before the first transition time use the initial distribution.
+            Values after the last transition time use the final distribution.
         format
             Output format: `None` (default), `"pandas"`, `"polars"`, or `"pyarrow"`. When
             `None`, a backend is auto-detected (Polars, then Pandas, then PyArrow).

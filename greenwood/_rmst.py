@@ -355,7 +355,8 @@ def rmst_test(
 
     Examples
     --------
-    Test RMST difference between two treatment groups:
+    Test whether the two sexes in the lung cancer dataset have significantly different
+    one-year RMST:
 
     ```{python}
     import greenwood as gw
@@ -363,14 +364,26 @@ def rmst_test(
     lung = gw.load_dataset("lung", backend="polars")
     y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
     result = gw.rmst_test(y, tau=365, group=lung["sex"])
-    result.estimate   # RMST difference
-    result.p_value    # significance
+    result
     ```
 
-    Using ratio estimand:
+    Individual components of the result are accessible as attributes. For example, the
+    point estimate and its p-value:
 
     ```{python}
-    result_ratio = gw.rmst_test(y, tau=365, group=lung["sex"], estimand="ratio")
+    result.estimate
+    ```
+
+    ```{python}
+    result.p_value
+    ```
+
+    To express the comparison as a ratio instead of a difference, set
+    `estimand="ratio"`. This reports $\text{RMST}_1 / \text{RMST}_2$ with a log-scale
+    confidence interval:
+
+    ```{python}
+    gw.rmst_test(y, tau=365, group=lung["sex"], estimand="ratio")
     ```
     """
     if estimand not in {"difference", "ratio", "percentage_difference"}:
@@ -475,28 +488,44 @@ def rmst_diff(
     strata: Any | None = None,
     conf_level: float = 0.95,
 ) -> Any:
-    """Compute RMST difference between two groups with confidence interval.
+    """Compute the RMST difference between two groups and return a tidy DataFrame.
 
-    Convenience function that calls `rmst_test()` with `estimand="difference"` and returns
-    a DataFrame with the comparison results.
+    A convenience wrapper around `rmst_test()` with `estimand="difference"` that returns the
+    result as a single-row DataFrame rather than an `RMSTResult` object. This is useful when
+    you want to feed the comparison directly into a summary table or pipeline.
 
     Parameters
     ----------
     surv
-        A right-censored `Surv` response.
+        A right-censored `Surv` response built with `Surv.right()`.
     tau
-        The restriction time.
+        The restriction time. Should be a clinically meaningful horizon (e.g., 365 days for
+        one-year RMST).
     group
-        Group membership.
+        Group labels, one per observation. Must have exactly two unique levels.
     strata
-        (Optional) Stratification variable.
+        Stratification variable for stratified RMST comparison. If provided, per-group RMST
+        estimates are computed within each stratum and pooled with inverse-variance weights.
     conf_level
-        Confidence level for intervals.
+        Confidence level for the confidence interval (default `0.95`).
 
     Returns
     -------
-    DataFrame or dict
-        Comparison results in tabular format.
+    DataFrame
+        A single-row DataFrame with columns `group1`, `group2`, `rmst1`, `rmst2`,
+        `difference`, `se`, `lower_ci`, `upper_ci`, `statistic`, and `p_value`.
+
+    Examples
+    --------
+    Compute the one-year RMST difference between sexes in the lung cancer dataset:
+
+    ```{python}
+    import greenwood as gw
+
+    lung = gw.load_dataset("lung", backend="polars")
+    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+    gw.rmst_diff(y, tau=365, group=lung["sex"])
+    ```
     """
     result = rmst_test(
         surv, tau, group, estimand="difference", strata=strata, conf_level=conf_level
@@ -584,20 +613,27 @@ def pairwise_rmst_test(
     Returns
     -------
     DataFrame
-        One row per pair of groups with columns for group1, group2, RMST estimates,
-        difference/ratio, confidence interval, test statistic, p-value, and adjusted p-value.
+        One row per pair of groups with columns `group1`, `group2`, `rmst1`, `rmst2`,
+        `estimate`, `se`, `lower_ci`, `upper_ci`, `statistic`, `p_value`, and `p_adjusted`.
+
+    Details
+    -------
+    All $\binom{k}{2}$ pairwise comparisons are performed, where $k$ is the number of
+    unique group levels. The raw p-values are then adjusted for multiplicity using the
+    chosen correction method. Holm's step-down procedure (the default) controls the
+    family-wise error rate without assuming independence between tests.
 
     Examples
     --------
-    Compare RMST across multiple groups with pairwise comparisons:
+    Compare one-year RMST across sex groups in the lung cancer dataset with Holm
+    correction:
 
     ```{python}
     import greenwood as gw
 
     lung = gw.load_dataset("lung", backend="polars")
     y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-    # If there are multiple groups, e.g., by stage:
-    # result = gw.pairwise_rmst_test(y, tau=365, group=lung["stage"])
+    gw.pairwise_rmst_test(y, tau=365, group=lung["sex"], format="polars")
     ```
     """
     import itertools

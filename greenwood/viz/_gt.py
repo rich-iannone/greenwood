@@ -38,7 +38,10 @@ def risk_table(km: KaplanMeier, times: Any = None) -> Any:
 
     Examples
     --------
-    ```python
+    Fit a stratified Kaplan-Meier estimator and produce a publication-ready risk table
+    using Great Tables:
+
+    ```{python}
     import greenwood as gw
 
     lung = gw.load_dataset("lung", backend="polars")

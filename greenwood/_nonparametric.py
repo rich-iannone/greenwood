@@ -277,7 +277,7 @@ class KaplanMeier:
     km
     ```
 
-    The full step function, one row per event time, is available with `to_frame`; pass
+    The full step function, one row per event time, is available with `to_frame`. Pass
     `format=` to choose the backend (here, Polars):
 
     ```{python}
@@ -334,9 +334,9 @@ class KaplanMeier:
 
         Computes the product-limit survival estimate from a `Surv` response (time-to-event
         data, possibly right-censored). The estimator remains in the fitted object after
-        calling `fit()`; access it via attributes like `surv`, `time`, `n_risk`, etc., or
+        calling `fit()`. Access it via attributes like `surv`, `time`, `n_risk`, etc., or
         access raw tables with `to_frame()` (optionally `format=`). Pass `by=` to
-        produce separate curves per group (stratified analysis); each group's fit is stored
+        produce separate curves per group (stratified analysis). Each group's fit is stored
         independently and can be visualized with `plot_survival()`.
 
         The fit is exact and no distributional assumptions are made. Optionally supply
@@ -371,7 +371,7 @@ class KaplanMeier:
         The Kaplan-Meier estimator is a non-parametric maximum likelihood estimator of the
         survival function $S(t)$. It is defined as the product of $(1 - d/n)$ over all event
         times up to $t$, where $d$ is the number of events and $n$ is the number at risk at
-        each time. Confidence intervals are point-wise; they do not guarantee that the true
+        each time. Confidence intervals are point-wise. They do not guarantee that the true
         curve lies entirely within the band.
 
         Examples
@@ -388,7 +388,7 @@ class KaplanMeier:
         ```
 
         Fit stratified curves by sex by passing `by=lung["sex"]`. This produces one curve per
-        group; the results are stored and can be visualized separately:
+        group. The results are stored and can be visualized separately:
 
         ```{python}
         km_stratified = gw.KaplanMeier().fit(y, by=lung["sex"])
@@ -407,30 +407,37 @@ class KaplanMeier:
 
     @property
     def time_(self) -> Array:
+        """Event times at which the survival estimate changes (one entry per step)."""
         return self._concat("time")
 
     @property
     def survival_(self) -> Array:
+        """Kaplan–Meier survival estimates at each event time."""
         return self._concat("surv")
 
     @property
     def std_error_(self) -> Array:
+        """Standard errors of the survival estimates (Greenwood's formula)."""
         return self._concat("std_error")
 
     @property
     def conf_low_(self) -> Array:
+        """Lower confidence limits for the survival estimates."""
         return self._concat("conf_low")
 
     @property
     def conf_high_(self) -> Array:
+        """Upper confidence limits for the survival estimates."""
         return self._concat("conf_high")
 
     @property
     def cumhaz_(self) -> Array:
+        """Nelson–Aalen cumulative hazard estimates at each event time."""
         return self._concat("cumhaz")
 
     @property
     def strata_(self) -> Array | None:
+        """Stratum labels for each row, or `None` for unstratified fits."""
         if not self._grouped:
             return None
         return np.concatenate(
@@ -946,10 +953,10 @@ class NelsonAalen:
 
         Computes the cumulative hazard function $H(t)$ from a `Surv` response (time-to-event
         data). Like Kaplan-Meier, this is a non-parametric estimate requiring no distributional
-        assumptions. The Nelson-Aalen estimator is an alternative to Kaplan-Meier; it estimates
+        assumptions. The Nelson-Aalen estimator is an alternative to Kaplan-Meier. It estimates
         the cumulative hazard directly (sum of $d/n$ at each event time), from which the survival
         probability can be derived via $S(t) = \exp(-H(t))$. Results are stored in the fitted
-        object; access them via attributes or export to a DataFrame with `to_frame()`
+        object. Access them via attributes or export to a DataFrame with `to_frame()`
         (optionally `format=`).
 
         Pass `by=` to produce separate cumulative hazard curves per group (stratified analysis),
@@ -1025,18 +1032,22 @@ class NelsonAalen:
 
     @property
     def time_(self) -> Array:
+        """Event times at which the cumulative hazard estimate changes."""
         return self._concat("time")
 
     @property
     def cumhaz_(self) -> Array:
+        """Nelson–Aalen cumulative hazard estimates at each event time."""
         return self._concat("cumhaz")
 
     @property
     def std_error_(self) -> Array:
+        """Standard errors of the cumulative hazard estimates."""
         return np.sqrt(self._concat("cumhaz_var"))
 
     @property
     def strata_(self) -> Array | None:
+        """Stratum labels for each row, or `None` for unstratified fits."""
         if not self._grouped:
             return None
         return np.concatenate(

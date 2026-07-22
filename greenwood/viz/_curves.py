@@ -77,7 +77,30 @@ def _censor_frame(block: Any) -> Any:
 
 
 def theme_survival() -> Any:
-    """A light publication theme for survival plots."""
+    """A light, publication-ready plotnine theme for survival plots.
+
+    Applies a minimal theme with the legend at the top and minor grid lines removed,
+    giving survival curves a clean look suitable for journal figures.
+
+    Returns
+    -------
+    plotnine.theme
+        A composable theme object. Add it to a `ggplot` with `+`.
+
+    Examples
+    --------
+    Apply the survival theme to a Kaplan-Meier plot:
+
+    ```{python}
+    import greenwood as gw
+
+    lung = gw.load_dataset("lung", backend="polars")
+    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+    km = gw.KaplanMeier().fit(y, by=lung["sex"])
+
+    gw.plot_survival(km, backend="plotnine") + gw.theme_survival()
+    ```
+    """
     p9 = _require_plotnine()
     return p9.theme_minimal() + p9.theme(
         legend_position="top",
@@ -128,7 +151,7 @@ def plot_survival(
         to hide these marks.
     risk_table
         If `True`, return a `plotnine.composition` stacking the curve over an aligned
-        numbers-at-risk table; the table's x-axis aligns with the curve. If `False` (default),
+        numbers-at-risk table. The table's x-axis aligns with the curve. If `False` (default),
         return only the survival curve plot.
     times
         Query times for the numbers-at-risk table (used only if `risk_table=True`). Defaults
@@ -262,6 +285,23 @@ def _risk_table_plot(km: KaplanMeier, *, times: Any = None, xlab: str = "Time") 
 
 def risk_table(km: KaplanMeier, times: Any = None) -> Any:
     """Return the numbers-at-risk table as a standalone plotnine plot.
+
+    Creates a text-based plotnine figure showing how many subjects remain at risk at each
+    time point, per stratum. Designed to be stacked beneath a survival curve (the x-axes
+    align automatically when composed with `plotnine.composition`).
+
+    Parameters
+    ----------
+    km
+        A fitted `KaplanMeier` estimator.
+    times
+        Query times for the numbers-at-risk table. Defaults to an automatic grid of evenly
+        spaced, rounded times from 0 to the last observed time.
+
+    Returns
+    -------
+    plotnine.ggplot
+        A plotnine plot showing the number at risk at each time point.
 
     Examples
     --------

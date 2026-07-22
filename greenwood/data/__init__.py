@@ -36,7 +36,21 @@ _DATASETS = {
 
 
 def available_datasets() -> list[str]:
-    """Return the names of the bundled datasets."""
+    """Return the names of all bundled datasets.
+
+    Returns
+    -------
+    list[str]
+        Sorted list of dataset names that can be passed to `load_dataset()`.
+
+    Examples
+    --------
+    ```{python}
+    import greenwood as gw
+
+    gw.available_datasets()
+    ```
+    """
     return sorted(_DATASETS)
 
 
@@ -65,19 +79,41 @@ def _resolve_backend(backend: str | None) -> str:
 def load_dataset(name: str, *, backend: str | None = None) -> Any:
     """Load a bundled dataset by name.
 
+    Greenwood ships several classic survival-analysis datasets from R's `survival` package,
+    stored as gzipped CSVs. This function decompresses them on the fly and returns a
+    DataFrame in your preferred backend.
+
     Parameters
     ----------
     name
-        One of `available_datasets` (e.g. `"lung"`, `"veteran"`).
+        One of `available_datasets()` (e.g., `"lung"`, `"veteran"`, `"ovarian"`, `"pbc"`,
+        `"colon"`, `"mgus2"`).
     backend
         `"pandas"` or `"polars"`. When left as `None` (the default), Greenwood picks a
-        backend for you: it prefers Polars if it is installed, otherwise uses pandas, and
+        backend for you: it prefers Polars if it is installed, otherwise uses Pandas, and
         raises if neither is available.
 
     Returns
     -------
     DataFrame
-        A dataframe in the resolved backend.
+        A Polars or Pandas DataFrame with the dataset contents.
+
+    Examples
+    --------
+    Load the NCCTG lung cancer dataset as a Polars DataFrame:
+
+    ```{python}
+    import greenwood as gw
+
+    lung = gw.load_dataset("lung", backend="polars")
+    lung.head()
+    ```
+
+    See all available dataset names:
+
+    ```{python}
+    gw.available_datasets()
+    ```
     """
     if name not in _DATASETS:
         raise ValueError(f"Unknown dataset {name!r}; available: {available_datasets()}.")

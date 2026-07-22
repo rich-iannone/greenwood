@@ -505,8 +505,8 @@ class CoxPH:
         `covariates` is a dataframe or 2-D array, or a right-hand-side formula string (for
         example `"age + sex + C(ph.ecog)"`) evaluated against `data`. `strata` gives
         per-stratum baseline hazards with shared coefficients. `robust=True` (or providing
-        `cluster` ids) reports the Lin-Wei sandwich variance; `cluster` sums the score
-        residuals within groups before forming the sandwich.
+        `cluster` ids) reports the Lin-Wei sandwich variance. The `cluster` option sums the
+        score residuals within groups before forming the sandwich.
 
         Parameters
         ----------
@@ -866,7 +866,7 @@ class CoxPH:
         """Uncentered baseline cumulative hazard per stratum.
 
         Returns `(label, times, cumhaz)` per stratum group, reported at all unique exit
-        times (matching R's `basehaz`); the hazard increments only at event times.
+        times (matching R's `basehaz`). The hazard increments only at event times.
         """
         risk_score = np.exp(self._x @ self.coef_) * self._weight * self._risk_multiplier
         out: list[tuple[Any, Array, Array]] = []
@@ -1322,7 +1322,7 @@ class CoxPH:
 
         Residuals measure the difference between observed events and model predictions,
         helping diagnose model fit and identify outliers or influential observations.
-        Martingale residuals are individual-level; Schoenfeld residuals are event-level
+        Martingale residuals are individual-level. Schoenfeld residuals are event-level
         and useful for checking the proportional-hazards assumption. Both types can be
         visualized against time or other variables to detect systematic deviations.
 
@@ -1332,7 +1332,7 @@ class CoxPH:
             Type of residuals to return: `"martingale"` (default) or `"schoenfeld"`.
 
             - `"martingale"`: One residual per observation. Ranges from $-\infty$ to 1. Positive
-              values suggest the model underestimated risk; negative values suggest
+              values suggest the model underestimated risk. Negative values suggest
               overestimation. Useful for overall fit assessment.
             - `"schoenfeld"`: One row per event with one column per covariate. Useful for
               checking the proportional-hazards assumption: plot against time to look for
@@ -1408,7 +1408,7 @@ class CoxPH:
     def _event_contributions(self) -> tuple[list[Array], list[float], list[Array]]:
         """Per-event Schoenfeld residual, event time, and risk-set covariance share.
 
-        Iterates strata then event times; risk sets are confined to the stratum. For tied
+        Iterates strata then event times. Risk sets are confined to the stratum. For tied
         Efron events, the risk mean is averaged and the covariance split across the ties.
         """
         risk_score = np.exp(self._x @ self.coef_) * self._weight * self._risk_multiplier
@@ -1475,7 +1475,7 @@ class CoxPH:
             - `"log"`: Use log(time). Regression on log-transformed time.
 
             Both are validated against R's `cox.zph()` (though R defaults to
-            Kaplan-Meier transform; `"km"` and `"rank"` are planned).
+            Kaplan-Meier transform. `"km"` and `"rank"` are planned).
 
         Returns
         -------
@@ -1511,7 +1511,7 @@ class CoxPH:
         ```
 
         The full statistics are available as a tidy frame, one row per term plus a
-        `GLOBAL` row; pass `format=` to choose the backend (here, Polars):
+        `GLOBAL` row. Pass `format=` to choose the backend (here, Polars):
 
         ```{python}
         zph.to_frame(format="polars")
@@ -1557,7 +1557,7 @@ class CoxPH:
     def _score_residuals(self, beta: Array) -> Array:
         """Breslow-form score (dfbeta-precursor) residuals, one per observation.
 
-        Confined to strata; summed over the event times at which each subject is at risk.
+        Confined to strata. Summed over the event times at which each subject is at risk.
         Used to form the robust (Lin-Wei) sandwich variance.
         """
         n, p = self._x.shape
@@ -1637,7 +1637,8 @@ class CoxPH:
         Examples
         --------
         Harrell's C is returned as a single number between 0 and 1. A value of 0.5 means
-        the model is not better than random guessing; 1.0 means perfect discrimination:
+        the model is not better than random guessing. A value of 1.0 means perfect
+        discrimination:
 
         ```{python}
         import greenwood as gw
@@ -1669,9 +1670,42 @@ class CoxPH:
         return concordant / comparable
 
     def frailty_test(self) -> dict[str, float]:
-        """Likelihood-ratio test for shared-frailty variance theta = 0.
+        r"""Likelihood-ratio test for shared-frailty variance $\theta = 0$.
 
-        Returns a dictionary with the fitted `theta`, LR statistic, and p-value.
+        Tests whether the frailty (random-effect) variance is significantly different from
+        zero. A significant result indicates that there is unexplained heterogeneity across
+        clusters (e.g., centres, families) beyond what the fixed-effect covariates capture.
+
+        The model must have been fitted with `frailty="gamma"` for this test to be available.
+
+        Returns
+        -------
+        dict
+            A dictionary with keys `"theta"` (estimated frailty variance), `"lr_statistic"`
+            (likelihood-ratio test statistic), `"df"` (degrees of freedom, always 1), and
+            `"p_value"`.
+
+        Raises
+        ------
+        ValueError
+            If the model was not fitted with a frailty term.
+
+        Examples
+        --------
+        Fit a Cox model with a gamma frailty term grouped by institution, then test whether
+        the frailty variance is significant:
+
+        ```{python}
+        import greenwood as gw
+
+        lung = gw.load_dataset("lung", backend="polars")
+        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        cox = gw.CoxPH(ties="breslow").fit(
+            y, covariates=lung[["age", "sex"]],
+            frailty="gamma", frailty_cluster=lung["inst"],
+        )
+        cox.frailty_test()
+        ```
         """
         if self.frailty_ is None or self.frailty_theta_ is None:
             raise ValueError("No frailty model is fitted; fit with frailty='gamma' first.")
@@ -1757,7 +1791,7 @@ class CoxPH:
 def _tidy_cox(
     model: CoxPH, *, exponentiate: bool = False, format: str | None = None, **_: Any
 ) -> Any:
-    """broom-style `tidy`: one row per term; `exponentiate` gives hazard ratios."""
+    """broom-style `tidy`: one row per term. `exponentiate` gives hazard ratios."""
     return model.to_frame(format=format, exponentiate=exponentiate)
 
 

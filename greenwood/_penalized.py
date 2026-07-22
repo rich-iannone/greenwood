@@ -55,7 +55,7 @@ class CoxNet:
     Thresholding Algorithm) to optimize the penalized partial likelihood. By default, covariates
     are standardized before penalizing (for fair comparison of penalties across features), but
     coefficients are returned on the original scale. Ridge (`l1_ratio=0`) encourages small,
-    spread-out coefficients; lasso (`l1_ratio=1`) drives some coefficients exactly to zero.
+    spread-out coefficients. Lasso (`l1_ratio=1`) drives some coefficients exactly to zero.
 
     The implementation follows the glmnet model for elastic-net regularization, using coordinate
     descent-like optimization with soft-thresholding. Results include penalized coefficients,
@@ -180,8 +180,8 @@ class CoxNet:
         -------
         The elastic-net penalty is $\lambda(\alpha L_1 + (1 - \alpha) L_2)$, where
         $\lambda$ = `penalizer` and $\alpha$ = `l1_ratio`. Setting `l1_ratio=1` gives lasso
-        ($L_1$ only, induces sparsity); `l1_ratio=0` gives ridge ($L_2$ only, smooth
-        shrinkage); and intermediate values blend both effects.
+        ($L_1$ only, induces sparsity). Setting `l1_ratio=0` gives ridge ($L_2$ only, smooth
+        shrinkage). Intermediate values blend both effects.
 
         Estimation uses proximal gradient descent (FISTA) to optimize the penalized partial
         likelihood. Covariates are centered and optionally standardized before fitting.
@@ -509,30 +509,55 @@ class CoxNetCVResult:
 
     Attributes
     ----------
-    penalizers_ : ndarray
+    penalizers_
         Penalizer values tested, sorted descending.
-    mean_scores_ : ndarray
+    mean_scores_
         Mean cross-validation score at each penalizer.
-    std_scores_ : ndarray
+    std_scores_
         Standard deviation of per-fold scores at each penalizer.
-    n_nonzero_ : ndarray
+    n_nonzero_
         Average number of non-zero coefficients at each penalizer (averaged over cross-validation
         folds).
-    metric_ : str
+    metric_
         Metric used: `"concordance"` or `"brier"`.
-    l1_ratio_ : float
+    l1_ratio_
         Elastic-net mixing parameter fixed during the path search.
-    k_ : int
+    k_
         Number of folds used.
-    best_penalizer_ : float
+    best_penalizer_
         Penalizer with the best mean cross-validation score.
-    best_score_ : float
+    best_score_
         Mean score at `best_penalizer_`.
-    penalizer_1se_ : float
+    penalizer_1se_
         Largest penalizer (most regularized) whose mean score is within one standard error of
         `best_score_`. Prefer this when parsimony matters.
-    score_1se_ : float
+    score_1se_
         Mean score at `penalizer_1se_`.
+
+    Examples
+    --------
+    Run cross-validated penalizer selection and inspect the result:
+
+    ```{python}
+    import greenwood as gw
+
+    lung = gw.load_dataset("lung", backend="polars")
+    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+    cols = ["age", "sex", "ph.ecog", "ph.karno", "wt.loss"]
+    cv_result = gw.cv_coxnet(y, lung[cols], seed=23)
+    cv_result
+    ```
+
+    The best penalizer and the more conservative one-standard-error penalizer are available
+    as attributes:
+
+    ```{python}
+    cv_result.best_penalizer_
+    ```
+
+    ```{python}
+    cv_result.penalizer_1se_
+    ```
     """
 
     def __init__(
@@ -602,6 +627,8 @@ class CoxNetCVResult:
 
         Examples
         --------
+        Export the full CV path as a Polars DataFrame for plotting or further analysis:
+
         ```{python}
         import greenwood as gw
 

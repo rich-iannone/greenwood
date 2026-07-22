@@ -64,8 +64,8 @@ def concordance_index(surv: Surv, risk: Any) -> float:
     -------
     float
         Concordance index between 0 and 1. Values above 0.5 indicate the model discriminates
-        better than random; below 0.5 indicates worse-than-random discrimination (possibly
-        inverted risk scale).
+        better than random. Below 0.5 indicates worse-than-random discrimination (possibly
+        an inverted risk scale).
 
     Details
     -------
@@ -221,7 +221,7 @@ def brier_score(surv: Surv, survival_prob: Any, times: Any) -> Array:
     unlike naive MSE which would be biased (censored subjects look artificially "correct").
 
     **Time dependence**: Brier scores typically increase with time in chronic-disease settings
-    (longer prediction horizons are harder); they may decrease in acute-illness settings
+    (longer prediction horizons are harder). They may decrease in acute-illness settings
     (events cluster early, predictions stabilize).
 
     Examples
@@ -429,7 +429,7 @@ def calibration(
     time
         The horizon at which predictions are assessed.
     n_bins
-        Number of prediction bins (default 10). Bins are quantile-based; empty bins are
+        Number of prediction bins (default 10). Bins are quantile-based. Empty bins are
         dropped, so ties in `predicted` may yield fewer rows.
     conf_level
         Confidence level for the observed (Kaplan-Meier) interval.
@@ -444,12 +444,20 @@ def calibration(
         One row per bin with columns `bin`, `n`, `predicted` (mean), `observed`,
         `observed_lower`, `observed_upper`. Format depends on the `format` parameter.
 
+    Details
+    -------
+    Bins are formed by splitting subjects into `n_bins` quantile-based groups of their
+    predicted survival probability. Within each bin the Kaplan–Meier estimate at `time`
+    gives the observed survival, and the mean of the predictions gives the predicted value.
+    A well-calibrated model produces points that lie along the 45-degree diagonal when
+    plotted as observed vs. predicted. Systematic departures from the diagonal indicate
+    over- or under-prediction in that probability range.
+
     Examples
     --------
-    Fit a Cox model on the bundled `lung` dataset and read the predicted survival at a single
-    horizon (one value per subject). Subjects are grouped into bins by their predicted survival,
-    and each bin's mean `predicted` value is compared against the observed Kaplan-Meier survival
-    for that bin's subjects.
+    Fit a Cox model on the bundled `lung` dataset and assess calibration at one year. Each
+    bin's mean predicted survival is compared against the observed Kaplan–Meier survival for
+    that bin's subjects:
 
     ```{python}
     import greenwood as gw
@@ -516,15 +524,15 @@ def time_dependent_auc(surv: Surv, marker: Any, times: Any) -> Array:
     Computes the cumulative-dynamic AUC at each requested time using the inverse-probability-
     of-censoring-weighted (IPCW) estimator of Uno et al. (2011). At each time $t$, *cases*
     are subjects who experienced an event by $t$ and *controls* are subjects still at risk
-    after $t$; the AUC measures how well the marker separates the two groups, correcting for
+    after $t$. The AUC measures how well the marker separates the two groups, correcting for
     censoring bias via IPCW weights.
 
     **Interpretation**:
 
     - 0.5: Random discrimination (marker carries no prognostic information at $t$).
-    - > 0.5: Better-than-random; the marker ranks earlier-failing subjects higher.
+    - > 0.5: Better-than-random. The marker ranks earlier-failing subjects higher.
     - 1.0: Perfect discrimination at $t$.
-    - AUC tends to vary with $t$; use `integrated_auc()` for a single summary.
+    - AUC tends to vary with $t$. Use `integrated_auc()` for a single summary.
 
     **Higher marker = higher risk** convention: the marker should be on a scale where larger
     values indicate greater hazard (e.g., a Cox linear predictor, a predicted cumulative
@@ -570,7 +578,7 @@ def time_dependent_auc(surv: Surv, marker: Any, times: Any) -> Array:
     binary problem "case vs. control at $t$".
 
     **Relationship to concordance**: The Harrell C-statistic is closely related to the
-    time-averaged AUC across all event times; use `integrated_auc()` to obtain a single
+    time-averaged AUC across all event times. Use `integrated_auc()` to obtain a single
     time-averaged summary that is directly comparable to the C-index.
 
     References
@@ -678,8 +686,19 @@ def integrated_auc(surv: Surv, marker: Any, times: Any) -> float:
     float
         Time-averaged AUC in [0, 1]. Higher is better.
 
+    Details
+    -------
+    The integrated AUC is computed as the area under the time-dependent AUC curve
+    (from `time_dependent_auc()`) divided by the time span, giving a single scalar
+    summary of discrimination across the specified horizon. Time points that produce
+    `nan` AUC values (no cases or no controls at that time) are dropped before
+    integration.
+
     Examples
     --------
+    Compute the integrated AUC of a Cox model's linear predictor across three
+    clinically relevant time horizons (6, 12, and 18 months):
+
     ```{python}
     import greenwood as gw
 

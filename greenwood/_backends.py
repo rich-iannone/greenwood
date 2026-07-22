@@ -19,15 +19,19 @@ VALID_FORMATS = ("pandas", "polars", "pyarrow")
 def to_dataframe(data: dict[str, Any], *, format: str | None = None) -> Any:
     """Materialize a dict of columns as a DataFrame in the requested backend.
 
+    This is the single gateway through which all Greenwood functions return tabular output.
+    It keeps DataFrame library imports lazy so that users who only have Polars installed
+    never trigger a Pandas import (and vice versa).
+
     Parameters
     ----------
     data
-        Mapping of column names to arrays/lists.
+        Mapping of column names to arrays or lists. All values must be the same length.
     format
         Output format: `None` (default), `"pandas"`, `"polars"`, or `"pyarrow"`.
 
         - `None` (default): auto-detect, trying Polars first, then Pandas, then PyArrow.
-          Raises if none is installed.
+          Raises `ImportError` if none is installed.
         - `"pandas"`: return a `pandas.DataFrame`.
         - `"polars"`: return a `polars.DataFrame`.
         - `"pyarrow"`: return a `pyarrow.Table`.
@@ -36,6 +40,24 @@ def to_dataframe(data: dict[str, Any], *, format: str | None = None) -> Any:
     -------
     pandas.DataFrame, polars.DataFrame, or pyarrow.Table
         The data in the requested (or auto-detected) format.
+
+    Raises
+    ------
+    ImportError
+        If the requested backend is not installed, or if `format=None` and no backend is
+        available at all.
+    ValueError
+        If `format` is not one of the recognised strings.
+
+    Examples
+    --------
+    Create a small table and materialise it as a Polars DataFrame:
+
+    ```{python}
+    from greenwood._backends import to_dataframe
+
+    to_dataframe({"name": ["Alice", "Bob"], "age": [30, 25]}, format="polars")
+    ```
     """
     if format is None:
         # Prefer Polars (most efficient), then Pandas, then PyArrow.

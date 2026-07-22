@@ -41,12 +41,26 @@ Array = npt.NDArray[Any]
 
 
 class CensoringType(str, Enum):
-    """The censoring flavor of a `Surv` response.
+    """The censoring mechanism of a `Surv` response.
+
+    Each member corresponds to one of the `Surv` constructors and describes how incomplete
+    observations are handled:
+
+    - `RIGHT`: Classic right-censoring. All subjects enter at time 0, and some are lost
+      before the event occurs (`Surv.right()`).
+    - `LEFT`: Left-censoring. The event is known to have occurred before the observation
+      time (`Surv.left()`).
+    - `INTERVAL`: Interval-censoring. The event is known to lie within a time bracket
+      (`Surv.interval()`).
+    - `COUNTING`: Counting-process (start, stop] intervals with possible late entry
+      and time-varying covariates (`Surv.counting()`).
+
+    A constructed response reports its censoring type through `Surv(...).type`, which is
+    one of these values.
 
     Examples
     --------
-    The members correspond to the `Surv` constructors. A constructed response reports its
-    flavor through `Surv(...).type`, which is one of these values.
+    List all available censoring types:
 
     ```{python}
     from greenwood import CensoringType
@@ -83,7 +97,7 @@ def _coerce_event(event: Any, n: int) -> Array:
     """Coerce an event indicator to an int status array (0 = censored, 1 = event).
 
     Accepts booleans or 0/1 integers. R's 1/2 coding (as in `survival::lung`) is *not*
-    auto-detected; convert it explicitly, e.g. `event=(status == 2)`.
+    auto-detected. Convert it explicitly, e.g., `event=(status == 2)`.
     """
     if event is None:
         return np.ones(n, dtype=np.int64)
@@ -299,7 +313,7 @@ class Surv:
         The display shows 4 observations with 2 events and 2 censored observations:
 
         - Subjects 1 and 3: Event observed (no marker or `*` depending on visualization)
-        - Subjects 2 and 4: Censored (indicated by `+` marker; still event-free at times 6 and 9)
+        - Subjects 2 and 4: Censored (indicated by `+` marker, still event-free at times 6 and 9)
 
         This is the default input format for nearly all survival analysis methods.
         Right-censored data is so ubiquitous that "survival data" often refers specifically
@@ -403,8 +417,8 @@ class Surv:
         ----------
         start
             Entry times (when each subject becomes at risk). Must be finite and non-negative.
-            Represents when the subject enters the risk set. In standard studies, this is 0;
-            in studies with late entry, it's the age/time at enrollment.
+            Represents when the subject enters the risk set. In standard studies this is 0.
+            In studies with late entry, it is the age or time at enrollment.
         stop
             Exit times (when follow-up ends). Must be finite, non-negative, and strictly
             greater than the corresponding `start`. Represents when the subject leaves follow-up
@@ -763,7 +777,7 @@ class Surv:
         Left truncation occurs in counting-process data when subjects enter the risk set
         at different times (late entry). This is common in studies with age-based entry
         or complex follow-up patterns. When True, the `entry()` property contains the
-        actual start times; when False, all subjects implicitly start at time 0.
+        actual start times. When False, all subjects implicitly start at time 0.
 
         Returns
         -------
@@ -1122,12 +1136,12 @@ class Surv:
 
         Parameters
         ----------
-        text : str
+        text
             A JSON string produced by `to_json()` containing the serialized `Surv` data.
 
         Returns
         -------
-        `Surv`
+        Surv
             A new `Surv` object restored from the JSON representation.
 
         Examples

@@ -73,9 +73,26 @@ class Parametric:
     conf_level
         Confidence level for parameter intervals (default `0.95`).
 
+    Returns
+    -------
+    Parametric
+        The fitted estimator (after calling `fit()`), with attributes `params_`, `std_error_`,
+        `conf_low_`, `conf_high_`, `loglik_`, `aic_`, `bic_`, `n_`, and `n_event_`.
+
+    Details
+    -------
+    Internally every family is fitted in the AFT location–scale parameterisation
+    ($\log T = \mu + \sigma\varepsilon$), and results are reported back in the natural
+    parameterisation of each distribution (e.g., Weibull shape and scale). Standard errors
+    are obtained via the delta method applied to the observed information matrix.
+
+    Model selection between families is straightforward: lower AIC (or BIC) indicates a
+    better fit. Use `compare_distributions()` to rank all four families at once.
+
     Examples
     --------
-    Fit a Weibull distribution to the lung cancer dataset:
+    Fit a Weibull distribution to the lung cancer dataset and inspect the parameter
+    estimates:
 
     ```{python}
     import greenwood as gw
@@ -86,7 +103,8 @@ class Parametric:
     fit
     ```
 
-    Compare all four distributions:
+    To quickly compare all four distributions and pick the best-fitting family, use the
+    companion function `compare_distributions()`:
 
     ```{python}
     gw.compare_distributions(y, format="polars")
@@ -145,6 +163,9 @@ class Parametric:
 
         Examples
         --------
+        Fit a log-normal distribution and view the estimated parameters with their standard
+        errors:
+
         ```{python}
         import greenwood as gw
 
@@ -263,6 +284,11 @@ class Parametric:
     def survival(self, times: Any) -> Array:
         r"""Survival function $S(t) = P(T > t)$ at the given times.
 
+        Returns the probability that a subject survives beyond each requested time under the
+        fitted parametric distribution. Unlike the non-parametric Kaplan–Meier estimate, this
+        gives a smooth curve that can be evaluated at any time point, including beyond the
+        last observed event.
+
         Parameters
         ----------
         times
@@ -271,10 +297,19 @@ class Parametric:
         Returns
         -------
         ndarray
-            Survival probabilities, same length as `times=`.
+            Survival probabilities, same length as `times`.
+
+        Details
+        -------
+        The survival probability is computed from the fitted location–scale model as
+        $S(t) = 1 - F_\varepsilon\!\bigl((\log t - \mu)/\sigma\bigr)$, where
+        $F_\varepsilon$ is the CDF of the standardised error distribution.
 
         Examples
         --------
+        Evaluate the fitted Weibull survival function at a few clinically relevant time
+        points (100, 200, 365, and 500 days):
+
         ```{python}
         import greenwood as gw
 
@@ -292,6 +327,10 @@ class Parametric:
     def cumulative_hazard(self, times: Any) -> Array:
         r"""Cumulative hazard function $H(t) = -\log S(t)$ at the given times.
 
+        The cumulative hazard summarises the total accumulated risk up to time $t$. It
+        increases monotonically from zero and is unbounded. A steeper rise indicates higher
+        event rates over that interval.
+
         Parameters
         ----------
         times
@@ -300,13 +339,36 @@ class Parametric:
         Returns
         -------
         ndarray
-            Cumulative hazard values, same length as `times=`.
+            Cumulative hazard values, same length as `times`.
+
+        Details
+        -------
+        Computed as the negative log of the survival function: $H(t) = -\log S(t)$. For
+        a Weibull distribution this simplifies to $H(t) = (t/\lambda)^k$.
+
+        Examples
+        --------
+        Compute the cumulative hazard at several time points under a fitted Weibull model:
+
+        ```{python}
+        import greenwood as gw
+
+        lung = gw.load_dataset("lung", backend="polars")
+        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        fit = gw.Parametric("weibull").fit(y)
+        fit.cumulative_hazard([100, 200, 365, 500])
+        ```
         """
         return -np.log(self.survival(times))
 
     def hazard(self, times: Any) -> Array:
         r"""Hazard function $h(t) = f(t) / S(t)$ at the given times.
 
+        The hazard (or hazard rate) gives the instantaneous risk of the event at time $t$,
+        conditional on survival up to that time. Its shape reveals whether risk is increasing,
+        decreasing, or constant over time. This shape is a signature feature of each
+        distribution family.
+
         Parameters
         ----------
         times
@@ -315,10 +377,21 @@ class Parametric:
         Returns
         -------
         ndarray
-            Hazard rate values, same length as `times=`.
+            Hazard rate values, same length as `times`.
+
+        Details
+        -------
+        The hazard is the ratio of the density to the survival function:
+        $h(t) = f(t) / S(t)$. For a Weibull distribution, the hazard is monotone (increasing
+        when shape > 1, decreasing when shape < 1, constant when shape = 1). For a
+        log-logistic distribution, the hazard is non-monotone (rises then falls when
+        shape > 1).
 
         Examples
         --------
+        Evaluate the instantaneous hazard rate at several time points under a fitted Weibull
+        model:
+
         ```{python}
         import greenwood as gw
 
@@ -338,6 +411,11 @@ class Parametric:
     def density(self, times: Any) -> Array:
         r"""Probability density function $f(t)$ at the given times.
 
+        Returns the density of the survival-time distribution. The density is the derivative
+        of the CDF, so $f(t)\,dt$ gives the probability of the event occurring in a small
+        interval around $t$. Useful for plotting the fitted distribution against a histogram
+        of observed times.
+
         Parameters
         ----------
         times
@@ -346,7 +424,26 @@ class Parametric:
         Returns
         -------
         ndarray
-            Density values, same length as `times=`.
+            Density values, same length as `times`.
+
+        Details
+        -------
+        Computed from the standardised density as
+        $f_T(t) = f_\varepsilon(z) / (\sigma\,t)$, where
+        $z = (\log t - \mu)/\sigma$.
+
+        Examples
+        --------
+        Evaluate the Weibull density at a grid of time points:
+
+        ```{python}
+        import greenwood as gw
+
+        lung = gw.load_dataset("lung", backend="polars")
+        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        fit = gw.Parametric("weibull").fit(y)
+        fit.density([100, 200, 365, 500])
+        ```
         """
         t = np.atleast_1d(np.asarray(times, dtype=float))
         z = (np.log(t) - self._mu) / self._sigma
@@ -357,8 +454,9 @@ class Parametric:
     def quantile(self, p: Any) -> Array:
         r"""Quantile function: survival-time quantiles at failure probabilities `p`.
 
-        The quantile $t_p$ satisfies $P(T \le t_p) = p$, so $p = 0.5$ gives the median survival
-        time.
+        The quantile $t_p$ satisfies $P(T \le t_p) = p$, so `p=0.5` gives the median survival
+        time, `p=0.25` the first quartile, etc. This is the inverse of the CDF and provides
+        clinically interpretable time-to-event summaries.
 
         Parameters
         ----------
@@ -370,8 +468,16 @@ class Parametric:
         ndarray
             Survival times corresponding to each probability.
 
+        Details
+        -------
+        The quantile is computed analytically by inverting the standardised error distribution:
+        $t_p = \exp\!\bigl(\mu + \sigma\,F_\varepsilon^{-1}(p)\bigr)$.
+
         Examples
         --------
+        Compute the first quartile, median, and third quartile of survival time under a
+        fitted Weibull model:
+
         ```{python}
         import greenwood as gw
 
@@ -388,23 +494,64 @@ class Parametric:
     def mean(self) -> float:
         r"""Expected survival time $E[T]$.
 
-        Returns `inf` for log-logistic when $\beta \le 1$ (mean undefined).
+        Returns the mean (expected) survival time under the fitted distribution. This is the
+        area under the survival curve from zero to infinity. For skewed survival distributions,
+        the mean can differ substantially from the median.
 
         Returns
         -------
         float
-            The mean survival time under the fitted distribution.
+            The mean survival time under the fitted distribution. Returns `inf` for
+            log-logistic when $\beta \le 1$ (the mean is undefined in that regime).
+
+        Details
+        -------
+        Closed-form expressions are used for each family:
+
+        - Weibull / Exponential: $E[T] = e^\mu\,\Gamma(1 + \sigma)$
+        - Log-normal: $E[T] = \exp(\mu + \sigma^2/2)$
+        - Log-logistic ($\beta > 1$): $E[T] = \alpha\pi/\beta\,/\,\sin(\pi/\beta)$
+
+        Examples
+        --------
+        Compute the mean survival time under a fitted Weibull model:
+
+        ```{python}
+        import greenwood as gw
+
+        lung = gw.load_dataset("lung", backend="polars")
+        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        fit = gw.Parametric("weibull").fit(y)
+        fit.mean()
+        ```
         """
         mu_arr = np.array([self._mu])
         return float(_mean_survival_aft(self.dist, mu_arr, self._sigma)[0])
 
     def median(self) -> float:
-        """Median survival time (the 50th-percentile time).
+        r"""Median survival time (the 50th-percentile time).
+
+        Returns the time at which half of subjects are expected to have experienced the event
+        under the fitted distribution. The median is often preferred over the mean for
+        reporting survival times because it is less sensitive to heavy tails.
 
         Returns
         -------
         float
             The time at which $S(t) = 0.5$.
+
+        Examples
+        --------
+        Compute the median survival time under a fitted Weibull model:
+
+        ```{python}
+        import greenwood as gw
+
+        lung = gw.load_dataset("lung", backend="polars")
+        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        fit = gw.Parametric("weibull").fit(y)
+        fit.median()
+        ```
         """
         return float(self.quantile(0.5)[0])
 
@@ -428,6 +575,9 @@ class Parametric:
 
         Examples
         --------
+        Export the parameter estimates as a Polars DataFrame for further analysis or
+        reporting:
+
         ```{python}
         import greenwood as gw
 
@@ -461,10 +611,12 @@ def compare_distributions(
     dists: list[str] | None = None,
     format: str | None = None,
 ) -> Any:
-    """Fit multiple parametric distributions and return an AIC/BIC comparison table.
+    r"""Fit multiple parametric distributions and return an AIC/BIC comparison table.
 
     This is the primary model-selection helper for univariate parametric survival analysis. It fits
-    each distribution by maximum likelihood, then ranks them by AIC (lower is better).
+    each distribution by maximum likelihood, then ranks them by AIC (lower is better). Use this
+    early in an analysis to decide which distributional family best describes your data before
+    moving on to regression modelling with `AFT`.
 
     Parameters
     ----------
@@ -482,8 +634,19 @@ def compare_distributions(
         One row per distribution, sorted by AIC, with columns `dist`, `n_params`, `loglik`, `aic`,
         and `bic`.
 
+    Details
+    -------
+    AIC (Akaike Information Criterion) and BIC (Bayesian Information Criterion) both penalise
+    model complexity but differ in how strongly. AIC penalises by $2k$ (where $k$ is the number
+    of parameters), while BIC penalises by $k \log n$, giving a stronger preference for simpler
+    models when the sample size is large. The table is sorted by AIC, but when AIC and BIC
+    disagree the more parsimonious model (favoured by BIC) is often the safer choice.
+
     Examples
     --------
+    Compare all four distribution families on the lung cancer dataset and see which one
+    fits best:
+
     ```{python}
     import greenwood as gw
 
