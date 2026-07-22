@@ -268,8 +268,13 @@ def test_cv_coxnet_missing_rows_filtered(data) -> None:  # type: ignore[no-untyp
 def test_cv_coxnet_brier_metric(data) -> None:  # type: ignore[no-untyped-def]
     y, x = data
     result = cv_coxnet(
-        y, x, metric="brier",
-        times=[100, 200, 300], penalizers=[0.1, 0.01], k=2, seed=42,
+        y,
+        x,
+        metric="brier",
+        times=[100, 200, 300],
+        penalizers=[0.1, 0.01],
+        k=2,
+        seed=42,
     )
     assert result.metric_ == "brier"
     assert result.best_score_ >= 0
