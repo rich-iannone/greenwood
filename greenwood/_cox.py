@@ -13,8 +13,8 @@ martingale and Schoenfeld residuals, the Grambsch-Therneau proportional-hazards 
 Stratification (per-stratum baselines with shared coefficients) and the robust (Lin-Wei)
 sandwich variance, with optional clustering, are supported. The risk sets use the same
 entry/exit convention as the rest of Greenwood, so left truncation and counting-process
-data are handled. Shared gamma frailty by cluster is also available for right-censored
-data with Breslow ties.
+data are handled. Shared gamma and log-normal frailty by cluster are available for
+right-censored data with Breslow ties.
 """
 
 from __future__ import annotations
@@ -382,6 +382,111 @@ def _gamma_profile_loglik(theta: float, d: Array, h: Array) -> float:
     )
 
 
+def _lognormal_frailty_fit(
+    x: Array,
+    entry: Array,
+    exit_: Array,
+    event: Array,
+    weight: Array,
+    strata_groups: list[tuple[Array, Array]],
+    cluster_index: Array,
+    K: int,
+    p: int,
+    sigma2_init: float,
+    max_outer_iter: int,
+    max_inner_iter: int,
+    tol: float,
+) -> tuple[Array, Array, float, float, float, Array, Array, Array]:
+    """Fit log-normal shared frailty via penalized partial likelihood and REML.
+
+    The model is h(t|x,u) = h0(t) exp(x'beta + u_cluster) with u_i ~ N(0, sigma^2). Joint
+    optimization over (beta, u) at fixed sigma^2, then REML update for sigma^2.
+    """
+    n = x.shape[0]
+
+    # Cluster indicator matrix Z: (n, K) (one column per cluster)
+    Z = np.zeros((n, K))
+    for j in range(K):
+        Z[cluster_index == j, j] = 1.0
+    x_aug = np.hstack([x, Z])  # (n, p+K)
+
+    theta = np.zeros(p + K)
+    sigma2 = sigma2_init
+    loglik = -np.inf
+    info_aug = np.eye(p + K)
+
+    for _outer in range(max_outer_iter):
+        theta_prev = theta.copy()
+        sigma2_prev = sigma2
+        _s2 = sigma2  # captured in closure below
+
+        def _ppl(th: Array, s2: float = _s2) -> tuple[float, Array, Array]:
+            u_th = th[p:]
+            ll, g, h = _cox_terms(th, x_aug, entry, exit_, event, weight, strata_groups, "breslow")
+            ll -= 0.5 / s2 * float(np.dot(u_th, u_th))
+            g = g.copy()
+            g[p:] -= u_th / s2
+            h = h.copy()
+            h[p:, p:] += np.eye(K) / s2
+            return ll, g, h
+
+        # Inner warm-start Newton-Raphson
+        loglik_inner_prev = -np.inf
+        for _ in range(max_inner_iter):
+            ll, grad, info = _ppl(theta)
+            step = np.linalg.solve(info, grad)
+            halving = 0
+            while True:
+                candidate = theta + step
+                new_ll, _, _ = _ppl(candidate)
+                if new_ll >= ll - 1e-12 or halving >= 20:
+                    break
+                step /= 2.0
+                halving += 1  # pragma: no cover
+            inner_converged = abs(new_ll - loglik_inner_prev) <= tol * (abs(new_ll) + tol)
+            theta, loglik_inner_prev = candidate, new_ll
+            if inner_converged:
+                break
+        loglik = loglik_inner_prev
+        _, _, info_aug = _ppl(theta)
+
+        # REML update for sigma^2: E[||u||^2] / K using Laplace posterior
+        u = theta[p:]
+        H_uu = info_aug[p:, p:]
+        try:
+            H_uu_inv = np.linalg.inv(H_uu)
+            trace_term = float(np.trace(H_uu_inv))
+        except np.linalg.LinAlgError:
+            trace_term = float(K) * sigma2  # fallback
+        sigma2 = max((float(np.dot(u, u)) + trace_term) / K, 1e-8)
+
+        # Outer convergence
+        param_change = float(np.max(np.abs(theta - theta_prev)))
+        sigma2_change = abs(sigma2 - sigma2_prev)
+        if param_change <= tol and sigma2_change <= tol * (abs(sigma2) + tol):
+            break
+
+    # Final evaluation at converged sigma2 for null (beta=u=0) statistics.
+    # Inline rather than calling _ppl (which is loop-local) to keep the binding unambiguous.
+    loglik_null, grad0_aug, info0_aug = _cox_terms(
+        np.zeros(p + K), x_aug, entry, exit_, event, weight, strata_groups, "breslow"
+    )
+    grad0_aug = grad0_aug.copy()
+    info0_aug = info0_aug.copy()
+    info0_aug[p:, p:] += np.eye(K) / sigma2
+
+    return (
+        theta[:p].copy(),
+        theta[p:].copy(),
+        sigma2,
+        loglik,
+        float(loglik_null),
+        info_aug,
+        grad0_aug,
+        info0_aug,
+    )
+
+
 class CoxPH:
     r"""Cox proportional hazards model.
 
@@ -488,9 +593,12 @@ class CoxPH:
         if self.robust:
             lines.append("Standard errors: robust (sandwich)")
         if self.frailty_ is not None:
-            lines.append(f"Shared frailty: {self.frailty_} (theta = {num(self.frailty_theta_)})")
+            param_name = "sigma2" if self.frailty_ == "lognormal" else "theta"
             lines.append(
-                "Frailty variance test (theta = 0): "
+                f"Shared frailty: {self.frailty_} ({param_name} = {num(self.frailty_theta_)})"
+            )
+            lines.append(
+                f"Frailty variance test ({param_name} = 0): "
                 f"LR = {num(self.frailty_lrt_stat_)}, p = {num(self.frailty_lrt_p_value_)}"
             )
         return "\n".join(lines)
@@ -539,29 +647,35 @@ class CoxPH:
             Optional cluster labels for grouped robust variance estimation.
             Sums score residuals within groups before forming the sandwich.
         frailty
-            Optional shared frailty distribution. Currently supports `"gamma"` only.
-            Requires `frailty_cluster=` and `ties="breslow"`.
+            Optional shared frailty distribution. Supports `"gamma"` (multiplicative
+            gamma random effect, closed-form EM) and `"lognormal"` (additive normal
+            random effect on the log-hazard, fitted via penalized partial likelihood
+            with Laplace approximation, analogous to `coxme` in R). Both require
+            `frailty_cluster=` and `ties="breslow"`.
         frailty_cluster
             Cluster labels for shared frailty random effects (one frailty per cluster).
         frailty_theta
-            Initial value for the gamma frailty variance parameter (must be > 0).
+            Initial value for the frailty variance parameter (must be > `0`). For gamma, this is the
+            variance of the multiplicative frailty. For log-normal, this is the initial sigma^2
+            (variance of the log-hazard random effect).
         frailty_max_iter
-            Maximum number of outer EM iterations for shared frailty fitting.
+            Maximum number of outer iterations for shared frailty fitting (EM steps for gamma, REML
+            loops for log-normal).
         max_iter
-            Maximum number of iterations for the Newton-Raphson solver. Default is `30`.
+            Maximum number of iterations for the Newton-Raphson solver. The default is `30`.
         tol
-            Convergence tolerance for the optimization. Default is `1e-9`.
+            Convergence tolerance for the optimization. The default is `1e-9`.
 
         Returns
         -------
         CoxPH
-            Returns self with fitted attributes including `coef_`, `std_error_`,
-            `hazard_ratio_`, `z_`, `p_value_`, and other model diagnostics.
+            Returns self with fitted attributes including `coef_`, `std_error_`, `hazard_ratio_`,
+            `z_`, `p_value_`, and other model diagnostics.
 
         Examples
         --------
-        Passing `strata=` gives each stratum its own baseline hazard while sharing the
-        coefficients. Here we fit `age` and `ph.ecog` stratified by sex:
+        Passing `strata=` gives each stratum its own baseline hazard while sharing the coefficients.
+        Here we fit `age` and `ph.ecog` stratified by sex:
 
         ```{python}
         import greenwood as gw
@@ -586,28 +700,33 @@ class CoxPH:
                 f"CoxPH supports right-censored and counting-process responses, "
                 f"not {surv.type.value!r}."
             )
-        if frailty not in (None, "gamma"):
-            raise ValueError("frailty must be None or 'gamma'.")
+        if frailty not in (None, "gamma", "lognormal"):
+            raise ValueError("frailty must be None, 'gamma', or 'lognormal'.")
         if frailty is None and frailty_cluster is not None:
-            raise ValueError("frailty_cluster requires frailty='gamma'.")
+            raise ValueError("frailty_cluster requires frailty='gamma' or frailty='lognormal'.")
         if frailty is not None and frailty_cluster is None:
-            raise ValueError("frailty='gamma' requires frailty_cluster labels.")
+            raise ValueError(f"frailty='{frailty}' requires frailty_cluster labels.")
         if frailty is not None and frailty_theta <= 0:
             raise ValueError("frailty_theta must be > 0.")
         if frailty_max_iter < 1:
             raise ValueError("frailty_max_iter must be >= 1.")
-        if frailty == "gamma":
+        if frailty in ("gamma", "lognormal"):
             if surv.type != CensoringType.RIGHT:
                 raise NotImplementedError(
-                    "Shared gamma frailty currently supports right-censored data."
+                    f"Shared {frailty} frailty currently supports right-censored data."
                 )
             if self.ties != "breslow":
-                raise NotImplementedError("Shared gamma frailty currently requires ties='breslow'.")
+                raise NotImplementedError(
+                    f"Shared {frailty} frailty currently requires ties='breslow'."
+                )
             if strata is not None:
-                raise NotImplementedError("Shared gamma frailty with strata is not yet supported.")
+                raise NotImplementedError(
+                    f"Shared {frailty} frailty with strata is not yet supported."
+                )
             if robust or cluster is not None:
                 raise NotImplementedError(
-                    "Shared gamma frailty does not currently combine with robust/cluster variance."
+                    f"Shared {frailty} frailty does not currently combine with "
+                    "robust/cluster variance."
                 )
 
         x, names = _design_matrix(covariates, data)
@@ -810,7 +929,62 @@ class CoxPH:
             profile_hat = _gamma_profile_loglik(theta, d_cluster, h_cluster)
             profile_null = _gamma_profile_loglik(1e-5, d_cluster, h_cluster)
             self.frailty_lrt_stat_ = max(0.0, 2.0 * (profile_hat - profile_null))
+
             # theta = 0 is on the boundary; the one-sided test uses the 50:50 chi-square mixture.
+            self.frailty_lrt_p_value_ = 0.5 * float(chi2.sf(self.frailty_lrt_stat_, 1))
+        elif frailty == "lognormal":
+            assert frailty_labels is not None
+            levels = list(dict.fromkeys(frailty_labels.tolist()))
+            K_frailty = len(levels)
+            cluster_index = np.empty(x.shape[0], dtype=int)
+            for j, level in enumerate(levels):
+                cluster_index[frailty_labels == level] = j
+
+            beta, u_frailty, sigma2, loglik, loglik_null, info_aug, grad0_aug, info0_aug = (
+                _lognormal_frailty_fit(
+                    x,
+                    entry,
+                    exit_,
+                    event,
+                    weight,
+                    strata_groups,
+                    cluster_index,
+                    K_frailty,
+                    p,
+                    sigma2_init=float(frailty_theta),
+                    max_outer_iter=frailty_max_iter,
+                    max_inner_iter=max_iter,
+                    tol=tol,
+                )
+            )
+
+            H_bb = info_aug[:p, :p]
+            H_bu = info_aug[:p, p:]
+            H_uu = info_aug[p:, p:]
+
+            # Schur complement gives the marginal precision of beta (u integrated out)
+            info = H_bb - H_bu @ np.linalg.solve(H_uu, H_bu.T)
+            grad0 = grad0_aug[:p]
+            info0 = info0_aug[:p, :p]
+            risk_multiplier = np.exp(u_frailty[cluster_index])
+
+            # Laplace approximation to marginal log-likelihood at fitted sigma^2
+            _, logdet_H_uu = np.linalg.slogdet(H_uu)
+            ell_laplace = loglik - 0.5 * K_frailty * np.log(sigma2) - 0.5 * logdet_H_uu
+
+            # Regular Cox log-likelihood for the frailty LRT null (sigma^2 = 0)
+            def _terms_plain(b: Array) -> tuple[float, Array, Array]:
+                return _cox_terms(b, x, entry, exit_, event, weight, strata_groups, self.ties)
+
+            _, loglik_cox, _, _, _, _ = _newton_optimize(_terms_plain, p, max_iter, tol)
+
+            self.frailty_ = "lognormal"
+            self.frailty_theta_ = sigma2
+            self.frailty_effect_ = u_frailty
+            self.frailty_levels_ = np.asarray(levels, dtype=object)
+
+            # sigma^2 = 0 is on the boundary; one-sided test uses the 50:50 chi-square mixture.
+            self.frailty_lrt_stat_ = max(0.0, 2.0 * (ell_laplace - loglik_cox))
             self.frailty_lrt_p_value_ = 0.5 * float(chi2.sf(self.frailty_lrt_stat_, 1))
         else:
 
@@ -1177,20 +1351,20 @@ class CoxPH:
         Parameters
         ----------
         newdata
-            Covariate design for prediction. If None, predictions are made on the
-            fitted data. Can be a 2-D array or dataframe.
+            Covariate design for prediction. If None, predictions are made on the fitted data. Can
+            be a 2-D array or dataframe.
         type
-            Type of prediction: `"lp"` (centered linear predictor, default),
-            `"risk"` (exp of linear predictor), or `"survival"` (survival probability).
+            Type of prediction: `"lp"` (centered linear predictor, default), `"risk"` (exp of linear
+            predictor), or `"survival"` (survival probability).
         times
-            Time points at which to compute survival probabilities (for `type="survival"`).
-            Defaults to the event times from the fitted model.
+            Time points at which to compute survival probabilities (for `type="survival"`). Defaults
+            to the event times from the fitted model.
         conditional_after
-            Optional scalar or per-subject time for conditional survival prediction.
-            Computes $P(T > t \mid T > c)$ where $c$ is the conditional_after time.
+            Optional scalar or per-subject time for conditional survival prediction. Computes
+            $P(T > t \mid T > c)$ where $c$ is the conditional_after time.
         ci
-            If `True` (survival only), include confidence intervals (`_lower` and `_upper`
-            columns). Default is `False`.
+            If `True` (survival only), include confidence intervals (`_lower` and `_upper` columns).
+            The default is `False`.
         format
             Output format (for `type="survival"` only): `None` (default), `"pandas"`,
             `"polars"`, or `"pyarrow"`.
@@ -1204,15 +1378,15 @@ class CoxPH:
         Returns
         -------
         ndarray or DataFrame
-            For `type="lp"` or `"risk"`, returns a 1-D array with one prediction per row.
-            For `type="survival"`, returns a DataFrame with rows for each time point
-            and columns for each subject (named `subject_1`, `subject_2`, etc.), optionally
-            with `_lower` and `_upper` columns for confidence intervals.
+            For `type="lp"` or `"risk"`, returns a 1-D array with one prediction per row. For
+            `type="survival"`, returns a DataFrame with rows for each time point and columns for
+            each subject (named `subject_1`, `subject_2`, etc.), optionally with `_lower` and
+            `_upper` columns for confidence intervals.
 
         Examples
         --------
-        The default `type="lp"` returns the centered linear predictor as a NumPy array, one
-        value per fitted subject:
+        The default `type="lp"` returns the centered linear predictor as a NumPy array, one value
+        per fitted subject:
 
         ```{python}
         import greenwood as gw
@@ -1237,8 +1411,8 @@ class CoxPH:
         )
         ```
 
-        Passing `ci=True` adds pointwise confidence bands, and `conditional_after=` gives
-        survival conditional on having already survived to a landmark time.
+        Passing `ci=True` adds pointwise confidence bands, and `conditional_after=` gives survival
+        conditional on having already survived to a landmark time.
         """
         if newdata is None:
             x = self._x
@@ -1288,9 +1462,9 @@ class CoxPH:
     def _cumhaz_se(self, x_new: Array, query: Array) -> Array:
         """Standard error of the cumulative hazard `H(t | x)` at `query` times, per subject.
 
-        Uses the two-part Breslow-form variance (baseline variability plus the delta-method
-        term for coefficient uncertainty), matching R `survfit.coxph`'s `std.chaz` for a
-        Breslow fit (approximate for Efron ties, as with the score-residual variance).
+        Uses the two-part Breslow-form variance (baseline variability plus the delta-method term for
+        coefficient uncertainty), matching R `survfit.coxph`'s `std.chaz` for a Breslow fit
+        (approximate for Efron ties, as with the score-residual variance).
         """
         xr, entry, exit_, event, w = self._x, self._entry, self._exit, self._event, self._weight
         ev = event.astype(bool)
@@ -1350,32 +1524,31 @@ class CoxPH:
         type
             Type of residuals to return:
 
-            - `"martingale"` (default): One per observation, range $(-\infty, 1]$. Positive
-              values indicate underestimated risk.
-            - `"deviance"`: Normalized martingale residuals, more symmetrically distributed.
-              Useful for detecting outliers.
+            - `"martingale"` (default): One per observation, range $(-\infty, 1]$. Positive values
+            indicate underestimated risk.
+            - `"deviance"`: Normalized martingale residuals, more symmetrically distributed. Useful
+            for detecting outliers.
             - `"score"`: Efficient score residuals, one row per observation and one column per
-              covariate. Used to construct the robust (sandwich) variance estimator.
-            - `"schoenfeld"`: One row per event, one column per covariate. Useful for checking
-              the proportional-hazards assumption.
+            covariate. Used to construct the robust (sandwich) variance estimator.
+            - `"schoenfeld"`: One row per event, one column per covariate. Useful for checking the
+            proportional-hazards assumption.
             - `"scaledsch"`: Scaled Schoenfeld residuals (Grambsch-Therneau), one row per event.
-              Under the PH assumption, the expected value at each event time equals the true
-              coefficient.
+            Under the PH assumption, the expected value at each event time equals the true
+            coefficient.
             - `"dfbeta"`: Approximate change in each coefficient if observation $i$ were deleted.
-              One row per observation, one column per covariate.
+            One row per observation, one column per covariate.
             - `"dfbetas"`: Standardized dfbeta (dfbeta divided by the coefficient SE). Comparable
-              across covariates on different scales.
+            across covariates on different scales.
 
         format
             Output format for multi-column residual types: `None` (auto-detect), `"pandas"`,
-            `"polars"`, or `"pyarrow"`. Returns a numpy array for `"martingale"` and
-            `"deviance"`.
+            `"polars"`, or `"pyarrow"`. Returns a numpy array for `"martingale"` and `"deviance"`.
 
         Returns
         -------
         ndarray or DataFrame
-            For `"martingale"` and `"deviance"`: a 1-D array (one value per observation).
-            For all other types: a DataFrame with one column per covariate.
+            For `"martingale"` and `"deviance"`: a 1-D array (one value per observation). For all
+            other types: a DataFrame with one column per covariate.
 
         Examples
         --------
@@ -1445,8 +1618,8 @@ class CoxPH:
     def _event_contributions(self) -> tuple[list[Array], list[float], list[Array]]:
         """Per-event Schoenfeld residual, event time, and risk-set covariance share.
 
-        Iterates strata then event times. Risk sets are confined to the stratum. For tied
-        Efron events, the risk mean is averaged and the covariance split across the ties.
+        Iterates strata then event times. Risk sets are confined to the stratum. For tied Efron
+        events, the risk mean is averaged and the covariance split across the ties.
         """
         risk_score = np.exp(self._x @ self.coef_) * self._weight * self._risk_multiplier
         residuals: list[Array] = []
@@ -1493,15 +1666,15 @@ class CoxPH:
     def cox_zph(self, *, transform: str = "identity") -> ZPHResult:
         """Test the proportional-hazards assumption (Grambsch-Therneau).
 
-        The Cox model assumes that the hazard ratio between any two subjects is constant
-        over time (proportional hazards). If this assumption is violated (for example, if
-        a treatment effect diminishes over time) the Cox estimates may be biased. This test
-        checks for violations by regressing scaled Schoenfeld residuals on time.
+        The Cox model assumes that the hazard ratio between any two subjects is constant over time
+        (proportional hazards). If this assumption is violated (for example, if a treatment effect
+        diminishes over time) the Cox estimates may be biased. This test checks for violations by
+        regressing scaled Schoenfeld residuals on time.
 
         Large test statistics or small p-values (typically p < 0.05) suggest the
-        proportional-hazards assumption is violated for that covariate. When violated,
-        consider stratified analysis (separate baseline hazards per stratum), time-dependent
-        covariates, or time-varying coefficients.
+        proportional-hazards assumption is violated for that covariate. When violated, consider
+        stratified analysis (separate baseline hazards per stratum), time-dependent covariates, or
+        time-varying coefficients.
 
         Parameters
         ----------
@@ -1511,27 +1684,23 @@ class CoxPH:
             - `"identity"` (default): Use time as-is. Regression on raw time.
             - `"log"`: Use log(time). Regression on log-transformed time.
 
-            Both are validated against R's `cox.zph()` (though R defaults to
-            Kaplan-Meier transform. `"km"` and `"rank"` are planned).
-
         Returns
         -------
         ZPHResult
-            An object containing per-term test results (`per_term` dict) and a global
-            test (`global_test` dict) across all covariates. Each includes chi-squared
-            statistic, degrees of freedom, and p-value. Access results via `.to_frame()`
-            or dictionary keys.
+            An object containing per-term test results (`per_term` dict) and a global test
+            (`global_test` dict) across all covariates. Each includes chi-squared statistic, degrees
+            of freedom, and p-value. Access results via `.to_frame()` or dictionary keys.
 
         Details
         -------
-        The test uses scaled Schoenfeld residuals, which under the null hypothesis
-        (proportional hazards) have a known asymptotic distribution. The test statistic is
-        approximately chi-squared with 1 df for each term, and chi-squared with degrees
-        of freedom equal to the number of terms for the global test.
+        The test uses scaled Schoenfeld residuals, which under the null hypothesis (proportional
+        hazards) have a known asymptotic distribution. The test statistic is approximately
+        chi-squared with 1 df for each term, and chi-squared with degrees of freedom equal to the
+        number of terms for the global test.
 
-        Schoenfeld residuals are weighted by the variance-covariance matrix of the risk
-        set at each event time. The regression accounts for the constraint that Schoenfeld
-        residuals sum to zero.
+        Schoenfeld residuals are weighted by the variance-covariance matrix of the risk set at each
+        event time. The regression accounts for the constraint that Schoenfeld residuals sum to
+        zero.
 
         Examples
         --------
@@ -1550,8 +1719,8 @@ class CoxPH:
         zph
         ```
 
-        The full statistics are available as a tidy frame, one row per term plus a
-        `GLOBAL` row. Pass `format=` to choose the backend (here, Polars):
+        The full statistics are available as a tidy frame, one row per term plus a `GLOBAL` row.
+        Pass `format=` to choose the backend (here, Polars):
 
         ```{python}
         # Export the test statistics as a Polars DataFrame
@@ -1598,8 +1767,8 @@ class CoxPH:
     def _score_residuals(self, beta: Array) -> Array:
         """Breslow-form score (dfbeta-precursor) residuals, one per observation.
 
-        Confined to strata. Summed over the event times at which each subject is at risk.
-        Used to form the robust (Lin-Wei) sandwich variance.
+        Confined to strata. Summed over the event times at which each subject is at risk. Used to
+        form the robust (Lin-Wei) sandwich variance.
         """
         n, p = self._x.shape
         scores = np.zeros((n, p))
@@ -1637,16 +1806,15 @@ class CoxPH:
     def concordance(self) -> float:
         """Harrell's concordance index (C-statistic) of the fitted risk scores.
 
-        The concordance index measures how well the model's predicted risk scores order
-        subjects by their survival times. It ranges from 0 to 1, where 0.5 indicates
-        predictions are no better than random (coin flip), and 1.0 indicates perfect
-        discrimination (the model always assigns higher risk to subjects who die first).
+        The concordance index measures how well the model's predicted risk scores order subjects by
+        their survival times. It ranges from 0 to 1, where 0.5 indicates predictions are no better
+        than random (coin flip), and 1.0 indicates perfect discrimination (the model always assigns
+        higher risk to subjects who die first).
 
-        Pairs of subjects are compared: a subject who experiences an event at time t is
-        considered to have "failed before" another subject still under observation at t
-        (including one censored exactly at t). If the model assigns higher risk to the
-        subject who failed first, the pair is concordant. Ties in predicted risk are
-        treated as half-concordant.
+        Pairs of subjects are compared: a subject who experiences an event at time t is considered
+        to have "failed before" another subject still under observation at t (including one censored
+        exactly at t). If the model assigns higher risk to the subject who failed first, the pair is
+        concordant. Ties in predicted risk are treated as half-concordant.
 
         For stratified models, only within-stratum pairs are compared.
 
@@ -1662,24 +1830,22 @@ class CoxPH:
 
         Details
         -------
-        The concordance index is equivalent to the Area Under the Receiver Operating
-        Characteristic curve (AUC) for binary classification problems. It is computed as
-        the fraction of concordant pairs out of all comparable pairs.
+        The concordance index is equivalent to the Area Under the Receiver Operating Characteristic
+        curve (AUC) for binary classification problems. It is computed as the fraction of concordant
+        pairs out of all comparable pairs.
 
         Comparable pairs are those where:
 
         - One subject has an event (event=True) and exits at time t.
-        - The other subject exits at time > t, OR exits at time = t with event=False
-          (censored).
+        - The other subject exits at time > t, OR exits at time = t with event=False (censored).
 
-        Tied event times within the same outcome (both events or both censored at the
-        same time) are excluded from comparison.
+        Tied event times within the same outcome (both events or both censored at the same time) are
+        excluded from comparison.
 
         Examples
         --------
-        Harrell's C is returned as a single number between 0 and 1. A value of 0.5 means
-        the model is not better than random guessing. A value of 1.0 means perfect
-        discrimination:
+        Harrell's C is returned as a single number between `0` and `1`. A value of `0.5` means the
+        model is not better than random guessing. A value of `1.0` means perfect discrimination:
 
         ```{python}
         import greenwood as gw
@@ -1711,19 +1877,24 @@ class CoxPH:
         return concordant / comparable
 
     def frailty_test(self) -> dict[str, float]:
-        r"""Likelihood-ratio test for shared-frailty variance $\theta = 0$.
+        r"""Likelihood-ratio test for shared-frailty variance equal to zero.
 
-        Tests whether the frailty (random-effect) variance is significantly different from
-        zero. A significant result indicates that there is unexplained heterogeneity across
-        clusters (e.g., centres, families) beyond what the fixed-effect covariates capture.
+        Tests whether the frailty (random-effect) variance is significantly different from zero. A
+        significant result indicates that there is unexplained heterogeneity across clusters (e.g.,
+        centres, families) beyond what the fixed-effect covariates capture.
 
-        The model must have been fitted with `frailty="gamma"` for this test to be available.
+        For gamma frailty the LRT uses the profile marginal likelihood (integrating out the random
+        effects analytically). For log-normal frailty it uses the Laplace approximation to the
+        marginal likelihood compared against the regular Cox partial likelihood.
+
+        The model must have been fitted with `frailty="gamma"` or `frailty="lognormal"` for this
+        test to be available.
 
         Returns
         -------
         dict
             A dictionary with keys `"theta"` (estimated frailty variance), `"lr_statistic"`
-            (likelihood-ratio test statistic), `"df"` (degrees of freedom, always 1), and
+            (likelihood-ratio test statistic), `"df"` (degrees of freedom, always `1`), and
             `"p_value"`.
 
         Raises
@@ -1733,8 +1904,8 @@ class CoxPH:
 
         Examples
         --------
-        Fit a Cox model with a gamma frailty term grouped by institution, then test whether
-        the frailty variance is significant:
+        Fit a Cox model with a gamma frailty term grouped by institution, then test whether the
+        frailty variance is significant:
 
         ```{python}
         import greenwood as gw
@@ -1754,7 +1925,9 @@ class CoxPH:
         ```
         """
         if self.frailty_ is None or self.frailty_theta_ is None:
-            raise ValueError("No frailty model is fitted; fit with frailty='gamma' first.")
+            raise ValueError(
+                "No frailty model is fitted; fit with frailty='gamma' or frailty='lognormal'."
+            )
         if self.frailty_lrt_stat_ is None or self.frailty_lrt_p_value_ is None:
             raise ValueError("Frailty variance test is unavailable for this fitted model.")
         return {
@@ -1788,29 +1961,27 @@ class CoxPH:
     def to_frame(self, *, format: str | None = None, exponentiate: bool = False) -> Any:
         """Return a tidy coefficient table as a DataFrame (one row per term).
 
-        The table contains coefficient estimates, standard errors, test statistics,
-        p-values, and confidence limits. If `exponentiate=True`, returns hazard ratios
-        instead of log-hazards.
+        The table contains coefficient estimates, standard errors, test statistics, p-values, and
+        confidence limits. If `exponentiate=True`, returns hazard ratios instead of log-hazards.
 
         Parameters
         ----------
         format
-            Output format: `None` (default), `"pandas"`, `"polars"`, or `"pyarrow"`. When
-            `None`, a backend is auto-detected (Polars, then Pandas, then PyArrow).
+            Output format: `None` (default), `"pandas"`, `"polars"`, or `"pyarrow"`. When `None`, a
+            backend is auto-detected (Polars, then Pandas, then PyArrow).
         exponentiate
-            If True, return hazard ratios (exp of coefficients). Default is False.
+            If `True`, return hazard ratios (exp of coefficients). Default is False.
 
         Returns
         -------
         pandas.DataFrame, polars.DataFrame, or pyarrow.Table
-            One row per term with columns: term, estimate, std_error, statistic,
-            p_value, conf_low, conf_high.
+            One row per term with columns: `term`, `estimate`, `std_error`, `statistic`, `p_value`,
+            `conf_low`, `conf_high`.
 
         Raises
         ------
         ImportError
-            If the requested (or, when auto-detecting, any) DataFrame library is not
-            installed.
+            If the requested (or, when auto-detecting, any) DataFrame library is not installed.
 
         Examples
         --------

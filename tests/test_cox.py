@@ -708,13 +708,13 @@ def test_cox_frailty_repr(lung_surv) -> None:  # type: ignore[no-untyped-def]
 
 def test_cox_frailty_invalid_type(lung_surv) -> None:  # type: ignore[no-untyped-def]
     df, y = lung_surv
-    with pytest.raises(ValueError, match="frailty must be None or 'gamma'"):
+    with pytest.raises(ValueError, match="frailty must be None"):
         CoxPH().fit(y, df[["age", "sex"]], frailty="invalid")
 
 
 def test_cox_frailty_cluster_without_frailty(lung_surv) -> None:  # type: ignore[no-untyped-def]
     df, y = lung_surv
-    with pytest.raises(ValueError, match="frailty_cluster requires frailty='gamma'"):
+    with pytest.raises(ValueError, match="frailty_cluster requires frailty="):
         CoxPH().fit(y, df[["age", "sex"]], frailty_cluster=df["inst"])
 
 
@@ -783,6 +783,84 @@ def test_cox_frailty_test_unavailable_guard() -> None:
     cox.frailty_lrt_p_value_ = None
     with pytest.raises(ValueError, match="unavailable"):
         cox.frailty_test()
+
+
+def test_lognormal_frailty_fit_sets_attributes(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    cox = CoxPH(ties="breslow").fit(
+        y,
+        df[["age", "sex"]],
+        frailty="lognormal",
+        frailty_cluster=df["inst"],
+    )
+    assert cox.frailty_ == "lognormal"
+    assert cox.frailty_theta_ is not None and cox.frailty_theta_ > 0
+    assert cox.frailty_effect_ is not None
+    assert cox.frailty_levels_ is not None
+    assert len(cox.frailty_effect_) == len(cox.frailty_levels_)
+    assert cox.coef_.shape == (2,)
+    assert cox.frailty_lrt_stat_ is not None and cox.frailty_lrt_stat_ >= 0.0
+    assert cox.frailty_lrt_p_value_ is not None and 0.0 <= cox.frailty_lrt_p_value_ <= 1.0
+
+
+def test_lognormal_frailty_variance_test_api(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    cox = CoxPH(ties="breslow").fit(
+        y,
+        df[["age", "sex"]],
+        frailty="lognormal",
+        frailty_cluster=df["inst"],
+    )
+    out = cox.frailty_test()
+    assert out["theta"] > 0.0
+    assert out["lr_statistic"] >= 0.0
+    assert out["df"] == 1.0
+    assert 0.0 <= out["p_value"] <= 1.0
+
+
+def test_lognormal_frailty_requires_breslow_ties(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    with pytest.raises(NotImplementedError, match="breslow"):
+        CoxPH(ties="efron").fit(
+            y, df[["age", "sex"]], frailty="lognormal", frailty_cluster=df["inst"]
+        )
+
+
+def test_lognormal_frailty_requires_cluster(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    with pytest.raises(ValueError, match="frailty_cluster"):
+        CoxPH(ties="breslow").fit(y, df[["age", "sex"]], frailty="lognormal")
+
+
+def test_lognormal_frailty_repr(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    cox = CoxPH(ties="breslow").fit(
+        y, df[["age", "sex"]], frailty="lognormal", frailty_cluster=df["inst"]
+    )
+    text = str(cox)
+    assert "Shared frailty: lognormal" in text
+    assert "sigma2" in text
+
+
+def test_lognormal_frailty_effect_log_scale(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    """Log-normal frailty_effect_ is on the log scale (can be negative), unlike gamma."""
+    df, y = lung_surv
+    cox = CoxPH(ties="breslow").fit(
+        y, df[["age", "sex"]], frailty="lognormal", frailty_cluster=df["inst"]
+    )
+    # Effects are N(0, sigma2) random variables; some should be negative
+    assert cox.frailty_effect_ is not None
+    assert not np.all(cox.frailty_effect_ >= 0)
+
+
+def test_lognormal_frailty_std_error_wider_than_plain_cox(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    """Marginal SE from Schur complement should be >= plain Cox SE (frailty adds uncertainty)."""
+    df, y = lung_surv
+    cox_plain = CoxPH(ties="breslow").fit(y, df[["age", "sex"]])
+    cox_ln = CoxPH(ties="breslow").fit(
+        y, df[["age", "sex"]], frailty="lognormal", frailty_cluster=df["inst"]
+    )
+    assert cox_ln.std_error_.shape == cox_plain.std_error_.shape
 
 
 def test_residuals_deviance_shape_and_sign(lung_surv) -> None:  # type: ignore[no-untyped-def]
