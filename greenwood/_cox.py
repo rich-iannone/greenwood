@@ -466,8 +466,14 @@ def _lognormal_frailty_fit(
         if param_change <= tol and sigma2_change <= tol * (abs(sigma2) + tol):
             break
 
-    # Final evaluation at converged sigma2 for null (beta=u=0) statistics
-    loglik_null, grad0_aug, info0_aug = _ppl(np.zeros(p + K))
+    # Final evaluation at converged sigma2 for null (beta=u=0) statistics.
+    # Inline rather than calling _ppl (which is loop-local) to keep the binding unambiguous.
+    loglik_null, grad0_aug, info0_aug = _cox_terms(
+        np.zeros(p + K), x_aug, entry, exit_, event, weight, strata_groups, "breslow"
+    )
+    grad0_aug = grad0_aug.copy()
+    info0_aug = info0_aug.copy()
+    info0_aug[p:, p:] += np.eye(K) / sigma2
 
     return (
         theta[:p].copy(),
