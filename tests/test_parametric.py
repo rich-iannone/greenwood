@@ -217,6 +217,149 @@ def test_aft_loglogistic_predict_mean_remaining(lung_surv) -> None:  # type: ign
         aft.scale_ = original_scale
 
 
+@pytest.mark.parametrize("dist", ["weibull", "exponential", "lognormal", "loglogistic"])
+def test_predict_survival_ci_columns(lung_surv, dist) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    model = AFT(dist).fit(y, df[["age", "sex"]])
+    nd = df[["age", "sex"]].iloc[:2]
+    pred = model.predict(nd, type="survival", times=[180, 365], ci=True, format="pandas")
+    assert list(pred.columns) == [
+        "time",
+        "subject_1",
+        "subject_1_lower",
+        "subject_1_upper",
+        "subject_2",
+        "subject_2_lower",
+        "subject_2_upper",
+    ]
+    assert len(pred) == 2
+
+
+@pytest.mark.parametrize("dist", ["weibull", "exponential", "lognormal", "loglogistic"])
+def test_predict_survival_ci_brackets_point(lung_surv, dist) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    model = AFT(dist).fit(y, df[["age", "sex"]])
+    nd = df[["age", "sex"]].iloc[:3]
+    pred = model.predict(nd, type="survival", times=[100, 300, 500], ci=True, format="pandas")
+    for j in range(1, 4):
+        lower = pred[f"subject_{j}_lower"].to_numpy()
+        point = pred[f"subject_{j}"].to_numpy()
+        upper = pred[f"subject_{j}_upper"].to_numpy()
+        assert np.all(lower <= point + 1e-12)
+        assert np.all(point <= upper + 1e-12)
+
+
+@pytest.mark.parametrize("dist", ["weibull", "exponential", "lognormal", "loglogistic"])
+def test_predict_survival_ci_loglog_bounds_valid(lung_surv, dist) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    model = AFT(dist).fit(y, df[["age", "sex"]])
+    nd = df[["age", "sex"]].iloc[:2]
+    pred = model.predict(
+        nd, type="survival", times=[100, 300, 500], ci=True, conf_type="log-log", format="pandas"
+    )
+    for j in range(1, 3):
+        lower = pred[f"subject_{j}_lower"].to_numpy()
+        upper = pred[f"subject_{j}_upper"].to_numpy()
+        assert np.all(lower >= 0), f"lower bound < 0 for {dist}"
+        assert np.all(upper <= 1), f"upper bound > 1 for {dist}"
+
+
+@pytest.mark.parametrize("dist", ["weibull", "lognormal", "loglogistic"])
+def test_predict_survival_ci_plain(lung_surv, dist) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    model = AFT(dist).fit(y, df[["age", "sex"]])
+    nd = df[["age", "sex"]].iloc[:2]
+    pred = model.predict(
+        nd, type="survival", times=[200, 400], ci=True, conf_type="plain", format="pandas"
+    )
+    for j in range(1, 3):
+        lower = pred[f"subject_{j}_lower"].to_numpy()
+        point = pred[f"subject_{j}"].to_numpy()
+        upper = pred[f"subject_{j}_upper"].to_numpy()
+        assert np.all(lower <= point + 1e-12)
+        assert np.all(point <= upper + 1e-12)
+
+
+def test_predict_survival_ci_wider_at_higher_conf_level(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    nd = df[["age", "sex"]].iloc[:2]
+    pred_90 = (
+        AFT("weibull", conf_level=0.90)
+        .fit(y, df[["age", "sex"]])
+        .predict(nd, type="survival", times=[200, 400], ci=True, format="pandas")
+    )
+    pred_99 = (
+        AFT("weibull", conf_level=0.99)
+        .fit(y, df[["age", "sex"]])
+        .predict(nd, type="survival", times=[200, 400], ci=True, format="pandas")
+    )
+    for j in range(1, 3):
+        w90 = pred_90[f"subject_{j}_upper"].to_numpy() - pred_90[f"subject_{j}_lower"].to_numpy()
+        w99 = pred_99[f"subject_{j}_upper"].to_numpy() - pred_99[f"subject_{j}_lower"].to_numpy()
+        assert np.all(w99 >= w90 - 1e-12)
+
+
+def test_predict_survival_ci_without_ci_unchanged(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    model = AFT("weibull").fit(y, df[["age", "sex"]])
+    nd = df[["age", "sex"]].iloc[:2]
+    times = [180, 365]
+    no_ci = model.predict(nd, type="survival", times=times, format="pandas")
+    with_ci = model.predict(nd, type="survival", times=times, ci=True, format="pandas")
+    for j in range(1, 3):
+        np.testing.assert_allclose(
+            with_ci[f"subject_{j}"].to_numpy(), no_ci[f"subject_{j}"].to_numpy()
+        )
+
+
+def test_predict_survival_ci_conditional_after_raises(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    model = AFT("weibull").fit(y, df[["age", "sex"]])
+    with pytest.raises(NotImplementedError, match="conditional_after"):
+        model.predict(
+            df[["age", "sex"]].iloc[:1],
+            type="survival",
+            times=[200],
+            ci=True,
+            conditional_after=100.0,
+        )
+
+
+@pytest.mark.slow
+def test_predict_survival_ci_vs_bootstrap(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    model = AFT("weibull").fit(y, df[["age", "sex"]])
+    nd = df[["age", "sex"]].iloc[:2]
+    times = np.array([200, 400])
+    rng = np.random.default_rng(42)
+    n_boot = 500
+    boot_surv = np.zeros((n_boot, len(times), 2))
+    n = len(df)
+    for b in range(n_boot):
+        idx = rng.choice(n, size=n, replace=True)
+        df_b = df.iloc[idx].reset_index(drop=True)
+        y_b = Surv.right(df_b["time"], event=(df_b["status"] == 2))
+        try:
+            m_b = AFT("weibull").fit(y_b, df_b[["age", "sex"]])
+            s_b = m_b.predict(nd, type="survival", times=list(times), format="pandas")
+            for j in range(2):
+                boot_surv[b, :, j] = s_b[f"subject_{j + 1}"].to_numpy()
+        except Exception:
+            boot_surv[b] = np.nan
+
+    valid = ~np.isnan(boot_surv[:, 0, 0])
+    boot_valid = boot_surv[valid]
+    boot_se = boot_valid.std(axis=0)
+    delta_se = np.zeros((len(times), 2))
+    se_s = model._survival_se(model._design(nd), times)
+    delta_se = se_s
+    # Delta-method SE should be within a factor of 2 of bootstrap SE
+    for j in range(2):
+        ratio = delta_se[:, j] / boot_se[:, j]
+        assert np.all(ratio > 0.3), f"Delta SE too small vs bootstrap for subject {j + 1}"
+        assert np.all(ratio < 3.0), f"Delta SE too large vs bootstrap for subject {j + 1}"
+
+
 def test_aft_loglogistic_predict_rmst_sigma_ge_1(lung_surv) -> None:  # type: ignore[no-untyped-def]
     df, y = lung_surv
     aft = AFT(dist="loglogistic").fit(y, df[["age", "sex"]])
