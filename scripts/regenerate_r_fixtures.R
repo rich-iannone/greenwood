@@ -679,4 +679,39 @@ write_json_fixture(
   "td_auc_lung"
 )
 
+# -- Cox residual diagnostics (Breslow ties) --------------------------------------
+
+cox_residuals_breslow_fixture <- function() {
+  cm <- coxph(Surv(time, status) ~ age + sex, data = lung, ties = "breslow")
+  mart <- residuals(cm, "martingale")
+  dev <- residuals(cm, "deviance")
+  score <- residuals(cm, "score")
+  dfb <- residuals(cm, "dfbeta")
+  dfbs <- residuals(cm, "dfbetas")
+  sch <- residuals(cm, "schoenfeld")
+
+  # Scaled Schoenfeld: D * var(beta) %*% schoenfeld + beta (Grambsch-Therneau 1994)
+  ndead <- nrow(sch)
+  ssch <- sch %*% cm$var * ndead + rep(cm$coefficients, each = ndead)
+
+  # Event times for scaled Schoenfeld (one per event, in order)
+  event_mask <- lung$status == 2
+  event_times <- sort(lung$time[event_mask])
+
+  list(
+    martingale = unname(mart),
+    deviance = unname(dev),
+    score_age = unname(score[, 1]),
+    score_sex = unname(score[, 2]),
+    dfbeta_age = unname(dfb[, 1]),
+    dfbeta_sex = unname(dfb[, 2]),
+    dfbetas_age = unname(dfbs[, 1]),
+    dfbetas_sex = unname(dfbs[, 2]),
+    scaledsch_age = unname(ssch[, 1]),
+    scaledsch_sex = unname(ssch[, 2]),
+    scaledsch_times = unname(event_times)
+  )
+}
+write_json_fixture(cox_residuals_breslow_fixture(), "cox_residuals_breslow")
+
 cat("done\n")
