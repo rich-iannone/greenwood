@@ -93,14 +93,15 @@ time-stratified models when you have reason to suspect a time-varying effect.
 
 ## Residuals
 
-Residuals reveal how individual observations relate to the fitted model. Martingale
-residuals, one per subject, are the difference between the observed number of events and the
-number the model expected; large negative values flag subjects who lived much longer than
-predicted. Schoenfeld residuals, one per event, underlie the proportional hazards test and
-are useful for spotting time trends in a covariate's effect.
+Residuals reveal how individual observations relate to the fitted model. The `residuals()` method
+supports seven types, each answering a different diagnostic question.
 
-The martingale residuals come back as a NumPy array with one entry per subject. There are 228
-of them, so we look at the first five rather than the whole array.
+### Martingale and deviance residuals
+
+Martingale residuals, one per subject, are the difference between the observed number of
+events and the number the model expected. Large negative values flag subjects who lived much
+longer than predicted. Deviance residuals are a normalized version that is more symmetrically
+distributed and better for spotting outliers.
 
 ```{python}
 # Load data and build the response
@@ -114,17 +115,55 @@ cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
 cox.residuals("martingale")[:5]
 ```
 
-The Schoenfeld residuals come back as a DataFrame instead, with one row per event and one
-column per covariate.
+```{python}
+# Deviance residuals are more symmetric, useful for identifying outliers
+cox.residuals("deviance")[:5]
+```
+
+### Schoenfeld and scaled Schoenfeld residuals
+
+Schoenfeld residuals have one row per event and one column per covariate. They underlie the
+proportional hazards test and are useful for spotting time trends in a covariate's effect.
+Scaled Schoenfeld residuals (Grambsch-Therneau) are centered on the coefficient estimate, so
+under the PH assumption, each row's expected value equals the true coefficient.
 
 ```{python}
 # Compute Schoenfeld residuals (one row per event, one column per covariate)
 cox.residuals("schoenfeld", format="polars")
 ```
 
-Taken together, martingale residuals are most useful for spotting influential subjects or a
-nonlinear covariate relationship, while Schoenfeld residuals are the basis for the proportional
-hazards test and for plotting a covariate's effect against time.
+```{python}
+# Scaled Schoenfeld residuals: centered on beta, used by cox_zph()
+cox.residuals("scaledsch", format="polars")
+```
+
+### Score, dfbeta, and dfbetas residuals
+
+Score residuals (efficient score contributions) have one row per observation and one column per
+covariate. They are the building blocks for the robust sandwich variance. Dfbeta residuals
+approximate the change in each coefficient if observation $i$ were deleted. Dfbetas standardizes
+dfbeta by the coefficient standard error, making values comparable across covariates on different
+scales.
+
+```{python}
+# Score residuals: one row per subject, one column per covariate
+cox.residuals("score", format="polars")
+```
+
+```{python}
+# Dfbeta: approximate leave-one-out influence on each coefficient
+cox.residuals("dfbeta", format="polars")
+```
+
+```{python}
+# Dfbetas: standardized dfbeta, comparable across covariates
+cox.residuals("dfbetas", format="polars")
+```
+
+Martingale and deviance residuals are most useful for spotting outliers or a nonlinear
+covariate relationship. Schoenfeld residuals are the basis for the proportional hazards test.
+Score, dfbeta, and dfbetas residuals assess the influence of individual observations on the
+fitted coefficients.
 
 ## Baseline hazard and predicted survival
 
@@ -212,7 +251,7 @@ y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 stratified = gw.CoxPH().fit(y, lung[["age", "ph.ecog"]], strata=lung["sex"])
 ```
 
-As with any fitted model, we can print `stratified` for a summary 
+As with any fitted model, we can print `stratified` for a summary
 
 ```{python}
 stratified
