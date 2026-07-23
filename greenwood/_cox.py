@@ -1414,15 +1414,13 @@ class CoxPH:
         ```
         """
         if type == "martingale":
-            risk = np.exp(self._x @ self.coef_)
-            cumhaz_i = np.zeros(self._x.shape[0])
-            for (members, _), (_, times, cumhaz) in zip(
-                self._strata_groups, self._baseline(), strict=True
-            ):
-                idx = np.searchsorted(times, self._exit[members], side="right") - 1
-                h0 = np.where(idx >= 0, cumhaz[idx.clip(min=0)], 0.0)
-                cumhaz_i[members] = h0 * risk[members]
-            return self._event.astype(float) - cumhaz_i
+            return self._martingale_residuals()
+        if type == "deviance":
+            mart = self._martingale_residuals()
+            event = self._event.astype(float)
+            with np.errstate(divide="ignore", invalid="ignore"):
+                log_term = np.where(event > mart, np.log(event - mart), 0.0)
+            return np.sign(mart) * np.sqrt(-2.0 * (mart + event * log_term))
         if type == "schoenfeld":
             residuals, _, _ = self._event_contributions()
             arr = np.array(residuals)
