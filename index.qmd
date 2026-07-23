@@ -1,5 +1,5 @@
 ---
-title: Greenwood
+title: ""
 toc: false
 ---
 
