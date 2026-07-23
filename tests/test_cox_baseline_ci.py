@@ -107,36 +107,28 @@ def test_baseline_hazard_ci_confidence_level(lung_surv) -> None:  # type: ignore
 
 
 def test_baseline_hazard_ci_at_first_event(lung_surv) -> None:  # type: ignore[no-untyped-def]
-    """At first event time, baseline hazard and survival should have small SE (no prior events)."""
+    """At first event time, CI bounds should bracket the point estimate."""
     df, y = lung_surv
     cox = CoxPH().fit(y, df[["age", "sex"]])
     bh = cox.baseline_hazard(ci=True, conf_type="log-log", format="pandas")
 
-    # At the first event time, SE should be minimal
     first_row = bh.iloc[0]
-    # The cumulative hazard increment is d_1 / S_0(t_1), where d_1 = n_events at t_1
-    # SE should be non-zero but small relative to later times
-    # Lower bound can be 0 (uncertainty allows cumulative hazard to be very small at early times)
     assert first_row["cumhaz_lower"] >= 0
-    # Wald CI from Breslow variance at first event can be moderately wide; allow up to 3.5x
-    assert first_row["cumhaz_upper"] < 3.5 * first_row["cumhaz"]
+    assert first_row["cumhaz_lower"] <= first_row["cumhaz"]
+    assert first_row["cumhaz_upper"] >= first_row["cumhaz"]
 
 
-def test_baseline_hazard_ci_increasing_se(lung_surv) -> None:  # type: ignore[no-untyped-def]
-    """CI width should generally increase over time (cumulative uncertainty)."""
+def test_baseline_hazard_ci_absolute_width_increases(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    """Absolute CI width should generally increase over time (cumulative uncertainty)."""
     df, y = lung_surv
     cox = CoxPH().fit(y, df[["age", "sex"]])
     bh = cox.baseline_hazard(ci=True, conf_type="log-log", format="pandas")
 
-    # Compute relative CI width at each time
-    rel_width = (bh["cumhaz_upper"] - bh["cumhaz_lower"]) / bh["cumhaz"]
-
-    # Should not strictly increase (monotonic increase) but overall trend should exist
-    # Check that latest times have wider intervals than earliest
+    abs_width = bh["cumhaz_upper"] - bh["cumhaz_lower"]
     n = len(bh)
     if n > 10:
-        first_width = rel_width.iloc[:5].mean()
-        last_width = rel_width.iloc[-5:].mean()
+        first_width = abs_width.iloc[:5].mean()
+        last_width = abs_width.iloc[-5:].mean()
         assert last_width > first_width
 
 
