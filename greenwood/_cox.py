@@ -1379,27 +1379,18 @@ class CoxPH:
 
         Examples
         --------
-        Martingale residuals are returned as one value per observation to assess
-        overall model fit. Large negative residuals may indicate overpredicted risk:
-
         ```{python}
         import greenwood as gw
 
-        # Load data and fit a Cox model
         lung = gw.load_dataset("lung", backend="polars")
         y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
         cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
 
-        # Compute martingale residuals for the first five observations
         cox.residuals("martingale")[:5]
         ```
 
-        Schoenfeld residuals are useful for checking the proportional-hazards assumption
-        by plotting against time or other variables:
-
         ```{python}
-        # Export Schoenfeld residuals as a Polars DataFrame
-        cox.residuals("schoenfeld", format="polars")
+        cox.residuals("dfbeta", format="polars")
         ```
         """
         if type == "martingale":
