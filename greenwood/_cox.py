@@ -1345,12 +1345,6 @@ class CoxPH:
     def residuals(self, type: str = "martingale", *, format: str | None = None) -> Any:
         r"""Return diagnostic residuals from the fitted Cox model.
 
-        Residuals measure the difference between observed events and model predictions,
-        helping diagnose model fit and identify outliers or influential observations.
-        Martingale residuals are individual-level. Schoenfeld residuals are event-level
-        and useful for checking the proportional-hazards assumption. Both types can be
-        visualized against time or other variables to detect systematic deviations.
-
         Parameters
         ----------
         type
@@ -1373,16 +1367,9 @@ class CoxPH:
               across covariates on different scales.
 
         format
-            Output format (for `type="schoenfeld"` only): `None` (default), `"pandas"`,
-            `"polars"`, or `"pyarrow"`.
-
-            - `None` (default): Auto-detects and tries Polars first, falls back to Pandas,
-              then Pyarrow. Raises an error if no DataFrame library is installed.
-            - `"pandas"`: returns pandas.DataFrame.
-            - `"polars"`: returns polars.DataFrame.
-            - `"pyarrow"`: returns pyarrow.Table.
-
-            Returns a numpy array for `type="martingale"`.
+            Output format for multi-column residual types: `None` (auto-detect), `"pandas"`,
+            `"polars"`, or `"pyarrow"`. Returns a numpy array for `"martingale"` and
+            `"deviance"`.
 
         Returns
         -------
