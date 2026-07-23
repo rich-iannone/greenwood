@@ -423,6 +423,30 @@ def test_cox_survival_ci_matches_r() -> None:
         )
 
 
+def test_cox_baseline_hazard_ci_matches_r() -> None:
+    df = gw.load_dataset("lung", backend="pandas")
+    y = Surv.right(df["time"], event=(df["status"] == 2))
+    fixture = load_fixture("cox_basehaz_ci")
+    cox = gw.CoxPH(ties="breslow").fit(y, df[["age", "sex"]])
+    bh = cox.baseline_hazard(ci=True, conf_type="log-log", format="pandas")
+    times = np.asarray(fixture["times"])
+    idx = np.searchsorted(bh["time"].to_numpy(), times, side="right") - 1
+    assert_allclose_to_r(bh["cumhaz"].to_numpy()[idx], fixture["cumhaz"], what="basehaz cumhaz")
+    assert_allclose_to_r(
+        bh["survival"].to_numpy()[idx], fixture["survival"], what="basehaz survival"
+    )
+    assert_allclose_to_r(
+        bh["survival_lower"].to_numpy()[idx],
+        fixture["lower_loglog"],
+        what="basehaz survival lower (log-log)",
+    )
+    assert_allclose_to_r(
+        bh["survival_upper"].to_numpy()[idx],
+        fixture["upper_loglog"],
+        what="basehaz survival upper (log-log)",
+    )
+
+
 @pytest.mark.parametrize("dist", ["weibull", "exponential", "lognormal", "loglogistic"])
 def test_aft_matches_r_survreg(dist: str) -> None:
     df = gw.load_dataset("lung", backend="pandas")
