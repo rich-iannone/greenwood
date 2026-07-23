@@ -1338,6 +1338,10 @@ class CoxPH:
 
     # -- residuals & diagnostics ---------------------------------------------
 
+    _RESIDUAL_TYPES = frozenset(
+        {"martingale", "deviance", "score", "schoenfeld", "scaledsch", "dfbeta", "dfbetas"}
+    )
+
     def residuals(self, type: str = "martingale", *, format: str | None = None) -> Any:
         r"""Return diagnostic residuals from the fitted Cox model.
 
