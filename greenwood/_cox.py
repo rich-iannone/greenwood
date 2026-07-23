@@ -1350,14 +1350,23 @@ class CoxPH:
         Parameters
         ----------
         type
-            Type of residuals to return: `"martingale"` (default) or `"schoenfeld"`.
+            Type of residuals to return:
 
-            - `"martingale"`: One residual per observation. Ranges from $-\infty$ to 1. Positive
-              values suggest the model underestimated risk. Negative values suggest
-              overestimation. Useful for overall fit assessment.
-            - `"schoenfeld"`: One row per event with one column per covariate. Useful for
-              checking the proportional-hazards assumption: plot against time to look for
-              trends. Scaled Schoenfeld residuals are used in the `cox_zph()` test.
+            - `"martingale"` (default): One per observation, range $(-\infty, 1]$. Positive
+              values indicate underestimated risk.
+            - `"deviance"`: Normalized martingale residuals, more symmetrically distributed.
+              Useful for detecting outliers.
+            - `"score"`: Efficient score residuals, one row per observation and one column per
+              covariate. Used to construct the robust (sandwich) variance estimator.
+            - `"schoenfeld"`: One row per event, one column per covariate. Useful for checking
+              the proportional-hazards assumption.
+            - `"scaledsch"`: Scaled Schoenfeld residuals (Grambsch-Therneau), one row per event.
+              Under the PH assumption, the expected value at each event time equals the true
+              coefficient.
+            - `"dfbeta"`: Approximate change in each coefficient if observation $i$ were deleted.
+              One row per observation, one column per covariate.
+            - `"dfbetas"`: Standardized dfbeta (dfbeta divided by the coefficient SE). Comparable
+              across covariates on different scales.
 
         format
             Output format (for `type="schoenfeld"` only): `None` (default), `"pandas"`,
