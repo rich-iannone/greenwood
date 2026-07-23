@@ -21,7 +21,6 @@ Robust cross-validation and performance assessment for imbalanced survival data.
 
 Systematic confidence interval and standard error support across all estimators.
 
-- Standard errors and CIs for AFT survival predictions
 - Bootstrap and analytical methods for uncertainty quantification
 - Predictive intervals for time-varying Cox model forecasts
 
