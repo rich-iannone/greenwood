@@ -1383,19 +1383,8 @@ class CoxPH:
         Returns
         -------
         ndarray or DataFrame
-            For `type="martingale"`: a 1-D array with one residual per observation.
-            For `type="schoenfeld"`: a DataFrame with one row per event and one column
-            per covariate, ordered by stratum and then event time.
-
-        Details
-        -------
-        Martingale residuals are computed as:
-        $M_i = \text{event}_i - H_0(t_i) \exp(X_i \beta)$, where $H_0$ is the baseline
-        cumulative hazard and $X_i \beta$ is the linear predictor.
-
-        Schoenfeld residuals are computed at each event time as $X_i - \bar{X}$, where $X_i$
-        is the covariate vector of the subject with the event and $\bar{X}$ is the weighted
-        mean covariate vector for the risk set.
+            For `"martingale"` and `"deviance"`: a 1-D array (one value per observation).
+            For all other types: a DataFrame with one column per covariate.
 
         Examples
         --------
