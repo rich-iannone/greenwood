@@ -1063,13 +1063,11 @@ class CoxPH:
 
             if conf_type == "log-log":
                 # Log-log transform: Y = log(-log(S)) = log(H)
-                # Only numerically stable when SE on log scale is small
+                # SE(Y) = SE(H) / H via the delta method (dlog(H)/dH = 1/H)
                 log_s = -cumhaz_arr
 
-                # Compute SE for log-log transform
                 with np.errstate(divide="ignore", invalid="ignore"):
-                    denom = np.abs(cumhaz_arr * np.log(survival_arr))
-                    se_logl = np.where(denom > 1e-10, se_cumhaz / denom, np.inf)
+                    se_logl = np.where(cumhaz_arr > 1e-10, se_cumhaz / cumhaz_arr, np.inf)
 
                 # Use log-log only where SE < 2 (stable region)
                 logl_usable = np.isfinite(se_logl) & (se_logl < 2.0)

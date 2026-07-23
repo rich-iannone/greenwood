@@ -335,6 +335,24 @@ cox_survci_fixture <- function() {
 }
 write_json_fixture(cox_survci_fixture(), "cox_survci_breslow")
 
+# Baseline hazard CIs from survfit.coxph (no newdata = baseline survival).
+cox_basehaz_ci_fixture <- function() {
+  cm <- coxph(Surv(time, status) ~ age + sex, data = lung, ties = "breslow")
+  sf <- survfit(cm)  # baseline survival at mean covariates
+  times <- c(100, 200, 365, 500, 800)
+  i <- findInterval(times, sf$time)
+  list(
+    times = times,
+    cumhaz = sf$cumhaz[i],
+    survival = sf$surv[i],
+    se_cumhaz = sf$std.chaz[i],
+    lower = sf$lower[i],
+    upper = sf$upper[i],
+    conf_type = sf$conf.type
+  )
+}
+write_json_fixture(cox_basehaz_ci_fixture(), "cox_basehaz_ci")
+
 # Time-varying-covariate Cox on counting-process (start, stop] data (the heart transplant
 # study). `transplant` changes within a subject across intervals. The data are stored in the
 # fixture so the Python test reconstructs the exact same design.
