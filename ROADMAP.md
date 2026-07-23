@@ -88,8 +88,6 @@ Extended methods for cause-specific and multi-state analyses.
 
 Random-effects Cox models for correlated survival data.
 
-- **Log-normal shared frailty** (follow-on): more flexible hazard heterogeneity, which requires
-  Laplace approximation over the random effects (analogous to `coxme` in R)
 - Conditional and marginal predictions for known and new clusters
 
 ### Advanced Performance Metrics
