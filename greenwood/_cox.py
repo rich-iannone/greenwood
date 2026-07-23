@@ -1426,7 +1426,41 @@ class CoxPH:
             arr = np.array(residuals)
             data = {name: arr[:, j] for j, name in enumerate(self.term_names_)}
             return to_dataframe(data, format=format)
-        raise ValueError(f"Unknown residual type {type!r}; use 'martingale' or 'schoenfeld'.")
+        if type == "scaledsch":
+            residuals, _, _ = self._event_contributions()
+            arr = np.array(residuals)
+            scaled = arr @ self.naive_vcov_ * len(residuals) + self.coef_[None, :]
+            data = {name: scaled[:, j] for j, name in enumerate(self.term_names_)}
+            return to_dataframe(data, format=format)
+        if type == "score":
+            scores = self._score_residuals(self.coef_)
+            data = {name: scores[:, j] for j, name in enumerate(self.term_names_)}
+            return to_dataframe(data, format=format)
+        if type == "dfbeta":
+            scores = self._score_residuals(self.coef_)
+            dfb = scores @ self.naive_vcov_
+            data = {name: dfb[:, j] for j, name in enumerate(self.term_names_)}
+            return to_dataframe(data, format=format)
+        if type == "dfbetas":
+            scores = self._score_residuals(self.coef_)
+            dfb = scores @ self.naive_vcov_
+            dfbs = dfb / self.naive_std_error_[None, :]
+            data = {name: dfbs[:, j] for j, name in enumerate(self.term_names_)}
+            return to_dataframe(data, format=format)
+        valid = "', '".join(sorted(self._RESIDUAL_TYPES))
+        raise ValueError(f"Unknown residual type {type!r}; use one of '{valid}'.")
+
+    def _martingale_residuals(self) -> Array:
+        """Martingale residuals: event_i - cumhaz_i."""
+        risk = np.exp(self._x @ self.coef_)
+        cumhaz_i = np.zeros(self._x.shape[0])
+        for (members, _), (_, times, cumhaz) in zip(
+            self._strata_groups, self._baseline(), strict=True
+        ):
+            idx = np.searchsorted(times, self._exit[members], side="right") - 1
+            h0 = np.where(idx >= 0, cumhaz[idx.clip(min=0)], 0.0)
+            cumhaz_i[members] = h0 * risk[members]
+        return self._event.astype(float) - cumhaz_i
 
     def _event_contributions(self) -> tuple[list[Array], list[float], list[Array]]:
         """Per-event Schoenfeld residual, event time, and risk-set covariance share.
