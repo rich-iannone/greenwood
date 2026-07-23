@@ -263,7 +263,7 @@ def test_residuals_unknown_type(lung_surv) -> None:  # type: ignore[no-untyped-d
     df, y = lung_surv
     cox = CoxPH().fit(y, df[["age", "sex"]])
     with pytest.raises(ValueError, match="Unknown residual type"):
-        cox.residuals("deviance")
+        cox.residuals("hazard")
 
 
 def test_cox_zph_transform_validation(lung_surv) -> None:  # type: ignore[no-untyped-def]
@@ -783,6 +783,55 @@ def test_cox_frailty_test_unavailable_guard() -> None:
     cox.frailty_lrt_p_value_ = None
     with pytest.raises(ValueError, match="unavailable"):
         cox.frailty_test()
+
+
+def test_residuals_deviance_shape_and_sign(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    cox = CoxPH(ties="breslow").fit(y, df[["age", "sex"]])
+    dev = cox.residuals("deviance")
+    assert dev.shape == (cox.n_,)
+    assert np.isfinite(dev).all()
+
+
+def test_residuals_score_shape(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    cox = CoxPH(ties="breslow").fit(y, df[["age", "sex"]])
+    score = cox.residuals("score", format="pandas")
+    assert score.shape == (cox.n_, 2)
+    assert list(score.columns) == ["age", "sex"]
+
+
+def test_residuals_dfbeta_shape(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    cox = CoxPH(ties="breslow").fit(y, df[["age", "sex"]])
+    dfb = cox.residuals("dfbeta", format="pandas")
+    assert dfb.shape == (cox.n_, 2)
+    assert list(dfb.columns) == ["age", "sex"]
+
+
+def test_residuals_dfbetas_shape(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    cox = CoxPH(ties="breslow").fit(y, df[["age", "sex"]])
+    dfbs = cox.residuals("dfbetas", format="pandas")
+    assert dfbs.shape == (cox.n_, 2)
+    assert list(dfbs.columns) == ["age", "sex"]
+
+
+def test_residuals_scaledsch_shape(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    cox = CoxPH(ties="breslow").fit(y, df[["age", "sex"]])
+    ssch = cox.residuals("scaledsch", format="pandas")
+    assert ssch.shape[1] == 2
+    assert list(ssch.columns) == ["age", "sex"]
+    assert ssch.shape[0] == cox.n_event_
+
+
+def test_residuals_dfbetas_is_standardized_dfbeta(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    cox = CoxPH(ties="breslow").fit(y, df[["age", "sex"]])
+    dfb = cox.residuals("dfbeta", format="pandas").to_numpy()
+    dfbs = cox.residuals("dfbetas", format="pandas").to_numpy()
+    np.testing.assert_allclose(dfbs, dfb / cox.naive_std_error_[None, :], atol=1e-14)
 
 
 def test_well_scaled_covariates_no_warning() -> None:
