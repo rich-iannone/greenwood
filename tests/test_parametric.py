@@ -283,11 +283,15 @@ def test_predict_survival_ci_plain(lung_surv, dist) -> None:  # type: ignore[no-
 def test_predict_survival_ci_wider_at_higher_conf_level(lung_surv) -> None:  # type: ignore[no-untyped-def]
     df, y = lung_surv
     nd = df[["age", "sex"]].iloc[:2]
-    pred_90 = AFT("weibull", conf_level=0.90).fit(y, df[["age", "sex"]]).predict(
-        nd, type="survival", times=[200, 400], ci=True, format="pandas"
+    pred_90 = (
+        AFT("weibull", conf_level=0.90)
+        .fit(y, df[["age", "sex"]])
+        .predict(nd, type="survival", times=[200, 400], ci=True, format="pandas")
     )
-    pred_99 = AFT("weibull", conf_level=0.99).fit(y, df[["age", "sex"]]).predict(
-        nd, type="survival", times=[200, 400], ci=True, format="pandas"
+    pred_99 = (
+        AFT("weibull", conf_level=0.99)
+        .fit(y, df[["age", "sex"]])
+        .predict(nd, type="survival", times=[200, 400], ci=True, format="pandas")
     )
     for j in range(1, 3):
         w90 = pred_90[f"subject_{j}_upper"].to_numpy() - pred_90[f"subject_{j}_lower"].to_numpy()
@@ -352,8 +356,8 @@ def test_predict_survival_ci_vs_bootstrap(lung_surv) -> None:  # type: ignore[no
     # Delta-method SE should be within a factor of 2 of bootstrap SE
     for j in range(2):
         ratio = delta_se[:, j] / boot_se[:, j]
-        assert np.all(ratio > 0.3), f"Delta SE too small vs bootstrap for subject {j+1}"
-        assert np.all(ratio < 3.0), f"Delta SE too large vs bootstrap for subject {j+1}"
+        assert np.all(ratio > 0.3), f"Delta SE too small vs bootstrap for subject {j + 1}"
+        assert np.all(ratio < 3.0), f"Delta SE too large vs bootstrap for subject {j + 1}"
 
 
 def test_aft_loglogistic_predict_rmst_sigma_ge_1(lung_surv) -> None:  # type: ignore[no-untyped-def]
