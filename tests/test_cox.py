@@ -227,6 +227,15 @@ def test_baseline_hazard_is_monotone(lung_surv) -> None:  # type: ignore[no-unty
     assert np.all(np.diff(bh["survival"]) <= 1e-12)  # survival is non-increasing
 
 
+def test_baseline_hazard_ci_without_ci_unchanged(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    cox = CoxPH().fit(y, df[["age", "sex"]])
+    bh_no_ci = cox.baseline_hazard()
+    bh_ci = cox.baseline_hazard(ci=True)
+    np.testing.assert_allclose(bh_ci["cumhaz"], bh_no_ci["cumhaz"])
+    np.testing.assert_allclose(bh_ci["survival"], bh_no_ci["survival"])
+
+
 def test_predict_risk_is_exp_lp(lung_surv) -> None:  # type: ignore[no-untyped-def]
     df, y = lung_surv
     cox = CoxPH().fit(y, df[["age", "sex"]])
