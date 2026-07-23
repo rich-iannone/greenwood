@@ -43,8 +43,6 @@ Cox regression with covariates that evolve over follow-up time.
 
 Outlier detection and case-level assessment for Cox models.
 
-- Deviance and dfbeta residuals for influence assessment
-- Scaled Schoenfeld residuals for proportional-hazards diagnosis
 - Leverage and hat-matrix diagnostics
 - Visualizations for outlier and influential point detection
 

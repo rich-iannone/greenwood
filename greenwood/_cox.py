@@ -1338,97 +1338,109 @@ class CoxPH:
 
     # -- residuals & diagnostics ---------------------------------------------
 
+    _RESIDUAL_TYPES = frozenset(
+        {"martingale", "deviance", "score", "schoenfeld", "scaledsch", "dfbeta", "dfbetas"}
+    )
+
     def residuals(self, type: str = "martingale", *, format: str | None = None) -> Any:
         r"""Return diagnostic residuals from the fitted Cox model.
-
-        Residuals measure the difference between observed events and model predictions,
-        helping diagnose model fit and identify outliers or influential observations.
-        Martingale residuals are individual-level. Schoenfeld residuals are event-level
-        and useful for checking the proportional-hazards assumption. Both types can be
-        visualized against time or other variables to detect systematic deviations.
 
         Parameters
         ----------
         type
-            Type of residuals to return: `"martingale"` (default) or `"schoenfeld"`.
+            Type of residuals to return:
 
-            - `"martingale"`: One residual per observation. Ranges from $-\infty$ to 1. Positive
-              values suggest the model underestimated risk. Negative values suggest
-              overestimation. Useful for overall fit assessment.
-            - `"schoenfeld"`: One row per event with one column per covariate. Useful for
-              checking the proportional-hazards assumption: plot against time to look for
-              trends. Scaled Schoenfeld residuals are used in the `cox_zph()` test.
+            - `"martingale"` (default): One per observation, range $(-\infty, 1]$. Positive
+              values indicate underestimated risk.
+            - `"deviance"`: Normalized martingale residuals, more symmetrically distributed.
+              Useful for detecting outliers.
+            - `"score"`: Efficient score residuals, one row per observation and one column per
+              covariate. Used to construct the robust (sandwich) variance estimator.
+            - `"schoenfeld"`: One row per event, one column per covariate. Useful for checking
+              the proportional-hazards assumption.
+            - `"scaledsch"`: Scaled Schoenfeld residuals (Grambsch-Therneau), one row per event.
+              Under the PH assumption, the expected value at each event time equals the true
+              coefficient.
+            - `"dfbeta"`: Approximate change in each coefficient if observation $i$ were deleted.
+              One row per observation, one column per covariate.
+            - `"dfbetas"`: Standardized dfbeta (dfbeta divided by the coefficient SE). Comparable
+              across covariates on different scales.
 
         format
-            Output format (for `type="schoenfeld"` only): `None` (default), `"pandas"`,
-            `"polars"`, or `"pyarrow"`.
-
-            - `None` (default): Auto-detects and tries Polars first, falls back to Pandas,
-              then Pyarrow. Raises an error if no DataFrame library is installed.
-            - `"pandas"`: returns pandas.DataFrame.
-            - `"polars"`: returns polars.DataFrame.
-            - `"pyarrow"`: returns pyarrow.Table.
-
-            Returns a numpy array for `type="martingale"`.
+            Output format for multi-column residual types: `None` (auto-detect), `"pandas"`,
+            `"polars"`, or `"pyarrow"`. Returns a numpy array for `"martingale"` and
+            `"deviance"`.
 
         Returns
         -------
         ndarray or DataFrame
-            For `type="martingale"`: a 1-D array with one residual per observation.
-            For `type="schoenfeld"`: a DataFrame with one row per event and one column
-            per covariate, ordered by stratum and then event time.
-
-        Details
-        -------
-        Martingale residuals are computed as:
-        $M_i = \text{event}_i - H_0(t_i) \exp(X_i \beta)$, where $H_0$ is the baseline
-        cumulative hazard and $X_i \beta$ is the linear predictor.
-
-        Schoenfeld residuals are computed at each event time as $X_i - \bar{X}$, where $X_i$
-        is the covariate vector of the subject with the event and $\bar{X}$ is the weighted
-        mean covariate vector for the risk set.
+            For `"martingale"` and `"deviance"`: a 1-D array (one value per observation).
+            For all other types: a DataFrame with one column per covariate.
 
         Examples
         --------
-        Martingale residuals are returned as one value per observation to assess
-        overall model fit. Large negative residuals may indicate overpredicted risk:
-
         ```{python}
         import greenwood as gw
 
-        # Load data and fit a Cox model
         lung = gw.load_dataset("lung", backend="polars")
         y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
         cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
 
-        # Compute martingale residuals for the first five observations
         cox.residuals("martingale")[:5]
         ```
 
-        Schoenfeld residuals are useful for checking the proportional-hazards assumption
-        by plotting against time or other variables:
-
         ```{python}
-        # Export Schoenfeld residuals as a Polars DataFrame
-        cox.residuals("schoenfeld", format="polars")
+        cox.residuals("dfbeta", format="polars")
         ```
         """
         if type == "martingale":
-            risk = np.exp(self._x @ self.coef_)
-            cumhaz_i = np.zeros(self._x.shape[0])
-            for (members, _), (_, times, cumhaz) in zip(
-                self._strata_groups, self._baseline(), strict=True
-            ):
-                idx = np.searchsorted(times, self._exit[members], side="right") - 1
-                h0 = np.where(idx >= 0, cumhaz[idx.clip(min=0)], 0.0)
-                cumhaz_i[members] = h0 * risk[members]
-            return self._event.astype(float) - cumhaz_i
+            return self._martingale_residuals()
+        if type == "deviance":
+            mart = self._martingale_residuals()
+            event = self._event.astype(float)
+            with np.errstate(divide="ignore", invalid="ignore"):
+                log_term = np.where(event > mart, np.log(event - mart), 0.0)
+            return np.sign(mart) * np.sqrt(-2.0 * (mart + event * log_term))
         if type == "schoenfeld":
             residuals, _, _ = self._event_contributions()
             arr = np.array(residuals)
             data = {name: arr[:, j] for j, name in enumerate(self.term_names_)}
             return to_dataframe(data, format=format)
-        raise ValueError(f"Unknown residual type {type!r}; use 'martingale' or 'schoenfeld'.")
+        if type == "scaledsch":
+            residuals, _, _ = self._event_contributions()
+            arr = np.array(residuals)
+            scaled = arr @ self.naive_vcov_ * len(residuals) + self.coef_[None, :]
+            data = {name: scaled[:, j] for j, name in enumerate(self.term_names_)}
+            return to_dataframe(data, format=format)
+        if type == "score":
+            scores = self._score_residuals(self.coef_)
+            data = {name: scores[:, j] for j, name in enumerate(self.term_names_)}
+            return to_dataframe(data, format=format)
+        if type == "dfbeta":
+            scores = self._score_residuals(self.coef_)
+            dfb = scores @ self.naive_vcov_
+            data = {name: dfb[:, j] for j, name in enumerate(self.term_names_)}
+            return to_dataframe(data, format=format)
+        if type == "dfbetas":
+            scores = self._score_residuals(self.coef_)
+            dfb = scores @ self.naive_vcov_
+            dfbs = dfb / self.naive_std_error_[None, :]
+            data = {name: dfbs[:, j] for j, name in enumerate(self.term_names_)}
+            return to_dataframe(data, format=format)
+        valid = "', '".join(sorted(self._RESIDUAL_TYPES))
+        raise ValueError(f"Unknown residual type {type!r}; use one of '{valid}'.")
+
+    def _martingale_residuals(self) -> Array:
+        """Martingale residuals: event_i - cumhaz_i."""
+        risk = np.exp(self._x @ self.coef_)
+        cumhaz_i = np.zeros(self._x.shape[0])
+        for (members, _), (_, times, cumhaz) in zip(
+            self._strata_groups, self._baseline(), strict=True
+        ):
+            idx = np.searchsorted(times, self._exit[members], side="right") - 1
+            h0 = np.where(idx >= 0, cumhaz[idx.clip(min=0)], 0.0)
+            cumhaz_i[members] = h0 * risk[members]
+        return self._event.astype(float) - cumhaz_i
 
     def _event_contributions(self) -> tuple[list[Array], list[float], list[Array]]:
         """Per-event Schoenfeld residual, event time, and risk-set covariance share.

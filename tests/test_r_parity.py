@@ -447,6 +447,36 @@ def test_cox_baseline_hazard_ci_matches_r() -> None:
     )
 
 
+def test_cox_residuals_breslow_match_r() -> None:
+    df = gw.load_dataset("lung", backend="pandas")
+    y = Surv.right(df["time"], event=(df["status"] == 2))
+    fixture = load_fixture("cox_residuals_breslow")
+    cox = gw.CoxPH(ties="breslow").fit(y, df[["age", "sex"]])
+
+    dev = cox.residuals("deviance")
+    assert_allclose_to_r(dev, fixture["deviance"], what="deviance residuals")
+
+    score = cox.residuals("score", format="pandas")
+    assert_allclose_to_r(score["age"].to_numpy(), fixture["score_age"], what="score age")
+    assert_allclose_to_r(score["sex"].to_numpy(), fixture["score_sex"], what="score sex")
+
+    dfb = cox.residuals("dfbeta", format="pandas")
+    assert_allclose_to_r(dfb["age"].to_numpy(), fixture["dfbeta_age"], what="dfbeta age")
+    assert_allclose_to_r(dfb["sex"].to_numpy(), fixture["dfbeta_sex"], what="dfbeta sex")
+
+    dfbs = cox.residuals("dfbetas", format="pandas")
+    assert_allclose_to_r(dfbs["age"].to_numpy(), fixture["dfbetas_age"], what="dfbetas age")
+    assert_allclose_to_r(dfbs["sex"].to_numpy(), fixture["dfbetas_sex"], what="dfbetas sex")
+
+    ssch = cox.residuals("scaledsch", format="pandas")
+    assert_allclose_to_r(
+        ssch["age"].to_numpy(), fixture["scaledsch_age"], what="scaled schoenfeld age"
+    )
+    assert_allclose_to_r(
+        ssch["sex"].to_numpy(), fixture["scaledsch_sex"], what="scaled schoenfeld sex"
+    )
+
+
 @pytest.mark.parametrize("dist", ["weibull", "exponential", "lognormal", "loglogistic"])
 def test_aft_matches_r_survreg(dist: str) -> None:
     df = gw.load_dataset("lung", backend="pandas")
