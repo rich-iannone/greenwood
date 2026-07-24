@@ -390,6 +390,7 @@ def test_stratified_survival_prediction_training_data(lung_surv) -> None:  # typ
     assert result.shape[0] > 0
     # All survival values in [0, 1]
     import polars as pl
+
     surv_cols = [c for c in result.columns if c.startswith("subject_")]
     for col in surv_cols:
         vals = result[col].to_numpy()
@@ -401,7 +402,9 @@ def test_stratified_survival_prediction_newdata(lung_surv) -> None:  # type: ign
     cox = CoxPH().fit(y, df[["age"]], strata=df["sex"])
     newdata = df[["age"]].iloc[:4]
     strata_new = df["sex"].iloc[:4]
-    result = cox.predict(newdata, type="survival", strata=strata_new, times=[180, 365], format="polars")
+    result = cox.predict(
+        newdata, type="survival", strata=strata_new, times=[180, 365], format="polars"
+    )
     assert result.shape == (2, 5)  # 2 times + 4 subjects + 1 time column
     assert set(result.columns) == {"time", "subject_1", "subject_2", "subject_3", "subject_4"}
 
@@ -417,6 +420,7 @@ def test_stratified_survival_prediction_unknown_strata(lung_surv) -> None:  # ty
     df, y = lung_surv
     cox = CoxPH().fit(y, df[["age"]], strata=df["sex"])
     import pandas as pd
+
     with pytest.raises(ValueError, match="not seen at fit time"):
         cox.predict(df[["age"]].iloc[:2], type="survival", strata=pd.Series([99, 1]), times=[180])
 
