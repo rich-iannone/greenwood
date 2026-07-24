@@ -1362,7 +1362,11 @@ class CoxPH:
             predictor), or `"survival"` (survival probability).
         times
             Time points at which to compute survival probabilities (for `type="survival"`). Defaults
-            to the event times from the fitted model.
+            to the union of all event times from the fitted model.
+        strata
+            Stratum labels for new subjects (required when `newdata=` is provided and the model was
+            fitted with `strata=`). Must have one label per row of `newdata=`, matching a stratum
+            label seen at fit time. Ignored for non-stratified models.
         conditional_after
             Optional scalar or per-subject time for conditional survival prediction. Computes
             $P(T > t \mid T > c)$ where $c$ is the conditional_after time.
