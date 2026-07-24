@@ -1338,8 +1338,11 @@ class CoxPH:
 
         `type` is one of `"lp"` (centered linear predictor), `"risk"` (`exp(lp)`), or
         `"survival"`. For `"survival"`, returns a frame of survival probabilities at `times`
-        (defaulting to the event times), one column per row of `newdata`. Survival prediction
-        for stratified models is not yet supported.
+        (defaulting to the union of all event times), one column per row of `newdata`.
+
+        For stratified models, each subject must be assigned to a stratum. When `newdata` is
+        provided, pass `strata=` with one label per row matching a stratum seen at fit time.
+        When `newdata` is `None`, stratum assignments are taken from the fitted data.
 
         `conditional_after` (a scalar or one value per subject) predicts survival conditional
         on having already survived to that time: the returned value at time $t$ is
