@@ -388,9 +388,6 @@ def test_stratified_survival_prediction_training_data(lung_surv) -> None:  # typ
     assert "time" in result.columns
     assert "subject_1" in result.columns
     assert result.shape[0] > 0
-    # All survival values in [0, 1]
-    import polars as pl
-
     surv_cols = [c for c in result.columns if c.startswith("subject_")]
     for col in surv_cols:
         vals = result[col].to_numpy()
