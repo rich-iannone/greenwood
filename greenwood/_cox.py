@@ -1329,6 +1329,7 @@ class CoxPH:
         *,
         type: str = "lp",
         times: Any = None,
+        strata: Any = None,
         conditional_after: Any = None,
         ci: bool = False,
         format: str | None = None,
