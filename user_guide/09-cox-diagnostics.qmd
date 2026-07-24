@@ -283,8 +283,6 @@ stratified.predict(type="survival", times=[180, 365], format="polars").select(
 When predicting for new subjects, pass `strata=` to specify which stratum each subject belongs to.
 
 ```{python}
-import pandas as pd
-
 # Two new subjects: a 50-year-old (stratum sex=1) and a 70-year-old (stratum sex=2)
 newdata = pd.DataFrame({"age": [50, 70], "ph.ecog": [1, 2]})
 
