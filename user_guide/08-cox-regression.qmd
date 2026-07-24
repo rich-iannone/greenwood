@@ -464,15 +464,22 @@ gw.tidy(cox_cluster, format="polars")
 Clustered sandwich standard errors are wider than model-based ones, reflecting the loss of
 information from within-cluster correlation.
 
-## Shared gamma frailty for clustered hazards
+## Shared frailty for clustered hazards
 
 Sometimes cluster correlation is not just a variance issue. If subjects in the same cluster
 (hospital, family, center, repeated-event unit) share unmeasured risk factors, a shared-frailty
 model adds a cluster-level random effect directly to the hazard rather than only correcting standard
 errors.
 
-In Greenwood, this is available through `frailty="gamma"` with a cluster label. The implementation
-supports right-censored data with Breslow ties.
+Greenwood supports two shared-frailty distributions via the `frailty=` argument: `"gamma"` and
+`"lognormal"`. Both require right-censored data with Breslow ties and a `frailty_cluster=` label.
+
+### Gamma frailty
+
+The gamma frailty model places a multiplicative cluster-level random effect on the hazard:
+$h(t \mid x, z) = z \cdot h_0(t) \exp(\beta^\top x)$ with $z \sim \text{Gamma}(1/\theta, 1/\theta)$.
+The variance parameter $\theta$ is estimated via an EM algorithm. The `frailty_effect_` values are
+on the multiplicative scale and are always positive.
 
 ```{python}
 # Load data and build the response
@@ -511,11 +518,40 @@ Interpretation:
 - larger values indicate stronger between-cluster hazard heterogeneity.
 - the LR test evaluates the null hypothesis `theta = 0` (no frailty variance).
 
+### Log-normal frailty
+
+The log-normal frailty model adds a normally distributed random effect on the log-hazard scale:
+$h(t \mid x, u) = h_0(t) \exp(\beta^\top x + u)$ with $u \sim \mathcal{N}(0, \sigma^2)$. Joint
+optimization over $(\beta, u)$ uses penalized partial likelihood; $\sigma^2$ is updated via a REML
+step. The `frailty_effect_` values are on the log-hazard scale and can be negative.
+
+```{python}
+# Log-normal shared frailty by institution; effects are on the log-hazard scale
+cox_ln = gw.CoxPH(ties="breslow").fit(
+    y,
+    lung[["age", "sex"]],
+    frailty="lognormal",
+    frailty_cluster=lung["inst"],
+)
+
+# Summary reports sigma2 (variance of the normal random effect) instead of theta
+cox_ln
+```
+
+```{python}
+cox_ln.frailty_test()
+```
+
+Choose gamma when the frailty is best understood as a multiplicative hazard multiplier. Choose
+log-normal when an additive model on the log-hazard scale is more natural or when you need random
+effects that can shrink below zero on the log scale.
+
 ::: {.callout-note}
 ## Frailty vs clustered robust SEs
 
 - `cluster=` / `robust=True` keeps a standard Cox mean structure and adjusts uncertainty.
-- `frailty="gamma"` changes the model itself by adding cluster-level random effects.
+- `frailty="gamma"` or `frailty="lognormal"` changes the model itself by adding cluster-level random
+effects.
 
 Use frailty when latent cluster heterogeneity is scientifically part of the estimand, not only a
 nuisance for inference.
@@ -524,7 +560,7 @@ nuisance for inference.
 ::: {.callout-important}
 ## Current frailty scope
 
-`frailty="gamma"` currently requires:
+Both frailty distributions currently require:
 
 - right-censored `Surv.right(...)` responses,
 - `ties="breslow"`,
