@@ -267,6 +267,35 @@ stratified.to_frame(format="polars")
 Notice that the stratifying variable, `sex`, does not appear as a coefficient. Its effect is
 absorbed into the separate baselines, which is exactly the point of stratification.
 
+### Predicted survival from a stratified model
+
+Survival predictions use the correct stratum-specific baseline for each subject. When predicting
+on the training data, stratum assignments are taken automatically from the fitted model.
+
+```{python}
+# Predict survival from the stratified model at two time points
+# Each subject gets curves from their own stratum's baseline hazard
+stratified.predict(type="survival", times=[180, 365], format="polars").select(
+    ["time", "subject_1", "subject_2", "subject_3"]
+)
+```
+
+When predicting for new subjects, pass `strata=` to specify which stratum each subject belongs to.
+
+```{python}
+import pandas as pd
+
+# Two new subjects: a 50-year-old (stratum sex=1) and a 70-year-old (stratum sex=2)
+newdata = pd.DataFrame({"age": [50, 70], "ph.ecog": [1, 2]})
+
+# strata= maps each new subject to a stratum seen at fit time
+stratified.predict(
+    newdata, type="survival", strata=pd.Series([1, 2]), times=[180, 365], format="polars"
+)
+```
+
+Each subject's survival curve is computed against the baseline hazard of its stratum.
+
 ## Robust and clustered standard errors
 
 When observations are not independent, for example when the same subject contributes several
