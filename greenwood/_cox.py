@@ -1474,19 +1474,25 @@ class CoxPH:
             risk = np.exp(x @ self.coef_)  # uncentered: S(t|x) = exp(-H0_s(t) * risk)
             surv = np.zeros((len(query), n_subj))
 
+            # Validate and pre-process conditional_after before the subject loop
+            c_arr: Array | None = None
+            if conditional_after is not None:
+                if ci:
+                    raise NotImplementedError(
+                        "Confidence intervals are not supported with conditional_after."
+                    )
+                c_arr = np.atleast_1d(np.asarray(conditional_after, dtype=float))
+                if c_arr.shape[0] != 1 and c_arr.shape[0] != n_subj:
+                    raise ValueError("conditional_after must be a scalar or one value per subject.")
+
             # Compute survival per subject using their stratum's baseline
             for i, s_label in enumerate(subject_strata):
                 bt, bh = stratum_baseline[s_label]
                 idx = np.searchsorted(bt, query, side="right") - 1
                 h0_i = np.where(idx >= 0, bh[idx.clip(min=0)], 0.0)
-                if conditional_after is None:
+                if c_arr is None:
                     surv[:, i] = np.exp(-h0_i * risk[i])
                 else:
-                    if ci:
-                        raise NotImplementedError(
-                            "Confidence intervals are not supported with conditional_after."
-                        )
-                    c_arr = np.atleast_1d(np.asarray(conditional_after, dtype=float))
                     c_i = float(c_arr[0] if c_arr.shape[0] == 1 else c_arr[i])
                     idx_c = np.searchsorted(bt, c_i, side="right") - 1
                     h0_c = float(bh[idx_c]) if idx_c >= 0 else 0.0
