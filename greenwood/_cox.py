@@ -1432,17 +1432,22 @@ class CoxPH:
         if type == "risk":
             return np.exp(self._linear_predictor(x))
         if type == "survival":
-            if self._strata_labels is not None:
-                raise NotImplementedError(
-                    "Survival prediction for stratified models is not yet supported."
-                )
-            _, base_times, base_cumhaz = self._baseline()[0]
-            query = base_times if times is None else np.atleast_1d(np.asarray(times, dtype=float))
-            idx = np.searchsorted(base_times, query, side="right") - 1
-            h0 = np.where(idx >= 0, base_cumhaz[idx.clip(min=0)], 0.0)
-            risk = np.exp(x @ self.coef_)  # uncentered: S(t|x) = exp(-H0(t) exp(x.beta))
-            if conditional_after is None:
-                surv = np.exp(-np.outer(h0, risk))
+            baseline_list = self._baseline()
+            # Build per-stratum lookup: label -> (event_times, cumulative_hazard)
+            stratum_baseline: dict[Any, tuple[Array, Array]] = {
+                label: (bt, bh) for label, bt, bh in baseline_list
+            }
+            # Build per-stratum training-member index for SE computation
+            stratum_members_map: dict[Any, Array] = {
+                self._group_label(members): members for members, _ in self._strata_groups
+            }
+
+            # Determine query times: explicit or union of all stratum event times
+            if times is None:
+                all_times: list[float] = []
+                for bt, _ in stratum_baseline.values():
+                    all_times.extend(bt.tolist())
+                query = np.unique(np.array(all_times, dtype=float))
             else:
                 if ci:
                     raise NotImplementedError(
