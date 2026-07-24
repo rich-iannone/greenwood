@@ -1329,6 +1329,7 @@ class CoxPH:
         *,
         type: str = "lp",
         times: Any = None,
+        strata: Any = None,
         conditional_after: Any = None,
         ci: bool = False,
         format: str | None = None,
@@ -1337,8 +1338,11 @@ class CoxPH:
 
         `type` is one of `"lp"` (centered linear predictor), `"risk"` (`exp(lp)`), or
         `"survival"`. For `"survival"`, returns a frame of survival probabilities at `times`
-        (defaulting to the event times), one column per row of `newdata`. Survival prediction
-        for stratified models is not yet supported.
+        (defaulting to the union of all event times), one column per row of `newdata`.
+
+        For stratified models, each subject must be assigned to a stratum. When `newdata` is
+        provided, pass `strata=` with one label per row matching a stratum seen at fit time.
+        When `newdata` is `None`, stratum assignments are taken from the fitted data.
 
         `conditional_after` (a scalar or one value per subject) predicts survival conditional
         on having already survived to that time: the returned value at time $t$ is
@@ -1358,7 +1362,11 @@ class CoxPH:
             predictor), or `"survival"` (survival probability).
         times
             Time points at which to compute survival probabilities (for `type="survival"`). Defaults
-            to the event times from the fitted model.
+            to the union of all event times from the fitted model.
+        strata
+            Stratum labels for new subjects (required when `newdata=` is provided and the model was
+            fitted with `strata=`). Must have one label per row of `newdata=`, matching a stratum
+            label seen at fit time. Ignored for non-stratified models.
         conditional_after
             Optional scalar or per-subject time for conditional survival prediction. Computes
             $P(T > t \mid T > c)$ where $c$ is the conditional_after time.
@@ -1424,51 +1432,122 @@ class CoxPH:
         if type == "risk":
             return np.exp(self._linear_predictor(x))
         if type == "survival":
-            if self._strata_labels is not None:
-                raise NotImplementedError(
-                    "Survival prediction for stratified models is not yet supported."
-                )
-            _, base_times, base_cumhaz = self._baseline()[0]
-            query = base_times if times is None else np.atleast_1d(np.asarray(times, dtype=float))
-            idx = np.searchsorted(base_times, query, side="right") - 1
-            h0 = np.where(idx >= 0, base_cumhaz[idx.clip(min=0)], 0.0)
-            risk = np.exp(x @ self.coef_)  # uncentered: S(t|x) = exp(-H0(t) exp(x.beta))
-            if conditional_after is None:
-                surv = np.exp(-np.outer(h0, risk))
+            baseline_list = self._baseline()
+            # Build per-stratum lookup: label -> (event_times, cumulative_hazard)
+            stratum_baseline: dict[Any, tuple[Array, Array]] = {
+                label: (bt, bh) for label, bt, bh in baseline_list
+            }
+            # Build per-stratum training-member index for SE computation
+            stratum_members_map: dict[Any, Array] = {
+                self._group_label(members): members for members, _ in self._strata_groups
+            }
+
+            # Determine query times: explicit or union of all stratum event times
+            if times is None:
+                all_times: list[float] = []
+                for bt, _ in stratum_baseline.values():
+                    all_times.extend(bt.tolist())
+                query = np.unique(np.array(all_times, dtype=float))
             else:
+                query = np.atleast_1d(np.asarray(times, dtype=float))
+
+            # Assign each subject to a stratum
+            if self._strata_labels is None:
+                # Non-stratified: all subjects share the single baseline
+                subject_strata: list[Any] = [None] * x.shape[0]
+            elif newdata is None:
+                subject_strata = list(self._strata_labels)
+            else:
+                if strata is None:
+                    raise ValueError(
+                        "strata= is required when predicting from a stratified model with newdata."
+                    )
+                strata_arr = _to_labels(strata, x.shape[0], "strata")
+                unknown = set(strata_arr.tolist()) - set(stratum_baseline)
+                if unknown:
+                    raise ValueError(
+                        f"strata= contains labels not seen at fit time: {sorted(unknown)}"
+                    )
+                subject_strata = list(strata_arr)
+
+            n_subj = x.shape[0]
+            risk = np.exp(x @ self.coef_)  # uncentered: S(t|x) = exp(-H0_s(t) * risk)
+            surv = np.zeros((len(query), n_subj))
+
+            # Validate and pre-process conditional_after before the subject loop
+            c_arr: Array | None = None
+            if conditional_after is not None:
                 if ci:
                     raise NotImplementedError(
                         "Confidence intervals are not supported with conditional_after."
                     )
-                h0_c = self._baseline_cumhaz_at(base_times, base_cumhaz, conditional_after, x)
-                delta = np.clip(h0[:, None] - h0_c[None, :], 0.0, None)  # (n_times, n_subj)
-                surv = np.exp(-delta * risk[None, :])
-            columns = {"time": query}
+                c_arr = np.atleast_1d(np.asarray(conditional_after, dtype=float))
+                if c_arr.shape[0] != 1 and c_arr.shape[0] != n_subj:
+                    raise ValueError("conditional_after must be a scalar or one value per subject.")
+
+            # Compute survival per subject using their stratum's baseline
+            for i, s_label in enumerate(subject_strata):
+                bt, bh = stratum_baseline[s_label]
+                idx = np.searchsorted(bt, query, side="right") - 1
+                h0_i = np.where(idx >= 0, bh[idx.clip(min=0)], 0.0)
+                if c_arr is None:
+                    surv[:, i] = np.exp(-h0_i * risk[i])
+                else:
+                    c_i = float(c_arr[0] if c_arr.shape[0] == 1 else c_arr[i])
+                    idx_c = np.searchsorted(bt, c_i, side="right") - 1
+                    h0_c = float(bh[idx_c]) if idx_c >= 0 else 0.0
+                    delta = np.clip(h0_i - h0_c, 0.0, None)
+                    surv[:, i] = np.exp(-delta * risk[i])
+
+            columns: dict[str, Any] = {"time": query}
             if ci:
-                se_h = self._cumhaz_se(x, query)  # (n_times, n_subj)
                 z = float(norm.ppf(1.0 - (1.0 - self.conf_level) / 2.0))
+                # Compute SE per stratum (groups subjects from the same stratum together)
+                se_h = np.zeros((len(query), n_subj))
+                by_stratum: dict[Any, list[int]] = {}
+                for i, s_label in enumerate(subject_strata):
+                    by_stratum.setdefault(s_label, []).append(i)
+                for s_label, subj_idx in by_stratum.items():
+                    members_s = stratum_members_map[s_label]
+                    se_s = self._cumhaz_se(x[subj_idx], query, stratum_members=members_s)
+                    for j, i in enumerate(subj_idx):
+                        se_h[:, i] = se_s[:, j]
                 lower = surv * np.exp(-z * se_h)
                 upper = surv * np.exp(z * se_h)
-                for i in range(x.shape[0]):
+                for i in range(n_subj):
                     columns[f"subject_{i + 1}"] = surv[:, i]
                     columns[f"subject_{i + 1}_lower"] = lower[:, i]
                     columns[f"subject_{i + 1}_upper"] = upper[:, i]
             else:
-                for i in range(x.shape[0]):
+                for i in range(n_subj):
                     columns[f"subject_{i + 1}"] = surv[:, i]
             return to_dataframe(columns, format=format)
         raise ValueError(f"Unknown predict type {type!r}; use 'lp', 'risk', or 'survival'.")
 
-    def _cumhaz_se(self, x_new: Array, query: Array) -> Array:
+    def _cumhaz_se(
+        self, x_new: Array, query: Array, *, stratum_members: Array | None = None
+    ) -> Array:
         """Standard error of the cumulative hazard `H(t | x)` at `query` times, per subject.
 
         Uses the two-part Breslow-form variance (baseline variability plus the delta-method term for
         coefficient uncertainty), matching R `survfit.coxph`'s `std.chaz` for a Breslow fit
         (approximate for Efron ties, as with the score-residual variance).
+
+        `stratum_members` restricts baseline-variance summation to the specified training indices
+        (i.e., one stratum), while coefficient uncertainty still uses the full model vcov.
         """
         xr, entry, exit_, event, w = self._x, self._entry, self._exit, self._event, self._weight
+        if stratum_members is not None:
+            xr = xr[stratum_members]
+            entry = entry[stratum_members]
+            exit_ = exit_[stratum_members]
+            event = event[stratum_members]
+            w = w[stratum_members]
+            rm = self._risk_multiplier[stratum_members]
+        else:
+            rm = self._risk_multiplier
         ev = event.astype(bool)
-        rs = np.exp(xr @ self.coef_) * w * self._risk_multiplier
+        rs = np.exp(xr @ self.coef_) * w * rm
         et = np.unique(exit_[ev])
         p = xr.shape[1]
         s0 = np.empty(len(et))
