@@ -41,7 +41,7 @@ Descriptive statistics:
 - **`Surv` response object**: Handle right-, left-, and interval-censored data; counting-process form; left truncation; weights; and multi-state endpoints with built-in validation.
 - **Kaplan-Meier estimation** (`KaplanMeier`): Survival curves with Greenwood confidence intervals, median/quantile survival, restricted mean survival time, and step-function predictions.
 - **Nelson-Aalen estimator** (`NelsonAalen`): Cumulative hazard curves.
-- **Visualization** (`plot_survival()`, `forest_plot()`, `cif_plot()`): Interactive survival curves with confidence bands and censoring marks, publication-ready forest plots with aligned at-risk tables, and cumulative incidence plots for competing risks (all with a choice of plotting backends and Great Tables integration).
+- **Visualization** (`plot_survival()`, `plot_forest()`, `plot_cif()`): Interactive survival curves with confidence bands and censoring marks, publication-ready forest plots with aligned at-risk tables, and cumulative incidence plots for competing risks (all with a choice of plotting backends and Great Tables integration).
 
 Hypothesis testing:
 
@@ -51,19 +51,30 @@ Hypothesis testing:
 
 Regression models:
 
-- **Cox proportional hazards** (`CoxPH`): Model covariates as hazard ratios with stratification, robust sandwich variance, clustering, baseline hazard prediction with confidence intervals, shared gamma frailty by cluster (`frailty="gamma"`) with frailty-variance LR testing, and model diagnostics (residuals, proportional-hazards test, concordance).
+- **Cox proportional hazards** (`CoxPH`): Model covariates as hazard ratios with stratification, robust sandwich variance, clustering, baseline hazard prediction with confidence intervals, shared gamma and log-normal frailty by cluster with frailty-variance LR testing, and model diagnostics (residuals, proportional-hazards test, concordance).
+- **Penalized Cox** (`CoxNet`, `cv_coxnet()`): Elastic-net regularized Cox regression (lasso, ridge, and the full elastic-net continuum) with cross-validated penalty selection — for high-dimensional covariate settings or automatic variable selection.
 - **Accelerated failure time** (`AFT`): Parametric models (Weibull, exponential, log-normal, log-logistic) with survival prediction confidence intervals, validated against R's `survreg`.
-- **Competing risks**: Cumulative incidence functions (`AalenJohansen`), subdistribution hazards (`FineGray`), and multi-state transition probabilities.
+- **Flexible parametric models** (`RoystonParmar`): Spline-based proportional-hazards model that fits smooth baseline hazard shapes — more flexible than Weibull while preserving interpretable covariate effects.
+- **Competing risks**: Cumulative incidence functions (`AalenJohansen`), subdistribution hazards (`FineGray`), and multi-state transition probabilities (`MultiState`).
+
+Distribution fitting:
+
+- **Univariate parametric fitting** (`Parametric`): Fit Weibull, exponential, log-normal, or log-logistic distributions to censored data by MLE, with AIC/BIC for model selection.
+- **Distribution comparison** (`compare_distributions()`): Rank all parametric families side-by-side by log-likelihood, AIC, and BIC in a single call.
 
 Model performance:
 
-- **Prediction metrics**: Concordance index (Harrell's C) and inverse-probability censoring weighted (IPCW) Brier score / integrated Brier score.
+- **Prediction metrics**: Concordance index (Harrell's C), IPCW Brier score / integrated Brier score, time-dependent AUC (`time_dependent_auc()`, `integrated_auc()`), and calibration assessment (`calibration()`).
 - **Cross-validation** (`cross_validate()`): K-fold cross-validation with stratification support for balanced outcome distributions.
+
+Study design:
+
+- **Power analysis** (`logrank_n_events()`, `logrank_power()`, `logrank_sample_size()`): Compute required events, achievable power, and total enrollment for log-rank test designs under the proportional-hazards assumption.
 
 Tidy & reproducible:
 
-- **Tidy layer** (`greenwood.tidy`): Broom-compatible summaries aligned with Great Summaries for consistent reporting.
-- **Built-in datasets** (`lung`, `veteran`, `ovarian`, `pbc`, `colon`) and **R-parity test harness**: Every statistic is validated to tolerance against R's `survival` package.
+- **Tidy layer** (`tidy()`, `glance()`, `augment()`): Broom-compatible summaries — coefficient tables, model-level statistics, and observation-level augmentation — aligned with Great Summaries for consistent reporting.
+- **Built-in datasets** (`lung`, `veteran`, `ovarian`, `pbc`, `colon`, `mgus2`) and **R-parity test harness**: Every statistic is validated to tolerance against R's `survival` package.
 
 ## Get started
 
@@ -115,13 +126,30 @@ gw.plot_survival(km, risk_table=True)
 # Cox proportional hazards regression
 cox = gw.CoxPH().fit(y, df[["age", "sex"]])
 gw.tidy(cox, exponentiate=True, format="polars")  # hazard ratios with confidence intervals
+gw.glance(cox, format="polars")              # model-level stats (loglik, AIC, concordance)
 cox.cox_zph()                                # proportional-hazards test
 cox.concordance()                            # C-statistic
 cox.predict(df[["age", "sex"]].head(), type="survival", times=[180, 365], format="polars")
 
+# Penalized Cox: elastic-net with cross-validated lambda
+coxnet = gw.CoxNet(l1_ratio=1.0).fit(y, df[["age", "sex", "ph.ecog", "wt.loss"]].drop_nulls())
+cv_result = gw.cv_coxnet(y, df[["age", "sex", "ph.ecog", "wt.loss"]].drop_nulls())
+cv_result.lambda_min   # penalty that minimizes cross-validated partial likelihood
+
+# Flexible parametric model (spline-based, proportional hazards)
+rp = gw.RoystonParmar(df=3).fit(y, df[["age", "sex"]])
+gw.tidy(rp, format="polars")
+
 # Parametric accelerated failure time models
 aft = gw.AFT("weibull").fit(y, df[["age", "sex"]])
 gw.tidy(aft, format="polars")           # coefficients on the log-time scale
+
+# Univariate distribution fitting and comparison
+gw.compare_distributions(y, format="polars")   # rank Weibull / exponential / lognormal / loglogistic by AIC
+
+# Study design: events and sample size for an 80% powered log-rank test
+gw.logrank_n_events(hazard_ratio=0.7)          # events needed
+gw.logrank_sample_size(hazard_ratio=0.7, event_prob=0.6)  # total enrollment
 
 # Competing risks: cumulative incidence per cause
 # (mgus2 loaded with Pandas here for the Series `.where` construction below)
@@ -136,6 +164,7 @@ gw.FineGray("pcm").fit(cr, mg[["age", "sex"]]).to_frame(format="polars")
 gw.concordance_index(y, cox.predict(type="lp"))
 S = cox.predict(df[["age", "sex"]], type="survival", times=[180, 365], format="pandas").iloc[:, 1:].to_numpy().T
 gw.brier_score(y, S, times=[180, 365])
+gw.time_dependent_auc(y, cox.predict(type="lp"), times=[180, 365])
 ```
 
 ## License
