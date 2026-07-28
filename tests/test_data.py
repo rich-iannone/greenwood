@@ -13,6 +13,7 @@ def test_available_datasets() -> None:
         "veteran",
         "ovarian",
         "pbc",
+        "pbcseq",
         "colon",
         "mgus2",
     }
@@ -27,6 +28,14 @@ def test_load_lung() -> None:
 
 def test_load_veteran() -> None:
     assert data.load_dataset("veteran").shape == (137, 8)
+
+
+def test_load_pbcseq() -> None:
+    df = data.load_dataset("pbcseq")
+    assert df.shape == (1945, 19)
+    # key columns for TVC usage
+    for col in ("id", "day", "bili", "albumin", "futime", "status"):
+        assert col in df.columns
 
 
 def test_load_polars_backend() -> None:
