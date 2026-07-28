@@ -33,6 +33,7 @@ from ._resample import cross_validate
 from ._rmst import RMSTResult, pairwise_rmst_test, rmst_diff, rmst_test
 from ._surv import CensoringType, Surv
 from ._tests import TestResult, logrank_test, pairwise_logrank_test, trend_test
+from ._tvc import split_episodes
 from ._univariate import Parametric, compare_distributions
 from .data import available_datasets, load_dataset
 from .summaries import augment, glance, tidy
@@ -96,6 +97,7 @@ __all__ = [
     "plot_cif",
     "load_dataset",
     "available_datasets",
+    "split_episodes",
     "tidy",
     "glance",
     "augment",
