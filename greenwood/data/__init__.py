@@ -10,6 +10,10 @@ Available datasets (all from R's `survival` package):
 - `veteran`: Veterans' Administration lung cancer trial (137 x 8).
 - `ovarian`: ovarian cancer survival (26 x 6).
 - `pbc`: Mayo Clinic primary biliary cholangitis (418 x 20).
+- `pbcseq`: Mayo PBC repeated lab measurements (1945 x 19). Companion to `pbc`: one row
+  per (subject, visit) with time-varying lab values. Link to `pbc` on `id`; `day` is the
+  visit time. Use `split_episodes(pbc, pbcseq, id="id", time="time", event=...,
+  visit_time="day")` to build the counting-process dataset for a TVC Cox model.
 - `colon`: chemotherapy for colon cancer (1858 x 16).
 - `mgus2`: monoclonal gammopathy (1384 x 11), a competing-risks dataset (progression to
   plasma-cell malignancy vs death). Build the endpoint with `ptime`/`pstat` (progression)
@@ -30,6 +34,7 @@ _DATASETS = {
     "veteran": "veteran.csv.gz",
     "ovarian": "ovarian.csv.gz",
     "pbc": "pbc.csv.gz",
+    "pbcseq": "pbcseq.csv.gz",
     "colon": "colon.csv.gz",
     "mgus2": "mgus2.csv.gz",
 }
@@ -88,7 +93,7 @@ def load_dataset(name: str, *, backend: str | None = None) -> Any:
     ----------
     name
         One of `available_datasets()` (e.g., `"lung"`, `"veteran"`, `"ovarian"`, `"pbc"`,
-        `"colon"`, `"mgus2"`).
+        `"pbcseq"`, `"colon"`, `"mgus2"`).
     backend
         `"pandas"` or `"polars"`. When left as `None` (the default), Greenwood picks a
         backend for you: it prefers Polars if it is installed, otherwise uses Pandas, and
