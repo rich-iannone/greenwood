@@ -1,4 +1,4 @@
-"""Tests for split_episodes() (episode splitting for time-varying covariates)."""
+"""Tests for split_episodes() and trajectory-based survival prediction."""
 
 from __future__ import annotations
 
@@ -534,9 +534,8 @@ def test_tvc_pbcseq_cox_rparity() -> None:
     fx = load_fixture("tvc_pbcseq")
 
     pbcseq = gw.load_dataset("pbcseq", backend="pandas")
-    base = (
-        pbcseq.drop_duplicates("id")[["id", "futime", "status"]]
-        .rename(columns={"futime": "time"})
+    base = pbcseq.drop_duplicates("id")[["id", "futime", "status"]].rename(
+        columns={"futime": "time"}
     )
     long = gw.split_episodes(
         base,
@@ -557,6 +556,184 @@ def test_tvc_pbcseq_cox_rparity() -> None:
     cox = CoxPH().fit(y, long[["bili", "albumin", "protime"]])
 
     assert_allclose_to_r(cox.coef_, fx["coef"], rtol=1e-6, atol=1e-6, what="TVC Cox coef")
+    assert_allclose_to_r([cox.loglik_], [fx["loglik"]], rtol=1e-6, atol=1e-6, what="TVC Cox loglik")
+
+
+# ---------------------------------------------------------------------------
+# Trajectory prediction: unit tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def tvc_cox() -> tuple[Any, Any]:
+    """Fitted TVC Cox model and the long-format dataset (pbcseq)."""
+    pbcseq = gw.load_dataset("pbcseq", backend="pandas")
+    base = pbcseq.drop_duplicates("id")[["id", "futime", "status"]].rename(
+        columns={"futime": "time"}
+    )
+    long = gw.split_episodes(
+        base,
+        pbcseq[["id", "day", "bili", "albumin", "protime"]],
+        id="id",
+        time="time",
+        event="status",
+        visit_time="day",
+        format="pandas",
+    )
+    long = long.dropna(subset=["bili", "albumin", "protime"])
+    long["event_bin"] = (long["status"] == 2).astype(int)
+    y = Surv.counting(long["tstart"], long["tstop"], long["event_bin"])
+    cox = CoxPH().fit(y, long[["bili", "albumin", "protime"]])
+    return cox, long
+
+
+def _subj1_trajectory() -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "tstart": [0.0, 192.0],
+            "tstop": [192.0, 400.0],
+            "bili": [14.5, 21.3],
+            "albumin": [2.60, 2.94],
+            "protime": [12.2, 11.2],
+        }
+    )
+
+
+def test_trajectory_returns_dataframe(tvc_cox: tuple[Any, Any]) -> None:
+    cox, _ = tvc_cox
+    out = cox.predict(trajectory=_subj1_trajectory(), times=[100, 200], format="pandas")
+    assert isinstance(out, pd.DataFrame)
+    assert list(out.columns) == ["time", "subject_1"]
+    assert len(out) == 2
+
+
+def test_trajectory_survival_between_zero_and_one(tvc_cox: tuple[Any, Any]) -> None:
+    cox, _ = tvc_cox
+    out = cox.predict(trajectory=_subj1_trajectory(), times=[50, 100, 200, 400], format="pandas")
+    surv = out["subject_1"].to_numpy()
+    assert np.all(surv >= 0.0) and np.all(surv <= 1.0)
+
+
+def test_trajectory_monotone_non_increasing(tvc_cox: tuple[Any, Any]) -> None:
+    cox, _ = tvc_cox
+    out = cox.predict(
+        trajectory=_subj1_trajectory(), times=[50, 100, 192, 300, 400], format="pandas"
+    )
+    surv = out["subject_1"].to_numpy()
+    assert np.all(np.diff(surv) <= 1e-12)
+
+
+def test_trajectory_extrapolation_warns(tvc_cox: tuple[Any, Any]) -> None:
+    cox, _ = tvc_cox
+    with pytest.warns(UserWarning, match="extrapolated"):
+        cox.predict(trajectory=_subj1_trajectory(), times=[100, 600], format="pandas")
+
+
+def test_trajectory_no_warning_within_range(tvc_cox: tuple[Any, Any]) -> None:
+    cox, _ = tvc_cox
+    import warnings as _warnings
+
+    with _warnings.catch_warnings():
+        _warnings.simplefilter("error")
+        cox.predict(trajectory=_subj1_trajectory(), times=[50, 192, 400], format="pandas")
+
+
+def test_trajectory_single_interval_matches_static(tvc_cox: tuple[Any, Any]) -> None:
+    """Single-interval trajectory must match a static predict with the same covariates."""
+    cox, _ = tvc_cox
+    x_static = pd.DataFrame({"bili": [2.0], "albumin": [3.5], "protime": [10.5]})
+    times = [100, 300, 500]
+
+    # Static prediction (fixed covariates for entire time)
+    static = cox.predict(x_static, type="survival", times=times, format="pandas")
+
+    # Trajectory: single interval (0, large_tstop]
+    traj = pd.DataFrame(
+        {"tstart": [0.0], "tstop": [1e9], "bili": [2.0], "albumin": [3.5], "protime": [10.5]}
+    )
+    traj_pred = cox.predict(trajectory=traj, times=times, format="pandas")
+
+    np.testing.assert_allclose(
+        static["subject_1"].to_numpy(),
+        traj_pred["subject_1"].to_numpy(),
+        rtol=1e-9,
+        atol=1e-9,
+    )
+
+
+def test_trajectory_mutual_exclusion_with_newdata(tvc_cox: tuple[Any, Any]) -> None:
+    cox, _ = tvc_cox
+    nd = pd.DataFrame({"bili": [2.0], "albumin": [3.5], "protime": [10.5]})
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        cox.predict(newdata=nd, trajectory=_subj1_trajectory(), type="survival")
+
+
+def test_trajectory_rejects_risk_type(tvc_cox: tuple[Any, Any]) -> None:
+    cox, _ = tvc_cox
+    with pytest.raises(ValueError, match="type='survival'"):
+        cox.predict(trajectory=_subj1_trajectory(), type="risk")
+
+
+def test_trajectory_ci_not_supported(tvc_cox: tuple[Any, Any]) -> None:
+    cox, _ = tvc_cox
+    with pytest.raises(NotImplementedError, match="ci"):
+        cox.predict(trajectory=_subj1_trajectory(), type="survival", ci=True)
+
+
+def test_trajectory_missing_tstart_raises(tvc_cox: tuple[Any, Any]) -> None:
+    cox, _ = tvc_cox
+    bad = pd.DataFrame(
+        {
+            "tstop": [192.0, 400.0],
+            "bili": [14.5, 21.3],
+            "albumin": [2.6, 2.9],
+            "protime": [12.2, 11.2],
+        }
+    )
+    with pytest.raises(ValueError, match="tstart"):
+        cox.predict(trajectory=bad, type="survival")
+
+
+def test_trajectory_degenerate_interval_raises(tvc_cox: tuple[Any, Any]) -> None:
+    cox, _ = tvc_cox
+    bad = pd.DataFrame(
+        {
+            "tstart": [0.0, 192.0],
+            "tstop": [192.0, 192.0],
+            "bili": [14.5, 21.3],
+            "albumin": [2.6, 2.9],
+            "protime": [12.2, 11.2],
+        }
+    )
+    with pytest.raises(ValueError, match="strictly less than tstop"):
+        cox.predict(trajectory=bad, type="survival")
+
+
+# ---------------------------------------------------------------------------
+# R-parity: trajectory survival for subject 1
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.rparity
+def test_trajectory_surv_rparity(tvc_cox: tuple[Any, Any]) -> None:
+    """Trajectory survival for pbcseq subject 1 must match R's manual calculation to 1e-6."""
+    cox, _ = tvc_cox
+    fx = load_fixture("tvc_trajectory_subj1")
+
+    import warnings as _warnings
+
+    with _warnings.catch_warnings():
+        _warnings.simplefilter("ignore", UserWarning)  # 600 > last tstop → extrapolation
+        out = cox.predict(
+            trajectory=_subj1_trajectory(),
+            times=fx["query"],
+            format="pandas",
+        )
+
     assert_allclose_to_r(
-        [cox.loglik_], [fx["loglik"]], rtol=1e-6, atol=1e-6, what="TVC Cox loglik"
+        out["subject_1"].to_numpy(),
+        fx["surv"],
+        rtol=1e-6,
+        atol=1e-6,
+        what="trajectory survival (subject 1)",
     )
