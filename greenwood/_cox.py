@@ -1332,6 +1332,7 @@ class CoxPH:
         strata: Any = None,
         conditional_after: Any = None,
         ci: bool = False,
+        trajectory: Any = None,
         format: str | None = None,
     ) -> Any:
         r"""Predict from the fitted model.
@@ -1352,11 +1353,25 @@ class CoxPH:
         per subject: a pointwise confidence band from the cumulative-hazard standard error
         (the log transform used by R's `survfit`), at the model's `conf_level`.
 
+        `trajectory` predicts survival for a single subject whose covariates change over time.
+        It is a DataFrame (any backend) with columns `tstart`, `tstop`, and one column per
+        covariate in the fitted model. Each row defines a constant-covariate interval; the
+        covariate values in interval $k$ apply to $(t_k^{\text{start}}, t_k^{\text{stop}}]$.
+        The survival at time $t$ is accumulated as
+
+        $$S(t) = \exp\!\Bigl(-\sum_k r_k \cdot \bigl[H_0(\min(t,\, t_k^{\text{stop}})) -
+        H_0(t_k^{\text{start}})\bigr]\Bigr)$$
+
+        where $r_k = \exp(\hat{\beta}^\top x_k)$ and the sum runs over all intervals where
+        $t_k^{\text{start}} < t$. For times beyond the last interval the last covariate value
+        is carried forward (the baseline hazard keeps accumulating). Mutually exclusive with
+        `newdata`; requires `type="survival"`.
+
         Parameters
         ----------
         newdata
             Covariate design for prediction. If None, predictions are made on the fitted data. Can
-            be a 2-D array or dataframe.
+            be a 2-D array or dataframe. Mutually exclusive with `trajectory`.
         type
             Type of prediction: `"lp"` (centered linear predictor, default), `"risk"` (exp of linear
             predictor), or `"survival"` (survival probability).
@@ -1366,13 +1381,18 @@ class CoxPH:
         strata
             Stratum labels for new subjects (required when `newdata=` is provided and the model was
             fitted with `strata=`). Must have one label per row of `newdata=`, matching a stratum
-            label seen at fit time. Ignored for non-stratified models.
+            label seen at fit time. For `trajectory=`, a single stratum label for the subject.
+            Ignored for non-stratified models.
         conditional_after
             Optional scalar or per-subject time for conditional survival prediction. Computes
             $P(T > t \mid T > c)$ where $c$ is the conditional_after time.
         ci
             If `True` (survival only), include confidence intervals (`_lower` and `_upper` columns).
-            The default is `False`.
+            The default is `False`. Not supported with `trajectory`.
+        trajectory
+            DataFrame with columns `tstart`, `tstop`, and covariates, describing one subject's
+            time-varying covariate path. See the description above. Mutually exclusive with
+            `newdata`; requires `type="survival"`.
         format
             Output format (for `type="survival"` only): `None` (default), `"pandas"`,
             `"polars"`, or `"pyarrow"`.
@@ -1389,7 +1409,8 @@ class CoxPH:
             For `type="lp"` or `"risk"`, returns a 1-D array with one prediction per row. For
             `type="survival"`, returns a DataFrame with rows for each time point and columns for
             each subject (named `subject_1`, `subject_2`, etc.), optionally with `_lower` and
-            `_upper` columns for confidence intervals.
+            `_upper` columns for confidence intervals. With `trajectory`, returns a DataFrame
+            with a single `subject_1` column.
 
         Examples
         --------
