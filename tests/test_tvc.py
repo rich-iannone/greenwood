@@ -8,6 +8,7 @@ import pytest
 
 import greenwood as gw
 from greenwood import CoxPH, Surv
+from tests._r_parity import assert_allclose_to_r, load_fixture
 
 # ---------------------------------------------------------------------------
 # Shared fixtures
@@ -520,3 +521,42 @@ def test_split_with_two_tvc_columns() -> None:
     subj1 = out[out["id"] == 1].sort_values("tstart")
     assert float(subj1.iloc[0]["albumin"]) == pytest.approx(3.5)
     assert float(subj1.iloc[1]["albumin"]) == pytest.approx(3.2)
+
+
+# ---------------------------------------------------------------------------
+# R-parity: pbcseq TVC Cox model
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.rparity
+def test_tvc_pbcseq_cox_rparity() -> None:
+    """split_episodes + CoxPH on pbcseq must match R's tmerge + coxph to 1e-6."""
+    fx = load_fixture("tvc_pbcseq")
+
+    pbcseq = gw.load_dataset("pbcseq", backend="pandas")
+    base = (
+        pbcseq.drop_duplicates("id")[["id", "futime", "status"]]
+        .rename(columns={"futime": "time"})
+    )
+    long = gw.split_episodes(
+        base,
+        pbcseq[["id", "day", "bili", "albumin", "protime"]],
+        id="id",
+        time="time",
+        event="status",
+        visit_time="day",
+        format="pandas",
+    )
+    long = long.dropna(subset=["bili", "albumin", "protime"])
+    long["event_bin"] = (long["status"] == 2).astype(int)
+
+    assert len(long) == fx["n"]
+    assert int(long["event_bin"].sum()) == fx["nevent"]
+
+    y = Surv.counting(long["tstart"], long["tstop"], long["event_bin"])
+    cox = CoxPH().fit(y, long[["bili", "albumin", "protime"]])
+
+    assert_allclose_to_r(cox.coef_, fx["coef"], rtol=1e-6, atol=1e-6, what="TVC Cox coef")
+    assert_allclose_to_r(
+        [cox.loglik_], [fx["loglik"]], rtol=1e-6, atol=1e-6, what="TVC Cox loglik"
+    )
