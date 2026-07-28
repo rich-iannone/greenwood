@@ -1442,6 +1442,35 @@ class CoxPH:
 
         Passing `ci=True` adds pointwise confidence bands, and `conditional_after=` gives survival
         conditional on having already survived to a landmark time.
+
+        With `trajectory`, survival is computed along a covariate path for a single subject:
+
+        ```{python}
+        import pandas as pd
+
+        pbcseq = gw.load_dataset("pbcseq", backend="pandas")
+        base = (pbcseq.drop_duplicates("id")[["id", "futime", "status"]]
+                      .rename(columns={"futime": "time"}))
+        long = gw.split_episodes(
+            base, pbcseq[["id", "day", "bili", "albumin", "protime"]],
+            id="id", time="time", event="status", visit_time="day", format="pandas",
+        )
+        long = long.dropna(subset=["bili", "albumin", "protime"])
+        long["event_bin"] = (long["status"] == 2).astype(int)
+
+        y = gw.Surv.counting(long["tstart"], long["tstop"], long["event_bin"])
+        cox = gw.CoxPH().fit(y, long[["bili", "albumin", "protime"]])
+
+        # Subject 1's covariate path (two visits)
+        tvc_path = pd.DataFrame({
+            "tstart":  [0.0, 192.0],
+            "tstop":   [192.0, 400.0],
+            "bili":    [14.5, 21.3],
+            "albumin": [2.60, 2.94],
+            "protime": [12.2, 11.2],
+        })
+        cox.predict(trajectory=tvc_path, times=[100, 200, 300, 400], format="pandas")
+        ```
         """
         if newdata is None:
             x = self._x
