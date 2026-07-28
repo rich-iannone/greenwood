@@ -1472,6 +1472,17 @@ class CoxPH:
         cox.predict(trajectory=tvc_path, times=[100, 200, 300, 400], format="pandas")
         ```
         """
+        if trajectory is not None:
+            if newdata is not None:
+                raise ValueError("trajectory and newdata are mutually exclusive.")
+            if type not in ("lp", "survival"):
+                raise ValueError(f"trajectory only supports type='survival', got {type!r}.")
+            if ci:
+                raise NotImplementedError("ci is not supported with trajectory.")
+            if conditional_after is not None:
+                raise ValueError("conditional_after is not supported with trajectory.")
+            return self._predict_trajectory(trajectory, times=times, strata=strata, format=format)
+
         if newdata is None:
             x = self._x
         else:
