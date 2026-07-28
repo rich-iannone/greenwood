@@ -1545,6 +1545,120 @@ class CoxPH:
             return to_dataframe(columns, format=format)
         raise ValueError(f"Unknown predict type {type!r}; use 'lp', 'risk', or 'survival'.")
 
+    def _predict_trajectory(
+        self,
+        trajectory: Any,
+        *,
+        times: Any = None,
+        strata: Any = None,
+        format: str | None = None,
+    ) -> Any:
+        """Compute survival at `times` for a single subject with time-varying covariates.
+
+        `trajectory` is a DataFrame with columns `tstart`, `tstop`, and one column per
+        covariate. Each row defines a constant-covariate interval. The last interval is
+        extended to infinity for extrapolation (LOCF). See `predict` for the formula.
+        """
+        import narwhals as nw  # pyright: ignore[reportMissingImports]
+
+        traj_nw = nw.from_native(trajectory, eager_only=True)
+
+        missing = [c for c in ("tstart", "tstop") if c not in traj_nw.columns]
+        if missing:
+            raise ValueError(
+                f"trajectory is missing required column(s): {missing}. "
+                "trajectory must have 'tstart', 'tstop', and the model's covariate columns."
+            )
+
+        cov_cols = [c for c in traj_nw.columns if c not in ("tstart", "tstop")]
+        if not cov_cols:
+            raise ValueError("trajectory has no covariate columns (only tstart and tstop).")
+
+        x_traj, _ = _design_matrix(nw.to_native(traj_nw.select(cov_cols)))
+        tstart = np.asarray(traj_nw["tstart"].to_list(), dtype=float)
+        tstop = np.asarray(traj_nw["tstop"].to_list(), dtype=float)
+
+        if np.any(tstart >= tstop):
+            raise ValueError("trajectory: every tstart must be strictly less than tstop.")
+        if np.any(tstart < 0):
+            raise ValueError("trajectory: tstart values must be non-negative.")
+
+        # Determine stratum and get baseline (bt, bh)
+        baseline_list = self._baseline()
+        if self._strata_labels is None:
+            s_label: Any = None
+        else:
+            if strata is None:
+                raise ValueError(
+                    "strata= is required when predicting from a stratified model with trajectory."
+                )
+            s_label = strata
+        bt: Array
+        bh: Array
+        bt, bh = next((bt_, bh_) for lbl, bt_, bh_ in baseline_list if lbl == s_label)
+
+        def _h0_at(t: Array) -> Array:
+            idx = np.searchsorted(bt, t, side="right") - 1
+            return np.where(idx >= 0, bh[idx.clip(min=0)], 0.0)
+
+        # Determine query times
+        query = np.unique(bt) if times is None else np.atleast_1d(np.asarray(times, dtype=float))
+
+        # Warn when query times exceed the trajectory range (extrapolation is active)
+        last_tstop = float(tstop[-1])
+        extrap = query[query > last_tstop]
+        if extrap.size > 0:
+            warnings.warn(
+                f"trajectory ends at {last_tstop}; {extrap.size} query time(s) exceed this "
+                "and are extrapolated using the last interval's covariate values.",
+                UserWarning,
+                stacklevel=3,
+            )
+
+        # Risk per interval: r_k = exp(beta' x_k)
+        risk_k = np.exp(x_traj @ self.coef_)  # (n_intervals,)
+
+        # H_0 evaluated at tstart and tstop of each interval
+        h0_tstart = _h0_at(tstart)  # (n_intervals,)
+        h0_tstop = _h0_at(tstop)  # (n_intervals,)
+        h0_query = _h0_at(query)  # (n_query,)
+
+        # For each (query_j, interval_k):
+        #   if query_j <= tstart_k          : contribution = 0
+        #   if tstart_k < query_j < tstop_k : contribution = r_k * (H0(query_j) - H0(tstart_k))
+        #   if query_j >= tstop_k           : contribution = r_k * (H0(tstop_k) - H0(tstart_k))
+        # For query_j > last tstop (extrapolation): last interval acts as if tstop = +inf,
+        # so the "query >= tstop" branch never fires for the last interval when query > tstop[-1].
+        # We handle this by treating the last interval's tstop as max(tstop[-1], query_j).
+
+        q = query[:, np.newaxis]  # (n_query, 1)
+        ts = tstart[np.newaxis, :]  # (1, n_intervals)
+        te = tstop[np.newaxis, :]  # (1, n_intervals)
+        h0_ts = h0_tstart[np.newaxis, :]  # (1, n_intervals)
+        h0_te = h0_tstop[np.newaxis, :]  # (1, n_intervals)
+        h0_q = h0_query[:, np.newaxis]  # (n_query, 1)
+
+        # For the last interval only, treat tstop as max(tstop[-1], query_j) so that
+        # extrapolation uses h0(query_j) rather than the capped h0(tstop[-1]).
+        is_last = np.zeros(len(tstart), dtype=bool)
+        is_last[-1] = True
+        is_last_row = is_last[np.newaxis, :]  # (1, n_intervals)
+
+        # H_0 at the upper bound of each interval for each query time
+        h0_upper = np.where(
+            is_last_row & (q > te),  # extrapolation: last interval, query > tstop
+            h0_q,
+            np.where(q >= te, h0_te, h0_q),  # full interval or partial
+        )
+
+        contrib = risk_k[np.newaxis, :] * np.maximum(0.0, h0_upper - h0_ts)
+        contrib = np.where(q > ts, contrib, 0.0)  # zero out intervals not yet started
+
+        H = contrib.sum(axis=1)  # (n_query,)
+        surv = np.exp(-H)
+
+        return to_dataframe({"time": query, "subject_1": surv}, format=format)
+
     def _cumhaz_se(
         self, x_new: Array, query: Array, *, stratum_members: Array | None = None
     ) -> Array:
