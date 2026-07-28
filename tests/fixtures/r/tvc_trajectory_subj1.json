@@ -1,0 +1,5 @@
+{
+  "description": "Trajectory survival for subject 1 of pbcseq. Model: TVC Cox with bili+albumin+protime (same fit as tvc_pbcseq). Trajectory: interval (0,192] with bili=14.5/albumin=2.60/protime=12.2, then (192,400] with bili=21.3/albumin=2.94/protime=11.2. Computed in R as S1(t) for t<=192, S1(192)*S2(t)/S2(192) for t>192 where S1/S2 are survfit curves for fixed x1/x2.",
+  "query": [50, 100, 192, 300, 400, 600],
+  "surv": [0.9663106517875648, 0.8515681810273135, 0.6674101511882197, 0.5624111250802168, 0.3956776912787763, 0.3067510981295367]
+}
