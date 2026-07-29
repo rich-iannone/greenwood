@@ -32,6 +32,7 @@ nav_icons:
     "Visualizing survival": chart-spline
     "Cox regression": sigma
     "Cox model diagnostics": stethoscope
+    "Time-varying covariates": timer
     "Parametric survival models": waves
     "Competing risks": split
     "Multi-state models": network
@@ -70,8 +71,9 @@ reference:
       - compare_distributions
 
   - title: Regression
-    desc: Cox proportional hazards and parametric AFT models.
+    desc: Cox proportional hazards, parametric AFT models, and time-varying covariate utilities.
     contents:
+      - split_episodes
       - name: CoxPH
         members: true
       - name: CoxNetCVResult

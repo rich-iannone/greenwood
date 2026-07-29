@@ -1,0 +1,245 @@
+---
+title: Time-varying covariates
+guide-section: "Regression"
+---
+
+```{python}
+#| echo: false
+#| output: false
+import great_docs as gd
+
+gd.enable_tbl_preview(n_head=8, n_tail=3)
+```
+
+A standard Cox model assumes each covariate is measured once and stays constant throughout
+follow-up. In many studies that assumption is wrong. A patient's bilirubin rises over months,
+a worker's cumulative exposure increases with each shift, a trial subject crosses over to the
+active arm mid-study. Treating a changing value as fixed introduces bias in the estimated
+hazard ratio. Time-varying covariates (TVC) solve this by letting the covariate take a
+different value in each interval of follow-up.
+
+The counting-process form of the Cox model handles time-varying covariates naturally. Instead
+of one row per subject you create one row per *interval*: each row records when the subject
+entered the risk set (`tstart`), when they exited (`tstop`), the event indicator for that
+interval, and the covariate values that were constant during it. The `split_episodes()`
+function builds this dataset from the raw repeated-measurement data, and `Surv.counting()`
+wraps it into the response object.
+
+## The data
+
+The `pbcseq` dataset contains repeated lab measurements for subjects in the Mayo Clinic PBC
+trial. It is a companion to the cross-sectional `pbc` dataset: while `pbc` gives each
+subject a single row with final outcome, `pbcseq` records the values of bilirubin, albumin,
+prothrombin time, and several other markers at each clinical visit.
+
+```{python}
+import greenwood as gw
+
+# Load both datasets as Polars DataFrames
+pbc    = gw.load_dataset("pbc",    backend="polars")
+pbcseq = gw.load_dataset("pbcseq", backend="polars")
+
+pbcseq.select(["id", "day", "bili", "albumin", "protime"])
+```
+
+Each subject appears once per visit. `day` is the time of that visit (in days from
+enrollment), and the other columns hold the lab values measured that day. `futime` and
+`status` record the final outcome and are the same for every row belonging to the same
+subject.
+
+## Building the counting-process dataset
+
+`split_episodes()` takes the per-subject baseline table and the repeated-measurements
+table and merges them into the counting-process long format. The `id` column links the two.
+`visit_time` names the column in `visits` that carries measurement times.
+
+```{python}
+import pandas as pd
+
+# Build a per-subject baseline: one row per subject with follow-up time and outcome.
+# pbcseq repeats futime/status for every visit, so drop_duplicates gives one row per id.
+pbcseq_pd = gw.load_dataset("pbcseq", backend="pandas")
+base = (
+    pbcseq_pd.drop_duplicates("id")[["id", "futime", "status"]]
+             .rename(columns={"futime": "time"})
+)
+
+# Split into counting-process intervals, carrying bilirubin, albumin, and protime forward.
+long = gw.split_episodes(
+    base,
+    pbcseq_pd[["id", "day", "bili", "albumin", "protime"]],
+    id="id",
+    time="time",
+    event="status",
+    visit_time="day",
+    format="pandas",
+)
+
+long
+```
+
+Each row is now one interval for one subject. Subject 1, for example, contributes two rows:
+the first covers days 0–192 (bilirubin 14.5), and the second covers days 192–400 (bilirubin
+21.3). The event column is 0 for the first row and carries the original status code (2 =
+death) for the last.
+
+```{python}
+# Subject 1's intervals
+long[long["id"] == 1][["id", "tstart", "tstop", "status", "bili", "albumin", "protime"]]
+```
+
+Before fitting we drop the small number of rows with missing covariate values and create a
+binary event indicator.
+
+```{python}
+long_clean = long.dropna(subset=["bili", "albumin", "protime"]).copy()
+long_clean["event"] = (long_clean["status"] == 2).astype(int)
+print(f"{len(long_clean)} intervals, {long_clean['event'].sum()} events, "
+      f"{long_clean['id'].nunique()} subjects")
+```
+
+## Fitting the TVC Cox model
+
+The counting-process `Surv` object wraps `tstart` and `tstop` alongside the event indicator.
+Pass the resulting response and covariate columns to `CoxPH` exactly as with a
+right-censored model.
+
+```{python}
+y = gw.Surv.counting(long_clean["tstart"], long_clean["tstop"], long_clean["event"])
+cox_tvc = gw.CoxPH().fit(y, long_clean[["bili", "albumin", "protime"]])
+cox_tvc
+```
+
+For comparison, fit the same model using only the baseline lab values from `pbc`.
+
+```{python}
+pbc_pd = gw.load_dataset("pbc", backend="pandas")
+pbc_clean = pbc_pd.dropna(subset=["bili", "albumin", "protime"]).copy()
+pbc_clean["event"] = (pbc_clean["status"] == 2).astype(int)
+
+y_static = gw.Surv.right(pbc_clean["time"], event=pbc_clean["event"])
+cox_static = gw.CoxPH().fit(y_static, pbc_clean[["bili", "albumin", "protime"]])
+cox_static
+```
+
+The TVC model gives notably larger hazard ratios for bilirubin (exp(0.14) ≈ 1.15 vs
+exp(0.09) ≈ 1.09 in the static model). Updating the covariate at each visit lets the model
+use the most recent measurement, which better reflects the current disease severity and
+recovers more of the true effect.
+
+## Predicting survival along a covariate trajectory
+
+For a subject whose covariates change over time you cannot describe them with a single static
+vector. Instead, pass a trajectory DataFrame to `predict()`. Each row of the trajectory
+defines a constant-covariate interval `(tstart, tstop]`. The covariate values in that
+interval are used to accumulate hazard up to any requested time point.
+
+Subject 1 of the PBC study had two visits. Their trajectory therefore has two rows.
+
+```{python}
+tvc_path = pd.DataFrame({
+    "tstart":  [0.0,   192.0],
+    "tstop":   [192.0, 400.0],
+    "bili":    [14.5,  21.3],
+    "albumin": [2.60,  2.94],
+    "protime": [12.2,  11.2],
+})
+tvc_path
+```
+
+```{python}
+# Predict survival at selected time points along the trajectory
+surv_tvc = cox_tvc.predict(
+    trajectory=tvc_path,
+    times=[0, 50, 100, 192, 300, 400],
+    format="pandas",
+)
+surv_tvc
+```
+
+Notice the kink near day 192: bilirubin rises from 14.5 to 21.3 at the second visit, which
+steepens the hazard and causes survival to drop more quickly after that point. A static model
+using only the baseline value of 14.5 would miss this deterioration entirely.
+
+To see how different the trajectories are, compare the TVC prediction to a static prediction
+that fixes bilirubin at 14.5 for the entire follow-up:
+
+```{python}
+# Static prediction: fix covariates at their baseline (day-0) values
+static_path = pd.DataFrame({
+    "bili": [14.5], "albumin": [2.60], "protime": [12.2]
+})
+
+surv_static = cox_tvc.predict(
+    static_path,
+    type="survival",
+    times=[0, 50, 100, 192, 300, 400],
+    format="pandas",
+)
+
+# Side-by-side comparison
+import polars as pl
+
+comparison = pl.from_pandas(surv_tvc).rename({"subject_1": "tvc"}).with_columns(
+    pl.from_pandas(surv_static)["subject_1"].alias("static (baseline bili only)")
+)
+comparison
+```
+
+At day 400 (the subject's actual exit time) the TVC prediction gives a survival probability
+roughly 10 percentage points lower than the static prediction, reflecting the bilirubin rise
+captured during follow-up.
+
+## Visualizing the survival trajectory
+
+Build predictions at a finer time resolution and melt them into a tidy long frame, then
+pass it to Altair to draw overlapping survival curves.
+
+```{python}
+#| warning: false
+import altair as alt
+import polars as pl
+
+times = list(range(0, 421, 5))
+
+surv_tvc_fine = cox_tvc.predict(
+    trajectory=tvc_path, times=times, format="polars"
+)
+surv_static_fine = cox_tvc.predict(
+    static_path, type="survival", times=times, format="polars"
+)
+
+# Combine into a tidy long frame for Altair
+plot_data = (
+    surv_tvc_fine.rename({"subject_1": "TVC (updating bilirubin)"})
+    .join(
+        surv_static_fine.rename({"subject_1": "Static (baseline bilirubin)"}),
+        on="time",
+    )
+    .unpivot(index="time", variable_name="model", value_name="survival")
+)
+
+alt.Chart(plot_data).mark_line().encode(
+    x=alt.X("time:Q", title="Time (days)"),
+    y=alt.Y("survival:Q", title="Survival probability", scale=alt.Scale(domain=[0, 1])),
+    color=alt.Color("model:N", title="Model"),
+)
+```
+
+The TVC curve (updating bilirubin at day 192) separates noticeably from the static curve
+after the second visit. Both start from the same point because the baseline covariate values
+are identical. The divergence begins exactly where the trajectory changes.
+
+## Summary
+
+| Step | Code |
+|---|---|
+| Load repeated-measurement data | `gw.load_dataset("pbcseq")` |
+| Build counting-process dataset | `gw.split_episodes(base, visits, id=, time=, event=, visit_time=)` |
+| Wrap the response | `gw.Surv.counting(tstart, tstop, event)` |
+| Fit the TVC Cox model | `gw.CoxPH().fit(y, covariates)` |
+| Predict along a trajectory | `cox.predict(trajectory=path, times=...)` |
+
+Time-varying covariates require more data preparation than a static model, but the tradeoff
+is hazard ratios that reflect the covariate at the time of each event rather than a single
+snapshot.

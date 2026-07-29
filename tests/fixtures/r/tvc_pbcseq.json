@@ -1,0 +1,9 @@
+{
+  "description": "TVC Cox model on pbcseq: split_episodes + CoxPH vs R tmerge/coxph. Event created with tmerge event() so only the final interval per subject is an event (matching split_episodes semantics). Covariates: bili, albumin, protime. Complete cases only (no NA rows).",
+  "coef": [0.1378162781728949, -2.016484149444239, 0.1962142690646674],
+  "names": ["bili", "albumin", "protime"],
+  "loglik_null": -726.53963553977133,
+  "loglik": -506.32224065666031,
+  "n": 1945,
+  "nevent": 140
+}
