@@ -7,12 +7,12 @@ toc: false
 
 Greenwood turns time-to-event data into estimates, tests, models, and figures. Whether you're tracking patient outcomes, equipment failure times, or any event that takes time to happen, Greenwood provides a complete, production-ready toolkit for survival analysis.
 
-Unlike many statistical libraries, Greenwood is built on [Narwhals](https://narwhals-dev.github.io/narwhals/) for backend-agnostic compute, validated to tolerance against R's gold-standard `survival` package, and visualized with publication-quality interactive plots and tables. It works with Pandas, Polars, PyArrow, or any dataframe library you prefer.
+Unlike many statistical libraries, Greenwood is built on [Narwhals](https://narwhals-dev.github.io/narwhals/) for backend-agnostic compute, validated to tolerance against R's gold-standard **survival** package, and visualized with publication-quality interactive plots and tables. It works with Pandas, Polars, PyArrow, or any dataframe library you prefer.
 
 ## Why Greenwood?
 
 - **Works with your dataframe library**: Pandas, Polars, PyArrow, or any Narwhals-compatible frame (use the `format=` argument to control output types).
-- **Rigorously validated**: every statistic is tested to tolerance against R's `survival` package, so results match what the field already trusts.
+- **Rigorously validated**: every statistic is tested to tolerance against R's **survival** package, so results match what the field already trusts.
 - **Beautiful visualizations**: interactive survival curves, forest plots, and cumulative incidence plots with a choice of plotting backends.
 - **Publication-ready tables**: built-in integration with [Great Tables](https://posit-co.github.io/great-tables/) for production-quality reporting.
 - **Complete toolkit**: from simple Kaplan-Meier curves to Cox regression, competing risks, and multi-state models (everything you need, all validated)`.

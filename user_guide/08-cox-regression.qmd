@@ -739,7 +739,7 @@ The returned DataFrame includes:
 - `time`: event times at which the baseline hazard is evaluated
 - `cumhaz`: cumulative baseline hazard $H_0(t)$
 - `cumhaz_lower`, `cumhaz_upper`: confidence interval bounds for cumulative hazard
-- `survival`: baseline survival probability $S_0(t) = \exp(-H_0(t))$
+- `survival`{.gd-no-link}: baseline survival probability $S_0(t) = \exp(-H_0(t))$
 - `survival_lower`, `survival_upper`: confidence interval bounds for survival
 
 The `conf_type=` parameter controls the confidence interval transform:

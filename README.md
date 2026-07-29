@@ -29,7 +29,7 @@ Greenwood is a Python library for survival analysis, the statistical study of ti
 ### Why Greenwood?
 
 - it works with your dataframe library: Pandas, Polars, PyArrow, or anything supported by [Narwhals](https://narwhals-dev.github.io/narwhals/)
-- it is rigorously validated, where every statistic is tested to tolerance against R's gold-standard `survival` package
+- it is rigorously validated, where every statistic is tested to tolerance against R's gold-standard **survival** package
 - you get beautiful, interactive survival visualizations, with a choice of plotting backends so you can use whichever you prefer
 - you also get publication-ready tables through integration with the [Great Tables](https://posit-co.github.io/great-tables/) library
 - batteries are included: from simple Kaplan-Meier curves to Cox proportional hazards, competing risks, and beyond
@@ -74,7 +74,7 @@ Study design:
 Tidy & reproducible:
 
 - **Tidy layer** (`tidy()`, `glance()`, `augment()`): Broom-compatible summaries — coefficient tables, model-level statistics, and observation-level augmentation — aligned with Great Summaries for consistent reporting.
-- **Built-in datasets** (`lung`, `veteran`, `ovarian`, `pbc`, `colon`, `mgus2`) and **R-parity test harness**: Every statistic is validated to tolerance against R's `survival` package.
+- **Built-in datasets** (`lung`, `veteran`, `ovarian`, `pbc`, `colon`, `mgus2`) and **R-parity test harness**: Every statistic is validated to tolerance against R's **survival** package.
 
 ## Get started
 

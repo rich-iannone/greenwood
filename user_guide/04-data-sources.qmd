@@ -288,7 +288,7 @@ This is the seam that lets Greenwood feed publication tables in Great Tables.
 ## Datasets bundled with Greenwood
 
 For learning, testing, and reproducible examples, Greenwood ships six classic survival
-datasets drawn from R's `survival` package. Load any of them by name with
+datasets drawn from R's **survival** package. Load any of them by name with
 `gw.load_dataset`, and list them with `gw.available_datasets()`.
 
 ```{python}

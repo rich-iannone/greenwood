@@ -3,50 +3,46 @@ title: Get started
 guide-section: "Getting started"
 ---
 
-Greenwood turns time-to-event data into estimates, tests, models, and figures. It is built
-on [Narwhals](https://narwhals-dev.github.io/narwhals/) for backend-agnostic compute,
-validated against R's `survival` package, and visualized with
-[plotnine](https://plotnine.org/).
+Greenwood turns time-to-event data into estimates, tests, models, and figures. It is built on
+[Narwhals](https://narwhals-dev.github.io/narwhals/) for backend-agnostic compute, validated against
+R's survival package, and visualized with [plotnine](https://plotnine.org/).
 
 ## The pipeline
 
 Every analysis starts from a `Surv` response and flows through a shared kernel:
 
-1. **`Surv` response**: captures the outcome and its censoring (right, left, interval, or
-the counting-process form with left truncation), plus optional weights and multi-state
-endpoints. It is validated eagerly, so downstream code can trust it.
-2. **Risk-set / event-table kernel**: at each unique event time, how many are at risk, how
-many had events, how many were censored. This single tabulation underlies Kaplan-Meier,
-the log-rank test, and Cox.
-3. **Estimators and models**: Kaplan-Meier and Nelson-Aalen, group tests, Cox regression,
-parametric models, competing risks, and multi-state models.
-4. **Outputs**: tidy frames, plotnine figures, and publication tables through Great Tables
-and Great Summaries.
+1. **`Surv` response**: captures the outcome and its censoring (right, left, interval, or the
+counting-process form with left truncation), plus optional weights and multi-state endpoints. It is
+validated eagerly, so downstream code can trust it.
+2. **Risk-set / event-table kernel**: at each unique event time, how many are at risk, how many had
+events, how many were censored. This single tabulation underlies Kaplan-Meier, the log-rank test,
+and Cox.
+3. **Estimators and models**: Kaplan-Meier and Nelson-Aalen, group tests, Cox regression, parametric
+models, competing risks, and multi-state models.
+4. **Outputs**: tidy frames, plotnine figures, and publication tables through Great Tables and Great
+Summaries.
 
-Every statistic in Greenwood is validated to tolerance against R's `survival` package, so
-results match the reference implementation the field already trusts.
+Every statistic in Greenwood is validated to tolerance against R's **survival** package, so results
+match the reference implementation the field already trusts.
 
 ## How this guide is organized
 
-The guide builds up from data to models. If you are new to survival analysis, read it in
-order; if you know what you need, jump straight to the relevant page.
+The guide builds up from data to models. If you are new to survival analysis, read it in order. If
+you know what you need, jump straight to the relevant page.
 
-- **Foundations**: [Survival data and the Surv object](03-survival-data.qmd) explains
-censoring and how to represent it, and [Data sources and formats](04-data-sources.qmd)
-covers loading data from any backend.
+- **Foundations**: [Survival data and the Surv object](03-survival-data.qmd) explains censoring and
+how to represent it, and [Data sources and formats](04-data-sources.qmd) covers loading data from
+any backend.
 - **Description and comparison**: [Kaplan-Meier](05-kaplan-meier.qmd),
-[Comparing groups](06-comparing-groups.qmd), and
-[Visualizing survival](07-visualization.qmd).
+[Comparing groups](06-comparing-groups.qmd), and [Visualizing survival](07-visualization.qmd).
 - **Regression**: [Cox regression](08-cox-regression.qmd),
-[Cox model diagnostics](09-cox-diagnostics.qmd), and
-[Parametric models](10-parametric-models.qmd).
-- **Multiple event types**: [Competing risks](11-competing-risks.qmd) and
-[Multi-state models](12-multi-state.qmd).
-- **Evaluation**: [Prediction performance](13-prediction-performance.qmd).
+[Cox model diagnostics](09-cox-diagnostics.qmd), and [Parametric models](11-parametric-models.qmd).
+- **Multiple event types**: [Competing risks](12-competing-risks.qmd) and
+[Multi-state models](13-multi-state.qmd).
+- **Evaluation**: [Prediction performance](14-prediction-performance.qmd).
 
 ## Next steps
 
 - New to the library? Start with [Installation](01-installation.qmd), then the
 [Quick start](02-quick-start.qmd) for a fast tour.
-- New to survival analysis? Begin with
-[Survival data and the Surv object](03-survival-data.qmd).
+- New to survival analysis? Begin with [Survival data and the Surv object](03-survival-data.qmd).
