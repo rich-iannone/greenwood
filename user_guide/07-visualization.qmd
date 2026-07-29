@@ -156,7 +156,7 @@ gw.risk_table(km, times=[0, 250, 500, 750, 1000])
 ## Customizing the plot
 
 The `plot_survival()` function returns an ordinary Altair chart, so you refine it with Altair's API.
-Chaining `.properties()` sets the title and dimensions, and you can keep layering or restyling from
+Chaining `properties()` sets the title and dimensions, and you can keep layering or restyling from
 there.
 
 ```{python}
@@ -169,9 +169,9 @@ gw.plot_survival(km).properties(
 ::: {.callout-note}
 ## The plot is a chart object, not an image
 
-`plot_survival()` returns an Altair chart (an `alt.LayerChart`, or an `alt.VConcatChart` when
-`risk_table=True`). It renders interactively in notebooks and browsers, and you keep composing it
-with Altair's API. Nothing about the figure is locked down.
+The `plot_survival()` function returns an Altair chart (an `alt.LayerChart`, or an
+`alt.VConcatChart` when `risk_table=True`). It renders interactively in notebooks and browsers, and
+you keep composing it with Altair's API.
 :::
 
 ::: {.callout-tip}
@@ -244,7 +244,7 @@ gw.plot_forest(
 The `plot_forest()` function also accepts any tidy DataFrame with `term`, `estimate`, `ci_lower`,
 and `ci_upper` columns. This makes it straightforward to build subgroup forest plots where you have
 already assembled the estimates (for example, by fitting one Cox model per subgroup and calling
-`gw.tidy()` on each, then stacking the results).
+`tidy()` on each, then stacking the results).
 
 ```{python}
 import pandas as pd
@@ -397,7 +397,7 @@ gw.plot_cif(
 A common mistake is to estimate the cumulative incidence of cause $k$ as $1 - \hat{S}_k(t)$, where
 $\hat{S}_k$ is the Kaplan-Meier curve treating all other causes as censored. This overestimates the
 CIF because censoring competing events inflates the at-risk set. The Aalen-Johansen CIF is the
-correct estimate. See [Competing risks](11-competing-risks.qmd) for the full explanation.
+correct estimate. See [Competing risks](12-competing-risks.qmd) for the full explanation.
 :::
 
 ::: {.callout-note}
@@ -405,7 +405,7 @@ correct estimate. See [Competing risks](11-competing-risks.qmd) for the full exp
 
 If the grouped curves look different, you can confirm the difference with Gray's test, the
 competing-risks analogue of the log-rank test. That is covered in
-[Competing risks](11-competing-risks.qmd).
+[Competing risks](12-competing-risks.qmd).
 :::
 
 ## Next steps

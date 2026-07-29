@@ -339,7 +339,7 @@ cox.concordance()
 The C-statistic summarizes discrimination across all observed pairs, but it does not say
 whether predicted probabilities are well calibrated. For a more complete picture of model
 performance, including calibration and the Brier score, see
-[Prediction performance](13-prediction-performance.qmd).
+[Prediction performance](14-prediction-performance.qmd).
 
 ## Next steps
 

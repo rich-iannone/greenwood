@@ -66,9 +66,9 @@ the subject died without progressing and `0` when the subject was censored. Read
 cause[:8]
 ```
 
-We pass both arrays to `gw.Surv.multistate`, mapping cause code 1 to `pcm` and code 2 to `death`,
-with code 0 left as censoring. The resulting response object shows the event times alongside their
-decoded states.
+We pass both arrays to `gw.Surv.multistate`, mapping cause code `1` to `pcm` and code `2` to
+`death`, with code `0` left as censoring. The resulting response object shows the event times
+alongside their decoded states.
 
 ```{python}
 # Build the multi-state response, naming the two competing causes
@@ -261,9 +261,9 @@ fg = gw.FineGray("pcm").fit(y, mg[["age", "sex"]])
 fg
 ```
 
-We name `pcm` as the target cause and fit against age and sex. To read the fitted model we tidy it
-into a coefficient table, asking for exponentiated estimates so the numbers are on the hazard-ratio
-scale rather than the log scale.
+We name `pcm` as the target cause and fit against `age` and `sex`. To read the fitted model we tidy
+it into a coefficient table, asking for exponentiated estimates so the numbers are on the
+hazard-ratio scale rather than the log scale.
 
 ```{python}
 # Exponentiate to get subdistribution hazard ratios

@@ -156,7 +156,7 @@ distribution multiplied through the transition matrix.
 
 A competing-risks model is a multi-state model with one initial state and several absorbing
 states and no intermediate transitions. If that is your situation, use
-[`AalenJohansen`](11-competing-risks.qmd) directly, which also gives standard errors for the
+[`AalenJohansen`](12-competing-risks.qmd) directly, which also gives standard errors for the
 cumulative incidence.
 :::
 
