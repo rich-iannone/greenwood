@@ -11,16 +11,16 @@ import great_docs as gd
 gd.enable_tbl_preview(n_head=8, n_tail=3)
 ```
 
-This is a short tour that goes from raw data to a survival curve, a plot, and a fitted model.
-Each step is only a few lines. The rest of the guide explains every piece in depth, and links
-are collected at the end.
+This is a short tour that goes from raw data to a survival curve, a plot, and a fitted model. Each
+step is only a few lines. The rest of the guide explains every piece in depth, and links are
+collected at the end.
 
 ## Represent the data
 
-Survival data pairs a follow-up time with an indicator of whether the event was actually
-observed or the subject was censored (still event-free when we last saw them). Greenwood keeps
-the two together in a `Surv` object. We use the bundled `lung` dataset, the survival times of
-patients with advanced lung cancer.
+Survival data pairs a follow-up time with an indicator of whether the event was actually observed or
+the subject was censored (still event-free when we last saw them). Greenwood keeps the two together
+in a `Surv` object. We use the bundled `lung` dataset, the survival times of patients with advanced
+lung cancer.
 
 ```{python}
 # Import the Greenwood library
@@ -34,14 +34,14 @@ y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 y
 ```
 
-The summary reports 228 patients, of whom 165 died during the study; the rest were censored.
-One detail to note: this dataset codes `status` as 1 for censored and 2 for dead, so we turn
-it into a plain event indicator with `status == 2`.
+The summary reports 228 patients, of whom 165 died during the study (the rest were censored). One
+detail to note: this dataset codes `status` as `1` for censored and `2` for dead, so we turn it into
+a plain event indicator with `status == 2`.
 
 ## Estimate the survival curve
 
-The Kaplan-Meier estimator turns those times into a survival curve, the probability of
-surviving past each point in time. Printing the fitted estimator reports the median survival.
+The Kaplan-Meier estimator turns those times into a survival curve, the probability of surviving
+past each point in time. Printing the fitted estimator reports the median survival.
 
 ```{python}
 # Load data and build the right-censored response
@@ -60,8 +60,8 @@ after it give a 95 percent confidence interval for that median, 285 to 363 days.
 
 ## Plot the curve
 
-`plot_survival()` draws the curve as an interactive chart, with a shaded confidence band and a
-notch wherever a patient was censored.
+The `plot_survival()` function draws the curve as an interactive chart, with a shaded confidence
+band and a notch wherever a patient was censored.
 
 ```{python}
 # Load data and build the right-censored response
@@ -75,14 +75,13 @@ km = gw.KaplanMeier().fit(y)
 gw.plot_survival(km)
 ```
 
-The curve starts at 1.0 and steps down at each death. It does not reach 0 because some
-patients were still alive at the end of follow-up, so their survival time is only known to be
-at least that long.
+The curve starts at 1.0 and steps down at each death. It does not reach 0 because some patients were
+still alive at the end of follow-up, so their survival time is only known to be at least that long.
 
 ## Model a covariate effect
 
-To ask how a characteristic changes the risk of death, fit a Cox proportional hazards model.
-Here we include `age` and `sex`. Printing the model shows a coefficient table.
+To ask how a characteristic changes the risk of death, fit a Cox proportional hazards model. Here we
+include `age` and `sex`. Printing the model shows a coefficient table.
 
 ```{python}
 # Load data and build the right-censored response
@@ -97,8 +96,8 @@ cox
 ```
 
 The `exp(coef)` column holds hazard ratios. For `sex` (coded `1` for male, `2` for female) the
-hazard ratio is about 0.60, which means women had roughly 40 percent lower risk of death than
-men over the study, holding age fixed. A ratio below 1 is lower risk, above 1 is higher risk.
+hazard ratio is about 0.60, which means women had roughly 40 percent lower risk of death than men
+over the study, holding age fixed. A ratio below 1 is lower risk, above 1 is higher risk.
 
 ## Shared frailty for clustered survival data
 
@@ -131,5 +130,5 @@ effect. Each part of the guide takes one of these steps further.
 [Comparing groups](06-comparing-groups.qmd), and
 [Visualizing survival](07-visualization.qmd) cover description and comparison.
 - [Cox regression](08-cox-regression.qmd) and
-[Parametric survival models](10-parametric-models.qmd) cover modeling, and
-[Prediction performance](13-prediction-performance.qmd) covers evaluation.
+[Parametric survival models](11-parametric-models.qmd) cover modeling, and
+[Prediction performance](14-prediction-performance.qmd) covers evaluation.

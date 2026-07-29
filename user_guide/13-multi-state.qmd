@@ -164,7 +164,7 @@ cumulative incidence.
 
 You can now estimate occupancy probabilities for general multi-state processes.
 
-- [Competing risks](11-competing-risks.qmd) covers the important special case with standard
+- [Competing risks](12-competing-risks.qmd) covers the important special case with standard
 errors and the Fine-Gray regression model.
 - [Survival data](03-survival-data.qmd) explains the counting-process response that
 underlies multi-state data.

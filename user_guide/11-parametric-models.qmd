@@ -536,6 +536,6 @@ You can now fit, compare, and predict from parametric survival models.
 
 - [Cox regression](08-cox-regression.qmd) is the semiparametric alternative, useful when you
 prefer not to assume a distribution.
-- [Prediction performance](13-prediction-performance.qmd) evaluates any fitted model,
+- [Prediction performance](14-prediction-performance.qmd) evaluates any fitted model,
 parametric or not.
-- [Competing risks](11-competing-risks.qmd) handles the case of more than one type of event.
+- [Competing risks](12-competing-risks.qmd) handles the case of more than one type of event.

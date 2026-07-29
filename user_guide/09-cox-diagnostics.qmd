@@ -345,9 +345,9 @@ performance, including calibration and the Brier score, see
 
 You can now validate a Cox model and use it to predict.
 
-- [Prediction performance](13-prediction-performance.qmd) extends discrimination and adds
+- [Prediction performance](14-prediction-performance.qmd) extends discrimination and adds
 the Brier score for calibration, including for external risk scores.
-- [Parametric survival models](10-parametric-models.qmd) provide an alternative when the
+- [Parametric survival models](11-parametric-models.qmd) provide an alternative when the
 proportional hazards assumption is untenable.
 - Revisit [Cox regression](08-cox-regression.qmd) for the modeling basics if any of this is
 unfamiliar.

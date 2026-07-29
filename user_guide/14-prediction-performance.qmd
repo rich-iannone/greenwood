@@ -300,6 +300,6 @@ You can now quantify how well a survival model discriminates and predicts.
 
 - [Cox model diagnostics](09-cox-diagnostics.qmd) covers the assumption checks and residuals
 that complement these performance metrics.
-- [Parametric survival models](10-parametric-models.qmd) and
+- [Parametric survival models](11-parametric-models.qmd) and
 [Cox regression](08-cox-regression.qmd) produce the predictions these metrics evaluate.
 - The [Quick start](02-quick-start.qmd) ties the whole workflow together.
