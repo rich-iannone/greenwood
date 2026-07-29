@@ -199,8 +199,8 @@ def split_episodes(
         n_visits = len(v_times)
 
         # Count intervals added so far for this subject. carry_forward=False only drops
-        # the trailing interval when at least one earlier interval already exists — a
-        # subject whose only measurement is at time 0 should still produce one row.
+        # the trailing interval when at least one earlier interval already exists (a
+        # subject whose only measurement is at time 0 should still produce one row).
         intervals_added_for_subject = 0
 
         # pre-first-visit interval: (0, v_times[0]) with NaN TVC
