@@ -11,52 +11,49 @@ import great_docs as gd
 gd.enable_tbl_preview(n_head=8, n_tail=3)
 ```
 
-Real survival data arrives in many shapes. It might be a Pandas data frame you built from a
-CSV, a Polars data frame from a Parquet file, a table pulled straight from a database, or one
-of the datasets bundled with Greenwood for learning and testing. One of the design goals of
-this package is that none of this should matter: you bring the data in whatever form you
-already have, and Greenwood works with it directly. This page explains how, and lists the
-datasets that ship with the package.
+Real survival data arrives in many shapes. It might be a Pandas data frame you built from a CSV, a
+Polars data frame from a Parquet file, a table pulled straight from a database, or one of the
+datasets bundled with Greenwood for learning and testing. One of the design goals of this package is
+that none of this should matter: you bring the data in whatever form you already have, and Greenwood
+works with it directly. This page explains how, and lists the datasets that ship with the package.
 
 ## Backend-agnostic by design
 
-Greenwood does not have its own data frame type and does not force you to convert your data
-into one. Instead it is built on [Narwhals](https://narwhals-dev.github.io/narwhals/), a
-lightweight compatibility layer that lets a library speak to many data frame backends through
-one interface. When you hand Greenwood a data frame or a column, it reads the values through
-Narwhals and runs its numerical work on the underlying arrays. Your original object is never
-mutated and never copied into a foreign format.
+Greenwood does not have its own data frame type and does not force you to convert your data into
+one. Instead it is built on [Narwhals](https://narwhals-dev.github.io/narwhals/), a lightweight
+compatibility layer that lets a library speak to many data frame backends through one interface.
+When you hand Greenwood a data frame or a column, it reads the values through Narwhals and runs its
+numerical work on the underlying arrays. Your original object is never mutated and never copied into
+a foreign format.
 
-In practice this means you can pass data from any of the backends Narwhals supports. Three of
-these are covered directly by the Greenwood test suite, which checks that they all produce
-identical estimates on the same data.
+In practice this means you can pass data from any of the backends Narwhals supports. Three of these
+are covered directly by the Greenwood test suite, which checks that they all produce identical
+estimates on the same data.
 
-- **Pandas**, the most widely used data frame library, and the default for the bundled
-  datasets
-- **Polars**, a fast, multi-threaded, Arrow-based data frame library, well suited to large
-  datasets
+- **Pandas**, the most widely used data frame library, and the default for the bundled datasets
+- **Polars**, a fast, multi-threaded, Arrow-based data frame library, well suited to large datasets
 - **PyArrow** tables, the in-memory Arrow format that many file readers and databases produce
 
-Other backends that Narwhals supports, such as Modin, cuDF, and DuckDB, use the same interface
-and are expected to work the same way, though the test suite pins parity on the three above.
+Other backends that Narwhals supports, such as Modin, cuDF, and DuckDB, use the same interface and
+are expected to work the same way, though the test suite pins parity on the three above.
 
 ::: {.callout-note}
 ## What "backend-agnostic" buys you
 
-You do not have to rewrite your analysis when you switch data frame libraries. Code written
-for a Pandas workflow runs unchanged when the data arrives as Polars, because Greenwood reads
-both through the same interface. This also means results do not depend on the backend: the
-same data produces the same estimates regardless of where the frame came from. The test suite
-verifies this for Pandas, Polars, and PyArrow on identical inputs.
+You do not have to rewrite your analysis when you switch data frame libraries. Code written for a
+Pandas workflow runs unchanged when the data arrives as Polars, because Greenwood reads both through
+the same interface. This also means results do not depend on the backend: the same data produces the
+same estimates regardless of where the frame came from. The test suite verifies this for Pandas,
+Polars, and PyArrow on identical inputs.
 :::
 
 ## Passing columns and passing frames
 
 There are two ways to feed data to Greenwood, and both are always available.
 
-The first is to pass individual columns to a `Surv` constructor. This is how you build the
-response. A column can be a Pandas `Series`, a Polars `Series`, a NumPy array, or an ordinary
-Python list. Greenwood treats them all the same.
+The first is to pass individual columns to a `Surv` constructor. This is how you build the response.
+A column can be a Pandas `Series`, a Polars `Series`, a NumPy array, or an ordinary Python list.
+Greenwood treats them all the same.
 
 ```{python}
 import greenwood as gw
@@ -71,10 +68,10 @@ y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 y
 ```
 
-The second is to pass a whole data frame of covariates to a model. The model reads the columns
-it needs, converts non-numeric columns to indicator variables, and drops rows with missing
-values, just as R's modeling functions do. We fit the model in its own cell, then set it aside
-and look at its results through the tidy functions below.
+The second is to pass a whole data frame of covariates to a model. The model reads the columns it
+needs, converts non-numeric columns to indicator variables, and drops rows with missing values, just
+as R's modeling functions do. We fit the model in its own cell, then set it aside and look at its
+results through the tidy functions below.
 
 ```{python}
 # Fit a Cox model with age, sex, and ECOG score as covariates
@@ -84,24 +81,23 @@ cox = gw.CoxPH().fit(y, lung[["age", "sex", "ph.ecog"]])
 cox
 ```
 
-Printing a fitted model shows a readable summary, but for programmatic use you read its
-results through tidy output frames. The `tidy` function returns one row per model term, and
-passing `exponentiate=True` reports hazard ratios rather than raw coefficients.
+Printing a fitted model shows a readable summary, but for programmatic use you read its results
+through tidy output frames. The `tidy` function returns one row per model term, and passing
+`exponentiate=True` reports hazard ratios rather than raw coefficients.
 
 ```{python}
 # Extract a tidy per-term table; exponentiate=True gives hazard ratios
 gw.tidy(cox, exponentiate=True, format="polars")
 ```
 
-These two patterns (columns into `Surv`, frames into models) are the only interface you need
-for the entire package. Every page in this guide uses one or both of them.
+These two patterns (columns into `Surv`, frames into models) are the only interface you need for the
+entire package. Every page in this guide uses one or both of them.
 
 ## Choosing a backend
 
-The `load_dataset` function is itself dataframe-agnostic. With its default it returns a Polars
-data frame when Polars is installed, falls back to Pandas when only Pandas is available, and
-raises a clear error if neither is. When you want a specific type, name it with the `backend`
-argument.
+The `load_dataset()` function is itself dataframe-agnostic. With its default it returns a Polars
+data frame when Polars is installed, falls back to Pandas when only Pandas is available, and raises
+a clear error if neither is. When you want a specific type, name it with the `backend=` argument.
 
 ```{python}
 # Load the same dataset explicitly in each backend
@@ -112,11 +108,11 @@ lung_pl = gw.load_dataset("lung", backend="polars")
 type(lung_pd).__module__.split(".")[0], type(lung_pl).__module__.split(".")[0]
 ```
 
-The backend makes no difference to any result. The same model fit on the Pandas frame and on
-the Polars frame returns the same coefficients, a property the test suite checks on every
-release. To show this, we first build a response from the Polars columns. The resulting `Surv`
-object looks the same as one built from Pandas: it records the same times and events, because
-Greenwood read both through Narwhals.
+The backend makes no difference to any result. The same model fit on the Pandas frame and on the
+Polars frame returns the same coefficients, a property the test suite checks on every release. To
+show this, we first build a response from the Polars columns. The resulting `Surv` object looks the
+same as one built from Pandas: it records the same times and events, because Greenwood read both
+through Narwhals.
 
 ```{python}
 # Build a response from the Polars columns — identical to building from Pandas
@@ -127,40 +123,40 @@ y_pl
 ```
 
 Fitting a Cox model on the Polars-backed response and covariates, then viewing the result with
-`to_frame()`, gives the same coefficient table you would get from the Polars frame.
+`to_frame()`, gives the same coefficient table you would get from the Polars DataFrame.
 
 ```{python}
 # Fit on the Polars frame and export the coefficient table — same numbers as Pandas
 gw.CoxPH().fit(y_pl, lung_pl[["age", "sex"]]).to_frame(format="polars")
 ```
 
-You can choose whichever backend fits your existing workflow. If your pipeline already uses
-Polars, stick with Polars. If it uses Pandas, stick with Pandas. The choice has no effect on
-any numerical result.
+You can choose whichever backend fits your existing workflow. If your pipeline already uses Polars,
+stick with Polars. If it uses Pandas, stick with Pandas. The choice has no effect on any numerical
+result.
 
 ::: {.callout-tip}
 ## Reading from files and databases
 
-Greenwood does not read files itself, and it does not need to. Use your data frame library's
-reader (`pandas.read_csv()`, `polars.read_parquet()`, a database query, and so on) to get a
-frame, then pass its columns to `Surv` exactly as above. Anything that produces a supported
-data frame is a valid source.
+Greenwood does not read files itself, and it does not need to. Use your DataFrame library's reader
+(`pandas.read_csv()`, `polars.read_parquet()`, a database query, and so on) to get a DataFrame, then
+pass its columns to `Surv` exactly as above. Anything that produces a supported DataFrame is a valid
+source.
 :::
 
-## Shaping raw study data for Surv
+## Shaping raw study data for `Surv`
 
-Loading a data frame is rarely the last step before building a response. Real study exports
-often arrive in a form that needs light transformation before the times and event indicators
-are ready for `Surv`. Three situations come up often: (1) the data stores calendar dates
-rather than durations, (2) the event indicator is encoded in a compound or string status
-column, and (3) a multi-endpoint frame mixes rows that belong to different analyses.
+Loading a data frame is rarely the last step before building a response. Real study exports often
+arrive in a form that needs light transformation before the times and event indicators are ready for
+`Surv`. Three situations come up often: (1) the data stores calendar dates rather than durations,
+(2) the event indicator is encoded in a compound or string status column, and (3) a multi-endpoint
+DataFrame mixes rows that belong to different analyses.
 
 ### Computing durations from timestamps
 
-The most common transformation is computing the elapsed time between two date columns.
-Subtract the enrollment date from the exit date and convert the result to your preferred
-time unit. Polars returns a `Duration` type from date subtraction; `.dt.total_days()`
-gives integer days, which you then cast to float for `Surv`.
+The most common transformation is computing the elapsed time between two date columns. Subtract the
+enrollment date from the exit date and convert the result to your preferred time unit. Polars
+returns a `Duration` type from date subtraction; `.dt.total_days()` gives integer days, which you
+then cast to float for `Surv`.
 
 ```{python}
 import polars as pl
@@ -189,19 +185,18 @@ y = gw.Surv.right(study["time"], event=study["event"])
 y
 ```
 
-A few things to notice in this example. First, the `outcome` column uses three values:
-`"died"` (the event), `"censored"` (lost to follow-up at the exit date), and `"withdrew"`
-(left the study early). All three map cleanly to a boolean event indicator: the event is
-`True` only for `"died"`, and all other outcomes become censored observations. Second,
-the exit date serves the same role regardless of the reason for exit: it is always the
-last time at which the subject was observed, and the event indicator records what happened
-at that time.
+A few things to notice in this example. First, the `outcome` column uses three values: `"died"` (the
+event), `"censored"` (lost to follow-up at the exit date), and `"withdrew"` (left the study early).
+All three map cleanly to a boolean event indicator: the event is `True` only for `"died"`, and all
+other outcomes become censored observations. Second, the exit date serves the same role regardless
+of the reason for exit: it is always the last time at which the subject was observed, and the event
+indicator records what happened at that time.
 
 ::: {.callout-note}
 ## Missing values
 
-`Surv` raises an error if `time` or `event` contains null values. Drop or impute missing
-rows before constructing the response:
+`Surv` raises an error if `time` or `event` contains null values. Drop or impute missing rows before
+constructing the response:
 
 ```python
 study_clean = study.drop_nulls(subset=["time", "event"])
@@ -210,9 +205,9 @@ study_clean = study.drop_nulls(subset=["time", "event"])
 
 ### Encoding from compound status columns
 
-Some datasets store multiple outcome levels in a single integer status column. `pbc` is
-a typical example: `status` is 0 (censored), 1 (transplant), or 2 (dead). The right
-encoding depends on the analysis you intend to run.
+Some datasets store multiple outcome levels in a single integer status column. `pbc` is a typical
+example: `status` is `0` (censored), `1` (transplant), or `2` (dead). The right encoding depends on
+the analysis you intend to run.
 
 ```{python}
 # Load the pbc dataset; its status column has three levels (0, 1, 2)
@@ -229,18 +224,18 @@ print("all-cause: ", y_all)
 print("death-only:", y_death)
 ```
 
-The event counts differ because 25 subjects reached transplant rather than death: the
-all-cause endpoint treats them as events, the death-only endpoint treats them as censored.
-Which is correct depends entirely on your research question. For a competing-risks analysis
-that keeps the two outcomes separate, pass the full `status` column to `AalenJohansen` or
-`FineGray` with explicit event codes. See the competing-risks chapter for that pattern.
+The event counts differ because 25 subjects reached transplant rather than death: the all-cause
+endpoint treats them as events, the death-only endpoint treats them as censored. Which is correct
+depends entirely on your research question. For a competing-risks analysis that keeps the two
+outcomes separate, pass the full `status` column to `AalenJohansen` or `FineGray` with explicit
+event codes. See the competing-risks chapter for that pattern.
 
 ### Filtering multi-endpoint frames
 
 Some study exports give each subject one row per potential endpoint. The `colon` dataset is
-structured this way: `etype` is `1` for recurrence and `2` for death, so the full frame has
-1858 rows for 929 patients. Mixing rows from different endpoints in a single `Surv` is
-meaningless, so always filter to one endpoint first.
+structured this way: `etype` is `1` for recurrence and `2` for death, so the full frame has 1,858
+rows for 929 patients. Mixing rows from different endpoints in a single `Surv` is meaningless, so
+always filter to one endpoint first.
 
 ```{python}
 # Load the colon dataset; each patient contributes two rows, one per endpoint
@@ -256,18 +251,18 @@ y_recur = gw.Surv.right(recurrence["time"], event=recurrence["status"])
 y_recur
 ```
 
-The same principle applies to `mgus2`, which stores its two competing endpoints in separate
-column pairs (`ptime`/`pstat` for progression, `futime`/`death` for death) rather than
-separate rows. There you select the column pair that matches the endpoint you want, or pass
-both to a competing-risks model.
+The same principle applies to `mgus2`, which stores its two competing endpoints in separate column
+pairs (`ptime`/`pstat` for progression, `futime`/`death` for death) rather than separate rows. There
+you select the column pair that matches the endpoint you want, or pass both to a competing-risks
+model.
 
 ## Tidy output frames
 
-Every estimator and model returns its results as tidy data frames, through the `to_frame()`
-method and through the `tidy` and `glance` functions. Pass `format=` (`"pandas"`, `"polars"`,
-or `"pyarrow"`) to choose the backend; when you leave it off, Greenwood auto-detects one
-(Polars if installed, otherwise Pandas, otherwise PyArrow). This makes the results easy to
-inspect, filter, join, or pass on to a plotting or table library.
+Every estimator and model returns its results as tidy data frames, through the `to_frame()` method
+and through the `tidy()` and `glance()` functions. Pass `format=` (`"pandas"`, `"polars"`, or
+`"pyarrow"`) to choose the backend; when you leave it off, Greenwood auto-detects one (Polars if
+installed, otherwise Pandas, otherwise PyArrow). This makes the results easy to inspect, filter,
+join, or pass on to a plotting or table library.
 
 ```{python}
 # Load data and build the response
@@ -281,51 +276,50 @@ cox = gw.CoxPH().fit(y, lung[["age", "sex", "ph.ecog"]])
 gw.glance(cox, format="polars")
 ```
 
-The tidy and glance functions follow the same conventions as R's broom package, so a fitted
-model always yields a per-term table (`tidy()`) and a one-row model summary (`glance()`).
-This is the seam that lets Greenwood feed publication tables in Great Tables.
+The tidy and glance functions follow the same conventions as R's broom package, so a fitted model
+always yields a per-term table (`tidy()`) and a one-row model summary (`glance()`). This is the part
+that lets Greenwood feed publication tables in Great Tables.
 
 ## Datasets bundled with Greenwood
 
-For learning, testing, and reproducible examples, Greenwood ships six classic survival
-datasets drawn from R's **survival** package. Load any of them by name with
-`gw.load_dataset`, and list them with `gw.available_datasets()`.
+For learning, testing, and reproducible examples, Greenwood ships six classic survival datasets
+drawn from R's **survival** package. You can load any of them by name with the `load_dataset()`
+function, and you can list them with `available_datasets()`.
 
 ```{python}
 # List the names of all datasets bundled with Greenwood
 gw.available_datasets()
 ```
 
-The six datasets vary widely in size, covariate richness, and event structure. The sections
-below describe each one, identify which Greenwood models are a natural fit, and display the
-raw data in an interactive explorer so you can inspect columns and spot missing values before
-writing a single line of analysis code.
+The six datasets vary widely in size, covariate richness, and event structure. The sections below
+describe each one, identify which Greenwood models are a natural fit, and display the raw data in an
+interactive explorer so you can inspect columns and spot missing values before writing a single line
+of analysis code.
 
 ### `lung`: NCCTG lung cancer
 
-The `lung` dataset follows 228 patients enrolled in a North Central Cancer Treatment Group
-trial of advanced lung cancer. It is the workhorse example throughout the Greenwood
+The `lung` dataset follows 228 patients enrolled in a North Central Cancer Treatment Group trial of
+advanced lung cancer. It is the most commonly-used type of example throughout the Greenwood
 documentation and the most commonly cited benchmark in the Python and R survival-analysis
 literature.
 
-**Columns:** `inst` (institution code), `time` (survival days), `status` (`1` = censored,
-2 = dead), `age`, `sex` (`1` = male, `2` = female), `ph.ecog` (ECOG performance score 0–4),
-`ph.karno` (Karnofsky score rated by physician), `pat.karno` (Karnofsky score rated by
-patient), `meal.cal` (calories consumed at meals), `wt.loss` (weight loss in the last six
-months).
+**Columns:** `inst` (institution code), `time` (survival days), `status` (`1` = censored, `2` =
+dead), `age`, `sex` (`1` = male, `2` = female), `ph.ecog` (ECOG performance score 0–4), `ph.karno`
+(Karnofsky score rated by physician), `pat.karno` (Karnofsky score rated by patient), `meal.cal`
+(calories consumed at meals), `wt.loss` (weight loss in the last six months).
 
-**Model fit:** The modest size, clean right-censoring, and mix of continuous and ordinal
-covariates make `lung` suitable for virtually every model in Greenwood. Use it for
-Kaplan-Meier and Nelson-Aalen curves (overall or stratified by `sex` or `ph.ecog`), log-rank
-and related group-comparison tests, Cox proportional-hazards regression, the Royston-Parmar
-flexible parametric model, and AFT regression. It is the standard dataset used in the `Surv`
-construction examples throughout this guide.
+**Model fit:** The modest size, clean right-censoring, and mix of continuous and ordinal covariates
+make `lung` suitable for virtually every model in Greenwood. Use it for Kaplan-Meier and
+Nelson-Aalen curves (overall or stratified by `sex` or `ph.ecog`), log-rank and related
+group-comparison tests, Cox proportional-hazards regression, the Royston-Parmar flexible parametric
+model, and AFT regression. It is the standard dataset used in the `Surv` construction examples
+throughout this guide.
 
 ::: {.callout-note}
 ## Event coding
 
-`status` uses the R-style 1 / 2 convention: `1` = censored, `2` = dead. Build the response
-as `Surv.right(time, event=(status == 2))`.
+`status` uses the R-style `1`/`2` convention: `1` = censored, `2` = dead. Build the response as
+`Surv.right(time, event=(status == 2))`.
 :::
 
 ```{python}
@@ -336,20 +330,19 @@ gd.tbl_explorer(gw.load_dataset("lung"), caption="lung: 228 patients, 10 variabl
 ### `veteran`: Veterans' Administration lung cancer trial
 
 `veteran` is a randomized clinical trial comparing two treatments in 137 male veterans with
-inoperable lung cancer. Its standout feature is the `celltype` column, which partitions
-patients into four histological groups (squamous, small cell, adeno, and large cell). This
-makes it the natural choice for demonstrating stratified Kaplan-Meier curves and multi-group
-comparison tests.
+inoperable lung cancer. Its standout feature is the `celltype` column, which partitions patients
+into four histological groups (squamous, small cell, adeno, and large cell). This makes it the
+natural choice for demonstrating stratified Kaplan-Meier curves and multi-group comparison tests.
 
-**Columns:** `trt` (`1` = standard, `2` = test), `celltype` (squamous / smallcell / adeno /
-large), `time` (survival days), `status` (`0` = censored, `1` = dead), `karno` (Karnofsky
-performance score), `diagtime` (months from diagnosis to study entry), `age`, `prior`
-(prior therapy: 0 / 10).
+**Columns:** `trt` (`1` = standard, `2` = test), `celltype` (`"squamous"`/`"smallcell"`/`"adeno"`/
+`"large"`), `time` (survival days), `status` (`0` = censored, `1` = dead), `karno` (Karnofsky
+performance score), `diagtime` (months from diagnosis to study entry), `age`, `prior` (prior
+therapy: `0` or `10`).
 
 **Model fit:** `veteran` is ideal for Kaplan-Meier curves stratified by `trt` or `celltype`,
-log-rank tests, pairwise log-rank, and trend tests. For regression, `CoxPH` accepts the
-`celltype` string column directly and converts it to treatment-coded dummies automatically,
-giving one hazard ratio per cell type relative to the reference level.
+log-rank tests, pairwise log-rank, and trend tests. For regression, `CoxPH` accepts the `celltype`
+string column directly and converts it to treatment-coded dummies automatically, giving one hazard
+ratio per cell type relative to the reference level.
 
 ```{python}
 #| echo: false
@@ -358,19 +351,18 @@ gd.tbl_explorer(gw.load_dataset("veteran"), caption="veteran: 137 patients, 8 va
 
 ### `ovarian`: Ovarian cancer survival
 
-`ovarian` is a deliberately small dataset (26 patients) from a trial comparing two
-chemotherapy regimens for ovarian cancer. Its small size makes it ideal for teaching, for
-verifying that a method produces the right result on data you can inspect by eye, and for
-quick checks during development.
+`ovarian` is a deliberately small dataset (26 patients) from a trial comparing two chemotherapy
+regimens for ovarian cancer. Its small size makes it ideal for teaching, for verifying that a method
+produces the right result on data you can inspect by eye, and for quick checks during development.
 
-**Columns:** `futime` (follow-up days), `fustat` (`0` = censored, `1` = dead), `age`,
-`resid.ds` (residual disease after surgery: `1` = no, `2` = yes), `rx` (treatment group:
-1 or 2), `ecog.ps` (ECOG performance status).
+**Columns:** `futime` (follow-up days), `fustat` (`0` = censored, `1` = dead), `age`, `resid.ds`
+(residual disease after surgery: `1` = no, `2` = yes), `rx` (treatment group: `1` or `2`), `ecog.ps`
+(ECOG performance status).
 
 **Model fit:** Because of its size, `ovarian` is best used with non-parametric estimators
-(`KaplanMeier`, `NelsonAalen`) and simple group comparisons (`logrank_test`). Regression
-models can be fit but coefficient estimates will have wide confidence intervals. Use `pbc`
-or `colon` when you need a richer covariate structure.
+(`KaplanMeier`, `NelsonAalen`) and simple group comparisons (`logrank_test()`). Regression models
+can be fit but coefficient estimates will have wide confidence intervals. Use `pbc` or `colon` when
+you need a richer covariate structure.
 
 ```{python}
 #| echo: false
@@ -379,30 +371,29 @@ gd.tbl_explorer(gw.load_dataset("ovarian"), caption="ovarian: 26 patients, 6 var
 
 ### `pbc`: Mayo Clinic primary biliary cholangitis
 
-`pbc` records 418 patients enrolled in a Mayo Clinic randomized trial of D-penicillamine for
-primary biliary cholangitis, a chronic liver disease. With 20 columns including laboratory
-values, clinical signs, and histological staging, it is the reference dataset for
-high-dimensional regression in Greenwood.
+`pbc` records 418 patients enrolled in a Mayo Clinic randomized trial of D-penicillamine for primary
+biliary cholangitis, a chronic liver disease. With 20 columns including laboratory values, clinical
+signs, and histological staging, it is the reference dataset for high-dimensional regression in
+Greenwood.
 
-**Columns:** `id`, `time` (days to death or transplant), `status` (`0` = censored,
-`1` = transplant, `2` = dead), `trt` (`1` = D-penicillamine, `2` = placebo), `age`, `sex`,
-`ascites`, `hepato` (hepatomegaly), `spiders`, `edema`, `bili` (serum bilirubin), `chol`
-(cholesterol), `albumin`, `copper`, `alk.phos` (alkaline phosphatase), `ast`, `trig`
-(triglycerides), `platelet`, `protime` (prothrombin time), `stage` (histologic stage 1–4).
+**Columns:** `id`, `time` (days to death or transplant), `status` (`0` = censored, `1` = transplant,
+`2` = dead), `trt` (`1` = D-penicillamine, `2` = placebo), `age`, `sex`, `ascites`, `hepato`
+(hepatomegaly), `spiders`, `edema`, `bili` (serum bilirubin), `chol` (cholesterol), `albumin`,
+`copper`, `alk.phos` (alkaline phosphatase), `ast`, `trig` (triglycerides), `platelet`, `protime`
+(prothrombin time), `stage` (histologic stage `1`–`4`).
 
-**Model fit:** `pbc` is the standard choice for `CoxPH` with many covariates and for
-`CoxNet` (penalized Cox) when you want automatic variable selection or regularization. The
-Royston-Parmar flexible parametric model also fits well here. Because `status` has three
-levels, you can treat transplant and death as a combined endpoint (`event=(status > 0)`) for
-a standard right-censored analysis, or separate them into competing events for
-`AalenJohansen` and `FineGray`.
+**Model fit:** `pbc` is the standard choice for `CoxPH` with many covariates and for `CoxNet`
+(penalized Cox) when you want automatic variable selection or regularization. The Royston-Parmar
+flexible parametric model also fits well here. Because `status` has three levels, you can treat
+transplant and death as a combined endpoint (`event=(status > 0)`) for a standard right-censored
+analysis, or separate them into competing events for `AalenJohansen` and `FineGray`.
 
 ::: {.callout-note}
 ## Event coding
 
-`status` has three levels: `0` = censored, `1` = transplant, `2` = dead. For an all-cause
-analysis use `event=(status > 0)`. For competing risks, pass the full column with explicit
-event codes to `AalenJohansen` or `FineGray`.
+`status` has three levels: `0` = censored, `1` = transplant, `2` = dead. For an all-cause analysis
+use `event=(status > 0)`. For competing risks, pass the full column with explicit event codes to
+`AalenJohansen` or `FineGray`.
 :::
 
 ```{python}
@@ -412,23 +403,22 @@ gd.tbl_explorer(gw.load_dataset("pbc"), caption="pbc: 418 patients, 20 variables
 
 ### `colon`: Adjuvant therapy for colon cancer
 
-`colon` is Greenwood's largest dataset at 1858 rows. It comes from a three-arm trial
-(observation, levamisole, and levamisole plus 5-FU) for adjuvant therapy after surgery for
-colon cancer. The key structural feature is the `etype` column: each patient contributes
-two rows, one for recurrence (`etype = 1`) and one for death (`etype = 2`), so the full
-frame contains roughly twice the number of subjects.
+`colon` is Greenwood's largest dataset at 1858 rows. It comes from a three-arm trial (observation,
+levamisole, and levamisole plus 5-FU) for adjuvant therapy after surgery for colon cancer. The key
+structural feature is the `etype` column: each patient contributes two rows, one for recurrence
+(`etype = 1`) and one for death (`etype = 2`), so the full frame contains roughly twice the number
+of subjects.
 
-**Columns:** `id`, `study`, `rx` (Obs / Lev / Lev+5FU), `sex`, `age`, `obstruct`,
-`perfor` (bowel perforation), `adhere`, `nodes` (positive lymph nodes), `status`
-(`0` = censored, `1` = event), `differ` (tumor differentiation), `extent` (depth of invasion),
-`surg` (short / long time from surgery to registration), `node4` (nodes > 4), `time`,
-`etype` (1 = recurrence, 2 = death).
+**Columns:** `id`, `study`, `rx` (Obs / Lev / Lev+5FU), `sex`, `age`, `obstruct`, `perfor` (bowel
+perforation), `adhere`, `nodes` (positive lymph nodes), `status` (`0` = censored, `1` = event),
+`differ` (tumor differentiation), `extent` (depth of invasion), `surg` (short / long time from
+surgery to registration), `node4` (nodes > 4), `time`, `etype` (`1` = recurrence, `2` = death).
 
-**Model fit:** Always filter to one endpoint before fitting: `df.filter(pl.col("etype") == 1)`
-for recurrence or `== 2` for death. The recurrence endpoint is well suited to Kaplan-Meier
-curves and log-rank tests comparing the three treatment arms; the large sample gives precise
-estimates. Filtering to `etype == 2` and treating the recurrence event as a competing risk
-gives a natural setup for `AalenJohansen` and `FineGray`.
+**Model fit:** Always filter to one endpoint before fitting: `df.filter(pl.col("etype") == 1)` for
+recurrence or `== 2` for death. The recurrence endpoint is well suited to Kaplan-Meier curves and
+log-rank tests comparing the three treatment arms; the large sample gives precise estimates.
+Filtering to `etype == 2` and treating the recurrence event as a competing risk gives a natural
+setup for `AalenJohansen` and `FineGray`.
 
 ```{python}
 #| echo: false
@@ -437,24 +427,24 @@ gd.tbl_explorer(gw.load_dataset("colon"), caption="colon: 1858 rows (2 endpoints
 
 ### `mgus2`: Monoclonal gammopathy
 
-`mgus2` is Greenwood's canonical competing-risks dataset. It follows 1384 patients diagnosed
-with monoclonal gammopathy of undetermined significance (MGUS), a precursor plasma-cell
-condition, tracking two competing endpoints: progression to plasma-cell malignancy (`pstat`,
-time in `ptime`) and death without progression (`death`, time in `futime`). Because a patient
-who progresses cannot later die as a non-progressor, the two events compete; a Kaplan-Meier
-analysis would overestimate the probability of each event, so this dataset is the motivating
-example for cumulative incidence functions in this guide.
+`mgus2` is Greenwood's canonical competing-risks dataset. It follows 1,384 patients diagnosed with
+monoclonal gammopathy of undetermined significance (MGUS), a precursor plasma-cell condition,
+tracking two competing endpoints: progression to plasma-cell malignancy (`pstat`, time in `ptime`)
+and death without progression (`death`, time in `futime`). Because a patient who progresses cannot
+later die as a non-progressor, the two events compete; a Kaplan-Meier analysis would overestimate
+the probability of each event, so this dataset is the motivating example for cumulative incidence
+functions in this guide.
 
 **Columns:** `id`, `age`, `sex`, `dxyr` (year of diagnosis), `hgb` (hemoglobin), `creat`
-(creatinine), `mspike` (M-spike size in g/dL), `ptime` (months to progression), `pstat`
-(`0` = no progression, `1` = progressed), `futime` (months to death or censoring), `death`
-(`0` = alive, `1` = dead).
+(creatinine), `mspike` (M-spike size in g/dL), `ptime` (months to progression), `pstat` (`0` = no
+progression, `1` = progressed), `futime` (months to death or censoring), `death` (`0` = alive,
+`1` = dead).
 
 **Model fit:** `mgus2` is designed for competing-risks analysis. Use `AalenJohansen` for
-non-parametric cumulative incidence functions and `FineGray` for regression on the
-cause-specific subdistribution hazard. The `MultiState` model can extend the analysis to a
-three-state illness-death structure (MGUS -> progression -> death). The competing-risks
-page of this guide builds its examples entirely on this dataset.
+non-parametric cumulative incidence functions and `FineGray` for regression on the cause-specific
+subdistribution hazard. The `MultiState` model can extend the analysis to a three-state
+illness-death structure (MGUS -> progression -> death). The competing-risks page of this guide
+builds its examples entirely on this dataset.
 
 ```{python}
 #| echo: false
@@ -464,20 +454,19 @@ gd.tbl_explorer(gw.load_dataset("mgus2"), caption="mgus2: 1384 patients, 11 vari
 ::: {.callout-warning}
 ## Event coding in the bundled data
 
-Several of these datasets follow R's convention rather than the `0`/`1` convention for the
-status column. `lung` codes status as `1` = censored and `2` = dead. `pbc` uses three levels
-(`0` / `1` / `2`). Always inspect the column and convert it explicitly when building the
-response. See [Survival data](03-survival-data.qmd) for why Greenwood does not guess at event
-coding.
+Several of these datasets follow R's convention rather than the `0`/`1` convention for the status
+column. `lung` codes status as `1` = censored and `2` = dead. `pbc` uses three levels (`0`/`1`/`2`).
+Always inspect the column and convert it explicitly when building the response. See
+[Survival data](03-survival-data.qmd) for why Greenwood does not guess at event coding.
 :::
 
 ## Next steps
 
-You can now bring survival data into Greenwood from whatever source you have, and you know
-what the bundled datasets contain.
+You can now bring survival data into Greenwood from whatever source you have, and you know what the
+bundled datasets contain.
 
-- [Estimating survival with Kaplan-Meier](05-kaplan-meier.qmd) puts this data to work with
-the first and most important estimator.
-- [Survival data and the Surv object](03-survival-data.qmd) covers the response type in more
-detail if you skipped ahead.
+- [Estimating survival with Kaplan-Meier](05-kaplan-meier.qmd) puts this data to work with the first
+and most important estimator.
+- [Survival data and the Surv object](03-survival-data.qmd) covers the response type in more detail
+if you skipped ahead.
 - The [Quick start](02-quick-start.qmd) is a fast end-to-end tour if you prefer to skim first.

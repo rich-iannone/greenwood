@@ -55,8 +55,8 @@ km = gw.KaplanMeier().fit(y)
 km
 ```
 
-The median is 310 days: half of the patients are still alive at 310 days. The two columns
-after it give a 95 percent confidence interval for that median, 285 to 363 days.
+The median is 310 days: half of the patients are still alive at 310 days. The two columns after it
+give a 95% confidence interval for that median, 285 to 363 days.
 
 ## Plot the curve
 
@@ -96,8 +96,8 @@ cox
 ```
 
 The `exp(coef)` column holds hazard ratios. For `sex` (coded `1` for male, `2` for female) the
-hazard ratio is about 0.60, which means women had roughly 40 percent lower risk of death than men
-over the study, holding age fixed. A ratio below 1 is lower risk, above 1 is higher risk.
+hazard ratio is about 0.60, which means women had roughly 40% lower risk of death than men over the
+study, holding age fixed. A ratio below 1 is lower risk, above 1 is higher risk.
 
 ## Shared frailty for clustered survival data
 
@@ -121,8 +121,8 @@ See [Cox regression](08-cox-regression.qmd) for full guidance and interpretation
 
 ## Next steps
 
-That is the core loop: represent the data, estimate a curve, visualize it, and model an
-effect. Each part of the guide takes one of these steps further.
+That is the core loop: represent the data, estimate a curve, visualize it, and model an effect. Each
+part of the guide takes one of these steps further.
 
 - [Survival data and the Surv object](03-survival-data.qmd) and
 [Data sources and formats](04-data-sources.qmd) cover the input side in full.

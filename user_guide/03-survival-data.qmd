@@ -11,31 +11,31 @@ import great_docs as gd
 gd.enable_tbl_preview(n_head=8, n_tail=3)
 ```
 
-Survival analysis studies the time until an event happens: death, relapse, machine failure,
-customer churn, or any other well-defined endpoint. What makes this kind of data special,
-and what separates survival analysis from ordinary regression, is that we usually cannot
-observe the event time for everyone. Some subjects are still event-free when the study ends,
-some drop out early, and some enter late. Handling these partially observed times correctly
-is the entire point of the field, and it starts with how you represent the data.
+Survival analysis studies the time until an event happens: death, relapse, machine failure, customer
+churn, or any other well-defined endpoint. What makes this kind of data special, and what separates
+survival analysis from ordinary regression, is that we usually cannot observe the event time for
+everyone. Some subjects are still event-free when the study ends, some drop out early, and some
+enter late. Handling these partially observed times correctly is the entire point of the field, and
+it starts with how you represent the data.
 
-This page explains the structure of survival data and introduces the `Surv` object, the
-response type that every estimator and model in Greenwood consumes.
+This page explains the structure of survival data and introduces the `Surv` object, the response
+type that every estimator and model in Greenwood consumes.
 
 ## Why survival data is different
 
-Imagine a study that follows patients for two years and records the time until relapse. At
-the end of the study, three situations are possible for any given patient.
+Imagine a study that follows patients for two years and records the time until relapse. At the end
+of the study, three situations are possible for any given patient.
 
-The first is a fully observed event: the patient relapsed at a known time, say 8 months. The
-second is right censoring: the patient was relapse-free at their last visit, say at 20
-months, so all we know is that their true relapse time is greater than 20 months. The third
-is a variation on censoring caused by how subjects enter and leave the study.
+The first is a fully observed event: the patient relapsed at a known time, say 8 months. The second
+is right censoring: the patient was relapse-free at their last visit, say at 20 months, so all we
+know is that their true relapse time is greater than 20 months. The third is a variation on
+censoring caused by how subjects enter and leave the study.
 
-Right censoring is by far the most common situation, and it is why we cannot simply average
-the observed times or run a standard regression on them. A censored time of 20 months is not
-the same as an event at 20 months, and treating it as one would badly bias every estimate.
-Survival methods are built to use the partial information in a censored observation without
-pretending it is a complete one.
+Right censoring is by far the most common situation, and it is why we cannot simply average the
+observed times or run a standard regression on them. A censored time of 20 months is not the same as
+an event at 20 months, and treating it as one would badly bias every estimate. Survival methods are
+built to use the partial information in a censored observation without pretending it is a complete
+one.
 
 ::: {#fig-censoring}
 <svg viewBox="0 0 680 210" xmlns="http://www.w3.org/2000/svg" style="max-width:680px;width:100%;height:auto;font-family:sans-serif;color:inherit">
@@ -60,31 +60,33 @@ pretending it is a complete one.
 <text x="350" y="195" text-anchor="middle" font-size="12" fill="currentColor">Months of follow-up</text>
 </svg>
 
-Two subjects observed over a study window. Subject A reaches the event at month 8. Subject B is still event-free at month 20, so their true event time is only known to exceed 20: this is right censoring.
+Two subjects observed over a study window. Subject A reaches the event at month 8. Subject B is
+still event-free at month 20, so their true event time is only known to exceed 20: this is right
+censoring.
 :::
 
-Greenwood also supports less common but important patterns: left censoring (the event
-happened before a known time), interval censoring (the event happened between two known
-times), and left truncation or late entry (a subject only becomes observable after some
-delay). All of these are expressed through the same response object.
+Greenwood also supports less common but important patterns: left censoring (the event happened
+before a known time), interval censoring (the event happened between two known times), and left
+truncation or late entry (a subject only becomes observable after some delay). All of these are
+expressed through the same response object.
 
 ::: {.callout-note}
 ## The key idea
 
-A survival observation carries two pieces of information: a time, and a status that says
-what the time means (an event, or a censoring point). You must always keep them together.
-Greenwood does this for you with the `Surv` object.
+A survival observation carries two pieces of information: a time, and a status that says what the
+time means (an event, or a censoring point). You must always keep them together. Greenwood does this
+for you with the `Surv` object.
 :::
 
 ## The Surv object
 
-`Surv` is the response you pass to estimators and models. It bundles the times with their
-status codes and validates them, so that downstream code can rely on a clean, consistent
-representation. You build one with a constructor that names the censoring type.
+`Surv` is the response you pass to estimators and models. It bundles the times with their status
+codes and validates them, so that downstream code can rely on a clean, consistent representation.
+You build one with a constructor that names the censoring type.
 
 The most common constructor is `gw.Surv.right()`, for right-censored data. It takes the observed
-times and an event indicator, where a truthy value (or `1`) means the event occurred and a
-falsy value (or `0`) means the observation was censored.
+times and an event indicator, where a truthy value (or `1`) means the event occurred and a falsy
+value (or `0`) means the observation was censored.
 
 ```{python}
 # Import the Greenwood library
@@ -97,8 +99,8 @@ y = gw.Surv.right(time=[5, 6, 4, 9], event=[1, 0, 1, 0])
 y
 ```
 
-The `repr` gives a quick summary: the censoring type, the number of observations, and how
-many of them were events. You can also reach the derived quantities directly.
+The `repr` gives a quick summary: the censoring type, the number of observations, and how many of
+them were events. You can also reach the derived quantities directly.
 
 ```{python}
 # Read off the derived counts directly from the response
@@ -109,10 +111,9 @@ print("censored:", y.n_censored)
 
 ### Other censoring types
 
-When subjects enter the risk set after time zero, or when a covariate changes during
-follow-up, you use the counting-process form. Each observation is an interval `(start,
-stop]` with an event indicator at the stop time. This is also how left truncation is
-expressed.
+When subjects enter the risk set after time zero, or when a covariate changes during follow-up, you
+use the counting-process form. Each observation is an interval `(start, stop]` with an event
+indicator at the stop time. This is also how left truncation is expressed.
 
 ```{python}
 # Each row is an interval (start, stop] with an event indicator at the stop time
@@ -121,8 +122,7 @@ gw.Surv.counting(start=[0, 2, 1], stop=[5, 6, 4], event=[1, 0, 1])
 
 Left censoring, where all you know is that the event had already happened by the time of
 observation, uses `gw.Surv.left()`. It takes the same `(time, event)` arguments as
-`gw.Surv.right()`, but the time is an upper bound on the unknown event time rather than a
-lower one.
+`gw.Surv.right()`, but the time is an upper bound on the unknown event time rather than a lower one.
 
 ```{python}
 # The event is known only to have already occurred before the recorded time
@@ -150,9 +150,9 @@ gw.Surv.multistate(time=[5, 6, 7, 8], event=[1, 2, 0, 1], states=("relapse", "de
 
 ## Building a response from a data frame
 
-In practice your data lives in a data frame. Greenwood is dataframe-agnostic through
-Narwhals, so you can pass Pandas or Polars columns directly. The bundled `lung` dataset,
-from the North Central Cancer Treatment Group, is a good example.
+In practice your data lives in a data frame. Greenwood is dataframe-agnostic through Narwhals, so
+you can pass Pandas or Polars columns directly. The bundled `lung` dataset, from the North Central
+Cancer Treatment Group, is a good example.
 
 ```{python}
 # Load the bundled lung dataset as a Polars DataFrame
@@ -162,10 +162,10 @@ lung = gw.load_dataset("lung", backend="polars")
 lung
 ```
 
-There is a subtlety here that might trip you up. In this dataset, and in several others that
-come from R, the `status` column is coded `1` for censored and `2` for dead, rather than the
-`0`/`1` convention. Greenwood does not guess at this coding, and it will raise an error if
-you pass `1`/`2` values directly. You convert the column explicitly instead.
+There is a subtlety here that might trip you up. In this dataset, and in several others that come
+from R, the `status` column is coded `1` for censored and `2` for dead, rather than the `0`/`1`
+convention. Greenwood does not guess at this coding, and it will raise an error if you pass `1`/`2`
+values directly. You convert the column explicitly instead.
 
 ```{python}
 # Convert the R-style coding (2 = dead) to a boolean event indicator
@@ -178,18 +178,18 @@ y
 ::: {.callout-warning}
 ## Check your event coding
 
-Greenwood requires the event indicator to be boolean or `0`/`1`, where `1` means the event
-occurred. If your data uses another convention, such as `1` for censored and `2` for the
-event, convert it first with a comparison like `status == 2`. This deliberate strictness
-prevents a silent and serious error where censoring and events are swapped.
+Greenwood requires the event indicator to be boolean or `0`/`1`, where `1` means the event occurred.
+If your data uses another convention, such as `1` for censored and `2` for the event, convert it
+first with a comparison like `status == 2`. This deliberate strictness prevents a silent and serious
+error where censoring and events are swapped.
 :::
 
 ## Validation and reproducibility
 
-The `Surv` constructor validates its inputs immediately. Times must be finite and
-non-negative, the arrays must have matching lengths, and for the counting-process form each
-start must be strictly less than its stop. When something is wrong, you get a clear error at
-construction time rather than a confusing failure deep inside an estimator.
+The `Surv` constructor validates its inputs immediately. Times must be finite and non-negative, the
+arrays must have matching lengths, and for the counting-process form each start must be strictly
+less than its stop. When something is wrong, you get a clear error at construction time rather than
+a confusing failure deep inside an estimator.
 
 ```{python}
 # Surv rejects negative times immediately with a descriptive error
@@ -199,9 +199,9 @@ except ValueError as error:
     print(error)
 ```
 
-Another common data quality issue is when a subject's entry time equals their exit time
-(zero follow-up time). This indicates a data problem: if a subject has no time at risk, they
-cannot experience an event. Greenwood catches this early:
+Another common data quality issue is when a subject's entry time equals their exit time (zero
+follow-up time). This indicates a data problem: if a subject has no time at risk, they cannot
+experience an event. Greenwood catches this early:
 
 ```{python}
 #| eval: false
@@ -221,14 +221,17 @@ Each `start` must be strictly less than its `stop`.
 
 If you encounter this error, check your data:
 
-- **Most common fix**: exclude subjects with `start >= stop` (they have zero or negative follow-up time)
-- **Data quality check**: why do some subjects have identical entry and exit times? Is this a data entry error?
-- **If intentional**: if the event truly occurred instantaneously, add a small epsilon to the stop time: `stop = start + 1e-10`
+- **Most common fix**: exclude subjects with `start >= stop` (they have zero or negative follow-up
+time)
+- **Data quality check**: why do some subjects have identical entry and exit times? Is this a data
+entry error?
+- **If intentional**: if the event truly occurred instantaneously, add a small epsilon to the stop
+time: `stop = start + 1e-10`
 
-A response also serializes to and from JSON without loss, which is useful for saving an
-analysis input or moving it between systems. Calling `to_json()` returns a plain string, so you
-can write it to a file or send it over the wire. Here is the serialized form of the `lung`
-response, truncated to its first stretch so you can see the shape of it.
+A response also serializes to and from JSON without loss, which is useful for saving an analysis
+input or moving it between systems. Calling `to_json()` returns a plain string, so you can write it
+to a file or send it over the wire. Here is the serialized form of the `lung` response, truncated to
+its first stretch so you can see the shape of it.
 
 ```{python}
 # Load data and build the response
@@ -242,9 +245,9 @@ text = y.to_json(indent=None)
 text[:200]
 ```
 
-That string carries the times and status codes together, which is exactly what a `Surv`
-object holds. Reading it back with `from_json()` reconstructs an equivalent response, and we can
-confirm nothing was lost by comparing the JSON of the original and the restored object.
+That string carries the times and status codes together, which is exactly what a `Surv` object
+holds. Reading it back with `from_json()` reconstructs an equivalent response, and we can confirm
+nothing was lost by comparing the JSON of the original and the restored object.
 
 ```{python}
 # Reconstruct an equivalent response from the JSON string
@@ -254,18 +257,18 @@ restored = gw.Surv.from_json(text)
 print("round-trips exactly:", restored.to_json() == y.to_json())
 ```
 
-For working in memory rather than as text, `to_dict()` and `from_dict()` perform the same
-round-trip with a plain Python dictionary, and `to_frame()` (optionally with a `format=` of
-`"polars"`, `"pandas"`, or `"pyarrow"`) gives a tidy, one-row-per-subject view that is
-convenient for inspection or export.
+For working in memory rather than as text, `to_dict()` and `from_dict()` perform the same round-trip
+with a plain Python dictionary, and `to_frame()` (optionally with a `format=` of `"polars"`,
+`"pandas"`, or `"pyarrow"`) gives a tidy, one-row-per-subject view that is convenient for inspection
+or export.
 
 ```{python}
 # Export as a tidy one-row-per-subject DataFrame for inspection or export
 y.to_frame(format="polars")
 ```
 
-The dictionary form is the same structure `to_json()` serializes, so `gw.Surv.from_dict()`
-rebuilds an equivalent response from it.
+The dictionary form is the same structure `to_json()` serializes, so `gw.Surv.from_dict()` rebuilds
+an equivalent response from it.
 
 ```{python}
 # Serialize to a dict, then immediately reconstruct from it
@@ -275,9 +278,9 @@ gw.Surv.from_dict(gw.Surv.right([5, 6, 4], event=[1, 0, 1]).to_dict())
 ## The risk-set table
 
 Under every non-parametric estimate is one tabulation: at each distinct event time, how many
-subjects are still at risk, how many have the event, and how many are censored. This risk-set
-table is what Kaplan-Meier, the log-rank test, and Cox all build on, and you can compute it
-directly with `event_table()`. It matches R's `survfit` tabulation.
+subjects are still at risk, how many have the event, and how many are censored. This risk-set table
+is what Kaplan-Meier, the log-rank test, and Cox all build on, and you can compute it directly with
+`event_table()`. It matches R's `survfit` tabulation.
 
 ```{python}
 # Load data and build the response
@@ -288,28 +291,27 @@ y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 gw.event_table(y).to_frame(format="polars")
 ```
 
-Each row is a distinct time. The `n_risk` column counts the subjects under observation just
-before that time, `n_event` the events at it, and `n_censor` the censorings. Pass `group=` to
-tabulate within strata, which adds a `strata` column.
+Each row is a distinct time. The `n_risk` column counts the subjects under observation just before
+that time, `n_event` the events at it, and `n_censor` the censorings. Pass `group=` to tabulate
+within strata, which adds a `strata` column.
 
 ```{python}
 # Tabulate separately within each level of the `sex` column
 gw.event_table(y, group=lung["sex"]).to_frame(format="polars")
 ```
 
-You rarely need this table directly, but it is the shared foundation the estimators are built
-on, and it is handy when you want to check counts by hand or drive a custom calculation.
+You rarely need this table directly, but it is the shared foundation the estimators are built on,
+and it is handy when you want to check counts by hand or drive a custom calculation.
 
 ## Next steps
 
-You now know how to represent survival data and how to avoid the most common coding mistake.
-From here you can bring in your own data or start estimating.
+You now know how to represent survival data and how to avoid the most common coding mistake. From
+here you can bring in your own data or start estimating.
 
-- [Data sources and formats](04-data-sources.qmd) shows how to load data from pandas, Polars,
-and other backends, how to compute durations from timestamps and encode event indicators
-from compound status columns, and lists the datasets bundled with the package.
-- [Estimating survival with Kaplan-Meier](05-kaplan-meier.qmd) shows how to estimate and
-summarize the survival curve.
+- [Data sources and formats](04-data-sources.qmd) shows how to load data from pandas, Polars, and
+other backends, how to compute durations from timestamps and encode event indicators from compound
+status columns, and lists the datasets bundled with the package.
+- [Estimating survival with Kaplan-Meier](05-kaplan-meier.qmd) shows how to estimate and summarize
+the survival curve.
 - [Comparing groups](06-comparing-groups.qmd) covers the log-rank family of tests.
-- The [Quick start](02-quick-start.qmd) is a fast tour of everything if you prefer to skim
-first.
+- The [Quick start](02-quick-start.qmd) is a fast tour of everything if you prefer to skim first.

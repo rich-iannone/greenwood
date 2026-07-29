@@ -13,9 +13,9 @@ gd.enable_tbl_preview(n_head=8, n_tail=3)
 
 Once you have survival curves for two or more groups, the natural question is whether the
 differences between them are real or could be explained by chance. The log-rank test and its
-relatives answer this. They compare the observed number of events in each group against the
-number expected if the groups shared a common survival experience, accumulated across every
-event time. This page explains the test, its weighted variants, and how to read the results.
+relatives answer this. They compare the observed number of events in each group against the number
+expected if the groups shared a common survival experience, accumulated across every event time.
+This guide page explains the test, its weighted variants, and how to read the results.
 
 We continue with the `lung` dataset, comparing survival between the two sexes.
 
@@ -32,16 +32,16 @@ y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 y
 ```
 
-The response `y` is a `Surv` object pairing each subject's follow-up time with an event
-indicator, where a trailing `+` marks a censored observation. The grouping variable
-`lung["sex"]` splits these same subjects into the two groups we are about to compare.
+The response `y` is a `Surv` object pairing each subject's follow-up time with an event indicator,
+where a `/` marks a censored observation. The grouping variable `lung["sex"]` splits these same
+subjects into the two groups we are about to compare.
 
 ## The log-rank test
 
-The log-rank test is the standard method for comparing survival across groups. At each event
-time it forms a small contingency table of who was at risk and who had an event in each
-group, computes the events expected under the null hypothesis of no difference, and combines
-the observed-minus-expected discrepancies into a single chi-square statistic.
+The log-rank test is the standard method for comparing survival across groups. At each event time it
+forms a small contingency table of who was at risk and who had an event in each group, computes the
+events expected under the null hypothesis of no difference, and combines the observed-minus-expected
+discrepancies into a single chi-square statistic.
 
 ```{python}
 # Load data and build the response
@@ -52,19 +52,19 @@ y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 result = gw.logrank_test(y, group=lung["sex"])
 ```
 
-The call returns a `TestResult` object, which we store in `result`. Displaying it prints a
-readable summary of the whole test at once.
+The call returns a `TestResult` object, which we store in `result`. Displaying it prints a readable
+summary of the whole test at once.
 
 ```{python}
 # Print the test statistic, degrees of freedom, and p-value
 result
 ```
 
-The result carries the test statistic, its degrees of freedom (one less than the number of
-groups), and the p-value. A small p-value is evidence that the survival curves differ. You
-can also inspect the weighted observed and expected event counts per group, which show the
-direction of the difference. These live on the `result` object as the `observed` and
-`expected` attributes, one entry per group.
+The result carries the test statistic, its degrees of freedom (one less than the number of groups),
+and the p-value. A small p-value is evidence that the survival curves differ. You can also inspect
+the weighted observed and expected event counts per group, which show the direction of the
+difference. These live on the `result` object as the `observed` and `expected` attributes, one entry
+per group.
 
 ```{python}
 # Inspect the per-group event counts to see the direction of the difference
@@ -72,33 +72,33 @@ print("observed:", result.observed)
 print("expected:", result.expected)
 ```
 
-Here one group has more observed events than expected and the other fewer, which is the
-signature of a survival difference. The test works for any number of groups; with three or
-more it produces an overall test on the corresponding degrees of freedom.
+Here one group has more observed events than expected and the other fewer, which is the signature of
+a survival difference. The test works for any number of groups; with three or more it produces an
+overall test on the corresponding degrees of freedom.
 
 ::: {.callout-note}
 ## What the log-rank test does and does not tell you
 
-The test tells you whether the curves differ overall. It does not tell you by how much, at
-what times, or in which direction beyond the observed-versus-expected counts. Pair it with a
-Kaplan-Meier plot and with effect measures such as a hazard ratio from
-[Cox regression](08-cox-regression.qmd) or a restricted-mean-survival difference.
+The test tells you whether the curves differ overall. It does not tell you by how much, at what
+times, or in which direction beyond the observed-versus-expected counts. Pair it with a Kaplan-Meier
+plot and with effect measures such as a hazard ratio from [Cox regression](08-cox-regression.qmd) or
+a restricted-mean-survival difference.
 :::
 
 ## Weighted tests: the G-rho family
 
-The standard log-rank test weights every event time equally, which makes it most sensitive
-to differences in the tails of the curves where events accumulate. Sometimes you care more
-about early differences. The Fleming-Harrington, or G-rho, family generalizes the log-rank
-test by weighting each event time by a power of the pooled survival probability.
+The standard log-rank test weights every event time equally, which makes it most sensitive to
+differences in the tails of the curves where events accumulate. Sometimes you care more about early
+differences. The Fleming-Harrington, or G-rho, family generalizes the log-rank test by weighting
+each event time by a power of the pooled survival probability.
 
-The `rho` parameter controls this. With `rho=0` you get the ordinary log-rank test. With
-`rho=1` you get the Peto-Peto test, a Wilcoxon-type test that gives more weight to early
-event times and is therefore more sensitive to early separation of the curves.
+The `rho` parameter controls this. With `rho=0` you get the ordinary log-rank test. With `rho=1` you
+get the Peto-Peto test, a Wilcoxon-type test that gives more weight to early event times and is
+therefore more sensitive to early separation of the curves.
 
-This returns the same kind of `TestResult` as before, so you can read it the same way. Only
-the weighting has changed, so compare its statistic and p-value against the unweighted test
-above to see how much the emphasis on early event times matters here.
+This returns the same kind of `TestResult` as before, so you can read it the same way. Only the
+weighting has changed, so compare its statistic and p-value against the unweighted test above to see
+how much the emphasis on early event times matters here.
 
 ```{python}
 # Load data and build the response
@@ -109,27 +109,24 @@ y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 gw.logrank_test(y, group=lung["sex"], rho=1)
 ```
 
-Choosing between them is a matter of what alternative you want to detect, and the choice
-should be made before looking at the results rather than by picking whichever gives the
-smaller p-value.
+Choosing between them is a matter of what alternative you want to detect, and the choice should be
+made before looking at the results rather than by picking whichever gives the smaller p-value.
 
 ::: {.callout-warning}
 ## Choose the weighting in advance
 
-Running several weighted tests and reporting the most significant one inflates the false
-positive rate. Decide on the test, and its `rho`, based on subject-matter reasoning before
-you see the data.
+Running several weighted tests and reporting the most significant one inflates the false positive
+rate. Decide on the test, and its `rho`, based on subject-matter reasoning before you see the data.
 :::
 
 ::: {.callout-tip}
 ## Robust handling of edge cases
 
-Greenwood validates input data upfront, so weighted tests handle edge cases robustly.
-Times can be zero (events at baseline are valid in survival analysis), and weighted tests
-like Fleming-Harrington work correctly without silent data loss or dimension mismatches.
-This robustness extends to all censoring patterns and follows the validation rules
-documented in the [Validation and reproducibility](03-survival-data.qmd#validation-and-reproducibility)
-section.
+Greenwood validates input data upfront, so weighted tests handle edge cases robustly. Times can be
+zero (events at baseline are valid in survival analysis), and weighted tests like Fleming-Harrington
+work correctly without silent data loss or dimension mismatches. This robustness extends to all
+censoring patterns and follows the validation rules documented in the
+[Validation and reproducibility](03-survival-data.qmd#validation-and-reproducibility) section.
 :::
 
 ## Comparing more than two groups
@@ -146,33 +143,32 @@ y_vet = gw.Surv.right(vet["time"], event=vet["status"])
 gw.logrank_test(y_vet, group=vet["celltype"])
 ```
 
-A small p-value here says the four cell types do not all share the same survival, but it does
-not say which ones differ. For that, test each pair and correct for the fact that you are
-running several tests at once. `pairwise_logrank_test` does both.
+A small p-value here says the four cell types do not all share the same survival, but it does not
+say which ones differ. For that, test each pair and correct for the fact that you are running
+several tests at once. The `pairwise_logrank_test()` function does both.
 
 ```{python}
 # Test every pair of cell types; p_adjusted applies Holm multiple-comparison correction
 gw.pairwise_logrank_test(y_vet, group=vet["celltype"], format="polars")
 ```
 
-Each row is one pair, with its own statistic, the raw `p_value`, and a `p_adjusted` value
-that accounts for the multiple comparisons. The default correction is Holm's but you can pass
-`correction="bh"` for Benjamini-Hochberg, `"bonferroni"`, or `"none"`. Read significance from
-the adjusted column, not the raw one.
+Each row is one pair, with its own statistic, the raw `p_value`, and a `p_adjusted` value that
+accounts for the multiple comparisons. The default correction is Holm's but you can pass
+`correction="bh"` for Benjamini-Hochberg, `"bonferroni"`, or `"none"`. Read significance from the
+adjusted column, not the raw one.
 
 ## Restricted mean survival time (RMST) comparisons
 
-While the log-rank test tells you whether groups differ, it does not tell you by how much.
-The restricted mean survival time (RMST) is an intuitive effect measure: the expected
-survival time over a fixed time window `tau`, computed as the area under the survival curve.
-For example, 1-year RMST is the average survival time during the first year. Unlike hazard
-ratios, RMST is on the survival time scale, making it easy to interpret and explain to
-non-technical audiences.
+While the log-rank test tells you whether groups differ, it does not tell you by how much. The
+restricted mean survival time (RMST) is an intuitive effect measure: the expected survival time over
+a fixed time window `tau`, computed as the area under the survival curve. For example, 1-year RMST
+is the average survival time during the first year. Unlike hazard ratios, RMST is on the survival
+time scale, making it easy to interpret and explain to non-technical audiences.
 
 ### Two-group RMST comparison
 
-Compare RMST between two groups with confidence intervals and hypothesis tests using
-`rmst_test()`. Here we compare 1-year RMST between the two sexes in the `lung` dataset.
+Compare RMST between two groups with confidence intervals and hypothesis tests using `rmst_test()`.
+Here we compare 1-year RMST between the two sexes in the `lung` dataset.
 
 ```{python}
 # Load data and build the response
@@ -186,9 +182,9 @@ result = gw.rmst_test(y, tau=365, group=lung["sex"])
 result
 ```
 
-The result shows the RMST for each group, their difference, standard error, 95% confidence
-interval, and a two-sided p-value testing equality. A positive difference means group 1 has
-higher RMST (longer average survival).
+The result shows the RMST for each group, their difference, standard error, 95% confidence interval,
+and a two-sided p-value testing equality. A positive difference means group 1 has higher RMST
+(longer average survival).
 
 You can extract specific components:
 
@@ -201,8 +197,8 @@ print(f"P-value: {result.p_value:.4f}")
 
 ### Alternative estimands
 
-By default, `rmst_test()` returns the RMST difference. You can also compute the ratio or
-percentage difference using the `estimand` parameter.
+By default, `rmst_test()` returns the RMST difference. You can also compute the ratio or percentage
+difference using the `estimand` parameter.
 
 **Ratio of RMSTs** (group 1 / group 2):
 
@@ -226,14 +222,14 @@ result_pct = gw.rmst_test(y, tau=365, group=lung["sex"], estimand="percentage_di
 result_pct.estimate
 ```
 
-All three estimands use the delta method to construct standard errors and confidence intervals,
-and support flexible confidence levels via the `conf_level=` parameter.
+All three estimands use the delta method to construct standard errors and confidence intervals, and
+support flexible confidence levels via the `conf_level=` parameter.
 
 ### Pairwise RMST comparisons
 
 When you have three or more groups, use `pairwise_rmst_test()` to compare all pairs with
-multiple-comparison adjustment. Here we test which cell types in the `veteran` dataset differ
-in 1-year RMST.
+multiple-comparison adjustment. Here we test which cell types in the `veteran` dataset differ in
+1-year RMST.
 
 ```{python}
 # Load the veteran dataset and build the response
@@ -247,15 +243,15 @@ pairs = gw.pairwise_rmst_test(y_vet, tau=365, group=vet["celltype"])
 pairs
 ```
 
-Each row compares one pair of groups, showing the RMST estimates, difference, and both raw
-and adjusted p-values. The adjustment method (default: Holm) controls for multiple testing.
-Pass `correction="bh"` for Benjamini-Hochberg or `"bonferroni"` for Bonferroni correction.
+Each row compares one pair of groups, showing the RMST estimates, difference, and both raw and
+adjusted p-values. The adjustment method (default: Holm) controls for multiple testing. Pass
+`correction="bh"` for Benjamini-Hochberg or `"bonferroni"` for Bonferroni correction.
 
 ### Choosing the restriction time tau
 
-The choice of `tau` is critical: RMST at `tau=365` only includes follow-up through 1 year,
-while `tau=1825` extends to 5 years. Choose `tau` based on clinical relevance before looking
-at the data. Common choices are clinically meaningful milestones (1 year, 5 years, etc.).
+The choice of `tau` is critical: RMST at `tau=365` only includes follow-up through 1 year, while
+`tau=1825` extends to 5 years. Choose `tau` based on clinical relevance before looking at the data.
+Common choices are clinically meaningful milestones (1 year, 5 years, etc.).
 
 ```{python}
 # Extend the horizon to 5 years and compare again
@@ -267,15 +263,14 @@ result_5y.estimate
 
 ### Stratified RMST comparisons
 
-When your two groups differ in the distribution of a confounding variable, a plain RMST
-comparison mixes the groups' true survival difference with the compositional imbalance.
-Stratification solves this: RMST is estimated separately within each stratum and the
-per-stratum differences are combined with inverse-variance weights before any test is
-computed.
+When your two groups differ in the distribution of a confounding variable, a plain RMST comparison
+mixes the groups' true survival difference with the compositional imbalance. Stratification solves
+this: RMST is estimated separately within each stratum and the per-stratum differences are combined
+with inverse-variance weights before any test is computed.
 
-Pass `strata=` to `rmst_test()`. Here we compare 1-year RMST between the two sexes while
-controlling for ECOG performance status (`ph.ecog`), which reflects disease severity and
-is correlated with both sex and prognosis.
+Pass `strata=` to `rmst_test()`. Here we compare 1-year RMST between the two sexes while controlling
+for ECOG performance status (`ph.ecog`), which reflects disease severity and is correlated with both
+sex and prognosis.
 
 ```{python}
 import polars as pl
@@ -301,9 +296,9 @@ result_strat = gw.rmst_test(
 result_strat
 ```
 
-The result carries a `stratified=True` flag and the method string includes "Stratified" to
-make it clear which analysis was run. The `estimate` is the pooled RMST difference, and
-`se` reflects the combined uncertainty across all strata.
+The result carries a `stratified=True` flag and the method string includes `"Stratified"` to make it
+clear which analysis was run. The `estimate` is the pooled RMST difference, and `se` reflects the
+combined uncertainty across all strata.
 
 ```{python}
 # Display the pooled estimate and its uncertainty
@@ -315,30 +310,29 @@ print(f"Stratified: {result_strat.stratified}")
 
 **How the pooling works.** Within each stratum $s$, the RMST difference
 $d_s = \text{RMST}_{1s} - \text{RMST}_{2s}$ and its variance
-$\sigma_s^2 = \text{SE}_{1s}^2 + \text{SE}_{2s}^2$ are computed from independent
-Kaplan-Meier curves. The combined estimate is:
+$\sigma_s^2 = \text{SE}_{1s}^2 + \text{SE}_{2s}^2$ are computed from independent Kaplan-Meier
+curves. The combined estimate is:
 
 $$
 \hat{\Delta} = \frac{\sum_s w_s\, d_s}{\sum_s w_s}, \quad w_s = \frac{1}{\sigma_s^2},
 \quad \text{SE}(\hat{\Delta}) = \frac{1}{\sqrt{\sum_s w_s}}
 $$
 
-Strata in which one group is absent are silently skipped, so unbalanced designs are handled
-without any special handling.
+Strata in which one group is absent are silently skipped, so unbalanced designs are handled without
+any special handling.
 
 ::: {.callout-tip}
 ## Stratified RMST vs. stratified log-rank
 
 Both methods control for a confounder, but they answer different questions:
 
-- **Stratified log-rank**: is there a statistically significant difference in the
-  survival *curves*? No magnitude.
-- **Stratified RMST**: by how many days does survival differ on average within the
-  follow-up window, after adjusting for the stratification variable?
+- **Stratified log-rank**: is there a statistically significant difference in the survival
+*curves*? No magnitude.
+- **Stratified RMST**: by how many days does survival differ on average within the follow-up window,
+after adjusting for the stratification variable?
 
-Use the log-rank test when you need a significance test under proportional hazards; use
-stratified RMST when you want an interpretable effect size that does not require that
-assumption.
+Use the log-rank test when you need a significance test under proportional hazards. Use stratified
+RMST when you want an interpretable effect size that does not require that assumption.
 :::
 
 ::: {.callout-note}
@@ -347,17 +341,17 @@ assumption.
 - log-rank test: answers whether curves differ overall (yes/no).
 - RMST comparison: answers by how much they differ and how long the difference persists.
 
-Use both: run the log-rank test for significance, then estimate RMST difference for the
-magnitude and direction of the effect. They often agree, but RMST is easier to communicate
-to stakeholders unfamiliar with hazards.
+Use both: run the log-rank test for significance, then estimate RMST difference for the magnitude
+and direction of the effect. They often agree, but RMST is easier to communicate to people
+unfamiliar with hazards.
 :::
 
 ## Stratified tests
 
 Sometimes you want to compare groups while controlling for a nuisance variable, so that the
-comparison is made within each level of that variable and then combined. A stratified
-log-rank does this. Here we compare the two treatments while stratifying by cell type, which
-removes any cell-type imbalance from the comparison.
+comparison is made within each level of that variable and then combined. A stratified log-rank does
+this. Here we compare the two treatments while stratifying by cell type, which removes any cell-type
+imbalance from the comparison.
 
 ```{python}
 # Load the veteran dataset and build the response
@@ -368,16 +362,16 @@ y_vet = gw.Surv.right(vet["time"], event=vet["status"])
 gw.logrank_test(y_vet, group=vet["trt"], strata=vet["celltype"])
 ```
 
-The statistic is pooled across the strata, matching R's `survdiff` with a `strata()` term.
-Stratification is the test-level counterpart to a stratified Cox model, where each stratum
-has its own baseline hazard.
+The statistic is pooled across the strata, matching R's **survdiff** with a `strata()` term.
+Stratification is the test-level counterpart to a stratified Cox model, where each stratum has its
+own baseline hazard.
 
 ## Testing for trend in ordered groups
 
-When your groups are naturally ordered as disease stages (I, II, III, IV), dose levels (low,
-medium, high), or educational attainment (primary, secondary, tertiary), a general log-rank
-test asks the right question but it doesn't use the information about ordering. A trend test is
-more powerful because it looks specifically for a linear relationship across the ordered levels.
+When your groups are naturally ordered as disease stages (I, II, III, IV), dose levels (low, medium,
+high), or educational attainment (primary, secondary, tertiary), a general log-rank test asks the
+right question but it doesn't use the information about ordering. A trend test is more powerful
+because it looks specifically for a linear relationship across the ordered levels.
 
 The trend test compares a linear contrast across groups to see if survival changes systematically
 with group ordering. It produces a one-degree-of-freedom chi-square test, which is more powerful
@@ -397,14 +391,14 @@ y = gw.Surv.right(vet["time"], event=vet["status"])
 gw.trend_test(y, group=vet["celltype"])
 ```
 
-The result is a `TestResult` with `df=1`, indicating a one-degree-of-freedom test. The
-`observed` and `expected` event counts per group reveal which groups contribute most to the
-trend, and the p-value tells you if the trend is statistically significant.
+The result is a `TestResult` with `df=1`, indicating a one-degree-of-freedom test. The `observed`
+and `expected` event counts per group reveal which groups contribute most to the trend, and the
+p-value tells you if the trend is statistically significant.
 
 ### Custom scoring
 
-If the ordering is not uniform (for instance, some groups have very different prognoses) you
-can specify custom scores. Scores must be numeric and reflect your belief about the ordering.
+If the ordering is not uniform (for instance, some groups have very different prognoses) you can
+specify custom scores. Scores must be numeric and reflect your belief about the ordering.
 
 ```{python}
 # Load the veteran dataset and build the response
@@ -419,14 +413,14 @@ scores = {"adeno": 1, "large": 1, "smallcell": 3, "squamous": 3}
 gw.trend_test(y, group=vet["celltype"], scores=scores)
 ```
 
-Different scores can change the test statistic, reflecting your scientific hypothesis about
-how the groups are ordered.
+Different scores can change the test statistic, reflecting your scientific hypothesis about how the
+groups are ordered.
 
 ### Weighted trend tests
 
-Like the log-rank test, the trend test can use Fleming-Harrington weights to emphasize early
-or late differences. With `rho=1`, the Peto-Peto variant emphasizes early event times, which
-is useful if you suspect early separation of the curves.
+Like the log-rank test, the trend test can use Fleming-Harrington weights to emphasize early or late
+differences. With `rho=1`, the Peto-Peto variant emphasizes early event times, which is useful if
+you suspect early separation of the curves.
 
 ```{python}
 # Load the veteran dataset and build the response
@@ -439,9 +433,9 @@ gw.trend_test(y, group=vet["celltype"], rho=1)
 
 ### Stratified trend tests
 
-You can also stratify a trend test to control for confounders while still testing for linear
-trend across ordered groups. The stratified test computes the trend separately in each stratum
-and then combines the results.
+You can also stratify a trend test to control for confounders while still testing for linear trend
+across ordered groups. The stratified test computes the trend separately in each stratum and then
+combines the results.
 
 ```{python}
 # Load the veteran dataset and build the response
@@ -455,36 +449,35 @@ gw.trend_test(y, group=vet["celltype"], strata=vet["trt"])
 ::: {.callout-note}
 ## When to use trend tests vs. pairwise tests
 
-- use `trend_test()` when groups are ordered and you care about detecting a linear trend.
-It's more powerful for this specific hypothesis.
-- use `pairwise_logrank_test()` when you want to know which specific pairs of unordered
-groups differ. It tests all pairwise differences, not a linear trend.
-- use `logrank_test()` for an overall test of differences without assuming any structure
-on the groups.
+- use `trend_test()` when groups are ordered and you care about detecting a linear trend. It's more
+powerful for this specific hypothesis.
+- use `pairwise_logrank_test()` when you want to know which specific pairs of unordered groups
+differ. It tests all pairwise differences, not a linear trend.
+- use `logrank_test()` for an overall test of differences without assuming any structure on the
+groups.
 :::
 
 ## Study design: sample size and power
 
-The log-rank test also answers a planning question asked before any data are collected: how
-large must a study be? Under proportional hazards, its power depends on the data only through
-the number of events, so Greenwood provides Schoenfeld's calculators. To detect a given hazard
-ratio at a target power, `logrank_n_events` returns the events required.
+The log-rank test also answers a planning question asked before any data are collected: how large
+must a study be? Under proportional hazards, its power depends on the data only through the number
+of events, so Greenwood provides Schoenfeld's calculators. To detect a given hazard ratio at a
+target power, the `logrank_n_events()` function returns the events required.
 
 ```{python}
 gw.logrank_n_events(hazard_ratio=0.5, power=0.9, alpha=0.05)
 ```
 
-Running it the other way, `logrank_power` gives the power a planned study would have for a
-given number of events, which is useful for checking whether an existing dataset can support a
-comparison.
+Running it the other way, `logrank_power()` gives the power a planned study would have for a given
+number of events, which is useful for checking whether an existing dataset can support a comparison.
 
 ```{python}
 gw.logrank_power(hazard_ratio=0.5, n_events=60)
 ```
 
-Events are not the same as subjects. To turn the required events into a sample size, divide by
-the probability that a subject has the event during the study, which you estimate from the
-expected survival and the planned follow-up. The `logrank_sample_size()` function does this.
+Events are not the same as subjects. To turn the required events into a sample size, divide by the
+probability that a subject has the event during the study, which you estimate from the expected
+survival and the planned follow-up. The `logrank_sample_size()` function does this.
 
 ```{python}
 gw.logrank_sample_size(hazard_ratio=0.5, prob_event=0.4, power=0.9)
@@ -493,19 +486,18 @@ gw.logrank_sample_size(hazard_ratio=0.5, prob_event=0.4, power=0.9)
 ::: {.callout-note}
 ## What the calculators assume
 
-These formulas assume proportional hazards, a two-group comparison, and (by default) a
-balanced, two-sided test at `alpha=0.05`. Use `allocation` for an unbalanced design and
-`sides=1` for a one-sided test. A balanced design needs the fewest events.
+These formulas assume proportional hazards, a two-group comparison, and (by default) a balanced,
+two-sided test at `alpha=0.05`. Use `allocation` for an unbalanced design and `sides=1` for a
+one-sided test. A balanced design needs the fewest events.
 :::
 
 ## From tests to models
 
 A group comparison test is the right tool when you have one categorical grouping and want a
 yes-or-no answer about a difference. When you need to adjust for other variables, handle a
-continuous predictor, or estimate the size of an effect, you move to regression. The
-log-rank test has a close connection to the Cox model: the score test from a Cox model with
-a single group indicator is essentially the log-rank test, which is why the two usually
-agree.
+continuous predictor, or estimate the size of an effect, you move to regression. The log-rank test
+has a close connection to the Cox model: the score test from a Cox model with a single group
+indicator is essentially the log-rank test, which is why the two usually agree.
 
 ## Next steps
 
@@ -514,5 +506,5 @@ You can now describe and formally compare survival across groups.
 - [Visualizing survival](07-visualization.qmd) shows how to present grouped curves clearly.
 - [Cox regression](08-cox-regression.qmd) estimates hazard ratios and adjusts for multiple
 covariates.
-- Revisit [Kaplan-Meier](05-kaplan-meier.qmd) for restricted-mean-survival summaries, which
-give an interpretable effect size to accompany a significant test.
+- Revisit [Kaplan-Meier](05-kaplan-meier.qmd) for restricted-mean-survival summaries, which give an
+interpretable effect size to accompany a significant test.
