@@ -32,15 +32,6 @@ Systematic confidence interval and standard error support across all estimators.
 
 Regression model extensions and flexible semi-parametric approaches.
 
-### Time-Varying Covariates
-
-Cox regression with covariates that evolve over follow-up time.
-
-- Counting-process form integration for covariate changes
-- Episode-splitting and data reshaping utilities
-- Risk-set calculations with time-varying exposure
-- Predictions at specified covariate trajectories
-
 ### Cox Residual Diagnostics
 
 Outlier detection and case-level assessment for Cox models.
