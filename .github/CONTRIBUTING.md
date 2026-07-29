@@ -27,7 +27,7 @@ Run `make help` for the full list.
 
 ## House conventions
 
-- **R-validated numerics.** Correctness to tolerance against R's `survival` (and
+- **R-validated numerics.** Correctness to tolerance against R's **survival** (and
 `cmprsk`/`flexsurv`/`riskRegression`/`mstate` for specialized estimators) is the brand.
 Regenerate fixtures with `Rscript scripts/regenerate_r_fixtures.R` and validate with
 `make test-rparity`.
