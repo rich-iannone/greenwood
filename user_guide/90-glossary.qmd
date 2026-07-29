@@ -20,6 +20,13 @@ Aalen-Johansen estimator
   causes plus the censoring probability equals 1 at every time point. Available via
   `AalenJohansen`.
 
+  The estimator is sometimes called the **Kalbfleisch-Prentice estimator** after Kalbfleisch
+  and Prentice (1980), who derived the same product-limit CIF formula from first principles.
+  Both names refer to an identical computation: $\hat{F}_j(t) = \sum_{s \le t} \hat{S}(s^-)\,
+  d_j(s)/n(s)$, where $\hat{S}$ is the overall Kaplan-Meier survival treating any event type
+  as an event. Software such as SAS `PROC LIFETEST` uses the Kalbfleisch-Prentice label for
+  what Greenwood exposes as `AalenJohansen`.
+
 At-risk / risk set
 : The set of subjects who are still under observation and have not yet experienced an event or
   been censored just before a given time $t$. The size of the risk set, $n(t)$, is the
