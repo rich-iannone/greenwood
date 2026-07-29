@@ -92,7 +92,6 @@ def split_episodes(
         "id":    [1, 2, 3],
         "time":  [10.0, 8.0, 12.0],
         "event": [1, 0, 1],
-        "sex":   ["m", "f", "m"],
     })
     visits = pd.DataFrame({
         "id":       [1, 1, 2, 3, 3, 3],
@@ -104,7 +103,7 @@ def split_episodes(
         baseline, visits, id="id", time="time", event="event", visit_time="day"
     )
     y = gw.Surv.counting(long["tstart"], long["tstop"], long["event"])
-    cox = gw.CoxPH().fit(y, long[["bili", "sex"]])
+    cox = gw.CoxPH().fit(y, long[["bili"]])
     ```
     """
     try:
