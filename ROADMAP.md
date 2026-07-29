@@ -111,6 +111,26 @@ Discrimination and calibration assessment beyond point-in-time.
 
 - Integrated discrimination improvement (IDI) and net reclassification improvement (NRI)
 - Time-dependent Brier score refinements and sensitivity analyses
+- `concordance_index_ipcw`: inverse-probability-of-censoring-weighted concordance index for
+time-dependent discrimination (more robust than Harrell's C under heavy censoring)
+- `ipc_weights` / `CensoringDistributionEstimator`: IPC weights as first-class utilities,
+enabling manual reweighting for metrics and models beyond concordance
+
+### Machine Learning Survival Estimators
+
+Tree-based and ensemble survival models that output individual survival functions rather than
+scalar risk scores.
+
+- `SurvivalTree`: single survival tree using the log-rank split criterion, which is the foundation
+for ensemble methods and useful for interpretable non-parametric survival modeling
+- `RandomSurvivalForest`: ensemble of survival trees with bootstrap aggregation (the most
+widely used ML survival model, returns per-subject survival and cumulative hazard functions)
+- `ExtraSurvivalTrees`: extremely randomized variant of RSF with additional split randomization
+for faster training and lower variance on large datasets
+- `GradientBoostingSurvivalAnalysis`: component-wise and tree-based boosting for survival (strong
+predictive performance on structured tabular data)
+- `IPCRidge`: IPC-weighted ridge regression (a linear survival model that corrects for censoring
+bias via inverse-probability reweighting rather than the partial likelihood)
 
 ### Platform & Interop
 
