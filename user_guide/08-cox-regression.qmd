@@ -588,6 +588,23 @@ like `C(ph.ecog)` forces a column to be treated as categorical.
 gw.CoxPH().fit(y, "age * sex", data=lung).to_frame(format="polars")[["term", "estimate"]]
 ```
 
+### Controlling the reference category
+
+By default, formulaic picks the first level (alphabetically) as the reference. To choose a specific
+baseline, pass `contr.treatment(base=...)` inside `C()`:
+
+```python
+# "female" is the reference and the model reports the HR for "male" vs. "female"
+gw.CoxPH().fit(y, "C(sex, contr.treatment(base='female')) + age", data=df)
+```
+
+::: {.callout-important}
+**Do not encode unordered categories as integers.** Passing a column of 0/1/2/... values to the
+model treats the integers as a continuous covariate, implying that category 2 has exactly twice
+the log-hazard effect of category 1. Use `C(col)` (or cast the column to a string/category dtype
+before fitting) so that each level gets its own indicator term.
+:::
+
 Rows with a missing value in any formula term are dropped, the same complete-case rule used when you
 pass columns directly. The formula interface is also available on `AFT`.
 
