@@ -1585,33 +1585,39 @@ class CoxPH:
             return to_dataframe(columns, format=format)
         raise ValueError(f"Unknown predict type {type!r}; use 'lp', 'risk', or 'survival'.")
 
-    def predict_median(
+    def predict_quantile(
         self,
         newdata: Any = None,
         *,
+        p: Any = 0.5,
         strata: Any = None,
         ci: bool = False,
         format: str | None = None,
     ) -> Any:
-        r"""Predict the median survival time for each subject.
+        r"""Predict survival-time quantiles for each subject.
 
-        The median survival time is the earliest time $t$ at which the predicted survival
-        curve drops to or below 0.5: $\hat{t}_{0.5} = \inf\{t : \hat{S}(t \mid x) \le 0.5\}$.
+        The quantile at failure probability $p$ is the earliest time $t$ at which the predicted
+        survival curve drops to or below $1 - p$:
+        $\hat{t}_p = \inf\{t : \hat{S}(t \mid x) \le 1 - p\}$.
 
-        When `ci=True`, confidence intervals for the median are obtained by inverting the pointwise
-        confidence bands of the survival curve (the log-transform method used by R's `survfit`). The
-        lower bound of the median is the time at which the upper confidence band of $S(t)$ first
-        crosses 0.5, and the upper bound is the time at which the lower confidence band first
-        crosses 0.5.
+        When `ci=True`, confidence intervals for each quantile are obtained by inverting the
+        pointwise confidence bands of the survival curve (the log-transform method used by R's
+        `survfit`). The lower bound of the quantile is the time at which the lower survival band
+        first crosses $1 - p$, and the upper bound is the time at which the upper survival band
+        first crosses $1 - p$.
 
-        If the survival curve for a subject never reaches 0.5 (right tail does not drop far enough),
-        the median (or the corresponding CI bound) is `NaN`.
+        If the survival curve for a subject never reaches $1 - p$, the quantile (or the
+        corresponding CI bound) is `NaN`.
 
         Parameters
         ----------
         newdata
             Covariate design for prediction. If `None`, predictions are made on the fitted data. Can
             be a 2-D array or DataFrame.
+        p
+            Failure probability or probabilities at which to compute quantiles. Can be a scalar
+            (e.g., `0.5` for median) or array-like (e.g., `[0.25, 0.5, 0.75]` for quartiles). Must
+            be in (0, 1). Default is `0.5`.
         strata
             Stratum labels for new subjects (required when `newdata` is provided and the model was
             fitted with `strata=`). One label per row of `newdata`, matching a stratum label seen at
@@ -1624,9 +1630,9 @@ class CoxPH:
         Returns
         -------
         DataFrame
-            A single-row DataFrame with columns `subject_1`, `subject_2`, etc. containing the median
-            survival time for each subject. With `ci=True`, additional `subject_N_lower` and
-            `subject_N_upper` columns are included.
+            A DataFrame with a `p` column listing the failure probabilities, and columns
+            `subject_1`, `subject_2`, etc. containing the corresponding quantile for each subject.
+            With `ci=True`, additional `subject_N_lower` and `subject_N_upper` columns are included.
 
         Examples
         --------
@@ -1637,15 +1643,22 @@ class CoxPH:
         y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
         cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
 
-        cox.predict_median(lung[["age", "sex"]][:3], format="polars")
+        # Predicted survival-time quartiles for three subjects
+        cox.predict_quantile(lung[["age", "sex"]][:3], p=[0.25, 0.5, 0.75], format="polars")
         ```
 
         With confidence intervals:
 
         ```{python}
-        cox.predict_median(lung[["age", "sex"]][:3], ci=True, format="polars")
+        cox.predict_quantile(
+            lung[["age", "sex"]][:3], p=0.5, ci=True, format="polars"
+        )
         ```
         """
+        p_arr = np.atleast_1d(np.asarray(p, dtype=float))
+        if np.any(p_arr <= 0.0) or np.any(p_arr >= 1.0):
+            raise ValueError("p must be in (0, 1).")
+
         if newdata is None:
             x = self._x
         else:
@@ -1675,22 +1688,25 @@ class CoxPH:
             subject_strata = list(strata_arr)
 
         n_subj = x.shape[0]
+        n_p = len(p_arr)
         risk = np.exp(x @ self.coef_)
-        medians = np.full(n_subj, np.nan)
+        quantiles = np.full((n_p, n_subj), np.nan)
 
         for i, s_label in enumerate(subject_strata):
             bt, bh = stratum_baseline[s_label]
             surv_at_events = np.exp(-bh * risk[i])
-            idx = np.searchsorted(-surv_at_events, -0.5)
-            if idx < len(bt):
-                medians[i] = bt[idx]
+            for k, pk in enumerate(p_arr):
+                threshold = 1.0 - pk
+                idx = np.searchsorted(-surv_at_events, -threshold)
+                if idx < len(bt):
+                    quantiles[k, i] = bt[idx]
 
-        columns: dict[str, Any] = {}
+        columns: dict[str, Any] = {"p": p_arr}
 
         if ci:
             z = float(norm.ppf(1.0 - (1.0 - self.conf_level) / 2.0))
-            lower = np.full(n_subj, np.nan)
-            upper = np.full(n_subj, np.nan)
+            lower = np.full((n_p, n_subj), np.nan)
+            upper = np.full((n_p, n_subj), np.nan)
 
             by_stratum: dict[Any, list[int]] = {}
             for i, s_label in enumerate(subject_strata):
@@ -1708,25 +1724,77 @@ class CoxPH:
                     surv_upper = surv_at_events * np.exp(z * se_h_j)
                     surv_lower = surv_at_events * np.exp(-z * se_h_j)
 
-                    # Lower survival band crosses 0.5 earlier → lower CI of median
-                    idx_lo = np.searchsorted(-surv_lower, -0.5)
-                    if idx_lo < len(bt):
-                        lower[i] = bt[idx_lo]
-
-                    # Upper survival band crosses 0.5 later → upper CI of median
-                    idx_hi = np.searchsorted(-surv_upper, -0.5)
-                    if idx_hi < len(bt):
-                        upper[i] = bt[idx_hi]
+                    for k, pk in enumerate(p_arr):
+                        threshold = 1.0 - pk
+                        idx_lo = np.searchsorted(-surv_lower, -threshold)
+                        if idx_lo < len(bt):
+                            lower[k, i] = bt[idx_lo]
+                        idx_hi = np.searchsorted(-surv_upper, -threshold)
+                        if idx_hi < len(bt):
+                            upper[k, i] = bt[idx_hi]
 
             for i in range(n_subj):
-                columns[f"subject_{i + 1}"] = np.array([medians[i]])
-                columns[f"subject_{i + 1}_lower"] = np.array([lower[i]])
-                columns[f"subject_{i + 1}_upper"] = np.array([upper[i]])
+                columns[f"subject_{i + 1}"] = quantiles[:, i]
+                columns[f"subject_{i + 1}_lower"] = lower[:, i]
+                columns[f"subject_{i + 1}_upper"] = upper[:, i]
         else:
             for i in range(n_subj):
-                columns[f"subject_{i + 1}"] = np.array([medians[i]])
+                columns[f"subject_{i + 1}"] = quantiles[:, i]
 
         return to_dataframe(columns, format=format)
+
+    def predict_median(
+        self,
+        newdata: Any = None,
+        *,
+        strata: Any = None,
+        ci: bool = False,
+        format: str | None = None,
+    ) -> Any:
+        r"""Predict the median survival time for each subject.
+
+        Convenience wrapper around `predict_quantile(p=0.5)`. See `predict_quantile()` for full
+        documentation.
+
+        Parameters
+        ----------
+        newdata
+            Covariate design for prediction. If `None`, predictions are made on the fitted data. Can
+            be a 2-D array or DataFrame.
+        strata
+            Stratum labels for new subjects (required when `newdata` is provided and the model was
+            fitted with `strata=`). One label per row of `newdata`.
+        ci
+            If `True`, include confidence intervals. Default is `False`.
+        format
+            Output format: `None` (auto-detect), `"pandas"`, `"polars"`, or `"pyarrow"`.
+
+        Returns
+        -------
+        DataFrame
+            A single-row DataFrame with columns `subject_1`, `subject_2`, etc. containing the median
+            survival time for each subject. With `ci=True`, additional `subject_N_lower` and
+            `subject_N_upper` columns are included.
+
+        Examples
+        --------
+        ```{python}
+        import greenwood as gw
+
+        lung = gw.load_dataset("lung", backend="polars")
+        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+
+        cox.predict_median(lung[["age", "sex"]][:3], format="polars")
+        ```
+
+        With confidence intervals:
+
+        ```{python}
+        cox.predict_median(lung[["age", "sex"]][:3], ci=True, format="polars")
+        ```
+        """
+        return self.predict_quantile(newdata, p=0.5, strata=strata, ci=ci, format=format)
 
     def _predict_trajectory(
         self,

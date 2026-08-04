@@ -475,6 +475,141 @@ class RoystonParmar:
                 )
         return to_dataframe(columns, format=format)
 
+    def predict_quantile(
+        self,
+        newdata: Any = None,
+        *,
+        p: Any = 0.5,
+        ci: bool = False,
+        format: str | None = None,
+    ) -> Any:
+        r"""Predict survival-time quantiles for each subject.
+
+        The quantile at failure probability $p$ is the time $t$ at which $S(t \mid x) = 1 - p$,
+        found by solving $\exp(s(\log t) + x^\top \beta) = -\log(1 - p)$ via root-finding on the
+        smooth spline-based log cumulative hazard.
+
+        When `ci=True`, confidence intervals are computed via the delta method on the log cumulative
+        hazard. At the quantile, the variance of the log-quantile is
+        $\text{Var}(\eta) / (\partial \eta / \partial \log t)^2$, where the denominator is the
+        spline derivative evaluated at the quantile.
+
+        Parameters
+        ----------
+        newdata
+            Covariate values for prediction. A DataFrame (Pandas or Polars), 2-D array, or `None`
+            (the default). If `None`, uses baseline (all covariates 0).
+        p
+            Failure probability or probabilities at which to compute quantiles. Can be a scalar
+            (e.g., `0.5` for median) or array-like (e.g., `[0.25, 0.5, 0.75]` for quartiles). Must
+            be in (0, 1). Default is `0.5`.
+        ci
+            If `True`, include confidence intervals. Default is `False`.
+        format
+            Output format: `None` (auto-detect), `"pandas"`, `"polars"`, or `"pyarrow"`.
+
+        Returns
+        -------
+        DataFrame
+            A DataFrame with a `p` column listing the failure probabilities, and columns
+            `subject_1`, `subject_2`, etc. containing the corresponding quantile for each
+            subject. With `ci=True`, additional `subject_N_lower` and `subject_N_upper`
+            columns are included.
+
+        Examples
+        --------
+        ```{python}
+        import greenwood as gw
+
+        lung = gw.load_dataset("lung", backend="polars")
+        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        rp = gw.RoystonParmar(df=3).fit(y, lung[["age", "sex"]])
+
+        # Predicted survival-time quartiles for three subjects
+        rp.predict_quantile(lung[["age", "sex"]][:3], p=[0.25, 0.5, 0.75], format="polars")
+        ```
+
+        With confidence intervals at the median:
+
+        ```{python}
+        rp.predict_quantile(lung[["age", "sex"]][:3], p=0.5, ci=True, format="polars")
+        ```
+        """
+        from scipy.optimize import brentq
+
+        p_arr = np.atleast_1d(np.asarray(p, dtype=float))
+        if np.any(p_arr <= 0.0) or np.any(p_arr >= 1.0):
+            raise ValueError("p must be in (0, 1).")
+
+        if newdata is None:
+            x = np.zeros((1, max(self.coef_.size - self._n_spline, 0)))
+        else:
+            x, _ = _design_matrix(newdata)
+
+        gamma = self.coef_[: self._n_spline]
+        beta = self.coef_[self._n_spline :]
+        knots = self._knots
+
+        lo = float(knots[0]) - 5.0
+        hi = float(knots[-1]) + 5.0
+
+        n_subj = x.shape[0]
+        n_p = len(p_arr)
+        quantiles = np.full((n_p, n_subj), np.nan)
+
+        for i in range(n_subj):
+            lp = float(x[i] @ beta) if beta.size else 0.0
+
+            for k, pk in enumerate(p_arr):
+                target = np.log(-np.log(1.0 - pk))
+
+                def _root_fn(u: float, _lp: float = lp, _tgt: float = target) -> float:
+                    basis, _ = _rcs_basis(np.array([u]), knots)
+                    return float((basis @ gamma)[0]) + _lp - _tgt
+
+                try:
+                    u_q: float = brentq(_root_fn, lo, hi)  # type: ignore[assignment]
+                    quantiles[k, i] = np.exp(u_q)
+                except ValueError:
+                    pass
+
+        columns: dict[str, Any] = {"p": p_arr}
+
+        if ci:
+            z_val = float(norm.ppf(1.0 - (1.0 - self.conf_level) / 2.0))
+            lower = np.full((n_p, n_subj), np.nan)
+            upper = np.full((n_p, n_subj), np.nan)
+
+            for k in range(n_p):
+                for i in range(n_subj):
+                    if np.isnan(quantiles[k, i]):
+                        continue
+
+                    u_q = np.log(quantiles[k, i])
+                    basis_q, deriv_q = _rcs_basis(np.array([u_q]), knots)
+                    d_eta_d_u = float((deriv_q @ gamma)[0])
+
+                    grad_eta = np.zeros(len(self.coef_))
+                    grad_eta[: self._n_spline] = basis_q.ravel()
+                    if beta.size:
+                        grad_eta[self._n_spline :] = x[i]
+
+                    var_eta = float(grad_eta @ self.vcov_ @ grad_eta)
+                    se_log_q = np.sqrt(max(var_eta, 0.0)) / abs(d_eta_d_u)
+
+                    lower[k, i] = np.exp(u_q - z_val * se_log_q)
+                    upper[k, i] = np.exp(u_q + z_val * se_log_q)
+
+            for i in range(n_subj):
+                columns[f"subject_{i + 1}"] = quantiles[:, i]
+                columns[f"subject_{i + 1}_lower"] = lower[:, i]
+                columns[f"subject_{i + 1}_upper"] = upper[:, i]
+        else:
+            for i in range(n_subj):
+                columns[f"subject_{i + 1}"] = quantiles[:, i]
+
+        return to_dataframe(columns, format=format)
+
     def predict_median(
         self,
         newdata: Any = None,
@@ -484,20 +619,14 @@ class RoystonParmar:
     ) -> Any:
         r"""Predict the median survival time for each subject.
 
-        The median is the time $t$ at which $S(t \mid x) = 0.5$, found by solving
-        $\exp(s(\log t) + x^\top \beta) = \log 2$ via root-finding on the smooth spline-based log
-        cumulative hazard.
-
-        When `ci=True`, confidence intervals are computed via the delta method on the log cumulative
-        hazard. At the median, $\eta = \log(\log 2)$, and the variance of the log-median is
-        $\text{Var}(\eta) / (\partial \eta / \partial \log t)^2$, where the denominator is the
-        spline derivative evaluated at the median.
+        Convenience wrapper around `predict_quantile(p=0.5)`. See `predict_quantile` for
+        full documentation.
 
         Parameters
         ----------
         newdata
-            Covariate values for prediction. A DataFrame (Pandas or Polars), 2-D array, or `None`
-            (the default). If `None`, uses baseline (all covariates 0).
+            Covariate values for prediction. A DataFrame (Pandas or Polars), 2-D array,
+            or `None` (the default). If `None`, uses baseline (all covariates 0).
         ci
             If `True`, include confidence intervals. Default is `False`.
         format
@@ -506,9 +635,9 @@ class RoystonParmar:
         Returns
         -------
         DataFrame
-            A single-row DataFrame with columns `subject_1`, `subject_2`, etc. containing the median
-            survival time for each subject. With `ci=True`, additional `subject_N_lower` and
-            `subject_N_upper` columns are included.
+            A single-row DataFrame with columns `p`, `subject_1`, `subject_2`, etc.
+            containing the median survival time for each subject. With `ci=True`,
+            additional `subject_N_lower` and `subject_N_upper` columns are included.
 
         Examples
         --------
@@ -528,74 +657,7 @@ class RoystonParmar:
         rp.predict_median(lung[["age", "sex"]][:3], ci=True, format="polars")
         ```
         """
-        from scipy.optimize import brentq
-
-        if newdata is None:
-            x = np.zeros((1, max(self.coef_.size - self._n_spline, 0)))
-        else:
-            x, _ = _design_matrix(newdata)
-
-        gamma = self.coef_[: self._n_spline]
-        beta = self.coef_[self._n_spline :]
-        target = np.log(np.log(2.0))
-        knots = self._knots
-
-        lo = float(knots[0]) - 5.0
-        hi = float(knots[-1]) + 5.0
-
-        n_subj = x.shape[0]
-        medians = np.empty(n_subj)
-
-        for i in range(n_subj):
-            lp = float(x[i] @ beta) if beta.size else 0.0
-
-            def _root_fn(u: float, _lp: float = lp) -> float:
-                basis, _ = _rcs_basis(np.array([u]), knots)
-                return float((basis @ gamma)[0]) + _lp - target
-
-            try:
-                u_med: float = brentq(_root_fn, lo, hi)  # type: ignore[assignment]
-                medians[i] = np.exp(u_med)
-            except ValueError:
-                medians[i] = np.nan
-
-        columns: dict[str, Any] = {}
-
-        if ci:
-            z_val = float(norm.ppf(1.0 - (1.0 - self.conf_level) / 2.0))
-            lower = np.empty(n_subj)
-            upper = np.empty(n_subj)
-
-            for i in range(n_subj):
-                if np.isnan(medians[i]):
-                    lower[i] = np.nan
-                    upper[i] = np.nan
-                    continue
-
-                u_med = np.log(medians[i])
-                basis_med, deriv_med = _rcs_basis(np.array([u_med]), knots)
-                d_eta_d_u = float((deriv_med @ gamma)[0])
-
-                grad_eta = np.zeros(len(self.coef_))
-                grad_eta[: self._n_spline] = basis_med.ravel()
-                if beta.size:
-                    grad_eta[self._n_spline :] = x[i]
-
-                var_eta = float(grad_eta @ self.vcov_ @ grad_eta)
-                se_log_median = np.sqrt(max(var_eta, 0.0)) / abs(d_eta_d_u)
-
-                lower[i] = np.exp(u_med - z_val * se_log_median)
-                upper[i] = np.exp(u_med + z_val * se_log_median)
-
-            for i in range(n_subj):
-                columns[f"subject_{i + 1}"] = np.array([medians[i]])
-                columns[f"subject_{i + 1}_lower"] = np.array([lower[i]])
-                columns[f"subject_{i + 1}_upper"] = np.array([upper[i]])
-        else:
-            for i in range(n_subj):
-                columns[f"subject_{i + 1}"] = np.array([medians[i]])
-
-        return to_dataframe(columns, format=format)
+        return self.predict_quantile(newdata, p=0.5, ci=ci, format=format)
 
     def _coefficient_columns(self) -> dict[str, Any]:
         return {

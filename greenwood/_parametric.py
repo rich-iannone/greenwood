@@ -778,6 +778,97 @@ class AFT:
             "'lp', 'quantile', 'survival', 'mean', 'mean_remaining', or 'rmst'."
         )
 
+    def predict_quantile(
+        self,
+        newdata: Any = None,
+        *,
+        p: Any = 0.5,
+        ci: bool = False,
+        format: str | None = None,
+    ) -> Any:
+        r"""Predict survival-time quantiles for each subject.
+
+        The quantile at failure probability $p$ is
+        $\hat{t}_p = \exp(\hat{\mu} + \hat{\sigma} w_p)$, where $w_p$ is the $p$-th quantile of the
+        standardized error distribution and $\hat{\mu} = x^\top \hat{\beta}$ is the fitted linear
+        predictor. This is a closed-form computation.
+
+        When `ci=True`, confidence intervals are computed on the log scale (where the variance
+        depends only on coefficient uncertainty) and exponentiated:
+        $\exp(\hat{\mu} + \hat{\sigma} w_p \pm z_{\alpha/2} \cdot \text{SE}(\hat{\mu}))$.
+
+        Parameters
+        ----------
+        newdata
+            Covariate values for prediction. A DataFrame (Pandas or Polars), 2-D array, or `None`
+            (the default). If `None`, uses the training data.
+        p
+            Failure probability or probabilities at which to compute quantiles. Can be a scalar
+            (e.g., `0.5` for median) or array-like (e.g., `[0.25, 0.5, 0.75]` for quartiles). Must
+            be in (0, 1). Default is `0.5`.
+        ci
+            If `True`, include confidence intervals. Default is `False`.
+        format
+            Output format: `None` (auto-detect), `"pandas"`, `"polars"`, or `"pyarrow"`.
+
+        Returns
+        -------
+        DataFrame
+            A DataFrame with a `p` column listing the failure probabilities, and columns
+            `subject_1`, `subject_2`, etc. containing the corresponding quantile for each subject.
+            With `ci=True`, additional `subject_N_lower` and `subject_N_upper` columns are included.
+
+        Examples
+        --------
+        ```{python}
+        import greenwood as gw
+
+        lung = gw.load_dataset("lung", backend="polars")
+        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        aft = gw.AFT("weibull").fit(y, lung[["age", "sex"]])
+
+        # Predicted survival-time quartiles for three subjects
+        aft.predict_quantile(lung[["age", "sex"]][:3], p=[0.25, 0.5, 0.75], format="polars")
+        ```
+
+        With confidence intervals at the median:
+
+        ```{python}
+        aft.predict_quantile(lung[["age", "sex"]][:3], p=0.5, ci=True, format="polars")
+        ```
+        """
+        p_arr = np.atleast_1d(np.asarray(p, dtype=float))
+        if np.any(p_arr <= 0.0) or np.any(p_arr >= 1.0):
+            raise ValueError("p must be in (0, 1).")
+
+        x = self._design(newdata)
+        mu = x @ self.coef_
+        sigma = self.scale_
+
+        w = _error_quantile(self.dist, p_arr)
+        log_q = mu[:, None] + sigma * w[None, :]  # (n_subjects, n_p)
+        quantiles = np.exp(log_q)
+
+        columns: dict[str, Any] = {"p": p_arr}
+
+        if ci:
+            z_val = float(norm.ppf(1.0 - (1.0 - self.conf_level) / 2.0))
+            n_coef = x.shape[1]
+            vcov_coef = self.vcov_[:n_coef, :n_coef]
+            se_mu = np.sqrt(np.clip(np.diag(x @ vcov_coef @ x.T), 0.0, None))
+
+            for i in range(quantiles.shape[0]):
+                lo = np.exp(log_q[i] - z_val * se_mu[i])
+                hi = np.exp(log_q[i] + z_val * se_mu[i])
+                columns[f"subject_{i + 1}"] = quantiles[i]
+                columns[f"subject_{i + 1}_lower"] = lo
+                columns[f"subject_{i + 1}_upper"] = hi
+        else:
+            for i in range(quantiles.shape[0]):
+                columns[f"subject_{i + 1}"] = quantiles[i]
+
+        return to_dataframe(columns, format=format)
+
     def predict_median(
         self,
         newdata: Any = None,
@@ -787,19 +878,14 @@ class AFT:
     ) -> Any:
         r"""Predict the median survival time for each subject.
 
-        The median survival time is $\hat{t}_{0.5} = \exp(\hat{\mu} + \hat{\sigma} w_{0.5})$,
-        where $w_{0.5}$ is the median of the standardized error distribution and
-        $\hat{\mu} = x^\top \hat{\beta}$ is the fitted linear predictor.
-
-        When `ci=True`, confidence intervals are computed on the log scale (where the variance
-        depends only on coefficient uncertainty) and exponentiated:
-        $\exp(\hat{\mu} + \hat{\sigma} w_{0.5} \pm z_{\alpha/2} \cdot \text{SE}(\hat{\mu}))$.
+        Convenience wrapper around `predict_quantile(p=0.5)`. See `predict_quantile` for
+        full documentation.
 
         Parameters
         ----------
         newdata
-            Covariate values for prediction. A DataFrame (Pandas or Polars), 2-D array, or `None`
-            (the default). If `None`, uses the training data.
+            Covariate values for prediction. A DataFrame (Pandas or Polars), 2-D array,
+            or `None` (the default). If `None`, uses the training data.
         ci
             If `True`, include confidence intervals. Default is `False`.
         format
@@ -808,9 +894,9 @@ class AFT:
         Returns
         -------
         DataFrame
-            A single-row DataFrame with columns `subject_1`, `subject_2`, etc. containing the median
-            survival time for each subject. With `ci=True`, additional `subject_N_lower` and
-            `subject_N_upper` columns are included.
+            A single-row DataFrame with columns `p`, `subject_1`, `subject_2`, etc.
+            containing the median survival time for each subject. With `ci=True`,
+            additional `subject_N_lower` and `subject_N_upper` columns are included.
 
         Examples
         --------
@@ -830,34 +916,7 @@ class AFT:
         aft.predict_median(lung[["age", "sex"]][:3], ci=True, format="polars")
         ```
         """
-        x = self._design(newdata)
-        mu = x @ self.coef_
-        sigma = self.scale_
-
-        w_half = float(_error_quantile(self.dist, np.array([0.5]))[0])
-        log_median = mu + sigma * w_half
-        median = np.exp(log_median)
-
-        columns: dict[str, Any] = {}
-
-        if ci:
-            z = float(norm.ppf(1.0 - (1.0 - self.conf_level) / 2.0))
-            n_coef = x.shape[1]
-            vcov_coef = self.vcov_[:n_coef, :n_coef]
-            se_mu = np.sqrt(np.clip(np.diag(x @ vcov_coef @ x.T), 0.0, None))
-
-            lower = np.exp(log_median - z * se_mu)
-            upper = np.exp(log_median + z * se_mu)
-
-            for i in range(len(median)):
-                columns[f"subject_{i + 1}"] = np.array([median[i]])
-                columns[f"subject_{i + 1}_lower"] = np.array([lower[i]])
-                columns[f"subject_{i + 1}_upper"] = np.array([upper[i]])
-        else:
-            for i in range(len(median)):
-                columns[f"subject_{i + 1}"] = np.array([median[i]])
-
-        return to_dataframe(columns, format=format)
+        return self.predict_quantile(newdata, p=0.5, ci=ci, format=format)
 
     def _coefficient_columns(self) -> dict[str, Any]:
         return {
