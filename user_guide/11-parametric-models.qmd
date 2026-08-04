@@ -291,6 +291,22 @@ DataFrame and supports confidence intervals via the delta method on the log scal
 aft.predict_median(newdata, ci=True, format="polars")
 ```
 
+### Survival quantiles
+
+`predict_median()` is really a shortcut for `predict_quantile(p=0.5)`. Call `predict_quantile()`
+directly with a list of probabilities to get several survival-time quantiles at once, still in
+closed form and still with confidence intervals available.
+
+```{python}
+# Predicted survival-time quantiles at the 25th, 50th, and 75th percentiles
+aft.predict_quantile(newdata, p=[0.25, 0.5, 0.75], format="polars")
+```
+
+```{python}
+# Survival quantiles with confidence intervals
+aft.predict_quantile(newdata, p=[0.25, 0.5, 0.75], ci=True, format="polars")
+```
+
 ## Flexible parametric (Royston-Parmar) models
 
 The AFT distributions impose a fixed hazard shape. When none of them fits well but you still want
@@ -356,6 +372,21 @@ on the log cumulative hazard.
 ```{python}
 # Median survival time from the Royston-Parmar model, with confidence intervals
 rp.predict_median(newdata, ci=True, format="polars")
+```
+
+### Survival quantiles
+
+As with the AFT models, `predict_quantile()` generalizes `predict_median()` to arbitrary failure
+probabilities, root-finding on the spline for each requested `p`.
+
+```{python}
+# Predicted survival-time quantiles at the 25th, 50th, and 75th percentiles
+rp.predict_quantile(newdata, p=[0.25, 0.5, 0.75], format="polars")
+```
+
+```{python}
+# Survival quantiles with confidence intervals
+rp.predict_quantile(newdata, p=[0.25, 0.5, 0.75], ci=True, format="polars")
 ```
 
 ## Survival predictions with confidence intervals
