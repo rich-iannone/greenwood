@@ -1,0 +1,286 @@
+"""Tests for predict_median across CoxPH, AFT, and RoystonParmar."""
+
+from __future__ import annotations
+
+import numpy as np
+import pytest
+
+import greenwood as gw
+from greenwood import Surv
+
+from ._r_parity import assert_allclose_to_r, load_fixture
+
+pytestmark = pytest.mark.rparity
+
+
+@pytest.fixture()
+def lung_data() -> tuple[Surv, np.ndarray]:
+    df = gw.load_dataset("lung", backend="pandas")
+    y = Surv.right(df["time"], event=(df["status"] == 2))
+    x = df[["age", "sex"]].values
+    return y, x
+
+
+@pytest.fixture()
+def fixture() -> dict:
+    return load_fixture("predict_median")
+
+
+@pytest.fixture()
+def newdata(fixture: dict) -> np.ndarray:
+    return np.column_stack([fixture["newdata"]["age"], fixture["newdata"]["sex"]])
+
+
+# ── CoxPH ──
+
+
+def test_cox_predict_median(
+    lung_data: tuple[Surv, np.ndarray], fixture: dict, newdata: np.ndarray
+) -> None:
+    y, x = lung_data
+    cox = gw.CoxPH(ties="breslow").fit(y, x)
+    result = cox.predict_median(newdata, format="pandas")
+
+    r = fixture["cox_breslow"]
+    for i in range(3):
+        assert_allclose_to_r(
+            result[f"subject_{i + 1}"].values,
+            [r["median"][i]],
+            what=f"cox median subject {i + 1}",
+            rtol=1e-6,
+            atol=1.0,
+        )
+
+
+def test_cox_predict_median_ci(
+    lung_data: tuple[Surv, np.ndarray], fixture: dict, newdata: np.ndarray
+) -> None:
+    y, x = lung_data
+    cox = gw.CoxPH(ties="breslow").fit(y, x)
+    result = cox.predict_median(newdata, ci=True, format="pandas")
+
+    r = fixture["cox_breslow"]
+    for i in range(3):
+        col = f"subject_{i + 1}"
+        assert f"{col}_lower" in result.columns
+        assert f"{col}_upper" in result.columns
+
+        assert_allclose_to_r(
+            result[f"{col}_lower"].values,
+            [r["lower"][i]],
+            what=f"cox median lower subject {i + 1}",
+            rtol=1e-6,
+            atol=1.0,
+        )
+        if not np.isnan(r["upper"][i]):
+            assert_allclose_to_r(
+                result[f"{col}_upper"].values,
+                [r["upper"][i]],
+                what=f"cox median upper subject {i + 1}",
+                rtol=1e-6,
+                atol=1.0,
+            )
+
+
+def test_cox_predict_median_no_newdata(lung_data: tuple[Surv, np.ndarray]) -> None:
+    y, x = lung_data
+    cox = gw.CoxPH(ties="breslow").fit(y, x)
+    result = cox.predict_median(format="pandas")
+    assert result.shape == (1, x.shape[0])
+    assert all(col.startswith("subject_") for col in result.columns)
+
+
+# ── AFT Weibull ──
+
+
+def test_aft_weibull_predict_median(
+    lung_data: tuple[Surv, np.ndarray], fixture: dict, newdata: np.ndarray
+) -> None:
+    y, x = lung_data
+    aft = gw.AFT("weibull").fit(y, x)
+    result = aft.predict_median(newdata, format="pandas")
+
+    r = fixture["aft_weibull"]
+    for i in range(3):
+        assert_allclose_to_r(
+            result[f"subject_{i + 1}"].values,
+            [r["median"][i]],
+            what=f"aft weibull median subject {i + 1}",
+            rtol=1e-4,
+        )
+
+
+def test_aft_weibull_predict_median_ci(
+    lung_data: tuple[Surv, np.ndarray], fixture: dict, newdata: np.ndarray
+) -> None:
+    y, x = lung_data
+    aft = gw.AFT("weibull").fit(y, x)
+    result = aft.predict_median(newdata, ci=True, format="pandas")
+
+    r = fixture["aft_weibull"]
+    for i in range(3):
+        assert_allclose_to_r(
+            result[f"subject_{i + 1}_lower"].values,
+            [r["lower"][i]],
+            what=f"aft weibull lower subject {i + 1}",
+            rtol=1e-4,
+        )
+        assert_allclose_to_r(
+            result[f"subject_{i + 1}_upper"].values,
+            [r["upper"][i]],
+            what=f"aft weibull upper subject {i + 1}",
+            rtol=1e-4,
+        )
+
+
+# ── AFT Lognormal ──
+
+
+def test_aft_lognormal_predict_median(
+    lung_data: tuple[Surv, np.ndarray], fixture: dict, newdata: np.ndarray
+) -> None:
+    y, x = lung_data
+    aft = gw.AFT("lognormal").fit(y, x)
+    result = aft.predict_median(newdata, format="pandas")
+
+    r = fixture["aft_lognormal"]
+    for i in range(3):
+        assert_allclose_to_r(
+            result[f"subject_{i + 1}"].values,
+            [r["median"][i]],
+            what=f"aft lognormal median subject {i + 1}",
+            rtol=1e-4,
+        )
+
+
+def test_aft_lognormal_predict_median_ci(
+    lung_data: tuple[Surv, np.ndarray], fixture: dict, newdata: np.ndarray
+) -> None:
+    y, x = lung_data
+    aft = gw.AFT("lognormal").fit(y, x)
+    result = aft.predict_median(newdata, ci=True, format="pandas")
+
+    r = fixture["aft_lognormal"]
+    for i in range(3):
+        assert_allclose_to_r(
+            result[f"subject_{i + 1}_lower"].values,
+            [r["lower"][i]],
+            what=f"aft lognormal lower subject {i + 1}",
+            rtol=1e-4,
+        )
+        assert_allclose_to_r(
+            result[f"subject_{i + 1}_upper"].values,
+            [r["upper"][i]],
+            what=f"aft lognormal upper subject {i + 1}",
+            rtol=1e-4,
+        )
+
+
+# ── AFT Log-logistic ──
+
+
+def test_aft_loglogistic_predict_median(
+    lung_data: tuple[Surv, np.ndarray], fixture: dict, newdata: np.ndarray
+) -> None:
+    y, x = lung_data
+    aft = gw.AFT("loglogistic").fit(y, x)
+    result = aft.predict_median(newdata, format="pandas")
+
+    r = fixture["aft_loglogistic"]
+    for i in range(3):
+        assert_allclose_to_r(
+            result[f"subject_{i + 1}"].values,
+            [r["median"][i]],
+            what=f"aft loglogistic median subject {i + 1}",
+            rtol=1e-4,
+        )
+
+
+def test_aft_loglogistic_predict_median_ci(
+    lung_data: tuple[Surv, np.ndarray], fixture: dict, newdata: np.ndarray
+) -> None:
+    y, x = lung_data
+    aft = gw.AFT("loglogistic").fit(y, x)
+    result = aft.predict_median(newdata, ci=True, format="pandas")
+
+    r = fixture["aft_loglogistic"]
+    for i in range(3):
+        assert_allclose_to_r(
+            result[f"subject_{i + 1}_lower"].values,
+            [r["lower"][i]],
+            what=f"aft loglogistic lower subject {i + 1}",
+            rtol=1e-4,
+        )
+        assert_allclose_to_r(
+            result[f"subject_{i + 1}_upper"].values,
+            [r["upper"][i]],
+            what=f"aft loglogistic upper subject {i + 1}",
+            rtol=1e-4,
+        )
+
+
+# ── RoystonParmar ──
+
+
+def test_rp_predict_median(lung_data: tuple[Surv, np.ndarray], newdata: np.ndarray) -> None:
+    y, x = lung_data
+    rp = gw.RoystonParmar(df=3).fit(y, x)
+    result = rp.predict_median(newdata, format="pandas")
+    assert result.shape == (1, 3)
+    for i in range(3):
+        val = result[f"subject_{i + 1}"].values[0]
+        assert np.isfinite(val) and val > 0
+
+
+def test_rp_predict_median_ci(lung_data: tuple[Surv, np.ndarray], newdata: np.ndarray) -> None:
+    y, x = lung_data
+    rp = gw.RoystonParmar(df=3).fit(y, x)
+    result = rp.predict_median(newdata, ci=True, format="pandas")
+    for i in range(3):
+        col = f"subject_{i + 1}"
+        med = result[col].values[0]
+        lo = result[f"{col}_lower"].values[0]
+        hi = result[f"{col}_upper"].values[0]
+        assert lo < med < hi, f"CI ordering violated for subject {i + 1}"
+
+
+def test_rp_predict_median_consistency(
+    lung_data: tuple[Surv, np.ndarray], newdata: np.ndarray
+) -> None:
+    """Median should match the point where the survival curve crosses 0.5."""
+    y, x = lung_data
+    rp = gw.RoystonParmar(df=3).fit(y, x)
+    median_df = rp.predict_median(newdata, format="pandas")
+    times = np.linspace(1, 1500, 5000)
+    surv_df = rp.predict(newdata, type="survival", times=times, format="pandas")
+    for i in range(3):
+        med = median_df[f"subject_{i + 1}"].values[0]
+        s_vals = surv_df[f"subject_{i + 1}"].values
+        idx = np.searchsorted(-s_vals, -0.5)
+        if idx < len(times):
+            np.testing.assert_allclose(med, times[idx], atol=1.0)
+
+
+# ── Edge cases ──
+
+
+def test_predict_median_nan_when_curve_never_crosses() -> None:
+    """If S(t) never drops to 0.5 (heavy censoring), median should be NaN."""
+    rng = np.random.default_rng(42)
+    n = 50
+    times = rng.exponential(100, n)
+    events = np.zeros(n, dtype=int)
+    events[0] = 1
+    y = Surv.right(times, events)
+    x = rng.standard_normal((n, 2))
+    cox = gw.CoxPH().fit(y, x)
+    result = cox.predict_median(format="pandas")
+    n_nan = sum(np.isnan(result[f"subject_{i + 1}"].values[0]) for i in range(n))
+    assert n_nan >= 1
+
+
+def test_aft_predict_median_no_newdata(lung_data: tuple[Surv, np.ndarray]) -> None:
+    y, x = lung_data
+    aft = gw.AFT("weibull").fit(y, x)
+    result = aft.predict_median(format="pandas")
+    assert result.shape == (1, x.shape[0])
