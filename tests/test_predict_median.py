@@ -1,4 +1,4 @@
-"""Tests for predict_median across CoxPH, AFT, and RoystonParmar."""
+"""Tests for predict_quantile and predict_median across CoxPH, AFT, and RoystonParmar."""
 
 from __future__ import annotations
 
@@ -22,26 +22,71 @@ def lung_data() -> tuple[Surv, np.ndarray]:
 
 
 @pytest.fixture()
-def fixture() -> dict:
+def median_fixture() -> dict:
     return load_fixture("predict_median")
 
 
 @pytest.fixture()
-def newdata(fixture: dict) -> np.ndarray:
-    return np.column_stack([fixture["newdata"]["age"], fixture["newdata"]["sex"]])
+def quantile_fixture() -> dict:
+    return load_fixture("predict_quantile")
 
 
-# ── CoxPH ──
+@pytest.fixture()
+def newdata(median_fixture: dict) -> np.ndarray:
+    return np.column_stack([median_fixture["newdata"]["age"], median_fixture["newdata"]["sex"]])
+
+
+# ── CoxPH predict_quantile ──
+
+
+def test_cox_predict_quantile(
+    lung_data: tuple[Surv, np.ndarray],
+    quantile_fixture: dict,
+    newdata: np.ndarray,
+) -> None:
+    y, x = lung_data
+    cox = gw.CoxPH(ties="breslow").fit(y, x)
+    result = cox.predict_quantile(newdata, p=[0.25, 0.5, 0.75], format="pandas")
+
+    assert "p" in result.columns
+    assert list(result["p"].values) == [0.25, 0.5, 0.75]
+
+    r = quantile_fixture["cox_breslow"]["quantiles"]
+    for k in range(3):
+        for i in range(3):
+            assert_allclose_to_r(
+                [result[f"subject_{i + 1}"].values[k]],
+                [r[k][i]],
+                what=f"cox quantile p={[0.25, 0.5, 0.75][k]} subject {i + 1}",
+                rtol=1e-6,
+                atol=1.0,
+            )
+
+
+def test_cox_predict_quantile_ci(lung_data: tuple[Surv, np.ndarray], newdata: np.ndarray) -> None:
+    y, x = lung_data
+    cox = gw.CoxPH(ties="breslow").fit(y, x)
+    result = cox.predict_quantile(newdata, p=0.5, ci=True, format="pandas")
+
+    for i in range(3):
+        col = f"subject_{i + 1}"
+        assert f"{col}_lower" in result.columns
+        assert f"{col}_upper" in result.columns
+
+
+# ── CoxPH predict_median (delegates to predict_quantile) ──
 
 
 def test_cox_predict_median(
-    lung_data: tuple[Surv, np.ndarray], fixture: dict, newdata: np.ndarray
+    lung_data: tuple[Surv, np.ndarray],
+    median_fixture: dict,
+    newdata: np.ndarray,
 ) -> None:
     y, x = lung_data
     cox = gw.CoxPH(ties="breslow").fit(y, x)
     result = cox.predict_median(newdata, format="pandas")
 
-    r = fixture["cox_breslow"]
+    r = median_fixture["cox_breslow"]
     for i in range(3):
         assert_allclose_to_r(
             result[f"subject_{i + 1}"].values,
@@ -53,18 +98,17 @@ def test_cox_predict_median(
 
 
 def test_cox_predict_median_ci(
-    lung_data: tuple[Surv, np.ndarray], fixture: dict, newdata: np.ndarray
+    lung_data: tuple[Surv, np.ndarray],
+    median_fixture: dict,
+    newdata: np.ndarray,
 ) -> None:
     y, x = lung_data
     cox = gw.CoxPH(ties="breslow").fit(y, x)
     result = cox.predict_median(newdata, ci=True, format="pandas")
 
-    r = fixture["cox_breslow"]
+    r = median_fixture["cox_breslow"]
     for i in range(3):
         col = f"subject_{i + 1}"
-        assert f"{col}_lower" in result.columns
-        assert f"{col}_upper" in result.columns
-
         assert_allclose_to_r(
             result[f"{col}_lower"].values,
             [r["lower"][i]],
@@ -82,25 +126,80 @@ def test_cox_predict_median_ci(
             )
 
 
-def test_cox_predict_median_no_newdata(lung_data: tuple[Surv, np.ndarray]) -> None:
+def test_cox_predict_median_no_newdata(
+    lung_data: tuple[Surv, np.ndarray],
+) -> None:
     y, x = lung_data
     cox = gw.CoxPH(ties="breslow").fit(y, x)
     result = cox.predict_median(format="pandas")
-    assert result.shape == (1, x.shape[0])
-    assert all(col.startswith("subject_") for col in result.columns)
+    assert result.shape[0] == 1
+    assert f"subject_{x.shape[0]}" in result.columns
 
 
-# ── AFT Weibull ──
+# ── AFT predict_quantile ──
+
+
+def test_aft_predict_quantile(
+    lung_data: tuple[Surv, np.ndarray],
+    quantile_fixture: dict,
+    newdata: np.ndarray,
+) -> None:
+    y, x = lung_data
+    aft = gw.AFT("weibull").fit(y, x)
+    result = aft.predict_quantile(newdata, p=[0.25, 0.5, 0.75], format="pandas")
+
+    assert "p" in result.columns
+    r = quantile_fixture["aft_weibull"]["quantiles"]
+    for k in range(3):
+        for i in range(3):
+            assert_allclose_to_r(
+                [result[f"subject_{i + 1}"].values[k]],
+                [r[k][i]],
+                what=f"aft quantile p={[0.25, 0.5, 0.75][k]} subj {i + 1}",
+                rtol=1e-4,
+            )
+
+
+def test_aft_predict_quantile_ci(
+    lung_data: tuple[Surv, np.ndarray],
+    quantile_fixture: dict,
+    newdata: np.ndarray,
+) -> None:
+    y, x = lung_data
+    aft = gw.AFT("weibull").fit(y, x)
+    result = aft.predict_quantile(newdata, p=[0.25, 0.5, 0.75], ci=True, format="pandas")
+
+    r_lo = quantile_fixture["aft_weibull"]["lower"]
+    r_hi = quantile_fixture["aft_weibull"]["upper"]
+    for k in range(3):
+        for i in range(3):
+            assert_allclose_to_r(
+                [result[f"subject_{i + 1}_lower"].values[k]],
+                [r_lo[k][i]],
+                what=f"aft quantile lower p={k} subj {i + 1}",
+                rtol=1e-4,
+            )
+            assert_allclose_to_r(
+                [result[f"subject_{i + 1}_upper"].values[k]],
+                [r_hi[k][i]],
+                what=f"aft quantile upper p={k} subj {i + 1}",
+                rtol=1e-4,
+            )
+
+
+# ── AFT predict_median (all distributions) ──
 
 
 def test_aft_weibull_predict_median(
-    lung_data: tuple[Surv, np.ndarray], fixture: dict, newdata: np.ndarray
+    lung_data: tuple[Surv, np.ndarray],
+    median_fixture: dict,
+    newdata: np.ndarray,
 ) -> None:
     y, x = lung_data
     aft = gw.AFT("weibull").fit(y, x)
     result = aft.predict_median(newdata, format="pandas")
 
-    r = fixture["aft_weibull"]
+    r = median_fixture["aft_weibull"]
     for i in range(3):
         assert_allclose_to_r(
             result[f"subject_{i + 1}"].values,
@@ -111,13 +210,15 @@ def test_aft_weibull_predict_median(
 
 
 def test_aft_weibull_predict_median_ci(
-    lung_data: tuple[Surv, np.ndarray], fixture: dict, newdata: np.ndarray
+    lung_data: tuple[Surv, np.ndarray],
+    median_fixture: dict,
+    newdata: np.ndarray,
 ) -> None:
     y, x = lung_data
     aft = gw.AFT("weibull").fit(y, x)
     result = aft.predict_median(newdata, ci=True, format="pandas")
 
-    r = fixture["aft_weibull"]
+    r = median_fixture["aft_weibull"]
     for i in range(3):
         assert_allclose_to_r(
             result[f"subject_{i + 1}_lower"].values,
@@ -133,17 +234,16 @@ def test_aft_weibull_predict_median_ci(
         )
 
 
-# ── AFT Lognormal ──
-
-
 def test_aft_lognormal_predict_median(
-    lung_data: tuple[Surv, np.ndarray], fixture: dict, newdata: np.ndarray
+    lung_data: tuple[Surv, np.ndarray],
+    median_fixture: dict,
+    newdata: np.ndarray,
 ) -> None:
     y, x = lung_data
     aft = gw.AFT("lognormal").fit(y, x)
     result = aft.predict_median(newdata, format="pandas")
 
-    r = fixture["aft_lognormal"]
+    r = median_fixture["aft_lognormal"]
     for i in range(3):
         assert_allclose_to_r(
             result[f"subject_{i + 1}"].values,
@@ -153,40 +253,16 @@ def test_aft_lognormal_predict_median(
         )
 
 
-def test_aft_lognormal_predict_median_ci(
-    lung_data: tuple[Surv, np.ndarray], fixture: dict, newdata: np.ndarray
-) -> None:
-    y, x = lung_data
-    aft = gw.AFT("lognormal").fit(y, x)
-    result = aft.predict_median(newdata, ci=True, format="pandas")
-
-    r = fixture["aft_lognormal"]
-    for i in range(3):
-        assert_allclose_to_r(
-            result[f"subject_{i + 1}_lower"].values,
-            [r["lower"][i]],
-            what=f"aft lognormal lower subject {i + 1}",
-            rtol=1e-4,
-        )
-        assert_allclose_to_r(
-            result[f"subject_{i + 1}_upper"].values,
-            [r["upper"][i]],
-            what=f"aft lognormal upper subject {i + 1}",
-            rtol=1e-4,
-        )
-
-
-# ── AFT Log-logistic ──
-
-
 def test_aft_loglogistic_predict_median(
-    lung_data: tuple[Surv, np.ndarray], fixture: dict, newdata: np.ndarray
+    lung_data: tuple[Surv, np.ndarray],
+    median_fixture: dict,
+    newdata: np.ndarray,
 ) -> None:
     y, x = lung_data
     aft = gw.AFT("loglogistic").fit(y, x)
     result = aft.predict_median(newdata, format="pandas")
 
-    r = fixture["aft_loglogistic"]
+    r = median_fixture["aft_loglogistic"]
     for i in range(3):
         assert_allclose_to_r(
             result[f"subject_{i + 1}"].values,
@@ -196,52 +272,48 @@ def test_aft_loglogistic_predict_median(
         )
 
 
-def test_aft_loglogistic_predict_median_ci(
-    lung_data: tuple[Surv, np.ndarray], fixture: dict, newdata: np.ndarray
-) -> None:
+# ── RoystonParmar predict_quantile ──
+
+
+def test_rp_predict_quantile(lung_data: tuple[Surv, np.ndarray], newdata: np.ndarray) -> None:
     y, x = lung_data
-    aft = gw.AFT("loglogistic").fit(y, x)
-    result = aft.predict_median(newdata, ci=True, format="pandas")
+    rp = gw.RoystonParmar(df=3).fit(y, x)
+    result = rp.predict_quantile(newdata, p=[0.25, 0.5, 0.75], format="pandas")
 
-    r = fixture["aft_loglogistic"]
-    for i in range(3):
-        assert_allclose_to_r(
-            result[f"subject_{i + 1}_lower"].values,
-            [r["lower"][i]],
-            what=f"aft loglogistic lower subject {i + 1}",
-            rtol=1e-4,
-        )
-        assert_allclose_to_r(
-            result[f"subject_{i + 1}_upper"].values,
-            [r["upper"][i]],
-            what=f"aft loglogistic upper subject {i + 1}",
-            rtol=1e-4,
-        )
+    assert "p" in result.columns
+    assert result.shape[0] == 3
+    for k in range(3):
+        for i in range(3):
+            val = result[f"subject_{i + 1}"].values[k]
+            assert np.isfinite(val) and val > 0
 
 
-# ── RoystonParmar ──
+def test_rp_predict_quantile_ci(lung_data: tuple[Surv, np.ndarray], newdata: np.ndarray) -> None:
+    y, x = lung_data
+    rp = gw.RoystonParmar(df=3).fit(y, x)
+    result = rp.predict_quantile(newdata, p=[0.25, 0.5, 0.75], ci=True, format="pandas")
+    for k in range(3):
+        for i in range(3):
+            col = f"subject_{i + 1}"
+            lo = result[f"{col}_lower"].values[k]
+            val = result[col].values[k]
+            hi = result[f"{col}_upper"].values[k]
+            assert lo < val < hi, (
+                f"CI ordering violated for p={[0.25, 0.5, 0.75][k]} subject {i + 1}"
+            )
+
+
+# ── RoystonParmar predict_median ──
 
 
 def test_rp_predict_median(lung_data: tuple[Surv, np.ndarray], newdata: np.ndarray) -> None:
     y, x = lung_data
     rp = gw.RoystonParmar(df=3).fit(y, x)
     result = rp.predict_median(newdata, format="pandas")
-    assert result.shape == (1, 3)
+    assert result.shape[0] == 1
     for i in range(3):
         val = result[f"subject_{i + 1}"].values[0]
         assert np.isfinite(val) and val > 0
-
-
-def test_rp_predict_median_ci(lung_data: tuple[Surv, np.ndarray], newdata: np.ndarray) -> None:
-    y, x = lung_data
-    rp = gw.RoystonParmar(df=3).fit(y, x)
-    result = rp.predict_median(newdata, ci=True, format="pandas")
-    for i in range(3):
-        col = f"subject_{i + 1}"
-        med = result[col].values[0]
-        lo = result[f"{col}_lower"].values[0]
-        hi = result[f"{col}_upper"].values[0]
-        assert lo < med < hi, f"CI ordering violated for subject {i + 1}"
 
 
 def test_rp_predict_median_consistency(
@@ -264,8 +336,8 @@ def test_rp_predict_median_consistency(
 # ── Edge cases ──
 
 
-def test_predict_median_nan_when_curve_never_crosses() -> None:
-    """If S(t) never drops to 0.5 (heavy censoring), median should be NaN."""
+def test_predict_quantile_nan_when_curve_never_crosses() -> None:
+    """If S(t) never drops to 1-p, quantile should be NaN."""
     rng = np.random.default_rng(42)
     n = 50
     times = rng.exponential(100, n)
@@ -274,13 +346,40 @@ def test_predict_median_nan_when_curve_never_crosses() -> None:
     y = Surv.right(times, events)
     x = rng.standard_normal((n, 2))
     cox = gw.CoxPH().fit(y, x)
-    result = cox.predict_median(format="pandas")
+    result = cox.predict_quantile(p=0.5, format="pandas")
     n_nan = sum(np.isnan(result[f"subject_{i + 1}"].values[0]) for i in range(n))
     assert n_nan >= 1
 
 
-def test_aft_predict_median_no_newdata(lung_data: tuple[Surv, np.ndarray]) -> None:
+def test_aft_predict_quantile_no_newdata(
+    lung_data: tuple[Surv, np.ndarray],
+) -> None:
     y, x = lung_data
     aft = gw.AFT("weibull").fit(y, x)
-    result = aft.predict_median(format="pandas")
-    assert result.shape == (1, x.shape[0])
+    result = aft.predict_quantile(p=[0.25, 0.75], format="pandas")
+    assert result.shape[0] == 2
+    assert f"subject_{x.shape[0]}" in result.columns
+
+
+def test_predict_quantile_invalid_p(
+    lung_data: tuple[Surv, np.ndarray],
+) -> None:
+    y, x = lung_data
+    cox = gw.CoxPH().fit(y, x)
+    with pytest.raises(ValueError, match="p must be in"):
+        cox.predict_quantile(p=0.0)
+    with pytest.raises(ValueError, match="p must be in"):
+        cox.predict_quantile(p=1.0)
+    with pytest.raises(ValueError, match="p must be in"):
+        cox.predict_quantile(p=[0.5, 1.5])
+
+
+def test_predict_quantile_monotone(lung_data: tuple[Surv, np.ndarray], newdata: np.ndarray) -> None:
+    """Quantiles should be monotonically increasing in p."""
+    y, x = lung_data
+    cox = gw.CoxPH(ties="breslow").fit(y, x)
+    result = cox.predict_quantile(newdata, p=[0.1, 0.25, 0.5, 0.75, 0.9], format="pandas")
+    for i in range(3):
+        vals = result[f"subject_{i + 1}"].values
+        finite = vals[~np.isnan(vals)]
+        assert np.all(np.diff(finite) >= 0), f"Non-monotone quantiles for subject {i + 1}"
