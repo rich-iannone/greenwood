@@ -12,15 +12,14 @@ import great_docs as gd
 gd.enable_tbl_preview(n_head=8, n_tail=3)
 ```
 
-Fitting a Cox model is only half the work. Before you trust its hazard ratios, you should
-check that its central assumption holds, look at residuals for influential or poorly fit
-observations, and understand what the model predicts. This page covers the proportional
-hazards test, residuals, baseline hazard and survival prediction, stratification, robust
-standard errors, and the concordance index. Together these turn a fitted model into a
-defensible one.
+Fitting a Cox model is only half the work. Before you trust its hazard ratios, you should check that
+its central assumption holds, look at residuals for influential or poorly fit observations, and
+understand what the model predicts. This page covers the proportional hazards test, residuals,
+baseline hazard and survival prediction, stratification, robust standard errors, and the concordance
+index. Together these turn a fitted model into a defensible one.
 
-We begin with the `lung` outcomes. The response `y` is a `Surv` object pairing each follow-up
-time with an event indicator, and it is the target every model on this page is fit against.
+We begin with the `lung` outcomes. The response `y` is a `Surv` object pairing each follow-up time
+with an event indicator, and it is the target every model on this page is fit against.
 
 ```{python}
 import greenwood as gw
@@ -36,8 +35,8 @@ y
 ```
 
 The printed response records 165 events among 228 subjects, with a `+` marking each censored
-observation. We fit a Cox model to it using `age` and `sex` as covariates. This is the model
-we diagnose throughout the page, so we fit it once here and reuse it below.
+observation. We fit a Cox model to it using `age` and `sex` as covariates. This is the model we
+diagnose throughout the page, so we fit it once here and reuse it below.
 
 ```{python}
 # Fit the model we will diagnose throughout this page
@@ -48,14 +47,14 @@ With the response and model in hand, the sections below work through each diagno
 
 ## Checking the proportional hazards assumption
 
-The Cox model assumes each covariate's effect on the hazard is constant over time. When this
-fails, for example if a treatment helps early but not late, the reported hazard ratio is a
-misleading average. The Grambsch-Therneau test checks the assumption by looking for a trend
-in the scaled Schoenfeld residuals against time. A small p-value is evidence that the
-assumption is violated for that covariate.
+The Cox model assumes each covariate's effect on the hazard is constant over time. When this fails,
+for example if a treatment helps early but not late, the reported hazard ratio is a misleading
+average. The Grambsch-Therneau test checks the assumption by looking for a trend in the scaled
+Schoenfeld residuals against time. A small p-value is evidence that the assumption is violated for
+that covariate.
 
-Calling `cox_zph()` returns a `ZPHResult`, an object that bundles the test statistics
-together. Displaying it directly gives a compact summary of the test.
+Calling `cox_zph()` returns a `ZPHResult`, an object that bundles the test statistics together.
+Displaying it directly gives a compact summary of the test.
 
 ```{python}
 # Load data and build the response
@@ -72,24 +71,24 @@ zph = cox.cox_zph()
 zph
 ```
 
-For the full per-covariate breakdown, call `to_frame()` on that result. This is the table
-you will read most often.
+For the full per-covariate breakdown, call `to_frame()` on that result. This is the table you will
+read most often.
 
 ```{python}
 # Export the ZPH test table as a tidy DataFrame (one row per term plus GLOBAL)
 zph.to_frame(format="polars")
 ```
 
-The table has one row per covariate plus a `GLOBAL` row that tests all covariates jointly.
-Large p-values, as here, are reassuring: they give no evidence against proportional hazards.
-The test uses a time transform, which defaults to `"identity"`; `"log"` is also available.
+The table has one row per covariate plus a `GLOBAL` row that tests all covariates jointly. Large
+p-values, as here, are reassuring: they give no evidence against proportional hazards. The test uses
+a time transform, which defaults to `"identity"` (`"log"` is also available).
 
 ::: {.callout-warning}
 ## A non-significant test is not proof
 
-Failing to reject the proportional hazards assumption does not prove it holds, especially in
-small samples. Complement the test by plotting scaled Schoenfeld residuals or by fitting
-time-stratified models when you have reason to suspect a time-varying effect.
+Failing to reject the proportional hazards assumption does not prove it holds, especially in small
+samples. Complement the test by plotting scaled Schoenfeld residuals or by fitting time-stratified
+models when you have reason to suspect a time-varying effect.
 :::
 
 ## Residuals
@@ -99,10 +98,10 @@ supports seven types, each answering a different diagnostic question.
 
 ### Martingale and deviance residuals
 
-Martingale residuals, one per subject, are the difference between the observed number of
-events and the number the model expected. Large negative values flag subjects who lived much
-longer than predicted. Deviance residuals are a normalized version that is more symmetrically
-distributed and better for spotting outliers.
+Martingale residuals, one per subject, are the difference between the observed number of events and
+the number the model expected. Large negative values flag subjects who lived much longer than
+predicted. Deviance residuals are a normalized version that is more symmetrically distributed and
+better for spotting outliers.
 
 ```{python}
 # Load data and build the response
@@ -124,9 +123,9 @@ cox.residuals("deviance")[:5]
 ### Schoenfeld and scaled Schoenfeld residuals
 
 Schoenfeld residuals have one row per event and one column per covariate. They underlie the
-proportional hazards test and are useful for spotting time trends in a covariate's effect.
-Scaled Schoenfeld residuals (Grambsch-Therneau) are centered on the coefficient estimate, so
-under the PH assumption, each row's expected value equals the true coefficient.
+proportional hazards test and are useful for spotting time trends in a covariate's effect. Scaled
+Schoenfeld residuals (Grambsch-Therneau) are centered on the coefficient estimate, so under the PH
+assumption, each row's expected value equals the true coefficient.
 
 ```{python}
 # Compute Schoenfeld residuals (one row per event, one column per covariate)
@@ -161,16 +160,15 @@ cox.residuals("dfbeta", format="polars")
 cox.residuals("dfbetas", format="polars")
 ```
 
-Martingale and deviance residuals are most useful for spotting outliers or a nonlinear
-covariate relationship. Schoenfeld residuals are the basis for the proportional hazards test.
-Score, dfbeta, and dfbetas residuals assess the influence of individual observations on the
-fitted coefficients.
+Martingale and deviance residuals are most useful for spotting outliers or a nonlinear covariate
+relationship. Schoenfeld residuals are the basis for the proportional hazards test. Score, dfbeta,
+and dfbetas residuals assess the influence of individual observations on the fitted coefficients.
 
 ## Baseline hazard and predicted survival
 
-Although the Cox model does not assume a shape for the baseline hazard, it can estimate one
-after fitting. The baseline cumulative hazard, and the survival curve derived from it,
-describe a reference subject.
+Although the Cox model does not assume a shape for the baseline hazard, it can estimate one after
+fitting. The baseline cumulative hazard, and the survival curve derived from it, describe a
+reference subject.
 
 ```{python}
 # Load data and build the response
@@ -184,10 +182,9 @@ cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
 cox.baseline_hazard(format="polars")
 ```
 
-More useful in practice is predicting the survival curve for specific covariate values.
-First we build a small frame of the subjects we want predictions for: a 50-year-old with
-`sex` 1 and a 70-year-old with `sex` 2. Showing it confirms the covariate values before we
-predict from them.
+More useful in practice is predicting the survival curve for specific covariate values. First we
+build a small frame of the subjects we want predictions for: a 50-year-old with `sex` 1 and a
+70-year-old with `sex` 2. Showing it confirms the covariate values before we predict from them.
 
 ```{python}
 import pandas as pd
@@ -199,41 +196,40 @@ newdata = pd.DataFrame({"age": [50, 70], "sex": [1, 2]})
 newdata
 ```
 
-Given that new data and a set of times, `predict` returns the estimated survival probability
-for each subject.
+Given that new data and a set of times, `predict` returns the estimated survival probability for
+each subject.
 
 ```{python}
 # Predict survival probabilities at specific times for each subject in newdata
 cox.predict(newdata, type="survival", times=[180, 365, 730], format="polars")
 ```
 
-Each column is a subject from `newdata`, and each row is a requested time. The `type="lp"`
-and `type="risk"` options instead return the linear predictor and the relative risk.
+Each column is a subject from `newdata`, and each row is a requested time. The `type="lp"` and
+`type="risk"` options instead return the linear predictor and the relative risk.
 
 ### Confidence bands and conditional survival
 
-Pass `ci=True` to add a pointwise confidence band around each predicted curve. Every subject
-then gains `_lower` and `_upper` columns, built from the standard error of the cumulative
-hazard and matching R's `survfit` (which combines baseline-hazard and coefficient
-uncertainty).
+Pass `ci=True` to add a pointwise confidence band around each predicted curve. Every subject then
+gains `_lower` and `_upper` columns, built from the standard error of the cumulative hazard and
+matching R's `survfit` (which combines baseline-hazard and coefficient uncertainty).
 
 ```{python}
 # Add pointwise 95% confidence bands; each subject gains _lower and _upper columns
 cox.predict(newdata, type="survival", times=[180, 365, 730], ci=True, format="polars")
 ```
 
-You can also predict conditional on a subject having already survived some time, which is
-useful for updating a prognosis partway through follow-up. With `conditional_after=180`, the
-returned probabilities are $P(T > t \mid T > 180) = S(t) / S(180)$.
+You can also predict conditional on a subject having already survived some time, which is useful for
+updating a prognosis partway through follow-up. With `conditional_after=180`, the returned
+probabilities are $P(T > t \mid T > 180) = S(t) / S(180)$.
 
 ```{python}
 # Predict P(T > t | T > 180): survival conditional on being alive at day 180
 cox.predict(newdata, type="survival", times=[365, 730], conditional_after=180, format="polars")
 ```
 
-Confidence bands quantify the uncertainty in a predicted survival curve, and conditional
-survival gives an updated estimate that is directly meaningful for a patient already some
-time into follow-up. Both are straightforward extensions of the base `predict()` call.
+Confidence bands quantify the uncertainty in a predicted survival curve, and conditional survival
+gives an updated estimate that is directly meaningful for a patient already some time into
+follow-up. Both are straightforward extensions of the base `predict()` call.
 
 ### Median survival time
 
@@ -258,13 +254,32 @@ bound from the upper survival band.
 cox.predict_median(newdata, ci=True, format="polars")
 ```
 
+### Survival quantiles
+
+`predict_median()` is really a special case of `predict_quantile()`, which generalizes the same
+inversion to any set of failure probabilities. Pass a list of values in `(0, 1)` via `p=` to get the
+predicted survival time at each quantile, one column per subject.
+
+```{python}
+# Predicted survival-time quantiles at the 25th, 50th, and 75th percentiles
+cox.predict_quantile(newdata, p=[0.25, 0.5, 0.75], format="polars")
+```
+
+The result has one row per requested `p` and one column per subject. As with `predict_median()`,
+pass `ci=True` to add `_lower` and `_upper` columns built by inverting the pointwise confidence
+bands of the survival curve.
+
+```{python}
+# Survival quantiles with confidence intervals
+cox.predict_quantile(newdata, p=[0.25, 0.5, 0.75], ci=True, format="polars")
+```
+
 ## Stratification
 
-Sometimes a variable violates the proportional hazards assumption but is not of direct
-interest, such as enrolling hospital. Stratification lets each level of that variable have
-its own baseline hazard while sharing the coefficients of the covariates you do care about.
-You pass the stratifying variable to `strata`. Here we stratify by `sex` while keeping `age`
-and `ph.ecog` as covariates.
+Sometimes a variable violates the proportional hazards assumption but is not of direct interest,
+such as enrolling hospital. Stratification lets each level of that variable have its own baseline
+hazard while sharing the coefficients of the covariates you do care about. You pass the stratifying
+variable to `strata`. Here we stratify by `sex` while keeping `age` and `ph.ecog` as covariates.
 
 ```{python}
 # Load data and build the response
@@ -293,8 +308,8 @@ absorbed into the separate baselines, which is exactly the point of stratificati
 
 ### Predicted survival from a stratified model
 
-Survival predictions use the correct stratum-specific baseline for each subject. When predicting
-on the training data, stratum assignments are taken automatically from the fitted model.
+Survival predictions use the correct stratum-specific baseline for each subject. When predicting on
+the training data, stratum assignments are taken automatically from the fitted model.
 
 ```{python}
 # Predict survival from the stratified model at two time points
@@ -320,10 +335,10 @@ Each subject's survival curve is computed against the baseline hazard of its str
 
 ## Robust and clustered standard errors
 
-When observations are not independent, for example when the same subject contributes several
-rows or when subjects are grouped into clusters, the model-based standard errors are too
-small. The robust, or sandwich, variance corrects for this. Set `robust=True` for the
-Lin-Wei sandwich estimator, and pass `cluster` to group correlated observations.
+When observations are not independent, for example when the same subject contributes several rows or
+when subjects are grouped into clusters, the model-based standard errors are too small. The robust,
+or sandwich, variance corrects for this. Set `robust=True` for the Lin-Wei sandwich estimator, and
+pass `cluster` to group correlated observations.
 
 ```{python}
 # Load data and build the response
@@ -337,16 +352,15 @@ robust = gw.CoxPH().fit(y, lung[["age", "sex"]], robust=True)
 robust.to_frame(format="polars")[["term", "std_error"]]
 ```
 
-The coefficients are unchanged; only the standard errors, and therefore the p-values and
-intervals, are adjusted. The model-based standard errors remain available as
-`naive_std_error_` for comparison.
+The coefficients are unchanged; only the standard errors, and therefore the p-values and intervals,
+are adjusted. The model-based standard errors remain available as `naive_std_error_` for comparison.
 
 ## The concordance index
 
-The concordance index, or C-statistic, measures how well the model's risk ordering agrees
-with the observed order of events. It is the probability that, for a random comparable pair
-of subjects, the one who failed first had the higher predicted risk. A value of 0.5 is no
-better than chance and 1.0 is perfect discrimination.
+The concordance index, or C-statistic, measures how well the model's risk ordering agrees with the
+observed order of events. It is the probability that, for a random comparable pair of subjects, the
+one who failed first had the higher predicted risk. A value of 0.5 is no better than chance and 1.0
+is perfect discrimination.
 
 ```{python}
 # Load data and build the response
@@ -360,18 +374,16 @@ cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
 cox.concordance()
 ```
 
-The C-statistic summarizes discrimination across all observed pairs, but it does not say
-whether predicted probabilities are well calibrated. For a more complete picture of model
-performance, including calibration and the Brier score, see
-[Prediction performance](prediction-performance.qmd).
+The C-statistic summarizes discrimination across all observed pairs, but it does not say whether
+predicted probabilities are well calibrated. For a more complete picture of model performance,
+including calibration and the Brier score, see [Prediction performance](prediction-performance.qmd).
 
 ## Next steps
 
 You can now validate a Cox model and use it to predict.
 
-- [Prediction performance](prediction-performance.qmd) extends discrimination and adds
-the Brier score for calibration, including for external risk scores.
-- [Parametric survival models](parametric-models.qmd) provide an alternative when the
-proportional hazards assumption is untenable.
-- Revisit [Cox regression](cox-regression.qmd) for the modeling basics if any of this is
-unfamiliar.
+- [Prediction performance](prediction-performance.qmd) extends discrimination and adds the Brier
+score for calibration, including for external risk scores.
+- [Parametric survival models](parametric-models.qmd) provide an alternative when the proportional
+hazards assumption is untenable.
+- Revisit [Cox regression](cox-regression.qmd) for the modeling basics if any of this is unfamiliar.
