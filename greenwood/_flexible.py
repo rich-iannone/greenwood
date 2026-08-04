@@ -475,6 +475,128 @@ class RoystonParmar:
                 )
         return to_dataframe(columns, format=format)
 
+    def predict_median(
+        self,
+        newdata: Any = None,
+        *,
+        ci: bool = False,
+        format: str | None = None,
+    ) -> Any:
+        r"""Predict the median survival time for each subject.
+
+        The median is the time $t$ at which $S(t \mid x) = 0.5$, found by solving
+        $\exp(s(\log t) + x^\top \beta) = \log 2$ via root-finding on the smooth spline-based log
+        cumulative hazard.
+
+        When `ci=True`, confidence intervals are computed via the delta method on the log cumulative
+        hazard. At the median, $\eta = \log(\log 2)$, and the variance of the log-median is
+        $\text{Var}(\eta) / (\partial \eta / \partial \log t)^2$, where the denominator is the
+        spline derivative evaluated at the median.
+
+        Parameters
+        ----------
+        newdata
+            Covariate values for prediction. A DataFrame (Pandas or Polars), 2-D array, or `None`
+            (the default). If `None`, uses baseline (all covariates 0).
+        ci
+            If `True`, include confidence intervals. Default is `False`.
+        format
+            Output format: `None` (auto-detect), `"pandas"`, `"polars"`, or `"pyarrow"`.
+
+        Returns
+        -------
+        DataFrame
+            A single-row DataFrame with columns `subject_1`, `subject_2`, etc. containing the median
+            survival time for each subject. With `ci=True`, additional `subject_N_lower` and
+            `subject_N_upper` columns are included.
+
+        Examples
+        --------
+        ```{python}
+        import greenwood as gw
+
+        lung = gw.load_dataset("lung", backend="polars")
+        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        rp = gw.RoystonParmar(df=3).fit(y, lung[["age", "sex"]])
+
+        rp.predict_median(lung[["age", "sex"]][:3], format="polars")
+        ```
+
+        With confidence intervals:
+
+        ```{python}
+        rp.predict_median(lung[["age", "sex"]][:3], ci=True, format="polars")
+        ```
+        """
+        from scipy.optimize import brentq
+
+        if newdata is None:
+            x = np.zeros((1, max(self.coef_.size - self._n_spline, 0)))
+        else:
+            x, _ = _design_matrix(newdata)
+
+        gamma = self.coef_[: self._n_spline]
+        beta = self.coef_[self._n_spline :]
+        target = np.log(np.log(2.0))
+        knots = self._knots
+
+        lo = float(knots[0]) - 5.0
+        hi = float(knots[-1]) + 5.0
+
+        n_subj = x.shape[0]
+        medians = np.empty(n_subj)
+
+        for i in range(n_subj):
+            lp = float(x[i] @ beta) if beta.size else 0.0
+
+            def _root_fn(u: float, _lp: float = lp) -> float:
+                basis, _ = _rcs_basis(np.array([u]), knots)
+                return float((basis @ gamma)[0]) + _lp - target
+
+            try:
+                u_med: float = brentq(_root_fn, lo, hi)  # type: ignore[assignment]
+                medians[i] = np.exp(u_med)
+            except ValueError:
+                medians[i] = np.nan
+
+        columns: dict[str, Any] = {}
+
+        if ci:
+            z_val = float(norm.ppf(1.0 - (1.0 - self.conf_level) / 2.0))
+            lower = np.empty(n_subj)
+            upper = np.empty(n_subj)
+
+            for i in range(n_subj):
+                if np.isnan(medians[i]):
+                    lower[i] = np.nan
+                    upper[i] = np.nan
+                    continue
+
+                u_med = np.log(medians[i])
+                basis_med, deriv_med = _rcs_basis(np.array([u_med]), knots)
+                d_eta_d_u = float((deriv_med @ gamma)[0])
+
+                grad_eta = np.zeros(len(self.coef_))
+                grad_eta[: self._n_spline] = basis_med.ravel()
+                if beta.size:
+                    grad_eta[self._n_spline :] = x[i]
+
+                var_eta = float(grad_eta @ self.vcov_ @ grad_eta)
+                se_log_median = np.sqrt(max(var_eta, 0.0)) / abs(d_eta_d_u)
+
+                lower[i] = np.exp(u_med - z_val * se_log_median)
+                upper[i] = np.exp(u_med + z_val * se_log_median)
+
+            for i in range(n_subj):
+                columns[f"subject_{i + 1}"] = np.array([medians[i]])
+                columns[f"subject_{i + 1}_lower"] = np.array([lower[i]])
+                columns[f"subject_{i + 1}_upper"] = np.array([upper[i]])
+        else:
+            for i in range(n_subj):
+                columns[f"subject_{i + 1}"] = np.array([medians[i]])
+
+        return to_dataframe(columns, format=format)
+
     def _coefficient_columns(self) -> dict[str, Any]:
         return {
             "term": self.term_names_,

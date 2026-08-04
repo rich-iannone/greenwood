@@ -778,6 +778,87 @@ class AFT:
             "'lp', 'quantile', 'survival', 'mean', 'mean_remaining', or 'rmst'."
         )
 
+    def predict_median(
+        self,
+        newdata: Any = None,
+        *,
+        ci: bool = False,
+        format: str | None = None,
+    ) -> Any:
+        r"""Predict the median survival time for each subject.
+
+        The median survival time is $\hat{t}_{0.5} = \exp(\hat{\mu} + \hat{\sigma} w_{0.5})$,
+        where $w_{0.5}$ is the median of the standardized error distribution and
+        $\hat{\mu} = x^\top \hat{\beta}$ is the fitted linear predictor.
+
+        When `ci=True`, confidence intervals are computed on the log scale (where the variance
+        depends only on coefficient uncertainty) and exponentiated:
+        $\exp(\hat{\mu} + \hat{\sigma} w_{0.5} \pm z_{\alpha/2} \cdot \text{SE}(\hat{\mu}))$.
+
+        Parameters
+        ----------
+        newdata
+            Covariate values for prediction. A DataFrame (Pandas or Polars), 2-D array, or `None`
+            (the default). If `None`, uses the training data.
+        ci
+            If `True`, include confidence intervals. Default is `False`.
+        format
+            Output format: `None` (auto-detect), `"pandas"`, `"polars"`, or `"pyarrow"`.
+
+        Returns
+        -------
+        DataFrame
+            A single-row DataFrame with columns `subject_1`, `subject_2`, etc. containing the median
+            survival time for each subject. With `ci=True`, additional `subject_N_lower` and
+            `subject_N_upper` columns are included.
+
+        Examples
+        --------
+        ```{python}
+        import greenwood as gw
+
+        lung = gw.load_dataset("lung", backend="polars")
+        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        aft = gw.AFT("weibull").fit(y, lung[["age", "sex"]])
+
+        aft.predict_median(lung[["age", "sex"]][:3], format="polars")
+        ```
+
+        With confidence intervals:
+
+        ```{python}
+        aft.predict_median(lung[["age", "sex"]][:3], ci=True, format="polars")
+        ```
+        """
+        x = self._design(newdata)
+        mu = x @ self.coef_
+        sigma = self.scale_
+
+        w_half = float(_error_quantile(self.dist, np.array([0.5]))[0])
+        log_median = mu + sigma * w_half
+        median = np.exp(log_median)
+
+        columns: dict[str, Any] = {}
+
+        if ci:
+            z = float(norm.ppf(1.0 - (1.0 - self.conf_level) / 2.0))
+            n_coef = x.shape[1]
+            vcov_coef = self.vcov_[:n_coef, :n_coef]
+            se_mu = np.sqrt(np.clip(np.diag(x @ vcov_coef @ x.T), 0.0, None))
+
+            lower = np.exp(log_median - z * se_mu)
+            upper = np.exp(log_median + z * se_mu)
+
+            for i in range(len(median)):
+                columns[f"subject_{i + 1}"] = np.array([median[i]])
+                columns[f"subject_{i + 1}_lower"] = np.array([lower[i]])
+                columns[f"subject_{i + 1}_upper"] = np.array([upper[i]])
+        else:
+            for i in range(len(median)):
+                columns[f"subject_{i + 1}"] = np.array([median[i]])
+
+        return to_dataframe(columns, format=format)
+
     def _coefficient_columns(self) -> dict[str, Any]:
         return {
             "term": self.term_names_,

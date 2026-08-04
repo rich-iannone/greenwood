@@ -1585,6 +1585,149 @@ class CoxPH:
             return to_dataframe(columns, format=format)
         raise ValueError(f"Unknown predict type {type!r}; use 'lp', 'risk', or 'survival'.")
 
+    def predict_median(
+        self,
+        newdata: Any = None,
+        *,
+        strata: Any = None,
+        ci: bool = False,
+        format: str | None = None,
+    ) -> Any:
+        r"""Predict the median survival time for each subject.
+
+        The median survival time is the earliest time $t$ at which the predicted survival
+        curve drops to or below 0.5: $\hat{t}_{0.5} = \inf\{t : \hat{S}(t \mid x) \le 0.5\}$.
+
+        When `ci=True`, confidence intervals for the median are obtained by inverting the pointwise
+        confidence bands of the survival curve (the log-transform method used by R's `survfit`). The
+        lower bound of the median is the time at which the upper confidence band of $S(t)$ first
+        crosses 0.5, and the upper bound is the time at which the lower confidence band first
+        crosses 0.5.
+
+        If the survival curve for a subject never reaches 0.5 (right tail does not drop far enough),
+        the median (or the corresponding CI bound) is `NaN`.
+
+        Parameters
+        ----------
+        newdata
+            Covariate design for prediction. If `None`, predictions are made on the fitted data. Can
+            be a 2-D array or DataFrame.
+        strata
+            Stratum labels for new subjects (required when `newdata` is provided and the model was
+            fitted with `strata=`). One label per row of `newdata`, matching a stratum label seen at
+            fit time.
+        ci
+            If `True`, include confidence intervals in the result. Default is `False`.
+        format
+            Output format: `None` (auto-detect), `"pandas"`, `"polars"`, or `"pyarrow"`.
+
+        Returns
+        -------
+        DataFrame
+            A single-row DataFrame with columns `subject_1`, `subject_2`, etc. containing the median
+            survival time for each subject. With `ci=True`, additional `subject_N_lower` and
+            `subject_N_upper` columns are included.
+
+        Examples
+        --------
+        ```{python}
+        import greenwood as gw
+
+        lung = gw.load_dataset("lung", backend="polars")
+        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+
+        cox.predict_median(lung[["age", "sex"]][:3], format="polars")
+        ```
+
+        With confidence intervals:
+
+        ```{python}
+        cox.predict_median(lung[["age", "sex"]][:3], ci=True, format="polars")
+        ```
+        """
+        if newdata is None:
+            x = self._x
+        else:
+            x, _ = _design_matrix(newdata)
+
+        baseline_list = self._baseline()
+        stratum_baseline: dict[Any, tuple[Array, Array]] = {
+            label: (bt, bh) for label, bt, bh in baseline_list
+        }
+        stratum_members_map: dict[Any, Array] = {
+            self._group_label(members): members for members, _ in self._strata_groups
+        }
+
+        if self._strata_labels is None:
+            subject_strata: list[Any] = [None] * x.shape[0]
+        elif newdata is None:
+            subject_strata = list(self._strata_labels)
+        else:
+            if strata is None:
+                raise ValueError(
+                    "strata= is required when predicting from a stratified model with newdata."
+                )
+            strata_arr = _to_labels(strata, x.shape[0], "strata")
+            unknown = set(strata_arr.tolist()) - set(stratum_baseline)
+            if unknown:
+                raise ValueError(f"strata= contains labels not seen at fit time: {sorted(unknown)}")
+            subject_strata = list(strata_arr)
+
+        n_subj = x.shape[0]
+        risk = np.exp(x @ self.coef_)
+        medians = np.full(n_subj, np.nan)
+
+        for i, s_label in enumerate(subject_strata):
+            bt, bh = stratum_baseline[s_label]
+            surv_at_events = np.exp(-bh * risk[i])
+            idx = np.searchsorted(-surv_at_events, -0.5)
+            if idx < len(bt):
+                medians[i] = bt[idx]
+
+        columns: dict[str, Any] = {}
+
+        if ci:
+            z = float(norm.ppf(1.0 - (1.0 - self.conf_level) / 2.0))
+            lower = np.full(n_subj, np.nan)
+            upper = np.full(n_subj, np.nan)
+
+            by_stratum: dict[Any, list[int]] = {}
+            for i, s_label in enumerate(subject_strata):
+                by_stratum.setdefault(s_label, []).append(i)
+
+            for s_label, subj_idx in by_stratum.items():
+                bt, bh = stratum_baseline[s_label]
+                members_s = stratum_members_map[s_label]
+                se_h = self._cumhaz_se(x[subj_idx], bt, stratum_members=members_s)
+
+                for j, i in enumerate(subj_idx):
+                    surv_at_events = np.exp(-bh * risk[i])
+                    se_h_j = se_h[:, j]
+
+                    surv_upper = surv_at_events * np.exp(z * se_h_j)
+                    surv_lower = surv_at_events * np.exp(-z * se_h_j)
+
+                    # Lower survival band crosses 0.5 earlier → lower CI of median
+                    idx_lo = np.searchsorted(-surv_lower, -0.5)
+                    if idx_lo < len(bt):
+                        lower[i] = bt[idx_lo]
+
+                    # Upper survival band crosses 0.5 later → upper CI of median
+                    idx_hi = np.searchsorted(-surv_upper, -0.5)
+                    if idx_hi < len(bt):
+                        upper[i] = bt[idx_hi]
+
+            for i in range(n_subj):
+                columns[f"subject_{i + 1}"] = np.array([medians[i]])
+                columns[f"subject_{i + 1}_lower"] = np.array([lower[i]])
+                columns[f"subject_{i + 1}_upper"] = np.array([upper[i]])
+        else:
+            for i in range(n_subj):
+                columns[f"subject_{i + 1}"] = np.array([medians[i]])
+
+        return to_dataframe(columns, format=format)
+
     def _predict_trajectory(
         self,
         trajectory: Any,
