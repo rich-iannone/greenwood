@@ -1,6 +1,7 @@
 ---
 title: Parametric survival models
 guide-section: "Regression"
+bread-crumbs: false
 ---
 
 ```{python}
@@ -167,8 +168,8 @@ for dist in ("exponential", "weibull", "lognormal", "loglogistic"):
     print(f"{dist:20s} loglik={model.loglik_:10.3f} scale={model.scale_:.4f}")
 ```
 
-To compare and choose among distributions, use the AIC (available from `glance()`), where a
-lower value indicates a better fit:
+To compare and choose among distributions, use the AIC (available from `glance()`), where a lower
+value indicates a better fit:
 
 ```{python}
 import pandas as pd
@@ -272,6 +273,24 @@ aft.predict(newdata, type="survival", times=[180, 365, 730], format="polars")
 Each column is a subject and each row a requested time, giving the estimated probability of
 surviving past that time.
 
+### Median survival time
+
+The `predict_median()` method is a convenient shortcut for the predicted median survival time. For
+AFT models this is computed in closed form rather than by inverting the survival curve.
+
+```{python}
+# Predicted median survival time for each subject
+aft.predict_median(newdata, format="polars")
+```
+
+This is equivalent to `aft.predict(newdata, type="quantile", p=0.5)` but returns a single-row
+DataFrame and supports confidence intervals via the delta method on the log scale.
+
+```{python}
+# Median survival with confidence intervals
+aft.predict_median(newdata, ci=True, format="polars")
+```
+
 ## Flexible parametric (Royston-Parmar) models
 
 The AFT distributions impose a fixed hazard shape. When none of them fits well but you still want
@@ -328,6 +347,15 @@ newdata = pd.DataFrame({"age": [50, 70], "sex": [1, 1]})
 
 # Predicted survival at 6 months, 1 year, and 2 years
 rp.predict(newdata, type="survival", times=[180, 365, 730], format="polars")
+```
+
+Royston-Parmar models also support `predict_median()`, which finds the time at which the smooth
+survival curve crosses 0.5 via root-finding on the spline. Confidence intervals use the delta method
+on the log cumulative hazard.
+
+```{python}
+# Median survival time from the Royston-Parmar model, with confidence intervals
+rp.predict_median(newdata, ci=True, format="polars")
 ```
 
 ## Survival predictions with confidence intervals
@@ -387,24 +415,21 @@ mean, reflecting increased model uncertainty in extrapolated regions.
 
 ## Mean survival and expected remaining lifetime
 
-Survival curves and quantiles describe what happens at specific time points, but sometimes
-you want a single summary number for each subject: how long are they expected to survive
-overall? How much longer should a censored subject expect to live given they have already
-reached their last follow-up time? These questions are answered by mean survival predictions
-and conditional expectations.
+Survival curves and quantiles describe what happens at specific time points, but sometimes you want
+a single summary number for each subject: how long are they expected to survive overall? How much
+longer should a censored subject expect to live given they have already reached their last follow-up
+time? These questions are answered by mean survival predictions and conditional expectations.
 
 ### Unconditional mean survival
 
 Using `type="mean"` returns the expected survival time $E[T]$ for each subject under the fitted
-distribution. Each distribution has a closed-form formula, so the calculation is exact and
-fast:
+distribution. Each distribution has a closed-form formula, so the calculation is exact and fast:
 
 - **Weibull/Exponential**: $E[T] = e^{\mu}\,\Gamma(1+\sigma)$
 - **Log-normal**: $E[T] = e^{\mu + \sigma^2/2}$
 - **Log-logistic** ($\sigma < 1$): $E[T] = e^{\mu}\,\pi\sigma / \sin(\pi\sigma)$
 
-where $\mu = X\beta$ is the log-time location for each subject and $\sigma$ is the scale
-parameter.
+where $\mu = X\beta$ is the log-time location for each subject and $\sigma$ is the scale parameter.
 
 ```{python}
 # Fit a log-normal AFT model (different distributional choice for illustration)
@@ -425,27 +450,26 @@ expected survival time, as expected.
 ::: {.callout-note}
 ## Log-logistic mean only exists when $\sigma < 1$
 
-For log-logistic, the mean is only finite when $\sigma < 1$. When $\sigma \ge 1$ the
-distribution has a heavy enough right tail that the mean diverges. In that case
-`type="mean"` returns `np.inf`. Use `type="rmst"` with a finite restriction time as an
-alternative summary.
+For log-logistic, the mean is only finite when $\sigma < 1$. When $\sigma \ge 1$ the distribution
+has a heavy enough right tail that the mean diverges. In that case `type="mean"` returns `np.inf`.
+Use `type="rmst"` with a finite restriction time as an alternative summary.
 :::
 
 ### Conditional mean survival given landmark time
 
-In follow-up studies, subjects are often censored at different times. For a censored subject
-who has already survived to time $t_0$, the relevant question is not "how long will they
-survive in total?" but "how much longer can they expect to live?" This is the conditional
-mean $E[T \mid T > t_0]$, computed by passing `conditional_after`:
+In follow-up studies, subjects are often censored at different times. For a censored subject who has
+already survived to time $t_0$, the relevant question is not "how long will they survive in total?"
+but "how much longer can they expect to live?" This is the conditional mean $E[T \mid T > t_0]$,
+computed by passing `conditional_after=`:
 
 ```{python}
 # Conditional mean given that each subject has already survived one year
 aft.predict(newdata, type="mean", conditional_after=365)
 ```
 
-Compare with the unconditional mean to see how much being alive at one year updates the
-prognosis. The conditioning time can also be a per-subject array. This is useful when each
-subject has a different follow-up time:
+Compare with the unconditional mean to see how much being alive at one year updates the prognosis.
+The conditioning time can also be a per-subject array. This is useful when each subject has a
+different follow-up time:
 
 ```{python}
 import numpy as np
@@ -459,8 +483,8 @@ aft.predict(newdata, type="mean", conditional_after=landmark_times)
 
 ### Expected remaining lifetime
 
-`type="mean_remaining"` computes the expected remaining lifetime $E[T - t_0 \mid T > t_0]$
-directly. This is how much longer a subject is expected to survive past their landmark time:
+`type="mean_remaining"` computes the expected remaining lifetime $E[T - t_0 \mid T > t_0]$ directly.
+This is how much longer a subject is expected to survive past their landmark time:
 
 ```{python}
 # Expected additional lifetime beyond the landmark: E[T - t0 | T > t0]
@@ -472,29 +496,27 @@ The relationship between the two quantities is exact:
 
 $$E[T \mid T > t_0] = t_0 + E[T - t_0 \mid T > t_0]$$
 
-so you can recover either from the other. The remaining-lifetime form is often more
-interpretable in a clinical setting: "given that you are alive today, you can expect
-approximately X more months."
+so you can recover either from the other. The remaining-lifetime form is often more interpretable in
+a clinical setting: "given that you are alive today, you can expect approximately X more months."
 
 ::: {.callout-tip}
 ## The memoryless exponential
 
-Under an exponential (constant-hazard) model, $E[T - t_0 \mid T > t_0] = E[T]$ for
-all $t_0$. The expected remaining life never changes, regardless of how long the
-subject has already survived (the defining property of the exponential distribution).
+Under an exponential (constant-hazard) model, $E[T - t_0 \mid T > t_0] = E[T]$ for all $t_0$. The
+expected remaining life never changes, regardless of how long the subject has already survived (the
+defining property of the exponential distribution).
 :::
 
 ## Restricted mean survival time
 
-The restricted mean survival time (RMST) at horizon $\tau$ is the area under the survival
-curve from 0 to $\tau$:
+The restricted mean survival time (RMST) at horizon $\tau$ is the area under the survival curve from
+0 to $\tau$:
 
 $$\text{RMST}(\tau) = E[\min(T, \tau)] = \int_0^\tau S(t)\,dt$$
 
-It answers the question "on average, how many days of event-free follow-up does a subject
-accumulate within the first $\tau$ days?" Unlike the mean, it is always finite regardless of
-the distribution's tail behaviour, and it avoids the need to extrapolate beyond the
-observation window.
+It answers the question "on average, how many days of event-free follow-up does a subject accumulate
+within the first $\tau$ days?" Unlike the mean, it is always finite regardless of the distribution's
+tail behavior, and it avoids the need to extrapolate beyond the observation window.
 
 Use `type="rmst"` with the `tau` argument:
 
@@ -503,12 +525,12 @@ Use `type="rmst"` with the `tau` argument:
 aft.predict(newdata, type="rmst", tau=365)
 ```
 
-The result is one RMST value per subject, reflecting how covariate differences shift the
-entire survival curve within the follow-up window.
+The result is one RMST value per subject, reflecting how covariate differences shift the entire
+survival curve within the follow-up window.
 
-Because RMST is bounded by $\tau$, it is straightforward to compare predictions across
-subjects or models on an absolute scale (days, or whatever the time unit is). Comparing
-RMST values at several horizons also reveals how quickly a covariate effect unfolds:
+Because RMST is bounded by $\tau$, it is straightforward to compare predictions across subjects or
+models on an absolute scale (days, or whatever the time unit is). Comparing RMST values at several
+horizons also reveals how quickly a covariate effect unfolds:
 
 ```{python}
 # RMST at several horizons: shows how the covariate gap widens over time
@@ -523,19 +545,19 @@ for tau in horizons:
 ## Subject-specific vs. group RMST
 
 The `type="rmst"` prediction from `AFT.predict()` gives a subject-specific RMST for
-covariate-adjusted predictions from a parametric model. Greenwood also provides
-`gw.rmst_test()` and `gw.rmst_diff()` for nonparametric group comparisons of RMST from
-Kaplan-Meier curves. The two approaches are complementary: parametric RMST leverages
-distributional assumptions for individual-level predictions; nonparametric RMST makes no
-assumptions and tests group-level differences.
+covariate-adjusted predictions from a parametric model. Greenwood also provides `rmst_test()` and
+`rmst_diff()` for nonparametric group comparisons of RMST from Kaplan-Meier curves. The two
+approaches are complementary: parametric RMST leverages distributional assumptions for
+individual-level predictions. Nonparametric RMST makes no assumptions and tests group-level
+differences.
 :::
 
 ## Next steps
 
 You can now fit, compare, and predict from parametric survival models.
 
-- [Cox regression](08-cox-regression.qmd) is the semiparametric alternative, useful when you
+- [Cox regression](cox-regression.qmd) is the semiparametric alternative, useful when you
 prefer not to assume a distribution.
-- [Prediction performance](14-prediction-performance.qmd) evaluates any fitted model,
+- [Prediction performance](prediction-performance.qmd) evaluates any fitted model,
 parametric or not.
-- [Competing risks](12-competing-risks.qmd) handles the case of more than one type of event.
+- [Competing risks](competing-risks.qmd) handles the case of more than one type of event.

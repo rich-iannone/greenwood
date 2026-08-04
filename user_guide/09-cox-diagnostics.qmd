@@ -1,6 +1,7 @@
 ---
 title: Cox model diagnostics
 guide-section: "Regression"
+bread-crumbs: false
 ---
 
 ```{python}
@@ -234,6 +235,29 @@ Confidence bands quantify the uncertainty in a predicted survival curve, and con
 survival gives an updated estimate that is directly meaningful for a patient already some
 time into follow-up. Both are straightforward extensions of the base `predict()` call.
 
+### Median survival time
+
+A common clinical summary is the predicted median survival time: the earliest time at which the
+survival curve drops to 0.5. Use `predict_median()` for a direct answer without having to inspect
+the full curve.
+
+```{python}
+# Predicted median survival time for each subject
+cox.predict_median(newdata, format="polars")
+```
+
+The result is a single-row frame with one column per subject. When the survival curve never drops
+below 0.5 (heavy censoring or low risk), the median is `NaN`.
+
+With `ci=True`, confidence intervals are obtained by inverting the pointwise confidence bands of the
+survival curve. The lower bound of the median comes from the lower survival band, and the upper
+bound from the upper survival band.
+
+```{python}
+# Median survival with confidence intervals
+cox.predict_median(newdata, ci=True, format="polars")
+```
+
 ## Stratification
 
 Sometimes a variable violates the proportional hazards assumption but is not of direct
@@ -339,15 +363,15 @@ cox.concordance()
 The C-statistic summarizes discrimination across all observed pairs, but it does not say
 whether predicted probabilities are well calibrated. For a more complete picture of model
 performance, including calibration and the Brier score, see
-[Prediction performance](14-prediction-performance.qmd).
+[Prediction performance](prediction-performance.qmd).
 
 ## Next steps
 
 You can now validate a Cox model and use it to predict.
 
-- [Prediction performance](14-prediction-performance.qmd) extends discrimination and adds
+- [Prediction performance](prediction-performance.qmd) extends discrimination and adds
 the Brier score for calibration, including for external risk scores.
-- [Parametric survival models](11-parametric-models.qmd) provide an alternative when the
+- [Parametric survival models](parametric-models.qmd) provide an alternative when the
 proportional hazards assumption is untenable.
-- Revisit [Cox regression](08-cox-regression.qmd) for the modeling basics if any of this is
+- Revisit [Cox regression](cox-regression.qmd) for the modeling basics if any of this is
 unfamiliar.
