@@ -758,14 +758,6 @@ class RoystonParmar:
             for i in range(n_subj):
                 lp = float(x[i] @ beta) if beta.size else 0.0
 
-                def _sf_shifted(t: float, _lp: float = lp, shift: float = 0.0) -> float:
-                    if t <= 0.0:
-                        return 1.0
-                    u = np.log(t)
-                    basis, _ = _rcs_basis(np.array([u]), knots)
-                    eta = float((basis @ gamma)[0]) + _lp + shift
-                    return float(np.exp(-np.exp(eta)))
-
                 grad_lp = np.zeros(len(self.coef_))
                 if beta.size:
                     grad_lp[self._n_spline :] = x[i]
