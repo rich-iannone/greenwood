@@ -659,6 +659,149 @@ class RoystonParmar:
         """
         return self.predict_quantile(newdata, p=0.5, ci=ci, format=format)
 
+    def predict_expectation(
+        self,
+        newdata: Any = None,
+        *,
+        tau: float,
+        ci: bool = False,
+        format: str | None = None,
+    ) -> Any:
+        r"""Predict the expected (restricted mean) survival time for each subject.
+
+        The restricted mean survival time (RMST) up to horizon $\tau$ is
+        $\mathrm{RMST}_i(\tau) = \int_0^{\tau} S(t \mid x_i)\, dt$, where
+        $S(t \mid x_i) = \exp(-\exp(s(\log t) + x_i^\top \beta))$ is the smooth spline-based
+        survival function. The integral is computed by numerical quadrature.
+
+        When `ci=True`, confidence intervals are computed via the delta method on the log cumulative
+        hazard, integrated over $[0, \tau]$.
+
+        Parameters
+        ----------
+        newdata
+            Covariate values for prediction. A DataFrame (Pandas or Polars), 2-D array, or `None`
+            (the default). If `None`, uses baseline (all covariates 0).
+        tau
+            The restriction time (time horizon). Must be positive.
+        ci
+            If `True`, include confidence intervals. Default is `False`.
+        format
+            Output format: `None` (auto-detect), `"pandas"`, `"polars"`, or `"pyarrow"`.
+
+        Returns
+        -------
+        DataFrame
+            A DataFrame with a `tau` column and columns `subject_1`, `subject_2`, etc. containing
+            the RMST for each subject. With `ci=True`, additional `subject_N_lower` and
+            `subject_N_upper` columns are included.
+
+        Examples
+        --------
+        ```{python}
+        import greenwood as gw
+
+        lung = gw.load_dataset("lung", backend="polars")
+        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        rp = gw.RoystonParmar(df=3).fit(y, lung[["age", "sex"]])
+
+        # Expected survival time up to one year for three subjects
+        rp.predict_expectation(lung[["age", "sex"]][:3], tau=365, format="polars")
+        ```
+
+        With confidence intervals:
+
+        ```{python}
+        rp.predict_expectation(lung[["age", "sex"]][:3], tau=365, ci=True, format="polars")
+        ```
+        """
+        from scipy.integrate import quad
+
+        tau_val = float(tau)
+        if tau_val <= 0.0:
+            raise ValueError(f"tau must be positive, got {tau_val}.")
+
+        if newdata is None:
+            x = np.zeros((1, max(self.coef_.size - self._n_spline, 0)))
+        else:
+            x, _ = _design_matrix(newdata)
+
+        gamma = self.coef_[: self._n_spline]
+        beta = self.coef_[self._n_spline :]
+        knots = self._knots
+
+        n_subj = x.shape[0]
+        rmst = np.full(n_subj, np.nan)
+
+        for i in range(n_subj):
+            lp = float(x[i] @ beta) if beta.size else 0.0
+
+            def _sf(t: float, _lp: float = lp) -> float:
+                if t <= 0.0:
+                    return 1.0
+                u = np.log(t)
+                basis, _ = _rcs_basis(np.array([u]), knots)
+                eta = float((basis @ gamma)[0]) + _lp
+                return float(np.exp(-np.exp(eta)))
+
+            val, _ = quad(_sf, 0.0, tau_val, limit=200)
+            rmst[i] = val
+
+        tau_arr = np.atleast_1d(np.asarray(tau_val, dtype=float))
+        columns: dict[str, Any] = {"tau": tau_arr}
+
+        if ci:
+            z_val = float(norm.ppf(1.0 - (1.0 - self.conf_level) / 2.0))
+            lower = np.full(n_subj, np.nan)
+            upper = np.full(n_subj, np.nan)
+
+            for i in range(n_subj):
+                lp = float(x[i] @ beta) if beta.size else 0.0
+
+                def _sf_shifted(t: float, _lp: float = lp, shift: float = 0.0) -> float:
+                    if t <= 0.0:
+                        return 1.0
+                    u = np.log(t)
+                    basis, _ = _rcs_basis(np.array([u]), knots)
+                    eta = float((basis @ gamma)[0]) + _lp + shift
+                    return float(np.exp(-np.exp(eta)))
+
+                grad_lp = np.zeros(len(self.coef_))
+                if beta.size:
+                    grad_lp[self._n_spline :] = x[i]
+
+                n_grid = 100
+                t_grid = np.linspace(1e-6, tau_val, n_grid)
+                var_sum = 0.0
+                dt = tau_val / n_grid
+                for t_pt in t_grid:
+                    u = np.log(t_pt)
+                    basis, _ = _rcs_basis(np.array([u]), knots)
+                    grad = np.zeros(len(self.coef_))
+                    grad[: self._n_spline] = basis.ravel()
+                    if beta.size:
+                        grad[self._n_spline :] = x[i]
+                    eta = float((basis @ gamma)[0]) + lp
+                    cumhaz = np.exp(eta)
+                    s_val = np.exp(-cumhaz)
+                    ds_deta = -cumhaz * s_val
+                    var_eta = float(grad @ self.vcov_ @ grad)
+                    var_sum += (ds_deta**2 * var_eta) * dt**2
+
+                se_rmst = np.sqrt(max(var_sum, 0.0))
+                lower[i] = rmst[i] - z_val * se_rmst
+                upper[i] = rmst[i] + z_val * se_rmst
+
+            for i in range(n_subj):
+                columns[f"subject_{i + 1}"] = np.array([rmst[i]])
+                columns[f"subject_{i + 1}_lower"] = np.array([lower[i]])
+                columns[f"subject_{i + 1}_upper"] = np.array([upper[i]])
+        else:
+            for i in range(n_subj):
+                columns[f"subject_{i + 1}"] = np.array([rmst[i]])
+
+        return to_dataframe(columns, format=format)
+
     def _coefficient_columns(self) -> dict[str, Any]:
         return {
             "term": self.term_names_,
@@ -673,26 +816,25 @@ class RoystonParmar:
     def to_frame(self, *, format: str | None = None) -> Any:
         """Return the coefficient table as a DataFrame.
 
-        Exports one row per spline or covariate term with coefficient estimates, standard
-        errors, Wald statistics, p-values, and confidence limits.
+        Exports one row per spline or covariate term with coefficient estimates, standard errors,
+        Wald statistics, p-values, and confidence limits.
 
         Parameters
         ----------
         format
-            Output format: `None` (default), `"pandas"`, `"polars"`, or `"pyarrow"`. When
-            `None`, a backend is auto-detected (Polars, then Pandas, then PyArrow).
+            Output format: `None` (default), `"pandas"`, `"polars"`, or `"pyarrow"`. When `None`, a
+            backend is auto-detected (Polars, then Pandas, then PyArrow).
 
         Returns
         -------
         pandas.DataFrame, polars.DataFrame, or pyarrow.Table
-            A tidy table with columns `term`, `estimate`, `std_error`, `statistic`,
-            `p_value`, `conf_low`, and `conf_high`.
+            A tidy table with columns `term`, `estimate`, `std_error`, `statistic`, `p_value`,
+            `conf_low`, and `conf_high`.
 
         Raises
         ------
         ImportError
-            If the requested (or, when auto-detecting, any) DataFrame library is not
-            installed.
+            If the requested (or, when auto-detecting, any) DataFrame library is not installed.
 
         Examples
         --------
