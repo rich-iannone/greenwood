@@ -307,6 +307,25 @@ aft.predict_quantile(newdata, p=[0.25, 0.5, 0.75], format="polars")
 aft.predict_quantile(newdata, p=[0.25, 0.5, 0.75], ci=True, format="polars")
 ```
 
+### Expected survival time
+
+`predict_expectation()` computes the restricted mean survival time (RMST): the area under the
+predicted survival curve up to a time horizon `tau`. It answers a different question than the
+quantile methods above. Instead of "when does survival reach some probability", it asks "how much
+event-free time is expected, on average, up to `tau`". Unlike `predict_median()` and
+`predict_quantile()`, `tau` is required and must be specified explicitly, since RMST is only defined
+relative to a chosen horizon.
+
+```{python}
+# Expected survival time (RMST) up to 365 days for each subject
+aft.predict_expectation(newdata, tau=365, format="polars")
+```
+
+```{python}
+# Expected survival time with confidence intervals
+aft.predict_expectation(newdata, tau=365, ci=True, format="polars")
+```
+
 ## Flexible parametric (Royston-Parmar) models
 
 The AFT distributions impose a fixed hazard shape. When none of them fits well but you still want
@@ -387,6 +406,22 @@ rp.predict_quantile(newdata, p=[0.25, 0.5, 0.75], format="polars")
 ```{python}
 # Survival quantiles with confidence intervals
 rp.predict_quantile(newdata, p=[0.25, 0.5, 0.75], ci=True, format="polars")
+```
+
+### Expected survival time
+
+`predict_expectation()` works the same way for the Royston-Parmar model, integrating the smooth
+spline-based survival curve up to `tau` to give the restricted mean survival time. As with the AFT
+models, `tau` is required and must be specified explicitly.
+
+```{python}
+# Expected survival time (RMST) up to 365 days for each subject
+rp.predict_expectation(newdata, tau=365, format="polars")
+```
+
+```{python}
+# Expected survival time with confidence intervals
+rp.predict_expectation(newdata, tau=365, ci=True, format="polars")
 ```
 
 ## Survival predictions with confidence intervals
