@@ -19,16 +19,6 @@ Robust cross-validation and performance assessment for imbalanced survival data.
 - Multi-metric `cross_validate`: accept `metrics` as a list so concordance, Brier score, and
 time-dependent AUC can all be evaluated in a single CV run and returned as a keyed dict
 
-### Survival Predictions
-
-Point-in-time and distributional predictions from fitted models.
-
-- `predict_median`: median survival time (time at which the survival curve crosses 0.5) for
-regression models (CoxPH, AFT, RoystonParmar) with confidence intervals
-- `predict_quantile`: generalized quantile survival time at any probability level
-- `predict_expectation`: expected survival time using RMST as the tail assumption, with an explicit
-`tau` (truncation time) parameter to make the tail assumption transparent
-
 ### Confidence Intervals & Inference
 
 Systematic confidence interval and standard error support across all estimators.

@@ -1796,6 +1796,163 @@ class CoxPH:
         """
         return self.predict_quantile(newdata, p=0.5, strata=strata, ci=ci, format=format)
 
+    def predict_expectation(
+        self,
+        newdata: Any = None,
+        *,
+        tau: float,
+        strata: Any = None,
+        ci: bool = False,
+        format: str | None = None,
+    ) -> Any:
+        r"""Predict the expected (restricted mean) survival time for each subject.
+
+        The restricted mean survival time (RMST) up to horizon $\tau$ is the area under the
+        predicted survival curve:
+        $\mathrm{RMST}_i(\tau) = \int_0^{\tau} \hat{S}(t \mid x_i)\, dt$. For the Cox model the
+        survival curve is a step function, so the integral is a sum of rectangles.
+
+        When `ci=True`, confidence intervals are obtained by integrating the upper and lower
+        pointwise survival bands (the log-transform method used by R's `survfit`). The upper
+        survival band yields the upper RMST bound and vice versa.
+
+        Parameters
+        ----------
+        newdata
+            Covariate design for prediction. If `None`, predictions are made on the fitted data. Can
+            be a 2-D array or DataFrame.
+        tau
+            The restriction time (time horizon). Must be positive.
+        strata
+            Stratum labels for new subjects (required when `newdata` is provided and the model was
+            fitted with `strata=`). One label per row of `newdata`, matching a stratum label seen at
+            fit time.
+        ci
+            If `True`, include confidence intervals in the result. Default is `False`.
+        format
+            Output format: `None` (auto-detect), `"pandas"`, `"polars"`, or `"pyarrow"`.
+
+        Returns
+        -------
+        DataFrame
+            A DataFrame with a `tau` column and columns `subject_1`, `subject_2`, etc. containing
+            the RMST for each subject. With `ci=True`, additional `subject_N_lower` and
+            `subject_N_upper` columns are included.
+
+        Examples
+        --------
+        ```{python}
+        import greenwood as gw
+
+        lung = gw.load_dataset("lung", backend="polars")
+        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+
+        # Expected survival time up to one year for three subjects
+        cox.predict_expectation(lung[["age", "sex"]][:3], tau=365, format="polars")
+        ```
+
+        With confidence intervals:
+
+        ```{python}
+        cox.predict_expectation(lung[["age", "sex"]][:3], tau=365, ci=True, format="polars")
+        ```
+        """
+        tau_val = float(tau)
+        if tau_val <= 0.0:
+            raise ValueError(f"tau must be positive, got {tau_val}.")
+
+        tau_arr = np.atleast_1d(np.asarray(tau_val, dtype=float))
+
+        if newdata is None:
+            x = self._x
+        else:
+            x, _ = _design_matrix(newdata)
+
+        baseline_list = self._baseline()
+        stratum_baseline: dict[Any, tuple[Array, Array]] = {
+            label: (bt, bh) for label, bt, bh in baseline_list
+        }
+        stratum_members_map: dict[Any, Array] = {
+            self._group_label(members): members for members, _ in self._strata_groups
+        }
+
+        if self._strata_labels is None:
+            subject_strata: list[Any] = [None] * x.shape[0]
+        elif newdata is None:
+            subject_strata = list(self._strata_labels)
+        else:
+            if strata is None:
+                raise ValueError(
+                    "strata= is required when predicting from a stratified model with newdata."
+                )
+            strata_arr = _to_labels(strata, x.shape[0], "strata")
+            unknown = set(strata_arr.tolist()) - set(stratum_baseline)
+            if unknown:
+                raise ValueError(f"strata= contains labels not seen at fit time: {sorted(unknown)}")
+            subject_strata = list(strata_arr)
+
+        n_subj = x.shape[0]
+        risk = np.exp(x @ self.coef_)
+        rmst = np.full(n_subj, np.nan)
+
+        for i, s_label in enumerate(subject_strata):
+            bt, bh = stratum_baseline[s_label]
+            surv_at_events = np.exp(-bh * risk[i])
+
+            starts = np.concatenate([[0.0], bt])
+            heights = np.concatenate([[1.0], surv_at_events])
+            next_starts = np.concatenate([bt, [tau_val]])
+            widths = np.clip(
+                np.minimum(next_starts, tau_val) - np.minimum(starts, tau_val), 0.0, None
+            )
+            rmst[i] = float(np.sum(heights * widths))
+
+        columns: dict[str, Any] = {"tau": tau_arr}
+
+        if ci:
+            z = float(norm.ppf(1.0 - (1.0 - self.conf_level) / 2.0))
+            lower = np.full(n_subj, np.nan)
+            upper = np.full(n_subj, np.nan)
+
+            by_stratum: dict[Any, list[int]] = {}
+            for i, s_label in enumerate(subject_strata):
+                by_stratum.setdefault(s_label, []).append(i)
+
+            for s_label, subj_idx in by_stratum.items():
+                bt, bh = stratum_baseline[s_label]
+                members_s = stratum_members_map[s_label]
+                se_h = self._cumhaz_se(x[subj_idx], bt, stratum_members=members_s)
+
+                starts = np.concatenate([[0.0], bt])
+                next_starts = np.concatenate([bt, [tau_val]])
+                widths = np.clip(
+                    np.minimum(next_starts, tau_val) - np.minimum(starts, tau_val), 0.0, None
+                )
+
+                for j, i in enumerate(subj_idx):
+                    surv_at_events = np.exp(-bh * risk[i])
+                    se_h_j = se_h[:, j]
+
+                    surv_lower = surv_at_events * np.exp(-z * se_h_j)
+                    surv_upper = surv_at_events * np.exp(z * se_h_j)
+
+                    heights_lo = np.concatenate([[1.0], surv_lower])
+                    heights_hi = np.concatenate([[1.0], surv_upper])
+
+                    lower[i] = float(np.sum(heights_lo * widths))
+                    upper[i] = float(np.sum(heights_hi * widths))
+
+            for i in range(n_subj):
+                columns[f"subject_{i + 1}"] = np.array([rmst[i]])
+                columns[f"subject_{i + 1}_lower"] = np.array([lower[i]])
+                columns[f"subject_{i + 1}_upper"] = np.array([upper[i]])
+        else:
+            for i in range(n_subj):
+                columns[f"subject_{i + 1}"] = np.array([rmst[i]])
+
+        return to_dataframe(columns, format=format)
+
     def _predict_trajectory(
         self,
         trajectory: Any,
@@ -1806,9 +1963,9 @@ class CoxPH:
     ) -> Any:
         """Compute survival at `times` for a single subject with time-varying covariates.
 
-        `trajectory` is a DataFrame with columns `tstart`, `tstop`, and one column per
-        covariate. Each row defines a constant-covariate interval. The last interval is
-        extended to infinity for extrapolation (LOCF). See `predict` for the formula.
+        `trajectory` is a DataFrame with columns `tstart`, `tstop`, and one column per covariate.
+        Each row defines a constant-covariate interval. The last interval is extended to infinity
+        for extrapolation (LOCF). See `predict()` for the formula.
         """
         import narwhals as nw  # pyright: ignore[reportMissingImports]
 
@@ -1919,7 +2076,7 @@ class CoxPH:
         coefficient uncertainty), matching R `survfit.coxph`'s `std.chaz` for a Breslow fit
         (approximate for Efron ties, as with the score-residual variance).
 
-        `stratum_members` restricts baseline-variance summation to the specified training indices
+        `stratum_members=` restricts baseline-variance summation to the specified training indices
         (i.e., one stratum), while coefficient uncertainty still uses the full model vcov.
         """
         xr, entry, exit_, event, w = self._x, self._entry, self._exit, self._event, self._weight

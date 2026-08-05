@@ -274,6 +274,28 @@ bands of the survival curve.
 cox.predict_quantile(newdata, p=[0.25, 0.5, 0.75], ci=True, format="polars")
 ```
 
+### Expected survival time
+
+`predict_expectation()` computes the restricted mean survival time (RMST): the area under the
+predicted survival curve up to a time horizon `tau`. It answers a different question than the
+quantile methods above. Instead of "when does survival reach some probability", it asks "how much
+event-free time is expected, on average, up to `tau`". Unlike `predict_median()` and
+`predict_quantile()`, `tau` is required and must be specified explicitly, since RMST is only defined
+relative to a chosen horizon.
+
+```{python}
+# Expected survival time (RMST) up to 365 days for each subject
+cox.predict_expectation(newdata, tau=365, format="polars")
+```
+
+The result has a `tau` column alongside one column per subject. As with the other prediction
+methods, pass `ci=True` to add `_lower` and `_upper` columns.
+
+```{python}
+# Expected survival time with confidence intervals
+cox.predict_expectation(newdata, tau=365, ci=True, format="polars")
+```
+
 ## Stratification
 
 Sometimes a variable violates the proportional hazards assumption but is not of direct interest,

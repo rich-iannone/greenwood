@@ -918,6 +918,114 @@ class AFT:
         """
         return self.predict_quantile(newdata, p=0.5, ci=ci, format=format)
 
+    def predict_expectation(
+        self,
+        newdata: Any = None,
+        *,
+        tau: float,
+        ci: bool = False,
+        format: str | None = None,
+    ) -> Any:
+        r"""Predict the expected (restricted mean) survival time for each subject.
+
+        The restricted mean survival time (RMST) up to horizon $\tau$ is
+        $\mathrm{RMST}_i(\tau) = \int_0^{\tau} S(t \mid x_i)\, dt$. For the AFT model with Weibull
+        or log-normal errors, this is computed in closed form using the mean minus tail partial
+        moment. For log-logistic with $\sigma \ge 1$, numerical integration is used.
+
+        When `ci=True`, confidence intervals are computed via the delta method on the linear
+        predictor.
+
+        Parameters
+        ----------
+        newdata
+            Covariate values for prediction. A DataFrame (Pandas or Polars), 2-D array, or `None`
+            (the default). If `None`, uses the training data.
+        tau
+            The restriction time (time horizon). Must be positive.
+        ci
+            If `True`, include confidence intervals. Default is `False`.
+        format
+            Output format: `None` (auto-detect), `"pandas"`, `"polars"`, or `"pyarrow"`.
+
+        Returns
+        -------
+        DataFrame
+            A DataFrame with a `tau` column and columns `subject_1`, `subject_2`, etc. containing
+            the RMST for each subject. With `ci=True`, additional `subject_N_lower` and
+            `subject_N_upper` columns are included.
+
+        Examples
+        --------
+        ```{python}
+        import greenwood as gw
+
+        lung = gw.load_dataset("lung", backend="polars")
+        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        aft = gw.AFT("weibull").fit(y, lung[["age", "sex"]])
+
+        # Expected survival time up to one year for three subjects
+        aft.predict_expectation(lung[["age", "sex"]][:3], tau=365, format="polars")
+        ```
+
+        With confidence intervals:
+
+        ```{python}
+        aft.predict_expectation(lung[["age", "sex"]][:3], tau=365, ci=True, format="polars")
+        ```
+        """
+        tau_val = float(tau)
+        if tau_val <= 0.0:
+            raise ValueError(f"tau must be positive, got {tau_val}.")
+
+        rmst_vals = self.predict(newdata, type="rmst", tau=tau_val)
+
+        tau_arr = np.atleast_1d(np.asarray(tau_val, dtype=float))
+        columns: dict[str, Any] = {"tau": tau_arr}
+
+        if ci:
+            x = self._design(newdata)
+            z_val = float(norm.ppf(1.0 - (1.0 - self.conf_level) / 2.0))
+            n_coef = x.shape[1]
+            vcov_coef = self.vcov_[:n_coef, :n_coef]
+            se_mu = np.sqrt(np.clip(np.diag(x @ vcov_coef @ x.T), 0.0, None))
+
+            for i in range(rmst_vals.shape[0]):
+                mu_lo = x[i] @ self.coef_ - z_val * se_mu[i]
+                mu_hi = x[i] @ self.coef_ + z_val * se_mu[i]
+
+                rmst_lo = self._rmst_at_mu(mu_lo, tau_val)
+                rmst_hi = self._rmst_at_mu(mu_hi, tau_val)
+
+                columns[f"subject_{i + 1}"] = np.array([rmst_vals[i]])
+                columns[f"subject_{i + 1}_lower"] = np.array([min(rmst_lo, rmst_hi)])
+                columns[f"subject_{i + 1}_upper"] = np.array([max(rmst_lo, rmst_hi)])
+        else:
+            for i in range(rmst_vals.shape[0]):
+                columns[f"subject_{i + 1}"] = np.array([rmst_vals[i]])
+
+        return to_dataframe(columns, format=format)
+
+    def _rmst_at_mu(self, mu: float, tau: float) -> float:
+        """Compute RMST for a single linear predictor value."""
+        mu_arr = np.array([mu])
+        sigma = self.scale_
+        if self.dist == "loglogistic" and sigma >= 1.0:
+            from scipy.integrate import quad
+            from scipy.stats import logistic
+
+            def _sf(t: float) -> float:
+                z = (np.log(t) - mu) / sigma
+                return float(logistic.sf(z))
+
+            val, _ = quad(_sf, 0.0, tau, limit=200)
+            return float(val)
+        tau_arr = np.array([tau])
+        result = _mean_survival_aft(self.dist, mu_arr, sigma) - _tail_partial_moment(
+            self.dist, mu_arr, sigma, tau_arr
+        )
+        return float(result[0])
+
     def _coefficient_columns(self) -> dict[str, Any]:
         return {
             "term": self.term_names_,
@@ -932,31 +1040,30 @@ class AFT:
     def to_frame(self, *, format: str | None = None) -> Any:
         """Return the coefficient table as a DataFrame.
 
-        Exports one row per term, including the intercept, with coefficient estimates,
-        standard errors, Wald statistics, p-values, and confidence limits.
+        Exports one row per term, including the intercept, with coefficient estimates, standard
+        errors, Wald statistics, p-values, and confidence limits.
 
         Parameters
         ----------
         format
-            Output format: `None` (default), `"pandas"`, `"polars"`, or `"pyarrow"`. When
-            `None`, a backend is auto-detected (Polars, then Pandas, then PyArrow).
+            Output format: `None` (default), `"pandas"`, `"polars"`, or `"pyarrow"`. When `None`, a
+            backend is auto-detected (Polars, then Pandas, then PyArrow).
 
         Returns
         -------
         pandas.DataFrame, polars.DataFrame, or pyarrow.Table
-            A tidy table with columns `term`, `estimate`, `std_error`, `statistic`,
-            `p_value`, `conf_low`, and `conf_high`.
+            A tidy table with columns `term`, `estimate`, `std_error`, `statistic`, `p_value`,
+            `conf_low`, and `conf_high`.
 
         Raises
         ------
         ImportError
-            If the requested (or, when auto-detecting, any) DataFrame library is not
-            installed.
+            If the requested (or, when auto-detecting, any) DataFrame library is not installed.
 
         Examples
         --------
-        Fit a Weibull AFT model on the bundled `lung` dataset, then export its coefficient
-        table as a Polars frame:
+        Fit a Weibull AFT model on the bundled `lung` dataset, then export its coefficient table as
+        a Polars frame:
 
         ```{python}
         import greenwood as gw
