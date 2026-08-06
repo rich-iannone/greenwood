@@ -109,6 +109,49 @@ write_json_fixture(lung_by_sex, "km_lung_by_sex")
 
 write_json_fixture(list(overall = km_one(veteran)), "km_veteran_overall")
 
+# -- Kaplan-Meier with robust (sandwich / IJ) variance -----------------------------
+
+km_robust_one <- function(d, wt = NULL) {
+  if (is.null(wt)) {
+    fp <- survfit(Surv(time, status) ~ 1, data = d, robust = TRUE, conf.type = "plain")
+    fl <- survfit(Surv(time, status) ~ 1, data = d, robust = TRUE, conf.type = "log")
+    fll <- survfit(Surv(time, status) ~ 1, data = d, robust = TRUE, conf.type = "log-log")
+  } else {
+    fp <- survfit(Surv(time, status) ~ 1, data = d, weights = wt, robust = TRUE, conf.type = "plain")
+    fl <- survfit(Surv(time, status) ~ 1, data = d, weights = wt, robust = TRUE, conf.type = "log")
+    fll <- survfit(Surv(time, status) ~ 1, data = d, weights = wt, robust = TRUE, conf.type = "log-log")
+  }
+  # robust survfit uses logse=FALSE: std.err is SE(S), not SE(log S)
+  se_surv <- fl$std.err
+  list(
+    time = fl$time, surv = fl$surv, se = se_surv,
+    lower_plain = fp$lower, upper_plain = fp$upper,
+    lower_log = fl$lower, upper_log = fl$upper,
+    lower_loglog = fll$lower, upper_loglog = fll$upper
+  )
+}
+
+# Unweighted robust (IJ variance matches Greenwood for unit weights)
+write_json_fixture(
+  list(overall = km_robust_one(lung)),
+  "km_robust_lung_overall"
+)
+
+# Weighted robust: use inverse-probability-style weights (sex-based, for illustration)
+set.seed(42)
+lung_wt <- runif(nrow(lung), 0.5, 2.0)
+write_json_fixture(
+  list(overall = km_robust_one(lung, wt = lung_wt), weights = lung_wt),
+  "km_robust_lung_weighted"
+)
+
+# Stratified robust
+km_robust_by_sex <- list()
+for (s in sort(unique(lung$sex))) {
+  km_robust_by_sex[[as.character(s)]] <- km_robust_one(lung[lung$sex == s, ])
+}
+write_json_fixture(km_robust_by_sex, "km_robust_lung_by_sex")
+
 # -- Restricted mean survival time (RMST) up to tau ---------------------------------
 
 rmst_one <- function(d, tau) {
