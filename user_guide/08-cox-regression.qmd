@@ -710,6 +710,72 @@ treats variables on comparable scales. Coefficients are returned on the original
 and use them exactly as you would from `CoxPH`.
 :::
 
+### Model selection with information criteria
+
+Cross-validation is the gold standard for tuning the penalty strength, but when refitting is
+expensive or you want a quick comparison across several candidate models, AIC and BIC offer a
+closed-form alternative. Both are based on the partial log-likelihood penalized by model complexity.
+
+For a penalized model, the effective number of parameters is not simply the count of covariates.
+`effective_df()` returns the effective degrees of freedom: for pure lasso it is the number of
+non-zero coefficients, and for ridge or elastic-net it is the trace of the hat matrix, which
+accounts for the continuous shrinkage applied to each coefficient.
+
+```{python}
+# Fit ridge (l1_ratio=0) and lasso (l1_ratio=1) models at the same penalty
+ridge = gw.CoxNet(penalizer=0.01, l1_ratio=0.0).fit(y, lung[cols])
+lasso = gw.CoxNet(penalizer=0.01, l1_ratio=1.0).fit(y, lung[cols])
+
+# Ridge shrinks continuously: effective df < number of covariates
+ridge.effective_df()
+```
+
+```{python}
+# Lasso selects: effective df equals the number of surviving coefficients
+lasso.effective_df()
+```
+
+`aic()` and `bic()` combine the log-likelihood with the effective degrees of freedom. AIC uses a
+penalty of 2 per effective parameter. BIC uses `log(n_events)`, which penalizes complexity more
+heavily in larger samples. Lower values indicate a better trade-off between fit and parsimony.
+
+```{python}
+# Compare AIC across the two models
+ridge.aic(), lasso.aic()
+```
+
+```{python}
+# BIC penalizes complexity more heavily; useful when sample size is large
+ridge.bic(), lasso.bic()
+```
+
+You can also sweep a range of penalty values and pick the one that minimizes AIC or BIC, as a faster
+alternative to cross-validation when a single train/test split is acceptable:
+
+```{python}
+import numpy as np
+
+# Sweep 20 penalty values and collect AIC for each
+penalizers = np.logspace(-3, 0, 20)
+aic_values = []
+for lam in penalizers:
+    model = gw.CoxNet(penalizer=lam, l1_ratio=1.0).fit(y, lung[cols])
+    aic_values.append(model.aic())
+
+# The penalty that minimizes AIC
+best_idx = int(np.argmin(aic_values))
+print(f"Best penalizer by AIC: {penalizers[best_idx]:.4f} (AIC = {aic_values[best_idx]:.1f})")
+```
+
+::: {.callout-note}
+## AIC vs. BIC vs. cross-validation
+
+AIC tends to select models that predict well on new data. BIC tends to select the true model (if
+it is among the candidates) and favors simpler models as the sample size grows. Cross-validation
+makes no distributional assumptions and directly estimates out-of-sample performance. When
+computational cost is not a concern, cross-validation via `cv_coxnet()` is generally preferred.
+:::
+
 ## Baseline hazard with confidence intervals
 
 The baseline hazard is the estimated hazard rate for a reference subject with all covariates at
