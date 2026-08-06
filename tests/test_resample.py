@@ -64,7 +64,7 @@ def test_invalid_arguments(lung, y) -> None:
 
 
 def test_concordance_requires_cox_or_aft(lung, y) -> None:
-    with pytest.raises(TypeError, match="CoxPH, CoxNet, or AFT"):
+    with pytest.raises(TypeError, match="CoxPH, CoxNet, AFT, or RoystonParmar"):
         cross_validate(gw.KaplanMeier(), y, lung[["age", "sex"]])
 
 
@@ -163,3 +163,135 @@ def test_imbalanced_data_no_error(lung, y) -> None:
     result = cross_validate(gw.CoxPH(), y_sparse, x_sparse, k=5, seed=23)
     assert len(result["scores"]) == 5
     assert all(np.isfinite(s) for s in result["scores"])
+
+
+# ── Multi-metric mode ──
+
+
+def test_multi_metric_returns_keyed_dict(lung, y) -> None:
+    result = cross_validate(
+        gw.CoxPH(),
+        y,
+        lung[["age", "sex"]],
+        metrics=["concordance", "brier", "auc"],
+        times=[180, 365, 540],
+        k=3,
+        seed=1,
+    )
+    assert "k" in result
+    assert result["k"] == 3
+    assert "results" in result
+    assert set(result["results"]) == {"concordance", "brier", "auc"}
+    for m in ("concordance", "brier", "auc"):
+        sub = result["results"][m]
+        assert set(sub) == {"scores", "mean", "std"}
+        assert len(sub["scores"]) == 3
+
+
+def test_multi_metric_concordance_reasonable(lung, y) -> None:
+    result = cross_validate(
+        gw.CoxPH(),
+        y,
+        lung[["age", "sex"]],
+        metrics=["concordance"],
+        k=5,
+        seed=7,
+    )
+    assert 0.4 < result["results"]["concordance"]["mean"] < 1.0
+
+
+def test_multi_metric_brier_in_range(lung, y) -> None:
+    result = cross_validate(
+        gw.CoxPH(),
+        y,
+        lung[["age", "sex"]],
+        metrics=["brier"],
+        times=[180, 365, 540],
+        k=3,
+        seed=1,
+    )
+    assert all(0.0 <= s <= 0.5 for s in result["results"]["brier"]["scores"])
+
+
+def test_multi_metric_auc_reasonable(lung, y) -> None:
+    result = cross_validate(
+        gw.CoxPH(),
+        y,
+        lung[["age", "sex"]],
+        metrics=["auc"],
+        times=[180, 365, 540],
+        k=3,
+        seed=1,
+    )
+    assert 0.4 < result["results"]["auc"]["mean"] < 1.0
+
+
+def test_multi_metric_same_folds_as_single(lung, y) -> None:
+    """Multi-metric concordance should match single-metric concordance (same folds)."""
+    single = cross_validate(gw.CoxPH(), y, lung[["age", "sex"]], metric="concordance", k=5, seed=42)
+    multi = cross_validate(
+        gw.CoxPH(), y, lung[["age", "sex"]], metrics=["concordance"], k=5, seed=42
+    )
+    np.testing.assert_allclose(single["scores"], multi["results"]["concordance"]["scores"])
+
+
+def test_metric_and_metrics_mutually_exclusive(lung, y) -> None:
+    with pytest.raises(ValueError, match="metric.*metrics"):
+        cross_validate(
+            gw.CoxPH(),
+            y,
+            lung[["age", "sex"]],
+            metric="concordance",
+            metrics=["concordance"],
+        )
+
+
+def test_auc_requires_times(lung, y) -> None:
+    with pytest.raises(ValueError, match="times"):
+        cross_validate(gw.CoxPH(), y, lung[["age", "sex"]], metric="auc")
+
+
+def test_multi_metric_unknown_metric(lung, y) -> None:
+    with pytest.raises(ValueError, match="Unknown metric"):
+        cross_validate(gw.CoxPH(), y, lung[["age", "sex"]], metrics=["concordance", "nope"])
+
+
+def test_default_metric_is_concordance(lung, y) -> None:
+    result = cross_validate(gw.CoxPH(), y, lung[["age", "sex"]], k=3, seed=1)
+    assert result["metric"] == "concordance"
+
+
+# ── RoystonParmar support ──
+
+
+def test_rp_concordance(lung, y) -> None:
+    result = cross_validate(gw.RoystonParmar(df=3), y, lung[["age", "sex"]], k=3, seed=1)
+    assert result["metric"] == "concordance"
+    assert result["mean"] > 0.5
+
+
+def test_rp_brier(lung, y) -> None:
+    result = cross_validate(
+        gw.RoystonParmar(df=3),
+        y,
+        lung[["age", "sex"]],
+        metric="brier",
+        times=[180, 365, 540],
+        k=3,
+        seed=1,
+    )
+    assert all(0.0 <= s <= 0.5 for s in result["scores"])
+
+
+def test_rp_multi_metric(lung, y) -> None:
+    result = cross_validate(
+        gw.RoystonParmar(df=3),
+        y,
+        lung[["age", "sex"]],
+        metrics=["concordance", "brier"],
+        times=[180, 365, 540],
+        k=3,
+        seed=1,
+    )
+    assert result["results"]["concordance"]["mean"] > 0.5
+    assert all(0.0 <= s <= 0.5 for s in result["results"]["brier"]["scores"])

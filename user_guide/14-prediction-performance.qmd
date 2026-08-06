@@ -193,16 +193,41 @@ gw.cross_validate(gw.CoxPH(), y, lung[["age", "sex"]], k=5, metric="concordance"
 ```
 
 The result reports the score on each fold plus their mean and standard deviation. The
-cross-validated concordance is usually a little lower than the value computed on the training
-data, which is exactly the optimism we are trying to remove. Set `metric="brier"` with a list
-of `times` to cross-validate the integrated Brier score instead, and the same call works for
-an `AFT` model.
+cross-validated concordance is usually a little lower than the value computed on the training data,
+which is exactly the optimism we are trying to remove. Set `metric="brier"` with a list of `times`
+to cross-validate the integrated Brier score instead. The same call works for `AFT` and
+`RoystonParmar` models.
 
 ```{python}
 gw.cross_validate(
     gw.CoxPH(), y, lung[["age", "sex"]], k=5,
     metric="brier", times=[180, 365, 540], seed=23
 )
+```
+
+### Multi-metric mode
+
+When you want concordance, Brier, and AUC together, pass `metrics=` (plural) instead of `metric=`.
+The model is fit once per fold and scored on every requested metric, so you get consistent fold
+assignments and avoid redundant refitting.
+
+```{python}
+result_multi = gw.cross_validate(
+    gw.CoxPH(), y, lung[["age", "sex"]], k=5,
+    metrics=["concordance", "brier", "auc"],
+    times=[180, 365, 540], seed=23
+)
+result_multi
+```
+
+The return value is a keyed dictionary. Each metric has its own `scores`, `mean`, and `std`:
+
+```{python}
+result_multi["results"]["concordance"]["mean"]
+```
+
+```{python}
+result_multi["results"]["brier"]["mean"]
 ```
 
 ### Stratified folds for imbalanced data

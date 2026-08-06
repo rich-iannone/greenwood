@@ -16,8 +16,6 @@ Descriptive and exploratory features building on the core estimators.
 Robust cross-validation and performance assessment for imbalanced survival data.
 
 - Performance optimization for large datasets (memory efficiency, computation speed)
-- Multi-metric `cross_validate`: accept `metrics` as a list so concordance, Brier score, and
-time-dependent AUC can all be evaluated in a single CV run and returned as a keyed dict
 
 ### Confidence Intervals & Inference
 

@@ -21,6 +21,8 @@ __all__ = ["cross_validate"]
 
 Array = npt.NDArray[Any]
 
+_VALID_METRICS = frozenset({"concordance", "brier", "auc"})
+
 
 def _subset_surv(surv: Surv, idx: Array) -> Surv:
     """Rebuild a `Surv` response from a row subset (right-censored or counting-process)."""
@@ -95,19 +97,59 @@ def _stratified_kfold_indices(surv: Surv, k: int, seed: int | None = None) -> li
 def _risk_score(model: Any, x: Array) -> Array:
     """A risk score where larger means higher risk (earlier event), for concordance."""
     from ._cox import CoxPH
+    from ._flexible import RoystonParmar
     from ._parametric import AFT
     from ._penalized import CoxNet
 
     if isinstance(model, (CoxPH, CoxNet)):
         return model.predict(x, type="lp")
     if isinstance(model, AFT):
-        # The AFT linear predictor is the log-time location: larger means longer survival,
-        # so negate it to get a risk score.
         return -model.predict(x, type="lp")
+    if isinstance(model, RoystonParmar):
+        x_design, _ = _design_matrix_for_rp(x)
+        beta = model.coef_[model._n_spline :]
+        if beta.size == 0:
+            return np.zeros(x_design.shape[0])
+        return x_design @ beta
     raise TypeError(
-        f"cross_validate with metric='concordance' needs a CoxPH, CoxNet, or AFT model, "
-        f"got {type(model).__name__}."
+        f"cross_validate with metric='concordance' or 'auc' needs a CoxPH, CoxNet, AFT, "
+        f"or RoystonParmar model, got {type(model).__name__}."
     )
+
+
+def _design_matrix_for_rp(covariates: Any) -> tuple[Array, Any]:
+    """Build a design matrix suitable for RoystonParmar (no intercept)."""
+    from ._cox import _design_matrix
+
+    return _design_matrix(covariates)
+
+
+def _extract_survival_probs(model: Any, x: Array, times_list: list[float]) -> Array:
+    """Extract survival probabilities as (n_subjects, n_times) array."""
+    import narwhals as nw  # pyright: ignore[reportMissingImports]
+
+    frame = model.predict(x, type="survival", times=times_list)
+    native = nw.from_native(frame)
+    return native.drop(native.columns[0]).to_numpy().T
+
+
+def _score_fold(
+    model: Any,
+    surv_test: Surv,
+    x_test: Array,
+    metric_name: str,
+    times_list: list[float],
+) -> float:
+    """Compute a single metric on a held-out fold."""
+    from ._metrics import concordance_index, integrated_auc, integrated_brier_score
+
+    if metric_name == "concordance":
+        return float(concordance_index(surv_test, _risk_score(model, x_test)))
+    if metric_name == "brier":
+        probs = _extract_survival_probs(model, x_test, times_list)
+        return float(integrated_brier_score(surv_test, probs, times_list))
+    # auc
+    return float(integrated_auc(surv_test, _risk_score(model, x_test), times_list))
 
 
 def cross_validate(
@@ -117,7 +159,8 @@ def cross_validate(
     *,
     data: Any = None,
     k: int = 5,
-    metric: str = "concordance",
+    metric: str | None = None,
+    metrics: list[str] | None = None,
     times: Any = None,
     stratified: bool = True,
     seed: int | None = None,
@@ -135,20 +178,22 @@ def cross_validate(
 
     **Metrics**:
 
-    - `"concordance"` (default): Harrell's C-statistic on the test fold. Higher is better
-      (0.5 = random, 1.0 = perfect). Requires CoxPH, CoxNet, or AFT model.
+    - `"concordance"`: Harrell's C-statistic on the test fold. Higher is better
+      (0.5 = random, 1.0 = perfect).
     - `"brier"`: Integrated IPCW Brier score over specified times. Lower is better
       (0 = perfect calibration, 1 = worst). Requires explicit `times=` parameter.
+    - `"auc"`: Integrated time-dependent AUC (Uno estimator). Higher is better
+      (0.5 = random, 1.0 = perfect). Requires explicit `times=` parameter.
 
     Parameters
     ----------
     model
-        An unfitted estimator instance (e.g., `CoxPH()`, `CoxNet()`, `AFT("weibull")`).
-        A fresh copy is fit on each training fold, leaving the passed object unchanged.
-        Supported: CoxPH, CoxNet, AFT (for concordance) and any of those (for Brier).
+        An unfitted estimator instance (e.g., `CoxPH()`, `CoxNet()`, `AFT("weibull")`,
+        `RoystonParmar(df=3)`). A fresh copy is fit on each training fold, leaving the passed object
+        unchanged.
     surv
-        A `Surv` response (time-to-event data). Can be right-censored or counting-process.
-        Weights in the response are carried through the cross-validation.
+        A `Surv` response (time-to-event data). Can be right-censored or counting-process. Weights
+        in the response are carried through the cross-validation.
     covariates
         Covariates/predictors for the model. Can be:
 
@@ -158,58 +203,67 @@ def cross_validate(
     data
         If `covariates` is a formula string, the data frame to evaluate it against.
     k
-        Number of folds (default 5). Each fold serves as test data once; subjects are split
-        randomly and evenly across folds. Typical choices: 5 or 10.
+        Number of folds (default 5). Each fold serves as test data once; subjects are split randomly
+        and evenly across folds. Typical choices: 5 or 10.
     metric
-        Performance metric for evaluation:
-
-        - `"concordance"` (default): Harrell's C-statistic. Requires CoxPH, CoxNet, or AFT.
-        - `"brier"`: Integrated inverse-probability-of-censoring-weighted (IPCW) Brier
-          score. Requires `times=` with at least 2 time points.
-
+        A single performance metric (backward-compatible). Use `metrics` instead to evaluate
+        multiple metrics in a single CV run. If neither is provided, defaults to
+        `"concordance"`.
+    metrics
+        A list of metrics to evaluate in a single CV run. The model is fit once per fold and scored
+        on all requested metrics. Cannot be used together with `metric`. Supported options are:
+        `"concordance"`, `"brier"`, and `"auc"`.
     times
-        For `metric="brier"`, evaluation time points (1-D array-like, length $\ge 2$). The Brier
-        score is computed at each time, then integrated (time-averaged). Example:
-        `times=[365, 730, 1095]` for 1, 2, 3-year predictions.
+        Evaluation time points for `"brier"` and `"auc"` metrics (1-D array-like, length $\ge 2$).
+        Required when using those metrics. Example: `times=[365, 730, 1095]` for 1-, 2-, and 3-year
+        predictions.
     stratified
-        If `True` (default), use stratified k-fold ensuring balanced event/censoring
-        representation across folds. This prevents singular matrix errors and biased CV
-        estimates on imbalanced survival data (rare events). If `False`, use simple random
-        k-fold shuffling.
+        If `True` (default), use stratified k-fold ensuring balanced event/censoring representation
+        across folds. This prevents singular matrix errors and biased CV estimates on imbalanced
+        survival data (rare events). If `False`, use simple random k-fold shuffling.
     seed
-        Random seed for fold shuffling, ensures reproducibility. If `None`, results may vary
-        between runs. Use a fixed seed for consistent comparisons.
+        Random seed for fold shuffling, ensures reproducibility. If `None`, results may vary between
+        runs. Use a fixed seed for consistent comparisons.
 
     Returns
     -------
     dict
-        Dictionary with keys:
+        When `metric` (singular) is used, returns a flat dictionary:
 
-        - `"metric"`: Metric name used (`"concordance"` or `"brier"`).
+        - `"metric"`: Metric name used.
         - `"k"`: Number of folds.
-        - `"scores"`: List of per-fold scores (one per fold).
-        - `"mean"`: Mean score across folds (primary summary).
-        - `"std"`: Standard deviation of scores (variability estimate).
+        - `"scores"`: List of per-fold scores.
+        - `"mean"`: Mean score across folds.
+        - `"std"`: Standard deviation of scores.
 
-        For concordance, higher mean is better. For Brier, lower mean is better.
+        When `metrics` (plural) is used, returns a keyed dictionary:
+
+        - `"k"`: Number of folds.
+        - `"results"`: Dict keyed by metric name, each with `"scores"`, `"mean"`, and
+          `"std"`.
 
     Details
     -------
     **How folds work**: By default (`stratified=True`), subjects are grouped by event status
-    (censored vs. event, or multiple event types), then randomly shuffled within each stratum
-    and split into k roughly equal-sized groups. This ensures each fold has approximately the
-    same proportion of events and censored observations as the overall dataset. This is crucial
-    for imbalanced data (e.g., rare events) to prevent singular matrix errors and ensures
-    unbiased cross-validation estimates.
+    (censored vs. event, or multiple event types), then randomly shuffled within each stratum and
+    split into k roughly equal-sized groups. This ensures each fold has approximately the same
+    proportion of events and censored observations as the overall dataset. This is crucial for
+    imbalanced data (e.g., rare events) to prevent singular matrix errors and ensures unbiased
+    cross-validation estimates.
 
-    If `stratified=False`, subjects are simply shuffled and split randomly, which may lead to
-    folds with very different event rates and can destabilize model fitting on sparse data.
+    If `stratified=False`, subjects are simply shuffled and split randomly, which may lead to folds
+    with very different event rates and can destabilize model fitting on sparse data.
 
-    **Completeness**: Subjects with missing covariates are dropped before folding. This
-    ensures all folds use the same cleaned data, avoiding alignment issues.
+    **Multi-metric mode**: When `metrics` is a list, the model is fit once per fold and all
+    requested metrics are computed on the same held-out data. This is more efficient than calling
+    `cross_validate` separately for each metric (which would refit the model each time) and ensures
+    all metrics see the same folds.
 
-    **AFT model note**: For AFT, concordance uses the negated linear predictor (since in AFT,
-    larger lp means longer survival, opposite to Cox). This is handled automatically.
+    **Completeness**: Subjects with missing covariates are dropped before folding. This ensures all
+    folds use the same cleaned data, avoiding alignment issues.
+
+    **AFT model note**: For AFT, concordance uses the negated linear predictor (since in AFT, larger
+    lp means longer survival, opposite to Cox). This is handled automatically.
 
     **Reproducibility**: Set `seed=` to ensure the same folds are used across runs. This is
     important for comparing different models or reporting consistent results.
@@ -253,60 +307,82 @@ def cross_validate(
     result["std"]
     ```
 
-    Use Brier score (calibration) instead of concordance (discrimination):
+    Evaluate multiple metrics in a single CV run. The model is fit once per fold and scored on all
+    requested metrics:
 
     ```{python}
-    # Evaluate calibration with the integrated Brier score
-    result_brier = gw.cross_validate(
+    # Evaluate concordance, Brier, and AUC in one pass
+    result_multi = gw.cross_validate(
         gw.CoxPH(), y, lung[["age", "sex"]], k=5,
-        metric="brier", times=[180, 365, 540], seed=1
+        metrics=["concordance", "brier", "auc"],
+        times=[180, 365, 540], seed=1
     )
-    result_brier
+    result_multi
     ```
 
-    Compare two models via cross-validation. Model with higher mean concordance (or lower
-    mean Brier) generalizes better:
+    Access results for a specific metric:
 
     ```{python}
-    # Compare a simple vs. complex model (uncomment to run)
-    # simple_model = gw.CoxPH()
-    # complex_model = gw.CoxPH()
-    # simple_cv = gw.cross_validate(simple_model, y, lung[["age"]], seed=1)
-    # complex_cv = gw.cross_validate(complex_model, y, lung[["age", "sex", "ph.ecog"]], seed=1)
-    # print(f"Simple model C-index: {simple_cv['mean']:.3f} ± {simple_cv['std']:.3f}")
-    # print(f"Complex model C-index: {complex_cv['mean']:.3f} ± {complex_cv['std']:.3f}")
+    # Mean concordance
+    result_multi["results"]["concordance"]["mean"]
+    ```
+
+    ```{python}
+    # Mean integrated Brier score
+    result_multi["results"]["brier"]["mean"]
     ```
     """
     from ._cox import CoxPH, _design_matrix
-    from ._metrics import concordance_index, integrated_brier_score
+    from ._flexible import RoystonParmar
     from ._parametric import AFT
     from ._penalized import CoxNet
 
-    if not isinstance(model, (CoxPH, CoxNet, AFT)):
+    if not isinstance(model, (CoxPH, CoxNet, AFT, RoystonParmar)):
         raise TypeError(
-            f"cross_validate needs a CoxPH, CoxNet, or AFT model, got {type(model).__name__}."
+            f"cross_validate needs a CoxPH, CoxNet, AFT, or RoystonParmar model, "
+            f"got {type(model).__name__}."
         )
     if k < 2:
         raise ValueError("k must be at least 2.")
-    if metric not in ("concordance", "brier"):
-        raise ValueError(f"Unknown metric {metric!r}; use 'concordance' or 'brier'.")
+
+    if metric is not None and metrics is not None:
+        raise ValueError("Specify either `metric` or `metrics`, not both.")
+
+    multi_mode = metrics is not None
+    if metrics is not None:
+        metric_list = list(metrics)
+    elif metric is not None:
+        metric_list = [metric]
+    else:
+        metric_list = ["concordance"]
+
+    unknown = set(metric_list) - _VALID_METRICS
+    if unknown:
+        raise ValueError(
+            f"Unknown metric(s) {sorted(unknown)}; use 'concordance', 'brier', or 'auc'."
+        )
 
     design, _ = _design_matrix(covariates, data)
     if design.shape[0] != surv.n:
         raise ValueError("Covariates and response must have the same number of rows.")
 
-    # Complete-case: drop rows with a missing covariate once, up front, so every fold's
-    # train and test sets are aligned with the response.
     keep = ~np.isnan(design).any(axis=1)
     if not keep.all():
         design = design[keep]
         surv = _subset_surv(surv, np.nonzero(keep)[0])
 
-    brier_times: list[float] = []
-    if metric == "brier":
-        brier_times = [float(t) for t in np.atleast_1d(np.asarray(times, dtype=float))]
-        if len(brier_times) < 2:
-            raise ValueError("metric='brier' requires `times` with at least two time points.")
+    times_list: list[float] = []
+    needs_times = {"brier", "auc"}
+    if needs_times & set(metric_list):
+        if times is None:
+            raise ValueError(
+                "The 'brier' and 'auc' metrics require `times` (at least two time points)."
+            )
+        times_list = [float(t) for t in np.atleast_1d(np.asarray(times, dtype=float))]
+        if len(times_list) < 2:
+            raise ValueError(
+                "The 'brier' and 'auc' metrics require `times` with at least two time points."
+            )
 
     folds = (
         _stratified_kfold_indices(surv, k, seed)
@@ -314,10 +390,6 @@ def cross_validate(
         else np.array_split(np.random.default_rng(seed).permutation(surv.n), k)
     )
 
-    # Warn when there are very few events relative to the number of folds.  With fewer
-    # than k events in total, some test folds will contain zero events, making concordance
-    # undefined and Brier score unreliable.  The practical threshold for a reliable
-    # per-fold estimate is at least ~5 events per fold, so we warn at < 2 * k.
     n_events = int(surv.event.astype(bool).sum())
     if n_events < 2 * k:
         warnings.warn(
@@ -329,7 +401,8 @@ def cross_validate(
             stacklevel=2,
         )
 
-    scores: list[float] = []
+    all_scores: dict[str, list[float]] = {m: [] for m in metric_list}
+
     for i in range(k):
         test = folds[i]
         train = np.concatenate([folds[j] for j in range(k) if j != i])
@@ -337,29 +410,27 @@ def cross_validate(
         fold_model.fit(_subset_surv(surv, train), design[train])
         surv_test = _subset_surv(surv, test)
         x_test = design[test]
-        if metric == "concordance":
-            scores.append(float(concordance_index(surv_test, _risk_score(fold_model, x_test))))
-        else:
-            frame = fold_model.predict(x_test, type="survival", times=brier_times)
-            # Extract subject columns (skip first column which is "time")
-            # Works with pandas, polars, or pyarrow without requiring pandas
-            try:
-                import polars as pl
 
-                if isinstance(frame, pl.DataFrame):
-                    probs = frame[:, 1:].to_numpy().T
-                else:
-                    probs = frame.iloc[:, 1:].to_numpy().T  # pragma: no cover
-            except (ImportError, AttributeError):  # pragma: no cover
-                cols = list(frame.columns)  # pragma: no cover
-                probs = frame[cols[1:]].to_numpy().T  # pragma: no cover
-            scores.append(float(integrated_brier_score(surv_test, probs, brier_times)))
+        for m in metric_list:
+            all_scores[m].append(_score_fold(fold_model, surv_test, x_test, m, times_list))
 
-    arr = np.asarray(scores)
+    if multi_mode:
+        results: dict[str, dict[str, Any]] = {}
+        for m in metric_list:
+            arr = np.asarray(all_scores[m])
+            results[m] = {
+                "scores": all_scores[m],
+                "mean": float(arr.mean()),
+                "std": float(arr.std(ddof=1)),
+            }
+        return {"k": k, "results": results}
+
+    m = metric_list[0]
+    arr = np.asarray(all_scores[m])
     return {
-        "metric": metric,
+        "metric": m,
         "k": k,
-        "scores": scores,
+        "scores": all_scores[m],
         "mean": float(arr.mean()),
         "std": float(arr.std(ddof=1)),
     }
