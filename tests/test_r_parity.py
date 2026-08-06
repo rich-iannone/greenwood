@@ -330,7 +330,7 @@ def test_cox_martingale_matches_r_breslow() -> None:
 
 
 @pytest.mark.parametrize("ties", ["breslow", "efron"])
-@pytest.mark.parametrize("transform", ["identity", "log"])
+@pytest.mark.parametrize("transform", ["identity", "log", "km", "rank"])
 def test_cox_zph_matches_r(ties: str, transform: str) -> None:
     df = gw.load_dataset("lung", backend="pandas")
     y = Surv.right(df["time"], event=(df["status"] == 2))

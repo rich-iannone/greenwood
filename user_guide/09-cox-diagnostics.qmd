@@ -81,7 +81,10 @@ zph.to_frame(format="polars")
 
 The table has one row per covariate plus a `GLOBAL` row that tests all covariates jointly. Large
 p-values, as here, are reassuring: they give no evidence against proportional hazards. The test uses
-a time transform, which defaults to `"identity"` (`"log"` is also available).
+a time transform, which defaults to `"identity"`. Other options are `"log"`, `"km"` (maps time to
+the `1 - KM(t-)` probability scale), and `"rank"` (uses average ranks of all exit times). The `"km"`
+transform is the default in R's `cox.zph()` and is often a good choice when the time scale is
+skewed.
 
 ::: {.callout-warning}
 ## A non-significant test is not proof

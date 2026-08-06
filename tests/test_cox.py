@@ -270,7 +270,7 @@ def test_cox_zph_transform_validation(lung_surv) -> None:  # type: ignore[no-unt
     df, y = lung_surv
     cox = CoxPH().fit(y, df[["age", "sex"]])
     with pytest.raises(ValueError, match="transform"):
-        cox.cox_zph(transform="km")
+        cox.cox_zph(transform="nonsense")
 
 
 def test_cox_zph_result_to_dataframe(lung_surv) -> None:  # type: ignore[no-untyped-def]
