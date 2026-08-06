@@ -122,6 +122,56 @@ def test_km_veteran_overall_matches_r() -> None:
     _check_km(km, load_fixture("km_veteran_overall")["overall"], "veteran")
 
 
+def test_km_robust_lung_overall_matches_r() -> None:
+    df = gw.load_dataset("lung", backend="pandas")
+    y = Surv.right(df["time"], event=(df["status"] == 2))
+    expected = load_fixture("km_robust_lung_overall")["overall"]
+
+    for conf_type, key in _CONF:
+        km = gw.KaplanMeier(conf_type=conf_type, robust=True).fit(y)
+        assert_allclose_to_r(km.survival_, expected["surv"], what=f"robust lung/{conf_type} surv")
+        assert_allclose_to_r(km.std_error_, expected["se"], what=f"robust lung/{conf_type} se(S)")
+        assert_allclose_to_r(
+            km.conf_low_, expected[f"lower_{key}"], what=f"robust lung {conf_type} lower"
+        )
+        assert_allclose_to_r(
+            km.conf_high_, expected[f"upper_{key}"], what=f"robust lung {conf_type} upper"
+        )
+
+
+def test_km_robust_weighted_matches_r() -> None:
+    df = gw.load_dataset("lung", backend="pandas")
+    y = Surv.right(df["time"], event=(df["status"] == 2))
+    fixture = load_fixture("km_robust_lung_weighted")
+    weights = np.array(fixture["weights"])
+    expected = fixture["overall"]
+
+    km = gw.KaplanMeier(robust=True).fit(y, weights=weights)
+    assert_allclose_to_r(km.survival_, expected["surv"], what="robust weighted surv")
+    assert_allclose_to_r(km.std_error_, expected["se"], what="robust weighted se(S)")
+    assert_allclose_to_r(km.conf_low_, expected["lower_log"], what="robust weighted lower")
+    assert_allclose_to_r(km.conf_high_, expected["upper_log"], what="robust weighted upper")
+
+
+def test_km_robust_by_sex_matches_r() -> None:
+    df = gw.load_dataset("lung", backend="pandas")
+    y = Surv.right(df["time"], event=(df["status"] == 2))
+    fixture = load_fixture("km_robust_lung_by_sex")
+    km = gw.KaplanMeier(robust=True).fit(y, by=df["sex"])
+    for block in km._blocks:
+        expected = fixture[str(block.label)]
+        assert_allclose_to_r(block.surv, expected["surv"], what=f"robust sex={block.label} surv")
+        assert_allclose_to_r(
+            block.std_error, expected["se"], what=f"robust sex={block.label} se(S)"
+        )
+        assert_allclose_to_r(
+            block.conf_low, expected["lower_log"], what=f"robust sex={block.label} lower"
+        )
+        assert_allclose_to_r(
+            block.conf_high, expected["upper_log"], what=f"robust sex={block.label} upper"
+        )
+
+
 def test_nelson_aalen_matches_r() -> None:
     df = gw.load_dataset("lung", backend="pandas")
     y = Surv.right(df["time"], event=(df["status"] == 2))
