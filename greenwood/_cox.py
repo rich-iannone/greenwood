@@ -2305,6 +2305,11 @@ class CoxPH:
 
             - `"identity"` (default): Use time as-is. Regression on raw time.
             - `"log"`: Use log(time). Regression on log-transformed time.
+            - `"km"`: Use `1 - KM(t-)`, where KM is the marginal Kaplan-Meier estimate (ignoring
+            covariates) evaluated just before each event time. This maps the time axis onto the
+            probability scale.
+            - `"rank"`: Use the rank of each event time (with average ranks for ties). Equivalent to
+            a rank-based correlation test.
 
         Returns
         -------
@@ -2349,14 +2354,36 @@ class CoxPH:
         zph.to_frame(format="polars")
         ```
         """
+        _valid_transforms = ("identity", "log", "km", "rank")
+        if transform not in _valid_transforms:
+            raise ValueError(f"transform must be one of {_valid_transforms!r}, got {transform!r}.")
+
         residuals, times, covariances = self._event_contributions()
         t = np.array(times)
         if transform == "identity":
             g = t
         elif transform == "log":
             g = np.log(t)
-        else:
-            raise ValueError(f"transform must be 'identity' or 'log', got {transform!r}.")
+        elif transform == "km":
+            km_times = np.sort(np.unique(self._exit[self._event]))
+            surv = np.ones(len(km_times))
+            for i, kt in enumerate(km_times):
+                at_risk = float(np.sum(self._weight[(self._entry < kt) & (self._exit >= kt)]))
+                n_event = float(np.sum(self._weight[(self._exit == kt) & self._event]))
+                prev = surv[i - 1] if i > 0 else 1.0
+                surv[i] = prev * (1.0 - n_event / at_risk) if at_risk > 0 else prev
+            g = np.empty_like(t)
+            for i, ti in enumerate(t):
+                idx = int(np.searchsorted(km_times, ti, side="left")) - 1
+                g[i] = 1.0 - (surv[idx] if idx >= 0 else 1.0)
+        else:  # rank
+            from scipy.stats import rankdata
+
+            all_ranks = rankdata(self._exit, method="average")
+            rank_map: dict[float, float] = {}
+            for ti, ri in zip(self._exit, all_ranks, strict=True):
+                rank_map[float(ti)] = float(ri)
+            g = np.array([rank_map[float(ti)] for ti in t])
 
         centered = g - g.mean()
         p = self.coef_.shape[0]
