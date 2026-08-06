@@ -304,6 +304,43 @@ km_weighted
 The estimates adjust for the weights using the weighted Kaplan-Meier formula. Confidence intervals
 and other summaries (median, RMST) also account for the weights automatically.
 
+### Robust (sandwich) variance for weighted curves
+
+Greenwood's variance formula treats weighted counts as though they were ordinary integer counts.
+When weights are non-integer, for example inverse-probability-of-censoring weights or survey design
+weights, this understates the true uncertainty. The robust (infinitesimal-jackknife) variance corrects
+for this by computing each subject's influence on the survival estimate and summing the squared influences.
+
+```{python}
+import numpy as np
+
+np.random.seed(23)
+weights = np.random.uniform(0.5, 2.0, len(y))
+
+# Greenwood SE (default): treats weighted counts as ordinary counts
+km_green = gw.KaplanMeier().fit(y, weights=weights)
+
+# Robust SE: infinitesimal-jackknife, correct for non-integer weights
+km_robust = gw.KaplanMeier(robust=True).fit(y, weights=weights)
+```
+
+The survival estimates are identical. Only the standard errors and confidence intervals change.
+
+```{python}
+# Compare standard errors at the median event time
+idx = len(km_green.time_) // 2
+t_mid = km_green.time_[idx]
+print(f"Time {t_mid}: Greenwood SE = {km_green.std_error_[idx]:.6f}, "
+      f"Robust SE = {km_robust.std_error_[idx]:.6f}")
+```
+
+::: {.callout-tip}
+## When to use `robust=True`
+
+Use `robust=True` whenever weights are non-integer (IPW, survey weights). For unweighted data or
+integer frequency weights, Greenwood's formula is efficient and correct.
+:::
+
 ## Nelson-Aalen cumulative hazard
 
 Closely related to survival is the cumulative hazard, the accumulated risk of the event over time.
