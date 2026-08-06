@@ -212,7 +212,7 @@ def test_subset_surv_rejects_interval() -> None:
 
     with pytest.raises(NotImplementedError, match="right-censored"):
         _subset_surv(Surv.interval(lower=[1, 2], upper=[2, 3]), np.array([0, 1]))
-    with pytest.raises(TypeError, match="CoxPH, CoxNet, or AFT"):
+    with pytest.raises(TypeError, match="CoxPH, CoxNet, AFT, or RoystonParmar"):
         _risk_score(KaplanMeier(), np.zeros((2, 1)))
 
 
