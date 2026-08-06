@@ -275,14 +275,19 @@ class CoxNet:
                 break
 
         self._x = x
+        self._xs = xs
+        self._scale = scale
         self._entry, self._exit, self._event, self._weight = entry, exit_, event, weight
         self._center = center
         self._event_times = np.unique(exit_[event])
+        self._groups = groups
         self.term_names_ = names
         self.coef_ = beta / scale  # back to the original covariate scale
+        self._beta_standardized = beta
         self.hazard_ratio_ = np.exp(self.coef_)
-        loglik, _, _ = _cox_terms(beta, xs, entry, exit_, event, weight, groups, "breslow")
+        loglik, _, info = _cox_terms(beta, xs, entry, exit_, event, weight, groups, "breslow")
         self.loglik_ = float(loglik)
+        self._info = info
         self.n_ = n
         self.n_event_ = int(event.sum())
         return self
@@ -480,6 +485,63 @@ class CoxNet:
         ```
         """
         return to_dataframe(self._coefficient_columns(), format=format)
+
+    def effective_df(self) -> float:
+        r"""Effective degrees of freedom of the penalized fit.
+
+        For ridge and elastic-net penalties, the effective degrees of freedom is the trace of the
+        hat-like matrix $H_u (H_u + n P)^{-1}$, where $H_u$ is the unpenalized observed information
+        and $P$ is the $L_2$ penalty matrix. For pure lasso ($L_2$ weight is zero), the effective
+        degrees of freedom equals the number of non-zero coefficients.
+
+        Returns
+        -------
+        float
+            Effective number of parameters consumed by the fit.
+        """
+        ridge_weight = self.penalizer * (1.0 - self.l1_ratio)
+
+        if ridge_weight == 0.0:
+            return float(np.count_nonzero(self._beta_standardized))
+
+        active = self._beta_standardized != 0.0
+        n_active = int(active.sum())
+        if n_active == 0:
+            return 0.0
+
+        info_active = self._info[np.ix_(active, active)]
+        penalty = ridge_weight * self.n_ * np.eye(n_active)
+        return float(
+            np.trace(info_active @ np.linalg.solve(info_active + penalty, np.eye(n_active)))
+        )
+
+    def aic(self) -> float:
+        r"""Akaike information criterion for the penalized Cox model.
+
+        Computed as $-2\ell(\hat\beta) + 2 \cdot \text{edf}$, where $\ell$ is the partial
+        log-likelihood at the penalized estimate and edf is the effective degrees of freedom. Lower
+        values indicate a better trade-off between fit and complexity.
+
+        Returns
+        -------
+        float
+            AIC value.
+        """
+        return -2.0 * self.loglik_ + 2.0 * self.effective_df()
+
+    def bic(self) -> float:
+        r"""Bayesian information criterion for the penalized Cox model.
+
+        Computed as $-2\ell(\hat\beta) + \log(d) \cdot \text{edf}$, where $d$ is the number of
+        events. Using $\log(d)$ rather than $\log(n)$ is standard for Cox models, matching R's
+        `BIC()` applied to `coxph` objects.
+
+        Returns
+        -------
+        float
+            BIC value.
+        """
+        return -2.0 * self.loglik_ + np.log(self.n_event_) * self.effective_df()
 
 
 # ---------------------------------------------------------------------------

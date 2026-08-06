@@ -58,8 +58,6 @@ Semi-parametric and parametric spline-based hazard regression.
 
 - Piecewise exponential models with optimal knot selection
 - Generalized gamma regression (encompasses Weibull, log-normal, exponential)
-- AIC and BIC for penalized Cox models (CoxNet): useful for model selection on small datasets and
-regulatory submissions where cross-validation is impractical
 
 ---
 

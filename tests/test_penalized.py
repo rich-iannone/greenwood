@@ -279,3 +279,57 @@ def test_cv_coxnet_brier_metric(data) -> None:  # type: ignore[no-untyped-def]
     assert result.metric_ == "brier"
     assert result.best_score_ >= 0
     assert result.penalizer_1se_ > 0
+
+
+# ── AIC / BIC ──
+
+
+def test_aic_bic_unpenalized_matches_r(data) -> None:  # type: ignore[no-untyped-def]
+    """penalizer=0 should reproduce R's AIC/BIC for the same Breslow Cox fit."""
+    lung = gw.load_dataset("lung", backend="pandas")
+    y = Surv.right(lung["time"], event=(lung["status"] == 2))
+    cn = CoxNet(penalizer=0.0).fit(y, lung[["age", "sex"]])
+    np.testing.assert_allclose(cn.effective_df(), 2.0)
+    np.testing.assert_allclose(cn.aic(), 1490.159, atol=0.01)
+    np.testing.assert_allclose(cn.bic(), 1496.371, atol=0.01)
+
+
+def test_effective_df_lasso_equals_nonzero(data) -> None:  # type: ignore[no-untyped-def]
+    """Pure lasso (l1_ratio=1): edf equals the count of non-zero coefficients."""
+    y, x = data
+    lasso = CoxNet(penalizer=0.05, l1_ratio=1.0).fit(y, x)
+    assert lasso.effective_df() == float(np.count_nonzero(lasso.coef_))
+
+
+def test_effective_df_ridge_less_than_p(data) -> None:  # type: ignore[no-untyped-def]
+    """Ridge (l1_ratio=0) edf should be strictly less than p (the number of covariates)."""
+    y, x = data
+    ridge = CoxNet(penalizer=0.1, l1_ratio=0.0).fit(y, x)
+    p = x.shape[1]
+    edf = ridge.effective_df()
+    assert 0 < edf < p
+
+
+def test_effective_df_heavy_penalty_is_zero(data) -> None:  # type: ignore[no-untyped-def]
+    """Heavy lasso penalty should zero all coefficients, giving edf=0."""
+    y, x = data
+    heavy = CoxNet(penalizer=10.0, l1_ratio=1.0).fit(y, x)
+    assert heavy.effective_df() == 0.0
+    assert heavy.aic() == heavy.bic()
+
+
+def test_aic_decreases_then_increases(data) -> None:  # type: ignore[no-untyped-def]
+    """AIC should have a minimum: too little penalty overfits, too much underfits."""
+    y, x = data
+    aics = [
+        CoxNet(penalizer=lam, l1_ratio=0.0).fit(y, x).aic() for lam in [0.0, 0.01, 0.05, 0.5, 5.0]
+    ]
+    best_idx = int(np.argmin(aics))
+    assert 0 < best_idx < len(aics) - 1
+
+
+def test_bic_penalizes_more_than_aic(data) -> None:  # type: ignore[no-untyped-def]
+    """BIC uses log(n_events) > 2 as the complexity multiplier, so BIC >= AIC."""
+    y, x = data
+    model = CoxNet(penalizer=0.05, l1_ratio=0.5).fit(y, x)
+    assert model.bic() >= model.aic()
