@@ -168,3 +168,38 @@ def test_km_weights_scale_risk_set() -> None:
     km = KaplanMeier().fit(Surv.right([1, 2], [1, 1], weights=[2.0, 2.0]))
     # Weighted n at t=1 is 4, one weighted event of 2 -> S = 1 - 2/4 = 0.5.
     np.testing.assert_allclose(km.survival_[0], 0.5)
+
+
+def test_km_robust_se_differs_from_greenwood() -> None:
+    km_green = KaplanMeier().fit(Surv.right([1, 2, 3, 4, 5], [1, 0, 1, 0, 1]))
+    km_robust = KaplanMeier(robust=True).fit(Surv.right([1, 2, 3, 4, 5], [1, 0, 1, 0, 1]))
+    # Survival estimates are identical regardless of variance method.
+    np.testing.assert_allclose(km_robust.survival_, km_green.survival_)
+    # Robust SE differs from Greenwood SE.
+    assert not np.allclose(km_robust.std_error_, km_green.std_error_)
+
+
+def test_km_robust_ci_brackets_estimate() -> None:
+    km = KaplanMeier(robust=True).fit(
+        Surv.right([1, 2, 3, 4, 5, 6, 7, 8], [1, 0, 1, 0, 1, 0, 1, 0])
+    )
+    valid = km.survival_ > 0
+    assert np.all(km.conf_low_[valid] <= km.survival_[valid])
+    assert np.all(km.survival_[valid] <= km.conf_high_[valid])
+
+
+def test_km_robust_weighted_se_smaller_with_unit_weights() -> None:
+    y = Surv.right([1, 2, 3, 4, 5], [1, 0, 1, 0, 1])
+    km_unit = KaplanMeier(robust=True).fit(y)
+    km_double = KaplanMeier(robust=True).fit(y, weights=[2.0, 2.0, 2.0, 2.0, 2.0])
+    # Doubling all weights doesn't change survival (proportional scaling).
+    np.testing.assert_allclose(km_double.survival_, km_unit.survival_)
+
+
+def test_km_robust_grouped() -> None:
+    y = Surv.right([1, 2, 3, 4, 5, 6], [1, 1, 1, 1, 1, 1])
+    group = [0, 0, 0, 1, 1, 1]
+    km = KaplanMeier(robust=True).fit(y, by=group)
+    assert len(km._blocks) == 2
+    for block in km._blocks:
+        assert len(block.std_error) == len(block.surv)
