@@ -152,6 +152,11 @@ def _fit_blocks(
         masks = [et.strata == lab for lab in labels]
 
     # Per-subject arrays needed for robust variance
+    subj_entry: Array = np.empty(0)
+    subj_exit: Array = np.empty(0)
+    subj_event: Array = np.empty(0, dtype=bool)
+    subj_weight: Array = np.empty(0)
+    subj_group: Array = np.empty(0, dtype=object)
     if robust:
         subj_entry = surv.entry.astype(float)
         subj_exit = surv.stop.astype(float)
