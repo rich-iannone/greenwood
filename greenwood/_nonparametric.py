@@ -79,7 +79,70 @@ class _Block:
     cumhaz_var: Array
 
 
-def _fit_blocks(surv: Surv, by: Any, weights: Any, conf_type: str, z: float) -> list[_Block]:
+def _robust_sigma(
+    entry: Array,
+    exit_: Array,
+    event: Array,
+    weight: Array,
+    event_times: Array,
+    n_risk: Array,
+    n_event: Array,
+) -> Array:
+    r"""Infinitesimal-jackknife (IJ) standard error of $\log S$ at each event time.
+
+    Replaces Greenwood's formula when `robust=True`. The influence of subject $i$ on $\log S(t)$ is
+
+    $$
+    U_i(t) = -\sum_{t_j \le t} \frac{\mathrm{d}M_i(t_j)}{n_j - d_j}
+    $$
+
+    where $\mathrm{d}M_i(t_j) = w_i \bigl[\mathbf{1}(\text{event}_i = t_j)
+    - \mathbf{1}(\text{at risk at } t_j) \cdot d_j / n_j\bigr]$. The robust variance is
+    $\sum_i U_i(t)^2$.
+    """
+    hazard = n_event / n_risk  # (K,)
+    survivor = n_risk - n_event  # (K,)
+
+    # (n, K) indicator matrices
+    at_risk = (entry[:, None] < event_times[None, :]) & (exit_[:, None] >= event_times[None, :])
+    event_here = (exit_[:, None] == event_times[None, :]) & event[:, None]
+
+    # Martingale increments: dM_i(t_k) = w_i * [event_here - at_risk * hazard]
+    dm = weight[:, None] * (event_here.astype(float) - at_risk.astype(float) * hazard[None, :])
+
+    # Scale by 1/(n_k - d_k), setting to 0 where everyone fails (survivor == 0)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        scale = np.where(survivor > 0, 1.0 / survivor, 0.0)
+    scaled = dm * scale[None, :]  # (n, K)
+
+    # Cumulative influence on log S: IJ_i(t) = -cumsum of scaled increments
+    ij = -np.cumsum(scaled, axis=1)  # (n, K)
+
+    # Robust variance of log S at each event time
+    var_logs = np.sum(ij**2, axis=0)  # (K,)
+    return np.sqrt(var_logs)
+
+
+def _resolve_weights(surv: Surv, weights: Any) -> Array:
+    """Resolve weights from explicit argument, Surv.weights, or unit weights."""
+    if weights is not None:
+        from ._surv import _to_1d_array
+
+        return _to_1d_array(weights)
+    if surv.weights is not None:
+        return surv.weights
+    return np.ones(surv.n)
+
+
+def _fit_blocks(
+    surv: Surv,
+    by: Any,
+    weights: Any,
+    conf_type: str,
+    z: float,
+    *,
+    robust: bool = False,
+) -> list[_Block]:
     et = event_table(surv, group=by, weights=weights)
     if et.strata is None:
         labels = [None]
@@ -87,6 +150,17 @@ def _fit_blocks(surv: Surv, by: Any, weights: Any, conf_type: str, z: float) -> 
     else:
         labels = list(dict.fromkeys(et.strata.tolist()))
         masks = [et.strata == lab for lab in labels]
+
+    # Per-subject arrays needed for robust variance
+    if robust:
+        subj_entry = surv.entry.astype(float)
+        subj_exit = surv.stop.astype(float)
+        subj_event = surv.event.astype(bool)
+        subj_weight = _resolve_weights(surv, weights)
+        if by is not None:
+            from ._surv import _to_1d_array
+
+            subj_group = _to_1d_array(by, dtype=object)
 
     blocks: list[_Block] = []
     for label, mask in zip(labels, masks, strict=True):
@@ -99,13 +173,26 @@ def _fit_blocks(surv: Surv, by: Any, weights: Any, conf_type: str, z: float) -> 
             factor = np.where(n > 0, 1.0 - d / n, 1.0)
         surv_hat = np.cumprod(factor)
 
-        denom = n * (n - d)
-        with np.errstate(divide="ignore", invalid="ignore"):
-            # When everyone remaining fails (n == d, S -> 0) the Greenwood term is
-            # infinite, so the variance and se are undefined there, matching R.
-            increment = np.where(denom > 0, d / denom, np.inf)
-        greenwood = np.cumsum(increment)  # Var(log S)
-        sigma = np.sqrt(greenwood)
+        if robust:
+            if label is None:
+                s_entry = subj_entry
+                s_exit = subj_exit
+                s_event = subj_event
+                s_weight = subj_weight
+            else:
+                smask = subj_group == label
+                s_entry = subj_entry[smask]
+                s_exit = subj_exit[smask]
+                s_event = subj_event[smask]
+                s_weight = subj_weight[smask]
+            sigma = _robust_sigma(s_entry, s_exit, s_event, s_weight, t, n, d)
+        else:
+            denom = n * (n - d)
+            with np.errstate(divide="ignore", invalid="ignore"):
+                increment = np.where(denom > 0, d / denom, np.inf)
+            greenwood = np.cumsum(increment)  # Var(log S)
+            sigma = np.sqrt(greenwood)
+
         with np.errstate(invalid="ignore"):
             std_error = surv_hat * sigma  # 0 * inf -> nan at S == 0, as in R
 
@@ -141,15 +228,15 @@ def _crossing_time(time: Array, curve: Array, level: float) -> float:
 def _rmst_block(block: _Block, tau: float) -> tuple[float, float]:
     r"""Restricted mean survival time up to `tau` and its standard error.
 
-    RMST is the area under the Kaplan-Meier curve on $[0, \tau]$. The variance uses the
-    standard estimator
+    RMST is the area under the Kaplan-Meier curve on $[0, \tau]$. The variance uses the standard
+    estimator
 
     $$
     \sum_i \frac{A_i^2 \, d_i}{n_i (n_i - d_i)}
     $$
 
-    over event times $t_i \le \tau$, where $A_i$ is the area under the curve from $t_i$ to
-    $\tau$ (as in R's `survival::survfit` restricted mean).
+    over event times $t_i \le \tau$, where $A_i$ is the area under the curve from $t_i$ to $\tau$
+    (as in R's `survival::survfit` restricted mean).
     """
     t = block.time
     s = block.surv
@@ -180,10 +267,9 @@ def _rmrl_block(block: _Block, s: float, tau: float) -> tuple[float, float]:
     \mathrm{RMRL}(s; \tau) = \frac{1}{S(s)} \int_s^\tau S(u) \, du
     $$
 
-    the expected additional survival beyond $s$ restricted to $\tau$, given survival to $s$.
-    The variance is the restricted-mean (Greenwood) estimator applied to the conditional
-    curve, summed over event times in $(s, \tau]$; at $s = 0$ this reduces exactly to
-    `_rmst_block` ($S(0) = 1$).
+    the expected additional survival beyond $s$ restricted to $\tau$, given survival to $s$. The
+    variance is the restricted-mean (Greenwood) estimator applied to the conditional curve, summed
+    over event times in $(s, \tau]$; at $s = 0$ this reduces exactly to `_rmst_block` ($S(0) = 1$).
     """
     t = block.time
     surv = block.surv
@@ -249,6 +335,11 @@ class KaplanMeier:
         or `"log-log"`.
     conf_level
         Confidence level for the interval (default 0.95).
+    robust
+        Use the infinitesimal-jackknife (sandwich) variance instead of Greenwood's formula (the
+        default is `False`). When `True`, standard errors and confidence intervals account for the
+        correlation structure induced by weighted or correlated observations, matching R's
+        `survfit(..., robust = TRUE)`.
 
     Returns
     -------
@@ -265,8 +356,8 @@ class KaplanMeier:
 
     Examples
     --------
-    Build a `Surv` response from the bundled `lung` dataset and fit the estimator. Printing
-    the fitted object reports the median survival and its confidence interval.
+    Build a `Surv` response from the bundled `lung` dataset and fit the estimator. Printing the
+    fitted object reports the median survival and its confidence interval.
 
     ```{python}
     import greenwood as gw
@@ -280,8 +371,8 @@ class KaplanMeier:
     km
     ```
 
-    The full step function, one row per event time, is available with `to_frame`. Pass
-    `format=` to choose the backend (here, Polars):
+    The full step function, one row per event time, is available with `to_frame`. Pass `format=` to
+    choose the backend (here, Polars):
 
     ```{python}
     # Export the survival curve as a Polars DataFrame
@@ -289,13 +380,16 @@ class KaplanMeier:
     ```
     """
 
-    def __init__(self, *, conf_type: str = "log", conf_level: float = 0.95) -> None:
+    def __init__(
+        self, *, conf_type: str = "log", conf_level: float = 0.95, robust: bool = False
+    ) -> None:
         if conf_type not in _CONF_TYPES:
             raise ValueError(f"conf_type must be one of {sorted(_CONF_TYPES)}, got {conf_type!r}.")
         if not 0.0 < conf_level < 1.0:
             raise ValueError(f"conf_level must be in (0, 1), got {conf_level}.")
         self.conf_type = conf_type
         self.conf_level = conf_level
+        self.robust = robust
 
     def __repr__(self) -> str:
         if getattr(self, "_blocks", None) is None:
@@ -404,7 +498,7 @@ class KaplanMeier:
         ```
         """
         z = float(norm.ppf(1.0 - (1.0 - self.conf_level) / 2.0))
-        self._blocks = _fit_blocks(surv, by, weights, self.conf_type, z)
+        self._blocks = _fit_blocks(surv, by, weights, self.conf_type, z, robust=self.robust)
         self._grouped = by is not None
         return self
 
