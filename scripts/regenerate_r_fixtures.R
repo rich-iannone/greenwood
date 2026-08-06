@@ -306,6 +306,8 @@ cox_diag_fixture <- function(ties) {
     concordance_se = unname(conc["se(C)"]),
     zph_identity = zph_table("identity"),
     zph_log = zph_table("log"),
+    zph_km = zph_table("km"),
+    zph_rank = zph_table("rank"),
     surv_times = times,
     surv_newdata_age = newdata$age,
     surv_newdata_sex = newdata$sex,
