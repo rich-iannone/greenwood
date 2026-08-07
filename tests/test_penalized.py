@@ -252,7 +252,7 @@ def test_cv_coxnet_few_events_warning() -> None:
     y = Surv.right(times, events)
     x = np.random.default_rng(42).standard_normal((10, 2))
     with pytest.warns(UserWarning, match="fewer than"):
-        cv_coxnet(y, x, k=5, penalizers=[0.1], seed=42)
+        cv_coxnet(y, x, k=5, penalizers=[0.1], seed=23)
 
 
 def test_cv_coxnet_missing_rows_filtered(data) -> None:  # type: ignore[no-untyped-def]
@@ -261,7 +261,7 @@ def test_cv_coxnet_missing_rows_filtered(data) -> None:  # type: ignore[no-untyp
 
     x_df = pd.DataFrame(x) if not isinstance(x, pd.DataFrame) else x.copy()
     x_df.iloc[0, 0] = np.nan
-    result = cv_coxnet(y, x_df, penalizers=[0.1], k=2, seed=42)
+    result = cv_coxnet(y, x_df, penalizers=[0.1], k=2, seed=23)
     assert result.best_penalizer_ > 0
 
 
@@ -274,7 +274,7 @@ def test_cv_coxnet_brier_metric(data) -> None:  # type: ignore[no-untyped-def]
         times=[100, 200, 300],
         penalizers=[0.1, 0.01],
         k=2,
-        seed=42,
+        seed=23,
     )
     assert result.metric_ == "brier"
     assert result.best_score_ >= 0

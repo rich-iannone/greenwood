@@ -115,8 +115,16 @@ reference:
       - logrank_power
       - logrank_sample_size
 
+  - title: Resampling & bootstrap
+    desc: Bootstrap confidence intervals and k-fold cross-validation for survival models.
+    contents:
+      - bootstrap
+      - name: BootstrapResult
+        members: true
+      - cross_validate
+
   - title: Prediction performance
-    desc: Concordance, IPCW Brier score, time-dependent AUC, calibration, and k-fold cross-validation.
+    desc: Concordance, IPCW Brier score, time-dependent AUC, and calibration.
     contents:
       - concordance_index
       - brier_score
@@ -124,7 +132,6 @@ reference:
       - time_dependent_auc
       - integrated_auc
       - calibration
-      - cross_validate
 
   - title: Visualization
     desc: Interactive survival curves, forest plots, and cumulative incidence visualizations with aligned numbers-at-risk tables.
