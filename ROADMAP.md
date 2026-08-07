@@ -23,9 +23,6 @@ Systematic confidence interval and standard error support across all estimators.
 
 - Bootstrap and analytical methods for uncertainty quantification
 - Predictive intervals for time-varying Cox model forecasts
-- Clustered robust variance for Kaplan-Meier: extend the sandwich estimator to handle correlated
-observations (e.g., recurring events, patients nested in clusters), matching R's `cluster()` term in
-**survfit** formulas
 
 ---
 
