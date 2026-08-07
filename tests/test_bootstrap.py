@@ -68,8 +68,8 @@ class TestBootstrapMedian:
         assert len(result.distribution) == 123
 
     def test_reproducible_with_seed(self, simple_surv: Surv) -> None:
-        r1 = bootstrap(simple_surv, "median", n_boot=100, seed=42)
-        r2 = bootstrap(simple_surv, "median", n_boot=100, seed=42)
+        r1 = bootstrap(simple_surv, "median", n_boot=100, seed=23)
+        r2 = bootstrap(simple_surv, "median", n_boot=100, seed=23)
         np.testing.assert_array_equal(r1.distribution, r2.distribution)
 
     def test_different_seeds_differ(self, simple_surv: Surv) -> None:
@@ -293,14 +293,14 @@ class TestOutput:
 @pytest.mark.slow
 class TestLungDataset:
     def test_bootstrap_median_close_to_analytical(self, lung_surv: Surv) -> None:
-        result = bootstrap(lung_surv, "median", n_boot=500, seed=42)
+        result = bootstrap(lung_surv, "median", n_boot=500, seed=23)
         km = KaplanMeier().fit(lung_surv)
         analytical_median = km.median()
         assert result.estimate == analytical_median
         assert result.conf_low < analytical_median < result.conf_high
 
     def test_bootstrap_rmst_se_close_to_analytical(self, lung_surv: Surv) -> None:
-        result = bootstrap(lung_surv, "rmst", tau=365.0, n_boot=500, seed=42)
+        result = bootstrap(lung_surv, "rmst", tau=365.0, n_boot=500, seed=23)
         km = KaplanMeier().fit(lung_surv)
         from greenwood._nonparametric import _rmst_block
 
@@ -309,7 +309,7 @@ class TestLungDataset:
         assert 0.5 < ratio < 2.0
 
     def test_bootstrap_median_diff(self, lung_surv: Surv, lung_sex: np.ndarray) -> None:
-        result = bootstrap(lung_surv, "median_diff", by=lung_sex, n_boot=500, seed=42)
+        result = bootstrap(lung_surv, "median_diff", by=lung_sex, n_boot=500, seed=23)
         km = KaplanMeier().fit(lung_surv, by=lung_sex)
         medians = km.median()
         keys = sorted(medians.keys(), key=str)
@@ -318,7 +318,7 @@ class TestLungDataset:
         assert result.se > 0
 
     def test_bootstrap_rmst_diff(self, lung_surv: Surv, lung_sex: np.ndarray) -> None:
-        result = bootstrap(lung_surv, "rmst_diff", by=lung_sex, tau=365.0, n_boot=500, seed=42)
+        result = bootstrap(lung_surv, "rmst_diff", by=lung_sex, tau=365.0, n_boot=500, seed=23)
         assert np.isfinite(result.estimate)
         assert result.se > 0
         assert result.conf_low < result.estimate < result.conf_high
