@@ -13,6 +13,7 @@ from __future__ import annotations
 from importlib.metadata import PackageNotFoundError, version
 
 from . import data, summaries, viz
+from ._bootstrap import BootstrapResult, bootstrap
 from ._competing import AalenJohansen, FineGray, MultiState
 from ._core import EventTable, event_table
 from ._cox import CoxPH, ZPHResult
@@ -77,6 +78,8 @@ __all__ = [
     "logrank_n_events",
     "logrank_power",
     "logrank_sample_size",
+    "bootstrap",
+    "BootstrapResult",
     "brier_score",
     "integrated_auc",
     "integrated_brier_score",
