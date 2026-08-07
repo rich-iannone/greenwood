@@ -228,9 +228,9 @@ def test_multi_metric_auc_reasonable(lung, y) -> None:
 
 def test_multi_metric_same_folds_as_single(lung, y) -> None:
     """Multi-metric concordance should match single-metric concordance (same folds)."""
-    single = cross_validate(gw.CoxPH(), y, lung[["age", "sex"]], metric="concordance", k=5, seed=42)
+    single = cross_validate(gw.CoxPH(), y, lung[["age", "sex"]], metric="concordance", k=5, seed=23)
     multi = cross_validate(
-        gw.CoxPH(), y, lung[["age", "sex"]], metrics=["concordance"], k=5, seed=42
+        gw.CoxPH(), y, lung[["age", "sex"]], metrics=["concordance"], k=5, seed=23
     )
     np.testing.assert_allclose(single["scores"], multi["results"]["concordance"]["scores"])
 
