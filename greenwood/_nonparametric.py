@@ -87,6 +87,7 @@ def _robust_sigma(
     event_times: Array,
     n_risk: Array,
     n_event: Array,
+    cluster_labels: Array | None = None,
 ) -> Array:
     r"""Infinitesimal-jackknife (IJ) standard error of $\log S$ at each event time.
 
@@ -99,6 +100,9 @@ def _robust_sigma(
     where $\mathrm{d}M_i(t_j) = w_i \bigl[\mathbf{1}(\text{event}_i = t_j)
     - \mathbf{1}(\text{at risk at } t_j) \cdot d_j / n_j\bigr]$. The robust variance is
     $\sum_i U_i(t)^2$.
+
+    When `cluster_labels=` is provided, per-subject influences are summed within each cluster before
+    squaring, accounting for within-cluster correlation.
     """
     hazard = n_event / n_risk  # (K,)
     survivor = n_risk - n_event  # (K,)
@@ -117,6 +121,11 @@ def _robust_sigma(
 
     # Cumulative influence on log S: IJ_i(t) = -cumsum of scaled increments
     ij = -np.cumsum(scaled, axis=1)  # (n, K)
+
+    # For clustered data, sum per-subject influences within each cluster
+    if cluster_labels is not None:
+        levels = list(dict.fromkeys(cluster_labels.tolist()))
+        ij = np.array([ij[cluster_labels == lev].sum(axis=0) for lev in levels])
 
     # Robust variance of log S at each event time
     var_logs = np.sum(ij**2, axis=0)  # (K,)
@@ -142,6 +151,7 @@ def _fit_blocks(
     z: float,
     *,
     robust: bool = False,
+    cluster: Any = None,
 ) -> list[_Block]:
     et = event_table(surv, group=by, weights=weights)
     if et.strata is None:
@@ -157,15 +167,20 @@ def _fit_blocks(
     subj_event: Array = np.empty(0, dtype=bool)
     subj_weight: Array = np.empty(0)
     subj_group: Array = np.empty(0, dtype=object)
+    subj_cluster: Array | None = None
     if robust:
         subj_entry = surv.entry.astype(float)
         subj_exit = surv.stop.astype(float)
         subj_event = surv.event.astype(bool)
         subj_weight = _resolve_weights(surv, weights)
         if by is not None:
-            from ._surv import _to_1d_array
+            from ._surv import _to_1d_array as _to_1d
 
-            subj_group = _to_1d_array(by, dtype=object)
+            subj_group = _to_1d(by, dtype=object)
+        if cluster is not None:
+            from ._surv import _to_1d_array as _to_1d
+
+            subj_cluster = _to_1d(cluster, dtype=object)
 
     blocks: list[_Block] = []
     for label, mask in zip(labels, masks, strict=True):
@@ -184,13 +199,17 @@ def _fit_blocks(
                 s_exit = subj_exit
                 s_event = subj_event
                 s_weight = subj_weight
+                s_cluster = subj_cluster
             else:
                 smask = subj_group == label
                 s_entry = subj_entry[smask]
                 s_exit = subj_exit[smask]
                 s_event = subj_event[smask]
                 s_weight = subj_weight[smask]
-            sigma = _robust_sigma(s_entry, s_exit, s_event, s_weight, t, n, d)
+                s_cluster = subj_cluster[smask] if subj_cluster is not None else None
+            sigma = _robust_sigma(
+                s_entry, s_exit, s_event, s_weight, t, n, d, cluster_labels=s_cluster
+            )
         else:
             denom = n * (n - d)
             with np.errstate(divide="ignore", invalid="ignore"):
@@ -432,7 +451,9 @@ class KaplanMeier:
             table = align_table(headers, [row])
         return "KaplanMeier (Kaplan-Meier survival estimate)\n\n" + table
 
-    def fit(self, surv: Surv, *, by: Any = None, weights: Any = None) -> KaplanMeier:
+    def fit(
+        self, surv: Surv, *, by: Any = None, weights: Any = None, cluster: Any = None
+    ) -> KaplanMeier:
         r"""Fit the Kaplan-Meier estimator to survival data.
 
         Computes the product-limit survival estimate from a `Surv` response (time-to-event
@@ -453,29 +474,33 @@ class KaplanMeier:
             A `Surv` response (typically right-censored, but supports counting-process and
             other forms). Built from data using `Surv.right()`, `Surv.interval()`, etc.
         by
-            Optional grouping variable (e.g., a column or array). Produces one fit (one curve)
-            per unique value of `by`, enabling stratified Kaplan-Meier analysis. Each group's
-            results are stored and can be accessed separately via `to_frame()`, or
-            visualized as separate curves via `plot_survival()`. Default (`None`): fit a
-            single, unstratified curve.
+            Optional grouping variable (e.g., a column or array). Produces one fit (one curve) per
+            unique value of `by`, enabling stratified Kaplan-Meier analysis. Each group's results
+            are stored and can be accessed separately via `to_frame()`, or visualized as separate
+            curves via `plot_survival()`. Default (`None`) means to fit a single, unstratified
+            curve.
         weights
             Optional weights (e.g., from survey design or inverse-probability-of-censoring
             adjustments). Must have the same length as `surv`. Default (`None`): unit weights.
+        cluster
+            Optional cluster labels for grouped robust variance estimation. When provided,
+            `robust=True` is implied. Per-subject influences are summed within each cluster before
+            squaring, accounting for within-cluster correlation. Default (`None`) means no
+            clustering.
 
         Returns
         -------
         KaplanMeier
-            The fitted estimator object itself (for method chaining) with cached results
-            (`time_`, `surv_`, `conf_low_`, `conf_high_`, `n_risk_`, `n_event_`, etc. as
-            attributes).
+            The fitted estimator object itself (for method chaining) with cached results (`time_`,
+            `surv_`, `conf_low_`, `conf_high_`, `n_risk_`, `n_event_`, etc. as attributes).
 
         Details
         -------
-        The Kaplan-Meier estimator is a non-parametric maximum likelihood estimator of the
-        survival function $S(t)$. It is defined as the product of $(1 - d/n)$ over all event
-        times up to $t$, where $d$ is the number of events and $n$ is the number at risk at
-        each time. Confidence intervals are point-wise. They do not guarantee that the true
-        curve lies entirely within the band.
+        The Kaplan-Meier estimator is a non-parametric maximum likelihood estimator of the survival
+        function $S(t)$. It is defined as the product of $(1 - d/n)$ over all event times up to $t$,
+        where $d$ is the number of events and $n$ is the number at risk at each time. Confidence
+        intervals are point-wise. They do not guarantee that the true curve lies entirely within the
+        band.
 
         Examples
         --------
@@ -493,8 +518,8 @@ class KaplanMeier:
         km
         ```
 
-        Fit stratified curves by sex by passing `by=lung["sex"]`. This produces one curve per
-        group. The results are stored and can be visualized separately:
+        Fit stratified curves by sex by passing `by=lung["sex"]`. This produces one curve per group.
+        The results are stored and can be visualized separately:
 
         ```{python}
         # Fit stratified curves by sex and plot them
@@ -503,7 +528,10 @@ class KaplanMeier:
         ```
         """
         z = float(norm.ppf(1.0 - (1.0 - self.conf_level) / 2.0))
-        self._blocks = _fit_blocks(surv, by, weights, self.conf_type, z, robust=self.robust)
+        use_robust = self.robust or cluster is not None
+        self._blocks = _fit_blocks(
+            surv, by, weights, self.conf_type, z, robust=use_robust, cluster=cluster
+        )
         self._grouped = by is not None
         return self
 

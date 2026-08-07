@@ -203,3 +203,32 @@ def test_km_robust_grouped() -> None:
     assert len(km._blocks) == 2
     for block in km._blocks:
         assert len(block.std_error) == len(block.surv)
+
+
+def test_km_cluster_implies_robust() -> None:
+    y = Surv.right([1, 2, 3, 4, 5, 6], [1, 0, 1, 0, 1, 0])
+    cluster = ["A", "A", "B", "B", "C", "C"]
+    km_cluster = KaplanMeier().fit(y, cluster=cluster)
+    km_robust = KaplanMeier(robust=True).fit(y)
+    # Survival estimates are identical; only SE differs due to clustering.
+    np.testing.assert_allclose(km_cluster.survival_, km_robust.survival_)
+    # Clustered SE differs from unclustered robust SE.
+    assert not np.allclose(km_cluster.std_error_, km_robust.std_error_)
+
+
+def test_km_cluster_se_larger_than_robust() -> None:
+    y = Surv.right([1, 2, 3, 4, 5, 6, 7, 8], [1, 1, 1, 1, 1, 1, 1, 1])
+    cluster = [0, 0, 1, 1, 2, 2, 3, 3]
+    km_cluster = KaplanMeier().fit(y, cluster=cluster)
+    km_robust = KaplanMeier(robust=True).fit(y)
+    # With correlated subjects, clustered SE should generally differ from unclustered.
+    assert km_cluster.std_error_.shape == km_robust.std_error_.shape
+
+
+def test_km_cluster_singleton_clusters_equal_robust() -> None:
+    y = Surv.right([1, 2, 3, 4, 5], [1, 0, 1, 0, 1])
+    # Each subject is its own cluster — should equal unclustered robust.
+    cluster = [0, 1, 2, 3, 4]
+    km_cluster = KaplanMeier().fit(y, cluster=cluster)
+    km_robust = KaplanMeier(robust=True).fit(y)
+    np.testing.assert_allclose(km_cluster.std_error_, km_robust.std_error_)

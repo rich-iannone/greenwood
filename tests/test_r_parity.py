@@ -172,6 +172,25 @@ def test_km_robust_by_sex_matches_r() -> None:
         )
 
 
+def test_km_cluster_lung_inst_matches_r() -> None:
+    df = gw.load_dataset("lung", backend="pandas")
+    keep = ~df["inst"].isna()
+    y = Surv.right(df.loc[keep, "time"], event=(df.loc[keep, "status"] == 2))
+    cluster_ids = df.loc[keep, "inst"].values
+    expected = load_fixture("km_cluster_lung_inst")["overall"]
+
+    for conf_type, key in _CONF:
+        km = gw.KaplanMeier(conf_type=conf_type).fit(y, cluster=cluster_ids)
+        assert_allclose_to_r(km.survival_, expected["surv"], what=f"cluster lung/{conf_type} surv")
+        assert_allclose_to_r(km.std_error_, expected["se"], what=f"cluster lung/{conf_type} se(S)")
+        assert_allclose_to_r(
+            km.conf_low_, expected[f"lower_{key}"], what=f"cluster lung {conf_type} lower"
+        )
+        assert_allclose_to_r(
+            km.conf_high_, expected[f"upper_{key}"], what=f"cluster lung {conf_type} upper"
+        )
+
+
 def test_nelson_aalen_matches_r() -> None:
     df = gw.load_dataset("lung", backend="pandas")
     y = Surv.right(df["time"], event=(df["status"] == 2))

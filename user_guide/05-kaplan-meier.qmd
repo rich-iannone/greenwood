@@ -341,6 +341,41 @@ Use `robust=True` whenever weights are non-integer (IPW, survey weights). For un
 integer frequency weights, Greenwood's formula is efficient and correct.
 :::
 
+### Clustered robust variance
+
+When subjects are nested within clusters (e.g., patients within hospitals, or recurring events on
+the same individual), observations within a cluster are correlated. The standard robust variance
+ignores this correlation. Passing `cluster=` to `fit()` accounts for it by summing per-subject
+influences within each cluster before squaring.
+
+```{python}
+# Load data and build the response
+lung = gw.load_dataset("lung", backend="polars")
+y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+
+# Cluster by institution (inst column); NaN rows are dropped automatically
+km_cluster = gw.KaplanMeier().fit(y, cluster=lung["inst"])
+
+# Compare clustered SE to unclustered robust SE at the midpoint
+km_robust = gw.KaplanMeier(robust=True).fit(y)
+idx = len(km_cluster.time_) // 2
+t_mid = km_cluster.time_[idx]
+print(f"Time {t_mid}: Robust SE = {km_robust.std_error_[idx]:.6f}, "
+      f"Clustered SE = {km_cluster.std_error_[idx]:.6f}")
+```
+
+Passing `cluster=` implies `robust=True`. The survival estimates are unchanged and only the standard
+errors and confidence intervals differ.
+
+::: {.callout-tip}
+## When to use `cluster=`
+
+Use `cluster=` whenever your data has a natural grouping that induces within-group correlation:
+multi-center trials (cluster by site), recurrent-event data (cluster by subject), or family studies
+(cluster by family). Without clustering, the robust SE understates uncertainty by treating
+correlated observations as independent.
+:::
+
 ## Nelson-Aalen cumulative hazard
 
 Closely related to survival is the cumulative hazard, the accumulated risk of the event over time.
