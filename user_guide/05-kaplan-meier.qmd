@@ -376,6 +376,57 @@ multi-center trials (cluster by site), recurrent-event data (cluster by subject)
 correlated observations as independent.
 :::
 
+## Bootstrap confidence intervals
+
+The analytical confidence intervals above (Greenwood, robust, clustered) are fast and
+well-calibrated for single quantities like the survival curve. However, some summary statistics lack
+simple closed-form intervals. The median survival difference between two groups is a classic
+example: each group's median has an analytical CI, but the difference does not. The `bootstrap()`
+function fills this gap by resampling subjects with replacement.
+
+```{python}
+# Load data and build the response
+lung = gw.load_dataset("lung", backend="polars")
+y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+
+# Bootstrap CI for the median survival time
+gw.bootstrap(y, "median", n_boot=1000, seed=23)
+```
+
+For two-group comparisons, pass `by=` with a `_diff` statistic. The function resamples within each
+group and computes the difference on every replicate.
+
+```{python}
+# Bootstrap CI for the difference in median survival between sexes
+gw.bootstrap(y, "median_diff", by=lung["sex"], n_boot=1000, seed=23)
+```
+
+The RMST difference works the same way. This is particularly useful when survival curves cross,
+making hazard ratios hard to interpret.
+
+```{python}
+# Bootstrap CI for the difference in 1-year RMST between sexes
+gw.bootstrap(y, "rmst_diff", by=lung["sex"], tau=365.0, n_boot=1000, seed=23)
+```
+
+For custom statistics, pass a callable that takes a fitted `KaplanMeier` and returns a float.
+
+```{python}
+# Bootstrap CI for a custom statistic: area under the curve from 180 to 365 days
+gw.bootstrap(y, lambda km: km.rmst(365) - km.rmst(180), n_boot=500, seed=23)
+```
+
+Three interval types are available via `ci_type=`: `"percentile"` (default), `"normal"` (symmetric
+around the estimate), and `"bca"` (bias-corrected and accelerated, more accurate for skewed
+distributions but slower).
+
+::: {.callout-tip}
+## Choosing the number of replicates
+
+For percentile intervals, 1000 replicates is usually sufficient. For BCa intervals, 2000 or more
+may be needed for stability. The `seed=` parameter ensures reproducibility.
+:::
+
 ## Nelson-Aalen cumulative hazard
 
 Closely related to survival is the cumulative hazard, the accumulated risk of the event over time.
