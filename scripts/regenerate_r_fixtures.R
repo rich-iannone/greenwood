@@ -152,6 +152,28 @@ for (s in sort(unique(lung$sex))) {
 }
 write_json_fixture(km_robust_by_sex, "km_robust_lung_by_sex")
 
+# -- Kaplan-Meier with clustered robust variance -------------------------------------
+
+km_cluster_one <- function(d, cluster_var) {
+  fp <- survfit(Surv(time, status) ~ 1, data = d, cluster = cluster_var, conf.type = "plain")
+  fl <- survfit(Surv(time, status) ~ 1, data = d, cluster = cluster_var, conf.type = "log")
+  fll <- survfit(Surv(time, status) ~ 1, data = d, cluster = cluster_var, conf.type = "log-log")
+  se_surv <- fl$std.err
+  list(
+    time = fl$time, surv = fl$surv, se = se_surv,
+    lower_plain = fp$lower, upper_plain = fp$upper,
+    lower_log = fl$lower, upper_log = fl$upper,
+    lower_loglog = fll$lower, upper_loglog = fll$upper
+  )
+}
+
+# Cluster by institution (drop 1 row with NA inst)
+lung_noinst_na <- lung[!is.na(lung$inst), ]
+write_json_fixture(
+  list(overall = km_cluster_one(lung_noinst_na, lung_noinst_na$inst)),
+  "km_cluster_lung_inst"
+)
+
 # -- Restricted mean survival time (RMST) up to tau ---------------------------------
 
 rmst_one <- function(d, tau) {
