@@ -676,10 +676,16 @@ def test_trajectory_rejects_risk_type(tvc_cox: tuple[Any, Any]) -> None:
         cox.predict(trajectory=_subj1_trajectory(), type="risk")
 
 
-def test_trajectory_ci_not_supported(tvc_cox: tuple[Any, Any]) -> None:
+def test_trajectory_ci_supported(tvc_cox: tuple[Any, Any]) -> None:
     cox, _ = tvc_cox
-    with pytest.raises(NotImplementedError, match="ci"):
-        cox.predict(trajectory=_subj1_trajectory(), type="survival", ci=True)
+    result = cox.predict(trajectory=_subj1_trajectory(), type="survival", ci=True, format="pandas")
+    assert "subject_1_lower" in result.columns
+    assert "subject_1_upper" in result.columns
+    lower = result["subject_1_lower"].values
+    point = result["subject_1"].values
+    upper = result["subject_1_upper"].values
+    assert np.all(lower <= point + 1e-12)
+    assert np.all(point <= upper + 1e-12)
 
 
 def test_trajectory_missing_tstart_raises(tvc_cox: tuple[Any, Any]) -> None:

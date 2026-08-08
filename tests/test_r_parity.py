@@ -732,3 +732,37 @@ def test_risk_table_numbers_match_r() -> None:
     for label, expected in fixture["n_risk"].items():
         sub = rtd[rtd["strata"] == label].sort_values("time")
         assert_allclose_to_r(sub["n_risk"].to_numpy(), expected, what=f"n_risk sex={label}")
+
+
+def test_cox_conditional_after_ci_matches_r() -> None:
+    import pandas as pd
+
+    df = gw.load_dataset("lung", backend="pandas")
+    y = Surv.right(df["time"], event=(df["status"] == 2))
+    fixture = load_fixture("cox_conditional_ci")
+    cox = gw.CoxPH(ties="breslow").fit(y, df[["age", "sex"]])
+    newdata = pd.DataFrame({"age": fixture["newdata_age"], "sex": fixture["newdata_sex"]})
+    pred = cox.predict(
+        newdata,
+        type="survival",
+        times=fixture["times"],
+        conditional_after=fixture["start_time"],
+        ci=True,
+        format="pandas",
+    )
+    for j, subj in enumerate(("subj1", "subj2"), start=1):
+        assert_allclose_to_r(
+            pred[f"subject_{j}"].to_numpy(),
+            fixture["surv"][subj],
+            what=f"conditional {subj} surv",
+        )
+        assert_allclose_to_r(
+            pred[f"subject_{j}_lower"].to_numpy(),
+            fixture["lower"][subj],
+            what=f"conditional {subj} lower",
+        )
+        assert_allclose_to_r(
+            pred[f"subject_{j}_upper"].to_numpy(),
+            fixture["upper"][subj],
+            what=f"conditional {subj} upper",
+        )
