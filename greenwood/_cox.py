@@ -1388,7 +1388,7 @@ class CoxPH:
             $P(T > t \mid T > c)$ where $c$ is the conditional_after time.
         ci
             If `True` (survival only), include confidence intervals (`_lower` and `_upper` columns).
-            The default is `False`. Not supported with `trajectory`.
+            The default is `False`. Supported with `conditional_after=` and `trajectory=`.
         trajectory
             DataFrame with columns `tstart`, `tstop`, and covariates, describing one subject's
             time-varying covariate path. See the description above. Mutually exclusive with
@@ -1477,11 +1477,11 @@ class CoxPH:
                 raise ValueError("trajectory and newdata are mutually exclusive.")
             if type not in ("lp", "survival"):
                 raise ValueError(f"trajectory only supports type='survival', got {type!r}.")
-            if ci:
-                raise NotImplementedError("ci is not supported with trajectory.")
             if conditional_after is not None:
                 raise ValueError("conditional_after is not supported with trajectory.")
-            return self._predict_trajectory(trajectory, times=times, strata=strata, format=format)
+            return self._predict_trajectory(
+                trajectory, times=times, strata=strata, ci=ci, format=format
+            )
 
         if newdata is None:
             x = self._x
@@ -1538,10 +1538,6 @@ class CoxPH:
             # Validate and pre-process conditional_after before the subject loop
             c_arr: Array | None = None
             if conditional_after is not None:
-                if ci:
-                    raise NotImplementedError(
-                        "Confidence intervals are not supported with conditional_after."
-                    )
                 c_arr = np.atleast_1d(np.asarray(conditional_after, dtype=float))
                 if c_arr.shape[0] != 1 and c_arr.shape[0] != n_subj:
                     raise ValueError("conditional_after must be a scalar or one value per subject.")
@@ -1555,7 +1551,7 @@ class CoxPH:
                     surv[:, i] = np.exp(-h0_i * risk[i])
                 else:
                     c_i = float(c_arr[0] if c_arr.shape[0] == 1 else c_arr[i])
-                    idx_c = np.searchsorted(bt, c_i, side="right") - 1
+                    idx_c = np.searchsorted(bt, c_i, side="left") - 1
                     h0_c = float(bh[idx_c]) if idx_c >= 0 else 0.0
                     delta = np.clip(h0_i - h0_c, 0.0, None)
                     surv[:, i] = np.exp(-delta * risk[i])
@@ -1563,16 +1559,30 @@ class CoxPH:
             columns: dict[str, Any] = {"time": query}
             if ci:
                 z = float(norm.ppf(1.0 - (1.0 - self.conf_level) / 2.0))
-                # Compute SE per stratum (groups subjects from the same stratum together)
                 se_h = np.zeros((len(query), n_subj))
                 by_stratum: dict[Any, list[int]] = {}
                 for i, s_label in enumerate(subject_strata):
                     by_stratum.setdefault(s_label, []).append(i)
-                for s_label, subj_idx in by_stratum.items():
-                    members_s = stratum_members_map[s_label]
-                    se_s = self._cumhaz_se(x[subj_idx], query, stratum_members=members_s)
-                    for j, i in enumerate(subj_idx):
-                        se_h[:, i] = se_s[:, j]
+
+                if c_arr is not None:
+                    for s_label, subj_idx in by_stratum.items():
+                        members_s = stratum_members_map[s_label]
+                        for _j_idx, i in enumerate(subj_idx):
+                            c_i = float(c_arr[0] if c_arr.shape[0] == 1 else c_arr[i])
+                            se_s = self._cumhaz_se(
+                                x[i : i + 1],
+                                query,
+                                stratum_members=members_s,
+                                start_time=c_i,
+                            )
+                            se_h[:, i] = se_s[:, 0]
+                else:
+                    for s_label, subj_idx in by_stratum.items():
+                        members_s = stratum_members_map[s_label]
+                        se_s = self._cumhaz_se(x[subj_idx], query, stratum_members=members_s)
+                        for j_idx, i in enumerate(subj_idx):
+                            se_h[:, i] = se_s[:, j_idx]
+
                 lower = surv * np.exp(-z * se_h)
                 upper = surv * np.exp(z * se_h)
                 for i in range(n_subj):
@@ -1959,6 +1969,7 @@ class CoxPH:
         *,
         times: Any = None,
         strata: Any = None,
+        ci: bool = False,
         format: str | None = None,
     ) -> Any:
         """Compute survival at `times` for a single subject with time-varying covariates.
@@ -2065,19 +2076,37 @@ class CoxPH:
         H = contrib.sum(axis=1)  # (n_query,)
         surv = np.exp(-H)
 
-        return to_dataframe({"time": query, "subject_1": surv}, format=format)
+        columns: dict[str, Any] = {"time": query}
+        if ci:
+            z = float(norm.ppf(1.0 - (1.0 - self.conf_level) / 2.0))
+            stratum_members_map: dict[Any, Array] = {
+                self._group_label(members): members for members, _ in self._strata_groups
+            }
+            members_s = stratum_members_map[s_label]
+            se_h = self._trajectory_cumhaz_se(
+                x_traj,
+                tstart,
+                tstop,
+                query,
+                stratum_members=members_s,
+                is_last=is_last,
+            )
+            lower = surv * np.exp(-z * se_h)
+            upper = surv * np.exp(z * se_h)
+            columns["subject_1"] = surv
+            columns["subject_1_lower"] = lower
+            columns["subject_1_upper"] = upper
+        else:
+            columns["subject_1"] = surv
+        return to_dataframe(columns, format=format)
 
-    def _cumhaz_se(
-        self, x_new: Array, query: Array, *, stratum_members: Array | None = None
-    ) -> Array:
-        """Standard error of the cumulative hazard `H(t | x)` at `query` times, per subject.
+    def _cumhaz_var_components(
+        self, *, stratum_members: Array | None = None
+    ) -> tuple[Array, Array, Array, Array]:
+        """Pre-compute the per-event-time cumulative variance components.
 
-        Uses the two-part Breslow-form variance (baseline variability plus the delta-method term for
-        coefficient uncertainty), matching R `survfit.coxph`'s `std.chaz` for a Breslow fit
-        (approximate for Efron ties, as with the score-residual variance).
-
-        `stratum_members=` restricts baseline-variance summation to the specified training indices
-        (i.e., one stratum), while coefficient uncertainty still uses the full model vcov.
+        Returns (et, cum_part1, cum_dl0, cum_xbar_dl0) where et are the unique event times. These
+        arrays are reused by `_cumhaz_se` and `_trajectory_cumhaz_se`.
         """
         xr, entry, exit_, event, w = self._x, self._entry, self._exit, self._event, self._weight
         if stratum_members is not None:
@@ -2102,21 +2131,125 @@ class CoxPH:
             xbar[k] = (xr[at_risk] * rs[at_risk, None]).sum(axis=0) / s0[k]
             d[k] = w[(exit_ == t) & ev].sum()
         dl0 = d / s0
-        cum_part1 = np.cumsum(d / s0**2)  # baseline variance, cumulative over event times
+        cum_part1 = np.cumsum(d / s0**2)
         cum_dl0 = np.cumsum(dl0)
         cum_xbar_dl0 = np.cumsum(xbar * dl0[:, None], axis=0)
+        return et, cum_part1, cum_dl0, cum_xbar_dl0
+
+    def _cumhaz_se(
+        self,
+        x_new: Array,
+        query: Array,
+        *,
+        stratum_members: Array | None = None,
+        start_time: float | None = None,
+    ) -> Array:
+        """Standard error of the cumulative hazard `H(t | x)` at `query` times, per subject.
+
+        Uses the two-part Breslow-form variance (baseline variability plus the delta-method term for
+        coefficient uncertainty), matching R `survfit.coxph`'s `std.chaz` for a Breslow fit
+        (approximate for Efron ties, as with the score-residual variance).
+
+        `stratum_members=` restricts baseline-variance summation to the specified training indices
+        (i.e., one stratum), while coefficient uncertainty still uses the full model vcov.
+
+        `start_time=` computes SE for the conditional cumulative hazard H(t) - H(start_time),
+        matching R's `survfit(..., start.time=)`.
+        """
+        et, cum_part1, cum_dl0, cum_xbar_dl0 = self._cumhaz_var_components(
+            stratum_members=stratum_members
+        )
 
         r0 = np.exp(x_new @ self.coef_)  # (n_subj,)
         vcov = self.naive_vcov_
         se = np.zeros((query.shape[0], x_new.shape[0]))
         qi = np.searchsorted(et, query, side="right") - 1
+
+        c_part1 = 0.0
+        c_dl0 = 0.0
+        c_xbar_dl0 = np.zeros(x_new.shape[1])
+        if start_time is not None:
+            ci = int(np.searchsorted(et, start_time, side="left") - 1)
+            if ci >= 0:
+                c_part1 = cum_part1[ci]
+                c_dl0 = cum_dl0[ci]
+                c_xbar_dl0 = cum_xbar_dl0[ci]
+
         for j, k in enumerate(qi):
             if k < 0:
-                continue  # before the first event: H = 0, se = 0
-            # q_subject = r0 * cumsum((x0 - xbar) dLambda0) up to k
-            qmat = r0[:, None] * (x_new * cum_dl0[k] - cum_xbar_dl0[k][None, :])  # (n_subj, p)
-            var_h = r0**2 * cum_part1[k] + np.einsum("sp,pq,sq->s", qmat, vcov, qmat)
+                continue
+            bp1 = cum_part1[k] - c_part1
+            if bp1 <= 0.0:
+                continue
+            dl0_k = cum_dl0[k] - c_dl0
+            xbar_dl0_k = cum_xbar_dl0[k] - c_xbar_dl0
+            qmat = r0[:, None] * (x_new * dl0_k - xbar_dl0_k[None, :])
+            var_h = r0**2 * bp1 + np.einsum("sp,pq,sq->s", qmat, vcov, qmat)
             se[j] = np.sqrt(np.clip(var_h, 0.0, None))
+        return se
+
+    def _trajectory_cumhaz_se(
+        self,
+        x_traj: Array,
+        tstart: Array,
+        tstop: Array,
+        query: Array,
+        *,
+        stratum_members: Array | None = None,
+        is_last: Array | None = None,
+    ) -> Array:
+        """Standard error of the trajectory cumulative hazard at `query` times.
+
+        The trajectory cumulative hazard is a sum of per-interval contributions
+        H_traj(t) = sum_k r_k * (H0(u_k) - H0(l_k)) where each interval k has its own covariate
+        vector x_k and risk score r_k = exp(x_k @ beta). The variance uses the two-part Breslow
+        form, summed across active intervals.
+        """
+        et, cum_part1, cum_dl0, cum_xbar_dl0 = self._cumhaz_var_components(
+            stratum_members=stratum_members
+        )
+
+        risk_k = np.exp(x_traj @ self.coef_)  # (n_intervals,)
+        vcov = self.naive_vcov_
+        p = x_traj.shape[1]
+        se = np.zeros(query.shape[0])
+
+        if is_last is None:
+            is_last_arr = np.zeros(len(tstart), dtype=bool)
+            is_last_arr[-1] = True
+        else:
+            is_last_arr = is_last
+
+        for j, t in enumerate(query):
+            baseline_var = 0.0
+            qmat_total = np.zeros(p)
+
+            for k in range(len(tstart)):
+                if t <= tstart[k]:
+                    continue
+
+                l_k = tstart[k]
+                u_k = t if is_last_arr[k] and t > tstop[k] else min(t, tstop[k])
+
+                li = int(np.searchsorted(et, l_k, side="right") - 1)
+                ui = int(np.searchsorted(et, u_k, side="right") - 1)
+
+                if ui < 0:
+                    continue
+
+                bp1_l = cum_part1[li] if li >= 0 else 0.0
+                bp1_u = cum_part1[ui]
+                baseline_var += risk_k[k] ** 2 * (bp1_u - bp1_l)
+
+                dl0_l = cum_dl0[li] if li >= 0 else 0.0
+                dl0_u = cum_dl0[ui]
+                xdl0_l = cum_xbar_dl0[li] if li >= 0 else np.zeros(p)
+                xdl0_u = cum_xbar_dl0[ui]
+
+                qmat_total += risk_k[k] * (x_traj[k] * (dl0_u - dl0_l) - (xdl0_u - xdl0_l))
+
+            var_h = baseline_var + qmat_total @ vcov @ qmat_total
+            se[j] = float(np.sqrt(max(var_h, 0.0)))
         return se
 
     @staticmethod
