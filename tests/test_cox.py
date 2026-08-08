@@ -23,11 +23,14 @@ def test_invalid_ties() -> None:
 
 
 def test_predict_conditional_after_identity(lung_surv) -> None:  # type: ignore[no-untyped-def]
-    # S(t | T > c) * S(c) == S(t) for t >= c, and conditioning on c=0 is a no-op.
+    # S(t | T > c) * S(c-) == S(t) for t >= c (left-continuous convention),
+    # and conditioning on c=0 is a no-op.
     df, y = lung_surv
     cox = CoxPH().fit(y, df[["age", "sex"]])
     nd = df[["age", "sex"]].iloc[:2]
     times = [200, 400, 600]
+
+    # c=150 is not an event time, so S(c) == S(c-) and the simple identity holds.
     c = 150.0
     s_t = cox.predict(nd, type="survival", times=times, format="pandas")
     s_c = cox.predict(nd, type="survival", times=[c], format="pandas")
@@ -36,6 +39,22 @@ def test_predict_conditional_after_identity(lung_surv) -> None:  # type: ignore[
         np.testing.assert_allclose(
             s_cond[col].to_numpy() * float(s_c[col].iloc[0]), s_t[col].to_numpy(), atol=1e-12
         )
+
+    # c=180 IS an event time. Use S(c-) = S at the last event time before c.
+    c2 = 180.0
+    s_cond2 = cox.predict(nd, type="survival", times=times, conditional_after=c2, format="pandas")
+    bh = cox.baseline_hazard(format="pandas")
+    bt = bh["time"].to_numpy()
+    idx_before = int(np.searchsorted(bt, c2, side="left") - 1)
+    t_before = bt[idx_before]
+    s_cminus = cox.predict(nd, type="survival", times=[t_before], format="pandas")
+    for col in ("subject_1", "subject_2"):
+        np.testing.assert_allclose(
+            s_cond2[col].to_numpy() * float(s_cminus[col].iloc[0]),
+            s_t[col].to_numpy(),
+            atol=1e-12,
+        )
+
     s0 = cox.predict(nd, type="survival", times=times, conditional_after=0.0, format="pandas")
     np.testing.assert_allclose(
         s0[["subject_1", "subject_2"]].to_numpy(), s_t[["subject_1", "subject_2"]].to_numpy()
@@ -77,17 +96,25 @@ def test_predict_survival_ci_columns_and_ordering(lung_surv) -> None:  # type: i
         assert (pred[f"subject_{j}"] <= pred[f"subject_{j}_upper"]).all()
 
 
-def test_predict_ci_with_conditional_after_raises(lung_surv) -> None:  # type: ignore[no-untyped-def]
+def test_predict_ci_with_conditional_after(lung_surv) -> None:  # type: ignore[no-untyped-def]
     df, y = lung_surv
     cox = CoxPH().fit(y, df[["age", "sex"]])
-    with pytest.raises(NotImplementedError, match="conditional_after"):
-        cox.predict(
-            df[["age", "sex"]].iloc[:1],
-            type="survival",
-            times=[180],
-            ci=True,
-            conditional_after=50.0,
-        )
+    result = cox.predict(
+        df[["age", "sex"]].iloc[:1],
+        type="survival",
+        times=[180, 365, 730],
+        ci=True,
+        conditional_after=50.0,
+        format="pandas",
+    )
+    assert "subject_1" in result.columns
+    assert "subject_1_lower" in result.columns
+    assert "subject_1_upper" in result.columns
+    lower = result["subject_1_lower"].values
+    point = result["subject_1"].values
+    upper = result["subject_1_upper"].values
+    assert np.all(lower <= point + 1e-12)
+    assert np.all(point <= upper + 1e-12)
 
 
 def test_formula_matches_explicit(lung_surv) -> None:  # type: ignore[no-untyped-def]
@@ -971,3 +998,114 @@ def test_well_scaled_covariates_no_warning() -> None:
         warnings.simplefilter("error", UserWarning)
         # age (std ~10) and sex (std ~0.5): ratio ~20, well below the 100 threshold
         CoxPH().fit(y, lung[["age", "sex"]])
+
+
+# --- Trajectory CI tests -------------------------------------------------------
+
+
+def test_predict_trajectory_ci_columns(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    import pandas as pd
+
+    df, y = lung_surv
+    cox = CoxPH().fit(y, df[["age", "sex"]])
+    tvc = pd.DataFrame(
+        {
+            "tstart": [0, 180],
+            "tstop": [180, 365],
+            "age": [65.0, 66.0],
+            "sex": [1, 1],
+        }
+    )
+    result = cox.predict(trajectory=tvc, times=[90, 180, 270, 365], ci=True, format="pandas")
+    assert "subject_1" in result.columns
+    assert "subject_1_lower" in result.columns
+    assert "subject_1_upper" in result.columns
+
+
+def test_predict_trajectory_ci_ordering(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    import pandas as pd
+
+    df, y = lung_surv
+    cox = CoxPH().fit(y, df[["age", "sex"]])
+    tvc = pd.DataFrame(
+        {
+            "tstart": [0, 180],
+            "tstop": [180, 365],
+            "age": [65.0, 66.0],
+            "sex": [1, 1],
+        }
+    )
+    result = cox.predict(trajectory=tvc, times=[90, 180, 270, 365], ci=True, format="pandas")
+    lower = result["subject_1_lower"].values
+    point = result["subject_1"].values
+    upper = result["subject_1_upper"].values
+    assert np.all(lower <= point + 1e-12)
+    assert np.all(point <= upper + 1e-12)
+
+
+def test_predict_trajectory_ci_monotonic(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    import pandas as pd
+
+    df, y = lung_surv
+    cox = CoxPH().fit(y, df[["age", "sex"]])
+    tvc = pd.DataFrame(
+        {
+            "tstart": [0, 200, 400],
+            "tstop": [200, 400, 600],
+            "age": [55.0, 56.0, 57.0],
+            "sex": [2, 2, 2],
+        }
+    )
+    result = cox.predict(
+        trajectory=tvc, times=[100, 200, 300, 400, 500, 600], ci=True, format="pandas"
+    )
+    lower = result["subject_1_lower"].values
+    point = result["subject_1"].values
+    upper = result["subject_1_upper"].values
+    assert np.all(np.diff(point) <= 1e-12)
+    assert np.all(np.diff(lower) <= 1e-12)
+    assert np.all(np.diff(upper) <= 1e-12)
+
+
+def test_predict_trajectory_ci_widens(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    import pandas as pd
+
+    df, y = lung_surv
+    cox = CoxPH().fit(y, df[["age", "sex"]])
+    tvc = pd.DataFrame(
+        {
+            "tstart": [0, 180],
+            "tstop": [180, 365],
+            "age": [65.0, 66.0],
+            "sex": [1, 1],
+        }
+    )
+    result = cox.predict(trajectory=tvc, times=[90, 180, 270, 365], ci=True, format="pandas")
+    width = result["subject_1_upper"].values - result["subject_1_lower"].values
+    assert np.all(np.diff(width[1:]) >= -1e-12)
+
+
+def test_predict_trajectory_ci_matches_standard_single_interval(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    import pandas as pd
+
+    df, y = lung_surv
+    cox = CoxPH().fit(y, df[["age", "sex"]])
+    tvc = pd.DataFrame(
+        {
+            "tstart": [0.0],
+            "tstop": [9999.0],
+            "age": [65.0],
+            "sex": [1],
+        }
+    )
+    times = [180, 365, 540]
+    traj = cox.predict(trajectory=tvc, times=times, ci=True, format="pandas")
+    newdata = pd.DataFrame({"age": [65.0], "sex": [1]})
+    std = cox.predict(newdata, type="survival", times=times, ci=True, format="pandas")
+    np.testing.assert_allclose(traj["subject_1"].values, std["subject_1"].values, atol=1e-10)
+    np.testing.assert_allclose(
+        traj["subject_1_lower"].values, std["subject_1_lower"].values, atol=1e-6
+    )
+    np.testing.assert_allclose(
+        traj["subject_1_upper"].values, std["subject_1_upper"].values, atol=1e-6
+    )

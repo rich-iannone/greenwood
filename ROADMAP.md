@@ -17,12 +17,6 @@ Robust cross-validation and performance assessment for imbalanced survival data.
 
 - Performance optimization for large datasets (memory efficiency, computation speed)
 
-### Confidence Intervals & Inference
-
-Systematic confidence interval and standard error support across all estimators.
-
-- Predictive intervals for time-varying Cox model forecasts
-
 ---
 
 ## Planned — Medium Term

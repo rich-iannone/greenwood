@@ -781,4 +781,25 @@ cox_residuals_breslow_fixture <- function() {
 }
 write_json_fixture(cox_residuals_breslow_fixture(), "cox_residuals_breslow")
 
+# Conditional-after survival CIs via survfit(start.time=).
+cox_conditional_ci_fixture <- function() {
+  cm <- coxph(Surv(time, status) ~ age + sex, data = lung, ties = "breslow")
+  nd <- data.frame(age = c(50, 70), sex = c(1, 2))
+  start_time <- 180
+  sf <- survfit(cm, newdata = nd, start.time = start_time)
+  times <- c(270, 365, 540, 730)
+  i <- findInterval(times, sf$time)
+  list(
+    newdata_age = nd$age,
+    newdata_sex = nd$sex,
+    start_time = start_time,
+    times = times,
+    surv = list(subj1 = sf$surv[i, 1], subj2 = sf$surv[i, 2]),
+    lower = list(subj1 = sf$lower[i, 1], subj2 = sf$lower[i, 2]),
+    upper = list(subj1 = sf$upper[i, 1], subj2 = sf$upper[i, 2]),
+    se_chaz = list(subj1 = sf$std.chaz[i, 1], subj2 = sf$std.chaz[i, 2])
+  )
+}
+write_json_fixture(cox_conditional_ci_fixture(), "cox_conditional_ci")
+
 cat("done\n")
