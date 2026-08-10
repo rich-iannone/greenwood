@@ -223,7 +223,7 @@ def _plot_influence_plotnine(
         )
     )
 
-    highlighted = long[long["influential"]]
+    highlighted = pd.DataFrame(long[long["influential"]])
     if not highlighted.empty:
         p = p + p9.geom_text(
             p9.aes(label="obs"),
