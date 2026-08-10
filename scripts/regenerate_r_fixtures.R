@@ -138,7 +138,7 @@ write_json_fixture(
 )
 
 # Weighted robust: use inverse-probability-style weights (sex-based, for illustration)
-set.seed(42)
+set.seed(23)
 lung_wt <- runif(nrow(lung), 0.5, 2.0)
 write_json_fixture(
   list(overall = km_robust_one(lung, wt = lung_wt), weights = lung_wt),
@@ -405,7 +405,7 @@ write_json_fixture(cox_survci_fixture(), "cox_survci_breslow")
 # Baseline hazard CIs from survfit.coxph (no newdata = baseline survival).
 cox_basehaz_ci_fixture <- function() {
   cm <- coxph(Surv(time, status) ~ age + sex, data = lung, ties = "breslow")
-  sf <- survfit(cm)  # baseline survival at mean covariates
+  sf <- survfit(cm) # baseline survival at mean covariates
   times <- c(100, 200, 365, 500, 800)
   i <- findInterval(times, sf$time)
   list(
