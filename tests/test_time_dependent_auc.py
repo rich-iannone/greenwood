@@ -190,7 +190,7 @@ def test_auc_accepts_polars_series() -> None:
 
 def test_integrated_auc_exceeds_random_for_strong_marker() -> None:
     # A perfectly ranked marker on uncensored data should yield integrated AUC close to 1.
-    rng = np.random.default_rng(42)
+    rng = np.random.default_rng(23)
     n = 200
     x = rng.normal(size=n)
     time = np.abs(rng.normal(loc=3.0 - 0.8 * x, size=n)) + 0.1
