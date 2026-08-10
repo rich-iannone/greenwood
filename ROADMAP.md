@@ -7,18 +7,6 @@ title: "Roadmap"
 Greenwood is built in dependency-ordered, individually shippable steps. This is the
 public capability roadmap.
 
-## Planned — Near Term
-
-Descriptive and exploratory features building on the core estimators.
-
-### Model Validation and Performance
-
-Robust cross-validation and performance assessment for imbalanced survival data.
-
-- Performance optimization for large datasets (memory efficiency, computation speed)
-
----
-
 ## Planned — Medium Term
 
 Regression model extensions and flexible semi-parametric approaches.
