@@ -331,7 +331,7 @@ def test_predict_survival_ci_vs_bootstrap(lung_surv) -> None:  # type: ignore[no
     model = AFT("weibull").fit(y, df[["age", "sex"]])
     nd = df[["age", "sex"]].iloc[:2]
     times = np.array([200, 400])
-    rng = np.random.default_rng(42)
+    rng = np.random.default_rng(23)
     n_boot = 500
     boot_surv = np.zeros((n_boot, len(times), 2))
     n = len(df)
