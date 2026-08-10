@@ -20,18 +20,33 @@ _POINT_COLOR = "#20558A"
 _HIGHLIGHT_COLOR = "#E45756"
 
 
-def _prepare_data(cox: CoxPH, highlight: int) -> Any:
-    """Build a tidy DataFrame of influence diagnostics with highlight flags."""
-    diag = cox.influence_diagnostics(format="pandas")
+def _prepare_data(cox: CoxPH, highlight: int) -> dict[str, Any]:
+    """Build a dict of numpy arrays with influence diagnostics and highlight flags."""
+    scores = cox._score_residuals(cox.coef_)
+    dfb = scores @ cox.naive_vcov_
+    leverage = np.sum(dfb * scores, axis=1)
+    mart = cox._martingale_residuals()
+    event = cox._event.astype(float)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        log_term = np.where(event > mart, np.log(event - mart), 0.0)
+    dev = np.sign(mart) * np.sqrt(-2.0 * (mart + event * log_term))
+    info_inv = np.linalg.solve(cox.naive_vcov_, np.eye(cox.naive_vcov_.shape[0]))
+    ld = np.sum(dfb @ info_inv * dfb, axis=1)
     lp = np.asarray(cox.predict(type="lp")).ravel()
-    diag = diag.copy()
-    diag["lp"] = lp
-    diag["obs"] = np.arange(1, len(lp) + 1)
+    obs = np.arange(1, len(lp) + 1)
 
-    threshold = float(np.sort(diag["ld"].values)[-highlight]) if highlight > 0 else float("inf")
-    diag["influential"] = diag["ld"] >= threshold
+    threshold = float(np.sort(ld)[-highlight]) if highlight > 0 else float("inf")
+    influential = ld >= threshold
 
-    return diag
+    return {
+        "leverage": leverage,
+        "martingale": mart,
+        "deviance": dev,
+        "ld": ld,
+        "lp": lp,
+        "obs": obs,
+        "influential": influential,
+    }
 
 
 def plot_influence(
@@ -121,7 +136,7 @@ _Y_LABELS: dict[str, str] = {
 
 
 def _plot_influence_altair(
-    data: Any,
+    data: dict[str, Any],
     *,
     panels: list[str] | tuple[str, ...],
     title: str | None,
@@ -136,11 +151,15 @@ def _plot_influence_altair(
             "Install with `pip install greenwood[altair]`."
         ) from exc
 
+    from .._backends import to_dataframe
+
+    frame = to_dataframe(data)
+
     charts: list[Any] = []
     for panel_name in panels:
         ylab = _Y_LABELS.get(panel_name, panel_name)
 
-        base = alt.Chart(data).encode(
+        base = alt.Chart(frame).encode(
             x=alt.X("lp:Q", title="Linear predictor"),
             y=alt.Y(f"{panel_name}:Q", title=ylab),
         )
@@ -169,7 +188,7 @@ def _plot_influence_altair(
 
 
 def _plot_influence_plotnine(
-    data: Any,
+    data: dict[str, Any],
     *,
     panels: list[str] | tuple[str, ...],
     title: str | None,
@@ -186,17 +205,18 @@ def _plot_influence_plotnine(
 
     import pandas as pd
 
-    rows = []
+    n = len(data["lp"])
+    rows: list[dict[str, Any]] = []
     for panel_name in panels:
         ylab = _Y_LABELS.get(panel_name, panel_name)
-        for _, row in data.iterrows():
+        for i in range(n):
             rows.append(
                 {
-                    "lp": row["lp"],
-                    "value": row[panel_name],
+                    "lp": float(data["lp"][i]),
+                    "value": float(data[panel_name][i]),
                     "panel": ylab,
-                    "obs": row["obs"],
-                    "influential": row["influential"],
+                    "obs": int(data["obs"][i]),
+                    "influential": bool(data["influential"][i]),
                 }
             )
     long = pd.DataFrame(rows)
