@@ -259,6 +259,11 @@ def _cox_terms(
     `strata_groups=` is a list of `(member_index, event_times)` pairs; risk sets are confined to a
     stratum, and the terms are summed across strata (the coefficients are shared). An unstratified
     model is a single group.
+
+    Risk-set aggregates (s0, s1, s2) are computed via reverse cumulative sums over subjects sorted
+    by exit time, replacing the naive O(n) boolean scan at each event time with an O(1) lookup.
+    Late-entry corrections subtract not-yet-at-risk contributions via a forward scan over entry
+    times. Dying-subject groups are precomputed via argsort so the inner loop does no O(n) scans.
     """
     p = beta.shape[0]
     loglik = 0.0
@@ -275,55 +280,103 @@ def _cox_terms(
         eo = None if event_offset is None else event_offset[members]
         eta = xs @ beta
 
-        for t in event_times:
-            at_risk = (es < t) & (xx >= t)
-            dying = (xx == t) & ev
+        has_late_entry = bool(np.any(es > 0))
 
-            rx = xs[at_risk]
-            rw = ws[at_risk]
-            reta = eta[at_risk]
+        # Sort subjects by exit time (ascending). Reverse cumsums give risk-set aggregates.
+        order = np.argsort(xx, kind="mergesort")
+        xx_s = xx[order]
+        xs_s = xs[order]
+        ws_s = ws[order]
 
-            # Use log-sum-exp trick for numerical stability: subtract max eta to prevent overflow
-            max_eta_risk = reta.max() if len(reta) > 0 else 0.0
-            risk_score = np.exp(reta - max_eta_risk)
-            if rm is not None:
-                risk_score = risk_score * rm[at_risk]
+        max_eta = float(eta.max()) if len(eta) > 0 else 0.0
+        raw_risk = np.exp(eta[order] - max_eta)
+        if rm is not None:
+            raw_risk = raw_risk * rm[order]
+        wrisk = raw_risk * ws_s
 
-            s0 = (risk_score * rw).sum()
-            s1 = rx.T @ (risk_score * rw)
-            s2 = (rx * (risk_score * rw)[:, None]).T @ rx
+        # Reverse cumsums: rcs0[j] = sum_{i>=j} wrisk[i]
+        rcs0 = np.cumsum(wrisk[::-1])[::-1].copy()
+        wrx = xs_s * wrisk[:, None]
+        rcs1 = np.cumsum(wrx[::-1], axis=0)[::-1].copy()
+        wrx2_flat = (xs_s[:, :, None] * wrx[:, None, :]).reshape(-1, p * p)
+        rcs2_flat = np.cumsum(wrx2_flat[::-1], axis=0)[::-1].copy()
 
-            w_d = ws[dying]
-            deta = eta[dying]
-            event_lp = deta if eo is None else deta + eo[dying]
+        entry_vals = np.empty(0)
+        ecs0 = np.empty(0)
+        ecs1 = np.empty((0, p))
+        ecs2 = np.empty((0, p * p))
+        if has_late_entry:
+            es_ord = es[order]
+            entry_order = np.argsort(es_ord, kind="mergesort")
+            entry_vals = es_ord[entry_order]
+            e_wrisk = wrisk[entry_order]
+            e_wrx = wrx[entry_order]
+            e_wrx2 = wrx2_flat[entry_order]
+            ecs0 = np.cumsum(e_wrisk)
+            ecs1 = np.cumsum(e_wrx, axis=0)
+            ecs2 = np.cumsum(e_wrx2, axis=0)
+
+        n_s = len(xx_s)
+        K = len(event_times)
+        exit_idx = np.searchsorted(xx_s, event_times, side="left")
+
+        # Precompute dying-subject index groups: for each event time, the indices into
+        # the stratum-local arrays (xs, ws, eta, etc.) of subjects who die at that time.
+        event_mask = ev.astype(bool)
+        die_times = xx[event_mask]
+        die_local = np.nonzero(event_mask)[0]
+        die_order = np.argsort(die_times, kind="mergesort")
+        die_times_sorted = die_times[die_order]
+        die_local_sorted = die_local[die_order]
+        die_boundaries = np.searchsorted(die_times_sorted, event_times, side="left")
+        die_boundaries_r = np.searchsorted(die_times_sorted, event_times, side="right")
+
+        for k in range(K):
+            j = exit_idx[k]
+            s0 = float(rcs0[j]) if j < n_s else 0.0
+            s1 = rcs1[j].copy() if j < n_s else np.zeros(p)
+            s2 = rcs2_flat[j].copy().reshape(p, p) if j < n_s else np.zeros((p, p))
+
+            if has_late_entry:
+                t = event_times[k]
+                cut = np.searchsorted(entry_vals, t, side="left")
+                if cut < len(entry_vals):
+                    tail_s0 = float(ecs0[-1]) - (float(ecs0[cut - 1]) if cut > 0 else 0.0)
+                    tail_s1 = ecs1[-1] - (ecs1[cut - 1] if cut > 0 else 0.0)
+                    tail_s2 = ecs2[-1] - (ecs2[cut - 1] if cut > 0 else 0.0)
+                    s0 -= tail_s0
+                    s1 -= tail_s1
+                    s2 -= tail_s2.reshape(p, p)
+
+            d_idx = die_local_sorted[die_boundaries[k] : die_boundaries_r[k]]
+            w_d = ws[d_idx]
+            deta = eta[d_idx]
+            event_lp = deta if eo is None else deta + eo[d_idx]
             loglik += float((w_d * event_lp).sum())
-            grad += (xs[dying] * w_d[:, None]).sum(axis=0)
+            grad += (xs[d_idx] * w_d[:, None]).sum(axis=0)
 
             if ties == "breslow":
                 d_weight = float(w_d.sum())
-                # When using log-sum-exp shift: log(shifted_s0) = log(s0 / exp(max_eta))
-                # So log(original_s0) = log(s0) + max_eta_risk
-                loglik -= d_weight * (max_eta_risk + np.log(s0))
+                loglik -= d_weight * (max_eta + np.log(s0))
                 z1 = s1 / s0
                 grad -= d_weight * z1
                 info += d_weight * (s2 / s0 - np.outer(z1, z1))
             else:  # efron
-                dx = xs[dying]
-                dr_eta = deta
-                dr = np.exp(dr_eta - max_eta_risk)
-                if rm is not None:  # pragma: no cover
-                    dr = dr * rm[dying]  # pragma: no cover
+                dx = xs[d_idx]
+                dr = np.exp(deta - max_eta)
+                if rm is not None:
+                    dr = dr * rm[d_idx]
                 dw = w_d
                 d0 = (dr * dw).sum()
                 d1 = dx.T @ (dr * dw)
                 d2 = (dx * (dr * dw)[:, None]).T @ dx
-                m = int(dying.sum())
+                m = len(d_idx)
                 for tie in range(m):
                     f = tie / m
                     denom = s0 - f * d0
                     z1 = (s1 - f * d1) / denom
                     z2 = (s2 - f * d2) / denom
-                    loglik -= float(max_eta_risk + np.log(denom))
+                    loglik -= float(max_eta + np.log(denom))
                     grad -= z1
                     info += z2 - np.outer(z1, z1)
 
@@ -1060,21 +1113,60 @@ class CoxPH:
         out: list[tuple[Any, Array, Array]] = []
         for members, _ in self._strata_groups:
             exit_s = self._exit[members]
+            entry_s = self._entry[members]
             event_s = self._event[members]
+            rs = risk_score[members]
+            ws = self._weight[members]
             times = np.unique(exit_s)
+
+            has_late_entry = bool(np.any(entry_s > 0))
+
+            # Reverse cumsum of risk scores sorted by exit time for O(1) s0 lookup
+            order = np.argsort(exit_s, kind="mergesort")
+            rs_sorted = rs[order]
+            exit_sorted = exit_s[order]
+            rcs0 = np.cumsum(rs_sorted[::-1])[::-1].copy()
+
+            entry_vals = np.empty(0)
+            ecs0 = np.empty(0)
+            if has_late_entry:
+                entry_order = np.argsort(entry_s[order], kind="mergesort")
+                entry_vals = entry_s[order][entry_order]
+                entry_rs = rs_sorted[entry_order]
+                ecs0 = np.cumsum(entry_rs)
+
+            # Precompute dying-subject groups
+            ev_mask = event_s.astype(bool)
+            die_exits = exit_s[ev_mask]
+            die_local = np.nonzero(ev_mask)[0]
+            die_order = np.argsort(die_exits, kind="mergesort")
+            die_exits_sorted = die_exits[die_order]
+            die_local_sorted = die_local[die_order]
+
+            exit_idx = np.searchsorted(exit_sorted, times, side="left")
+            die_left = np.searchsorted(die_exits_sorted, times, side="left")
+            die_right = np.searchsorted(die_exits_sorted, times, side="right")
+
             increments = np.zeros(times.shape[0])
-            for i, t in enumerate(times):
-                dying = (exit_s == t) & event_s
-                if not dying.any():
+            n_s = len(exit_sorted)
+            for i in range(len(times)):
+                d_idx = die_local_sorted[die_left[i] : die_right[i]]
+                if len(d_idx) == 0:
                     continue
-                at_risk = (self._entry[members] < t) & (exit_s >= t)
-                s0 = risk_score[members][at_risk].sum()
-                dw = self._weight[members][dying].sum()
+
+                j = exit_idx[i]
+                s0 = float(rcs0[j]) if j < n_s else 0.0
+                if has_late_entry:
+                    cut = np.searchsorted(entry_vals, times[i], side="left")
+                    if cut < len(entry_vals):
+                        s0 -= float(ecs0[-1]) - (float(ecs0[cut - 1]) if cut > 0 else 0.0)
+
+                dw = float(ws[d_idx].sum())
                 if self.ties == "breslow":
                     increments[i] = dw / s0
                 else:  # efron
-                    d0 = risk_score[members][dying].sum()
-                    m = int(dying.sum())
+                    d0 = float(rs[d_idx].sum())
+                    m = len(d_idx)
                     increments[i] = sum((dw / m) / (s0 - (tie / m) * d0) for tie in range(m))
             out.append((self._group_label(members), times, np.cumsum(increments)))
         return out
@@ -1082,8 +1174,8 @@ class CoxPH:
     def _baseline_cumhaz_se(self, times: Array) -> Array:
         r"""Standard error of baseline cumulative hazard at given times.
 
-        Computes SE at the baseline (centered x = 0, i.e., mean covariates) using the
-        Breslow-form variance: baseline variance + delta-method term for coefficient uncertainty.
+        Computes SE at the baseline (centered x = 0, i.e., mean covariates) using the Breslow-form
+        variance: baseline variance + delta-method term for coefficient uncertainty.
 
         Parameters
         ----------
@@ -1108,22 +1200,21 @@ class CoxPH:
     ) -> Any:
         r"""Return the baseline cumulative hazard and survival as a frame, optionally with CIs.
 
-        The baseline hazard represents the hazard rate for a reference subject with all
-        covariates at their mean values. It is useful for understanding the underlying
-        time-to-event distribution estimated by the model, and can be combined with
-        individual covariate values to compute predicted survival probabilities for
-        specific subjects.
+        The baseline hazard represents the hazard rate for a reference subject with all covariates
+        at their mean values. It is useful for understanding the underlying time-to-event
+        distribution estimated by the model, and can be combined with individual covariate values to
+        compute predicted survival probabilities for specific subjects.
 
         In Cox proportional hazards models, the hazard for an individual is modeled as:
-        $h(t \mid x) = h_0(t) \exp(x^\top \beta)$, where $h_0(t)$ is the baseline hazard.
-        This method returns the estimated cumulative baseline hazard $H_0(t)$ at each observed
-        event time, evaluated using the Breslow estimator (non-parametric).
+        $h(t \mid x) = h_0(t) \exp(x^\top \beta)$, where $h_0(t)$ is the baseline hazard. This
+        method returns the estimated cumulative baseline hazard $H_0(t)$ at each observed event
+        time, evaluated using the Breslow estimator (non-parametric).
 
         Parameters
         ----------
         ci
-            If `True`, include confidence interval columns for cumulative hazard and survival.
-            Default is `False`.
+            If `True`, include confidence interval columns for cumulative hazard and survival. The
+            default is `False`.
         conf_type
             Confidence interval transform (used only if `ci=True`):
 
@@ -1137,9 +1228,9 @@ class CoxPH:
 
             - `None` (default): Auto-detects and tries Polars first, falls back to Pandas, then
             PyArrow. Raises an error if no DataFrame library is installed.
-            - `"pandas"`: returns pandas.DataFrame.
-            - `"polars"`: returns polars.DataFrame.
-            - `"pyarrow"`: returns pyarrow.Table.
+            - `"pandas"`: returns `pandas.DataFrame`.
+            - `"polars"`: returns `polars.DataFrame`.
+            - `"pyarrow"`: returns `pyarrow.Table`.
 
         Returns
         -------
@@ -2440,7 +2531,11 @@ class CoxPH:
 
         Iterates strata then event times. Risk sets are confined to the stratum. For tied Efron
         events, the risk mean is averaged and the covariance split across the ties.
+
+        Uses reverse cumulative sums for risk-set aggregates (s0, s1, s2) so each event time is
+        O(p^2) instead of O(n).
         """
+        p = self.coef_.shape[0]
         risk_score = np.exp(self._x @ self.coef_) * self._weight * self._risk_multiplier
         residuals: list[Array] = []
         times: list[float] = []
@@ -2451,24 +2546,72 @@ class CoxPH:
             xx = self._exit[members]
             ev = self._event[members]
             rs = risk_score[members]
-            for t in event_times:
-                at_risk = (es < t) & (xx >= t)
-                dying = (xx == t) & ev
-                rr = rs[at_risk]
-                rx = xs[at_risk]
-                s0 = rr.sum()
-                s1 = (rx * rr[:, None]).sum(axis=0)
-                s2 = (rx * rr[:, None]).T @ rx
+
+            has_late_entry = bool(np.any(es > 0))
+
+            order = np.argsort(xx, kind="mergesort")
+            xx_sorted = xx[order]
+            rs_sorted = rs[order]
+            xs_sorted = xs[order]
+
+            rcs0 = np.cumsum(rs_sorted[::-1])[::-1].copy()
+            wrx = xs_sorted * rs_sorted[:, None]
+            rcs1 = np.cumsum(wrx[::-1], axis=0)[::-1].copy()
+            wrx2_flat = (xs_sorted[:, :, None] * wrx[:, None, :]).reshape(-1, p * p)
+            rcs2_flat = np.cumsum(wrx2_flat[::-1], axis=0)[::-1].copy()
+
+            entry_vals = np.empty(0)
+            ecs0 = np.empty(0)
+            ecs1 = np.empty((0, p))
+            ecs2 = np.empty((0, p * p))
+            if has_late_entry:
+                es_sorted = es[order]
+                entry_order = np.argsort(es_sorted, kind="mergesort")
+                entry_vals = es_sorted[entry_order]
+                e_rs = rs_sorted[entry_order]
+                e_wrx = wrx[entry_order]
+                e_wrx2 = wrx2_flat[entry_order]
+                ecs0 = np.cumsum(e_rs)
+                ecs1 = np.cumsum(e_wrx, axis=0)
+                ecs2 = np.cumsum(e_wrx2, axis=0)
+
+            n_s = len(xx_sorted)
+            exit_idx = np.searchsorted(xx_sorted, event_times, side="left")
+
+            ev_mask = ev.astype(bool)
+            die_exits = xx[ev_mask]
+            die_local = np.nonzero(ev_mask)[0]
+            die_order = np.argsort(die_exits, kind="mergesort")
+            die_local_sorted = die_local[die_order]
+            die_exits_sorted = die_exits[die_order]
+            die_left = np.searchsorted(die_exits_sorted, event_times, side="left")
+            die_right = np.searchsorted(die_exits_sorted, event_times, side="right")
+
+            for k, t in enumerate(event_times):
+                j = exit_idx[k]
+                s0 = float(rcs0[j]) if j < n_s else 0.0
+                s1 = rcs1[j].copy() if j < n_s else np.zeros(p)
+                s2 = rcs2_flat[j].copy().reshape(p, p) if j < n_s else np.zeros((p, p))
+
+                if has_late_entry:
+                    cut = np.searchsorted(entry_vals, t, side="left")
+                    if cut < len(entry_vals):
+                        s0 -= float(ecs0[-1]) - (float(ecs0[cut - 1]) if cut > 0 else 0.0)
+                        s1 -= ecs1[-1] - (ecs1[cut - 1] if cut > 0 else 0.0)
+                        s2 -= (ecs2[-1] - (ecs2[cut - 1] if cut > 0 else 0.0)).reshape(p, p)
+
+                d_idx = die_local_sorted[die_left[k] : die_right[k]]
+
                 if self.ties == "breslow":
                     xbar = s1 / s0
                     cov = s2 / s0 - np.outer(xbar, xbar)
-                else:  # efron: average over the tie-adjusted denominators
-                    dr = rs[dying]
-                    dx = xs[dying]
+                else:  # efron
+                    dr = rs[d_idx]
+                    dx = xs[d_idx]
                     d0 = dr.sum()
                     d1 = (dx * dr[:, None]).sum(axis=0)
                     d2 = (dx * dr[:, None]).T @ dx
-                    m = int(dying.sum())
+                    m = len(d_idx)
                     means = [(s1 - (tie / m) * d1) / (s0 - (tie / m) * d0) for tie in range(m)]
                     xbar = np.mean(means, axis=0)
                     cov = np.zeros_like(s2)
@@ -2477,7 +2620,7 @@ class CoxPH:
                         z1 = (s1 - f * d1) / (s0 - f * d0)
                         cov += (s2 - f * d2) / (s0 - f * d0) - np.outer(z1, z1)
                     cov = cov / m
-                for xi in xs[dying]:
+                for xi in xs[d_idx]:
                     residuals.append(xi - xbar)
                     times.append(float(t))
                     covariances.append(cov)
@@ -2564,16 +2707,41 @@ class CoxPH:
             g = np.log(t)
         elif transform == "km":
             km_times = np.sort(np.unique(self._exit[self._event]))
-            surv = np.ones(len(km_times))
-            for i, kt in enumerate(km_times):
-                at_risk = float(np.sum(self._weight[(self._entry < kt) & (self._exit >= kt)]))
-                n_event = float(np.sum(self._weight[(self._exit == kt) & self._event]))
-                prev = surv[i - 1] if i > 0 else 1.0
-                surv[i] = prev * (1.0 - n_event / at_risk) if at_risk > 0 else prev
+            # Vectorized KM: compute n_at_risk and n_event at each km_time using
+            # reverse cumsums (exit) and forward cumsums (entry) instead of per-time scans.
+            exit_sorted = np.sort(self._exit)
+            w_sorted_exit = self._weight[np.argsort(self._exit)]
+            rcs_w = np.cumsum(w_sorted_exit[::-1])[::-1].copy()
+            exit_idx_km = np.searchsorted(exit_sorted, km_times, side="left")
+            n_at_risk_arr = np.array(
+                [float(rcs_w[j]) if j < len(rcs_w) else 0.0 for j in exit_idx_km]
+            )
+            if bool(np.any(self._entry > 0)):
+                entry_sorted_vals = np.sort(self._entry)
+                w_entry_sorted = self._weight[np.argsort(self._entry)]
+                ecs_w = np.cumsum(w_entry_sorted)
+                entry_cuts = np.searchsorted(entry_sorted_vals, km_times, side="left")
+                for i, cut in enumerate(entry_cuts):
+                    if cut < len(entry_sorted_vals):
+                        n_at_risk_arr[i] -= float(ecs_w[-1]) - (
+                            float(ecs_w[cut - 1]) if cut > 0 else 0.0
+                        )
+
+            ev_exit = self._exit[self._event]
+            ev_weight = self._weight[self._event]
+            ev_order = np.argsort(ev_exit)
+            ev_exit_sorted = ev_exit[ev_order]
+            ev_w_sorted = ev_weight[ev_order]
+            ev_left = np.searchsorted(ev_exit_sorted, km_times, side="left")
+            ev_right = np.searchsorted(ev_exit_sorted, km_times, side="right")
+            n_event_arr = np.array(
+                [float(ev_w_sorted[ev_left[i] : ev_right[i]].sum()) for i in range(len(km_times))]
+            )
+
+            surv = np.cumprod(np.where(n_at_risk_arr > 0, 1.0 - n_event_arr / n_at_risk_arr, 1.0))
             g = np.empty_like(t)
-            for i, ti in enumerate(t):
-                idx = int(np.searchsorted(km_times, ti, side="left")) - 1
-                g[i] = 1.0 - (surv[idx] if idx >= 0 else 1.0)
+            idx_arr = np.searchsorted(km_times, t, side="left") - 1
+            g = 1.0 - np.where(idx_arr >= 0, surv[idx_arr.clip(min=0)], 1.0)
         else:  # rank
             from scipy.stats import rankdata
 
@@ -2616,6 +2784,9 @@ class CoxPH:
 
         Confined to strata. Summed over the event times at which each subject is at risk. Used to
         form the robust (Lin-Wei) sandwich variance.
+
+        Uses reverse cumulative sums for risk-set aggregates and vectorized cumulative sums over
+        event times to compute each subject's compensator without a per-subject Python loop.
         """
         n, p = self._x.shape
         scores = np.zeros((n, p))
@@ -2626,27 +2797,97 @@ class CoxPH:
             ev = self._event[members]
             ws = self._weight[members]
             ri = np.exp(xs @ beta) * self._risk_multiplier[members]
-            order = np.argsort(event_times)
-            etimes = event_times[order]
-            xbar = np.zeros((etimes.shape[0], p))
-            dlambda = np.zeros(etimes.shape[0])
-            for k, t in enumerate(etimes):
-                at_risk = (es < t) & (xx >= t)
-                dying = (xx == t) & ev
-                rr = (ri * ws)[at_risk]
-                s0 = rr.sum()
-                xbar[k] = (xs[at_risk] * rr[:, None]).sum(axis=0) / s0
-                dlambda[k] = ws[dying].sum() / s0
-            index = {float(t): k for k, t in enumerate(etimes)}
+            rw = ri * ws
+
+            has_late_entry = bool(np.any(es > 0))
+
+            etimes = np.sort(event_times)
+            K = len(etimes)
+
+            # Compute s0, xbar, dlambda at each event time via reverse cumsums
+            order = np.argsort(xx, kind="mergesort")
+            xx_sorted = xx[order]
+            rw_sorted = rw[order]
+            xs_sorted = xs[order]
+
+            rcs0 = np.cumsum(rw_sorted[::-1])[::-1].copy()
+            rcs1 = np.cumsum((xs_sorted * rw_sorted[:, None])[::-1], axis=0)[::-1].copy()
+            n_s = len(xx_sorted)
+            exit_idx = np.searchsorted(xx_sorted, etimes, side="left")
+
+            entry_vals = np.empty(0)
+            ecs0 = np.empty(0)
+            ecs1 = np.empty((0, p))
+            if has_late_entry:
+                es_sorted = es[order]
+                entry_order = np.argsort(es_sorted, kind="mergesort")
+                entry_vals = es_sorted[entry_order]
+                e_rw = rw_sorted[entry_order]
+                e_rwx = (xs_sorted * rw_sorted[:, None])[entry_order]
+                ecs0 = np.cumsum(e_rw)
+                ecs1 = np.cumsum(e_rwx, axis=0)
+
+            # Precompute dying-subject groups
+            ev_mask = ev.astype(bool)
+            die_exits = xx[ev_mask]
+            die_local = np.nonzero(ev_mask)[0]
+            die_order = np.argsort(die_exits, kind="mergesort")
+            die_exits_sorted = die_exits[die_order]
+            die_local_sorted = die_local[die_order]
+            die_left = np.searchsorted(die_exits_sorted, etimes, side="left")
+            die_right = np.searchsorted(die_exits_sorted, etimes, side="right")
+
+            s0_arr = np.empty(K)
+            xbar = np.zeros((K, p))
+            dlambda = np.zeros(K)
+
+            for k in range(K):
+                j = exit_idx[k]
+                s0_k = float(rcs0[j]) if j < n_s else 0.0
+                s1_k = rcs1[j].copy() if j < n_s else np.zeros(p)
+
+                if has_late_entry:
+                    cut = np.searchsorted(entry_vals, etimes[k], side="left")
+                    if cut < len(entry_vals):
+                        s0_k -= float(ecs0[-1]) - (float(ecs0[cut - 1]) if cut > 0 else 0.0)
+                        s1_k -= ecs1[-1] - (ecs1[cut - 1] if cut > 0 else 0.0)
+
+                s0_arr[k] = s0_k
+                xbar[k] = s1_k / s0_k
+
+                d_idx = die_local_sorted[die_left[k] : die_right[k]]
+                dlambda[k] = float(ws[d_idx].sum()) / s0_k
+
+            # Vectorized compensator: for each subject i, sum over event times where i is at risk.
+            # at_risk: es[i] < etimes[k] and etimes[k] <= xx[i]
+            # compensator_i = ri[i] * (x_i * sum(dlambda[at]) - sum(xbar[at] * dlambda[at]))
+            #
+            # Use cumulative sums of dlambda and xbar*dlambda over event times, then for each
+            # subject look up the range [first_k, last_k] via searchsorted.
+            xbar_dl = xbar * dlambda[:, None]
+            cs_dl = np.cumsum(dlambda)
+            cs_xbar_dl = np.cumsum(xbar_dl, axis=0)
+
+            first_k = np.searchsorted(etimes, es, side="right")
+            last_k = np.searchsorted(etimes, xx, side="right") - 1
+
+            index = np.searchsorted(etimes, xx)
+
             for local, gi in enumerate(members):
-                x_i = xs[local]
-                at = (es[local] < etimes) & (etimes <= xx[local])
-                compensator = ri[local] * (
-                    x_i * (dlambda[at]).sum() - (xbar[at] * dlambda[at][:, None]).sum(axis=0)
-                )
+                fk = first_k[local]
+                lk = last_k[local]
+                if fk <= lk and lk >= 0 and fk < K:
+                    sum_dl = cs_dl[lk] - (cs_dl[fk - 1] if fk > 0 else 0.0)
+                    sum_xbar_dl = cs_xbar_dl[lk] - (cs_xbar_dl[fk - 1] if fk > 0 else np.zeros(p))
+                    compensator = ri[local] * (xs[local] * sum_dl - sum_xbar_dl)
+                else:
+                    compensator = np.zeros(p)
+
                 score = -compensator
                 if ev[local]:
-                    score = score + (x_i - xbar[index[float(xx[local])]])
+                    ek = index[local]
+                    if ek < K:
+                        score = score + (xs[local] - xbar[ek])
                 scores[gi] = ws[local] * score
         return scores
 
