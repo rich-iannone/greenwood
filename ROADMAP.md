@@ -23,12 +23,6 @@ Robust cross-validation and performance assessment for imbalanced survival data.
 
 Regression model extensions and flexible semi-parametric approaches.
 
-### Cox Residual Diagnostics
-
-Outlier detection and case-level assessment for Cox models.
-
-- Visualizations for outlier and influential point detection
-
 ### Advanced Proportional-Hazards Tests
 
 Extended testing of the Cox model assumptions.
