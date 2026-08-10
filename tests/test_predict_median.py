@@ -338,7 +338,7 @@ def test_rp_predict_median_consistency(
 
 def test_predict_quantile_nan_when_curve_never_crosses() -> None:
     """If S(t) never drops to 1-p, quantile should be NaN."""
-    rng = np.random.default_rng(42)
+    rng = np.random.default_rng(23)
     n = 50
     times = rng.exponential(100, n)
     events = np.zeros(n, dtype=int)

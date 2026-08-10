@@ -151,7 +151,7 @@ def test_low_event_rate_warns(lung, y) -> None:
 
 def test_imbalanced_data_no_error(lung, y) -> None:
     """cross_validate on low-event data should produce valid scores (not crash)."""
-    rng = np.random.default_rng(42)
+    rng = np.random.default_rng(23)
     n = 300
     time = rng.exponential(400, size=n)
     event = np.zeros(n, dtype=bool)

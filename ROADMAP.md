@@ -27,7 +27,6 @@ Regression model extensions and flexible semi-parametric approaches.
 
 Outlier detection and case-level assessment for Cox models.
 
-- Leverage and hat-matrix diagnostics
 - Visualizations for outlier and influential point detection
 
 ### Advanced Proportional-Hazards Tests

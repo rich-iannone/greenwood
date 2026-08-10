@@ -250,7 +250,7 @@ def test_cv_coxnet_few_events_warning() -> None:
     times = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0])
     events = np.array([1, 1, 0, 0, 0, 0, 0, 0, 0, 0])
     y = Surv.right(times, events)
-    x = np.random.default_rng(42).standard_normal((10, 2))
+    x = np.random.default_rng(23).standard_normal((10, 2))
     with pytest.warns(UserWarning, match="fewer than"):
         cv_coxnet(y, x, k=5, penalizers=[0.1], seed=23)
 

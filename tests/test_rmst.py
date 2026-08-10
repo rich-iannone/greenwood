@@ -594,7 +594,7 @@ def test_pairwise_rmst_counting_process() -> None:
 
 
 def test_pairwise_rmst_with_strata() -> None:
-    rng = np.random.default_rng(42)
+    rng = np.random.default_rng(23)
     n = 60
     times = rng.exponential(5, size=n)
     events = np.ones(n, dtype=int)

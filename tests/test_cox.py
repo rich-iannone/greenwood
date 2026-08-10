@@ -987,6 +987,67 @@ def test_residuals_dfbetas_is_standardized_dfbeta(lung_surv) -> None:  # type: i
     np.testing.assert_allclose(dfbs, dfb / cox.naive_std_error_[None, :], atol=1e-14)
 
 
+def test_residuals_leverage_shape_and_bounds(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    cox = CoxPH(ties="breslow").fit(y, df[["age", "sex"]])
+    h = cox.residuals("leverage")
+    assert h.shape == (cox.n_,)
+    assert np.all(h >= 0)
+    assert np.all(h <= 1)
+
+
+def test_residuals_leverage_sum_equals_p(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    cox = CoxPH(ties="breslow").fit(y, df[["age", "sex"]])
+    h = cox.residuals("leverage")
+    np.testing.assert_allclose(h.sum(), len(cox.term_names_), atol=0.1)
+
+
+def test_residuals_leverage_equals_dfbeta_dot_score(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    cox = CoxPH(ties="breslow").fit(y, df[["age", "sex"]])
+    h = cox.residuals("leverage")
+    score = cox.residuals("score", format="pandas").to_numpy()
+    dfb = cox.residuals("dfbeta", format="pandas").to_numpy()
+    np.testing.assert_allclose(h, np.sum(dfb * score, axis=1), atol=1e-14)
+
+
+def test_influence_diagnostics_columns(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    cox = CoxPH(ties="breslow").fit(y, df[["age", "sex"]])
+    diag = cox.influence_diagnostics(format="pandas")
+    assert diag.shape[0] == cox.n_
+    expected_cols = [
+        "leverage",
+        "martingale",
+        "deviance",
+        "dfbeta_age",
+        "dfbeta_sex",
+        "dfbetas_age",
+        "dfbetas_sex",
+        "ld",
+    ]
+    assert list(diag.columns) == expected_cols
+
+
+def test_influence_diagnostics_consistency(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    cox = CoxPH(ties="breslow").fit(y, df[["age", "sex"]])
+    diag = cox.influence_diagnostics(format="pandas")
+    np.testing.assert_allclose(diag["leverage"].to_numpy(), cox.residuals("leverage"), atol=1e-14)
+    np.testing.assert_allclose(
+        diag["martingale"].to_numpy(), cox.residuals("martingale"), atol=1e-14
+    )
+    np.testing.assert_allclose(diag["deviance"].to_numpy(), cox.residuals("deviance"), atol=1e-14)
+
+
+def test_influence_diagnostics_ld_nonnegative(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    cox = CoxPH(ties="breslow").fit(y, df[["age", "sex"]])
+    diag = cox.influence_diagnostics(format="pandas")
+    assert np.all(diag["ld"].to_numpy() >= -1e-14)
+
+
 def test_well_scaled_covariates_no_warning() -> None:
     """CoxPH.fit() should not warn when covariates are on comparable scales."""
     import warnings

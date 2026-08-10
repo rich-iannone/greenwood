@@ -167,6 +167,40 @@ Martingale and deviance residuals are most useful for spotting outliers or a non
 relationship. Schoenfeld residuals are the basis for the proportional hazards test. Score, dfbeta,
 and dfbetas residuals assess the influence of individual observations on the fitted coefficients.
 
+### Leverage
+
+Leverage measures how much each observation influences the fitted values. It is the diagonal of the
+hat matrix, computed as $h_i = L_i^\top V L_i$ where $L_i$ is the score residual for observation
+$i$ and $V$ is the variance-covariance matrix. Values near zero have little influence on the fit.
+Values close to one dominate it.
+
+```{python}
+# Leverage (hat-matrix diagonal): one value per observation
+cox.residuals("leverage")[:10]
+```
+
+The sum of all leverage values approximately equals the number of covariates (here, 2).
+
+### Influence diagnostics
+
+The `influence_diagnostics()` method combines leverage, residuals, and influence measures into a
+single table for identifying observations that are unusual, poorly fit, or disproportionately
+influential.
+
+```{python}
+# All influence diagnostics in one table
+cox.influence_diagnostics(format="polars")
+```
+
+The `ld` column is the likelihood displacement, which measures how much the log-likelihood would
+change if each observation were removed. It is the quadratic form
+$\Delta\hat{\beta}_i^\top V^{-1} \Delta\hat{\beta}_i$ using the dfbeta vector. Large values of `ld`
+flag observations whose removal would materially change the fitted coefficients. Combining `ld` with
+`leverage` and `deviance` gives a multi-dimensional view of influence: high leverage means the
+observation is unusual in covariate space, a large deviance residual means the outcome was
+unexpected given the model, and a large likelihood displacement means the observation actually
+pulled the coefficients.
+
 ## Baseline hazard and predicted survival
 
 Although the Cox model does not assume a shape for the baseline hazard, it can estimate one after
