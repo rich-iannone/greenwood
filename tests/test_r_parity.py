@@ -545,6 +545,9 @@ def test_cox_residuals_breslow_match_r() -> None:
         ssch["sex"].to_numpy(), fixture["scaledsch_sex"], what="scaled schoenfeld sex"
     )
 
+    lev = cox.residuals("leverage")
+    assert_allclose_to_r(lev, fixture["leverage"], what="leverage")
+
 
 @pytest.mark.parametrize("dist", ["weibull", "exponential", "lognormal", "loglogistic"])
 def test_aft_matches_r_survreg(dist: str) -> None:
