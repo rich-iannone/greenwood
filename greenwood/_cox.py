@@ -2268,7 +2268,16 @@ class CoxPH:
     # -- residuals & diagnostics ---------------------------------------------
 
     _RESIDUAL_TYPES = frozenset(
-        {"martingale", "deviance", "score", "schoenfeld", "scaledsch", "dfbeta", "dfbetas"}
+        {
+            "martingale",
+            "deviance",
+            "score",
+            "schoenfeld",
+            "scaledsch",
+            "dfbeta",
+            "dfbetas",
+            "leverage",
+        }
     )
 
     def residuals(self, type: str = "martingale", *, format: str | None = None) -> Any:
@@ -2294,16 +2303,20 @@ class CoxPH:
             One row per observation, one column per covariate.
             - `"dfbetas"`: Standardized dfbeta (dfbeta divided by the coefficient SE). Comparable
             across covariates on different scales.
+            - `"leverage"`: Hat-matrix diagonal. Measures each observation's influence on the
+            fitted values. Values near 0 have little leverage; values close to 1 dominate the fit.
+            One value per observation.
 
         format
             Output format for multi-column residual types: `None` (auto-detect), `"pandas"`,
-            `"polars"`, or `"pyarrow"`. Returns a numpy array for `"martingale"` and `"deviance"`.
+            `"polars"`, or `"pyarrow"`. Returns a numpy array for `"martingale"`, `"deviance"`,
+            and `"leverage"`.
 
         Returns
         -------
         ndarray or DataFrame
-            For `"martingale"` and `"deviance"`: a 1-D array (one value per observation). For all
-            other types: a DataFrame with one column per covariate.
+            For `"martingale"`, `"deviance"`, and `"leverage"`: a 1-D array (one value per
+            observation). For all other types: a DataFrame with one column per covariate.
 
         Examples
         --------
@@ -2355,8 +2368,60 @@ class CoxPH:
             dfbs = dfb / self.naive_std_error_[None, :]
             data = {name: dfbs[:, j] for j, name in enumerate(self.term_names_)}
             return to_dataframe(data, format=format)
+        if type == "leverage":
+            scores = self._score_residuals(self.coef_)
+            dfb = scores @ self.naive_vcov_
+            return np.sum(dfb * scores, axis=1)
         valid = "', '".join(sorted(self._RESIDUAL_TYPES))
         raise ValueError(f"Unknown residual type {type!r}; use one of '{valid}'.")
+
+    def influence_diagnostics(self, *, format: str | None = None) -> Any:
+        """Return a DataFrame of per-observation influence diagnostics.
+
+        Combines leverage, martingale residuals, deviance residuals, dfbeta, dfbetas, and an
+        approximate likelihood-displacement statistic into a single table for identifying
+        influential observations.
+
+        The likelihood displacement for observation $i$ is
+        $\\text{ld}_i = \\Delta\\hat{\\beta}_i^\\top \\, V^{-1} \\, \\Delta\\hat{\\beta}_i$
+        where $\\Delta\\hat{\\beta}_i$ is the dfbeta vector and $V$ is the naive variance-covariance
+        matrix.
+
+        Parameters
+        ----------
+        format
+            Output format: `None` (auto-detect), `"pandas"`, `"polars"`, or `"pyarrow"`.
+
+        Returns
+        -------
+        DataFrame
+            One row per observation with columns: `leverage`, `martingale`, `deviance`,
+            `dfbeta_<term>`, `dfbetas_<term>`, and `ld` (likelihood displacement).
+        """
+        scores = self._score_residuals(self.coef_)
+        dfb = scores @ self.naive_vcov_
+        dfbs = dfb / self.naive_std_error_[None, :]
+        leverage = np.sum(dfb * scores, axis=1)
+        mart = self._martingale_residuals()
+        event = self._event.astype(float)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            log_term = np.where(event > mart, np.log(event - mart), 0.0)
+        dev = np.sign(mart) * np.sqrt(-2.0 * (mart + event * log_term))
+
+        info_inv = np.linalg.solve(self.naive_vcov_, np.eye(self.naive_vcov_.shape[0]))
+        ld = np.sum(dfb @ info_inv * dfb, axis=1)
+
+        data: dict[str, Any] = {
+            "leverage": leverage,
+            "martingale": mart,
+            "deviance": dev,
+        }
+        for j, name in enumerate(self.term_names_):
+            data[f"dfbeta_{name}"] = dfb[:, j]
+        for j, name in enumerate(self.term_names_):
+            data[f"dfbetas_{name}"] = dfbs[:, j]
+        data["ld"] = ld
+        return to_dataframe(data, format=format)
 
     def _martingale_residuals(self) -> Array:
         """Martingale residuals: event_i - cumhaz_i."""
