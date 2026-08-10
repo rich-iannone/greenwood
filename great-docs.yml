@@ -139,6 +139,7 @@ reference:
       - plot_survival
       - plot_forest
       - plot_cif
+      - plot_influence
       - risk_table
 
   - title: Core kernel
