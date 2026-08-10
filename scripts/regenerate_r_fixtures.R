@@ -765,6 +765,10 @@ cox_residuals_breslow_fixture <- function() {
   event_mask <- lung$status == 2
   event_times <- sort(lung$time[event_mask])
 
+  # Leverage (hat-matrix diagonal): h_i = L_i' V L_i where L is the score residual
+  V <- cm$var
+  leverage <- rowSums((score %*% V) * score)
+
   list(
     martingale = unname(mart),
     deviance = unname(dev),
@@ -774,6 +778,7 @@ cox_residuals_breslow_fixture <- function() {
     dfbeta_sex = unname(dfb[, 2]),
     dfbetas_age = unname(dfbs[, 1]),
     dfbetas_sex = unname(dfbs[, 2]),
+    leverage = unname(leverage),
     scaledsch_age = unname(ssch[, 1]),
     scaledsch_sex = unname(ssch[, 2]),
     scaledsch_times = unname(event_times)
