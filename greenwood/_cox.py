@@ -33,9 +33,31 @@ from ._backends import to_dataframe
 if TYPE_CHECKING:
     from ._surv import Surv
 
-__all__ = ["CoxPH", "ZPHResult"]
+__all__ = ["CoxPH", "ZPHResult", "ZPHWindowResult"]
 
 Array = npt.NDArray[Any]
+
+
+@dataclass(frozen=True)
+class ZPHWindowResult:
+    """Test results for a single time window within a windowed proportional-hazards test.
+
+    Attributes
+    ----------
+    interval
+        The half-open time interval `(lower, upper]` that this window covers.
+    n_events
+        Number of events (Schoenfeld residuals) in this window.
+    per_term
+        Dictionary mapping each covariate name to `{chisq, df, p_value}` dict.
+    global_test
+        Dictionary with `{chisq, df, p_value}` for the joint test across all terms.
+    """
+
+    interval: tuple[float, float]
+    n_events: int
+    per_term: dict[str, dict[str, float]]
+    global_test: dict[str, float]
 
 
 @dataclass(frozen=True)
@@ -70,8 +92,8 @@ class ZPHResult:
 
     Examples
     --------
-    A `ZPHResult` comes from a fitted model's `cox_zph` method. Fit a Cox model to the
-    bundled `lung` dataset, run the proportional-hazards test, and print the result:
+    A `ZPHResult` comes from a fitted model's `cox_zph` method. Fit a Cox model to the bundled
+    `lung` dataset, run the proportional-hazards test, and print the result:
 
     ```{python}
     import greenwood as gw
@@ -90,15 +112,32 @@ class ZPHResult:
     transform: str
     per_term: dict[str, dict[str, float]]
     global_test: dict[str, float]
+    windows: list[ZPHWindowResult] | None = None
 
     def __repr__(self) -> str:
         rows = ", ".join(f"{k}: p={v['p_value']:.4g}" for k, v in self.per_term.items())
-        return (
+        base = (
             f"ZPHResult(transform={self.transform!r}, {rows}, "
             f"GLOBAL p={self.global_test['p_value']:.4g})"
         )
+        if self.windows is not None:
+            base += f"\n  {len(self.windows)} time windows"
+        return base
 
-    def _table_columns(self) -> dict[str, Any]:
+    def _table_columns(self, *, detail: str = "global") -> dict[str, Any]:
+        if detail == "windows" and self.windows is not None:
+            rows: list[dict[str, Any]] = []
+            for w in self.windows:
+                label = f"({w.interval[0]}, {w.interval[1]}]"
+                for k, v in w.per_term.items():
+                    rows.append({"window": label, "n_events": w.n_events, "term": k, **v})
+                rows.append(
+                    {"window": label, "n_events": w.n_events, "term": "GLOBAL", **w.global_test}
+                )
+            if not rows:  # pragma: no cover
+                return {}  # pragma: no cover
+            column_names = list(rows[0].keys())
+            return {name: [row[name] for row in rows] for name in column_names}
         rows = [{"term": k, **v} for k, v in self.per_term.items()]
         rows.append({"term": "GLOBAL", **self.global_test})
         if not rows:  # pragma: no cover
@@ -106,58 +145,37 @@ class ZPHResult:
         column_names = list(rows[0].keys())
         return {name: [row[name] for row in rows] for name in column_names}
 
-    def to_frame(self, *, format: str | None = None) -> Any:
-        """Return the test table as a DataFrame (one row per term plus GLOBAL).
-
-        The table contains proportional hazards test statistics for each covariate plus
-        a global test across all terms. One row represents one term in the model.
+    def to_frame(self, *, detail: str = "global", format: str | None = None) -> Any:
+        """Return the test table as a DataFrame.
 
         Parameters
         ----------
+        detail
+            Level of detail. `"global"` (default) returns the overall test (one row per term plus
+            GLOBAL). `"windows"` returns per-window results when `breaks` was used in `cox_zph()`.
+            Falls back to `"global"` when no windows are available.
         format
-            Output format: `None` (default), `"pandas"`, `"polars"`, or `"pyarrow"`. When
-            `None`, a backend is auto-detected (Polars, then Pandas, then PyArrow).
+            Output format: `None` (default), `"pandas"`, `"polars"`, or `"pyarrow"`.
 
         Returns
         -------
         pandas.DataFrame, polars.DataFrame, or pyarrow.Table
-            A table with columns for term, test statistic, p-value, and other diagnostics.
-            Includes a GLOBAL row.
-
-        Raises
-        ------
-        ImportError
-            If the requested (or, when auto-detecting, any) DataFrame library is not
-            installed.
+            A table with test statistics. With `detail="windows"`, includes `window` and `n_events`
+            columns.
 
         Examples
         --------
-        Fit a Cox model, run the proportional-hazards test, and export the test table as
-        a Polars frame:
-
         ```{python}
         import greenwood as gw
 
-        # Load data and fit a Cox model
         lung = gw.load_dataset("lung", backend="polars")
         y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
         cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
-        # Run the proportional-hazards test
         zph = cox.cox_zph()
-        # Export the test results as a Polars DataFrame
         zph.to_frame(format="polars")
         ```
-
-        The table shows the proportional hazards assumption test results for each term,
-        with the GLOBAL row testing the overall assumption. Request a different backend
-        with `format=`:
-
-        ```{python}
-        # Export as a pandas DataFrame instead
-        zph.to_frame(format="pandas")
-        ```
         """
-        return to_dataframe(self._table_columns(), format=format)
+        return to_dataframe(self._table_columns(detail=detail), format=format)
 
 
 _TIES = frozenset({"efron", "breslow"})
@@ -240,6 +258,41 @@ def _design_matrix(covariates: Any, data: Any = None) -> tuple[Array, list[str]]
     if not columns:
         raise ValueError("No covariates found.")
     return np.column_stack(columns), names
+
+
+def _zph_test(
+    residuals: list[Array],
+    covariances: list[Array],
+    centered_g: Array,
+    term_names: list[str],
+    df: int,
+) -> tuple[dict[str, dict[str, float]], dict[str, float]]:
+    """Grambsch-Therneau chi-square test from Schoenfeld residuals and transformed time."""
+    p = len(term_names)
+    u = np.zeros(p)
+    a = np.zeros((p, p))
+    c = np.zeros((p, p))
+    b = np.zeros((p, p))
+    for k in range(len(residuals)):
+        gc = centered_g[k]
+        v = covariances[k]
+        u += gc * residuals[k]
+        a += gc * gc * v
+        c += gc * v
+        b += v
+    var = a - c @ np.linalg.solve(b, c)
+
+    per_term: dict[str, dict[str, float]] = {}
+    for j, name in enumerate(term_names):
+        stat = float(u[j] ** 2 / var[j, j])
+        per_term[name] = {"chisq": stat, "df": 1, "p_value": float(chi2.sf(stat, 1))}
+    global_stat = float(u @ np.linalg.solve(var, u))
+    global_test = {
+        "chisq": global_stat,
+        "df": df,
+        "p_value": float(chi2.sf(global_stat, df)),
+    }
+    return per_term, global_test
 
 
 def _cox_terms(
@@ -2626,7 +2679,12 @@ class CoxPH:
                     covariances.append(cov)
         return residuals, times, covariances
 
-    def cox_zph(self, *, transform: str = "identity") -> ZPHResult:
+    def cox_zph(
+        self,
+        *,
+        transform: str = "identity",
+        breaks: list[float] | tuple[float, ...] | None = None,
+    ) -> ZPHResult:
         """Test the proportional-hazards assumption (Grambsch-Therneau).
 
         The Cox model assumes that the hazard ratio between any two subjects is constant over time
@@ -2651,13 +2709,21 @@ class CoxPH:
             probability scale.
             - `"rank"`: Use the rank of each event time (with average ranks for ties). Equivalent to
             a rank-based correlation test.
+        breaks
+            Time points at which to split the follow-up into windows. When provided, the test is run
+            within each resulting time interval in addition to the overall test, revealing where in
+            time the proportional-hazards assumption breaks down. For example, `breaks=[180, 365]`
+            produces three windows: `(0, 180]`, `(180, 365]`, and `(365, inf]`. Windows with fewer
+            than 2 events are skipped.
 
         Returns
         -------
         ZPHResult
             An object containing per-term test results (`per_term` dict) and a global test
             (`global_test` dict) across all covariates. Each includes chi-squared statistic, degrees
-            of freedom, and p-value. Access results via `.to_frame()` or dictionary keys.
+            of freedom, and p-value. When `breaks` is provided, the result also contains `windows`,
+            a list of `ZPHWindowResult` objects with per-window test statistics. Access results via
+            `.to_frame()` or `.to_frame(detail="windows")`.
 
         Details
         -------
@@ -2677,12 +2743,10 @@ class CoxPH:
         ```{python}
         import greenwood as gw
 
-        # Load data and fit a Cox model
         lung = gw.load_dataset("lung", backend="polars")
         y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
         cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
 
-        # Test the proportional-hazards assumption
         zph = cox.cox_zph()
         zph
         ```
@@ -2691,8 +2755,15 @@ class CoxPH:
         Pass `format=` to choose the backend (here, Polars):
 
         ```{python}
-        # Export the test statistics as a Polars DataFrame
         zph.to_frame(format="polars")
+        ```
+
+        Split the follow-up at day 180 and day 365 to test proportional hazards within each time
+        window. This reveals whether PH violations are concentrated early or late:
+
+        ```{python}
+        zph_w = cox.cox_zph(breaks=[180, 365])
+        zph_w.to_frame(detail="windows", format="polars")
         ```
         """
         _valid_transforms = ("identity", "log", "km", "rank")
@@ -2752,32 +2823,45 @@ class CoxPH:
             g = np.array([rank_map[float(ti)] for ti in t])
 
         centered = g - g.mean()
-        p = self.coef_.shape[0]
-        u = np.zeros(p)
-        a = np.zeros((p, p))
-        c = np.zeros((p, p))
-        b = np.zeros((p, p))
-        for k in range(len(residuals)):
-            gc = centered[k]
-            v = covariances[k]
-            u += gc * residuals[k]
-            a += gc * gc * v
-            c += gc * v
-            b += v
-        # Correct for beta having been estimated (the Schoenfeld residuals are constrained).
-        var = a - c @ np.linalg.solve(b, c)
+        per_term, global_test = _zph_test(
+            residuals, covariances, centered, self.term_names_, self.df_
+        )
 
-        per_term: dict[str, dict[str, float]] = {}
-        for j, name in enumerate(self.term_names_):
-            stat = float(u[j] ** 2 / var[j, j])
-            per_term[name] = {"chisq": stat, "df": 1, "p_value": float(chi2.sf(stat, 1))}
-        global_stat = float(u @ np.linalg.solve(var, u))
-        global_test = {
-            "chisq": global_stat,
-            "df": self.df_,
-            "p_value": float(chi2.sf(global_stat, self.df_)),
-        }
-        return ZPHResult(transform=transform, per_term=per_term, global_test=global_test)
+        windows: list[ZPHWindowResult] | None = None
+        if breaks is not None:
+            edges = sorted(set(breaks))
+            boundaries = [float("-inf"), *edges, float("inf")]
+            windows = []
+            for i in range(len(boundaries) - 1):
+                lo, hi = boundaries[i], boundaries[i + 1]
+                mask = (t > lo) & (t <= hi)
+                n_events = int(mask.sum())
+                if n_events < 2:
+                    continue
+                w_residuals = [residuals[k] for k in range(len(t)) if mask[k]]
+                w_covariances = [covariances[k] for k in range(len(t)) if mask[k]]
+                w_g = g[mask]
+                w_centered = w_g - w_g.mean()
+                w_per_term, w_global = _zph_test(
+                    w_residuals, w_covariances, w_centered, self.term_names_, self.df_
+                )
+                lo_display = 0.0 if np.isneginf(lo) else lo
+                hi_display = float("inf") if np.isposinf(hi) else hi
+                windows.append(
+                    ZPHWindowResult(
+                        interval=(lo_display, hi_display),
+                        n_events=n_events,
+                        per_term=w_per_term,
+                        global_test=w_global,
+                    )
+                )
+
+        return ZPHResult(
+            transform=transform,
+            per_term=per_term,
+            global_test=global_test,
+            windows=windows,
+        )
 
     def _score_residuals(self, beta: Array) -> Array:
         """Breslow-form score (dfbeta-precursor) residuals, one per observation.
