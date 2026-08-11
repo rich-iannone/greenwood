@@ -16,7 +16,7 @@ from . import data, summaries, viz
 from ._bootstrap import BootstrapResult, bootstrap
 from ._competing import AalenJohansen, FineGray, MultiState
 from ._core import EventTable, event_table
-from ._cox import CoxPH, ZPHResult, ZPHWindowResult
+from ._cox import CoxPH, SmoothHRResult, ZPHResult, ZPHWindowResult
 from ._flexible import RoystonParmar
 from ._metrics import (
     brier_score,
@@ -43,6 +43,7 @@ from .viz import (
     plot_cif,
     plot_forest,
     plot_influence,
+    plot_smooth_hr,
     plot_survival,
     risk_table,
     theme_forest,
@@ -69,6 +70,7 @@ __all__ = [
     "RoystonParmar",
     "ZPHResult",
     "ZPHWindowResult",
+    "SmoothHRResult",
     "AFT",
     "AalenJohansen",
     "FineGray",
@@ -99,6 +101,7 @@ __all__ = [
     "get_risk_table_frame",
     "plot_forest",
     "plot_influence",
+    "plot_smooth_hr",
     "theme_forest",
     "plot_cif",
     "load_dataset",
