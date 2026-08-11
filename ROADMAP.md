@@ -15,7 +15,6 @@ Regression model extensions and flexible semi-parametric approaches.
 
 Semi-parametric and parametric spline-based hazard regression.
 
-- Piecewise exponential models with optimal knot selection
 - Generalized gamma regression (encompasses Weibull, log-normal, exponential)
 
 ---
