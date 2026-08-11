@@ -126,6 +126,57 @@ Clinical milestones (30-day mortality, 1-year landmark) or quantiles of the even
 are both reasonable starting points. The global test result in the `ZPHResult` is unchanged by
 `breaks=`. It always reflects the full follow-up.
 
+### Smooth non-linear hazard ratio curves
+
+A Cox model reports a single coefficient per covariate, implying a linear relationship between the
+covariate and the log-hazard. But the true effect may be non-linear. For instance, age might have
+little effect in the middle of its range but increase the hazard steeply at extremes. The
+`smooth_hr()` method checks for this by refitting the model with a flexible B-spline basis for
+the covariate of interest and plotting the resulting log-hazard ratio curve.
+
+```{python}
+# Compute a smooth log-HR curve for age, holding sex at its mean
+shr = cox.smooth_hr("age")
+shr
+```
+
+The result is a `SmoothHRResult` containing the evaluation grid, log-HR, HR, and confidence bands.
+Pass it to `plot_smooth_hr()` for a publication-ready visualization.
+
+```{python}
+# Plot the smooth log-HR curve with 95% confidence band
+gw.plot_smooth_hr(shr)
+```
+
+The dashed line at zero marks the null (no effect). Where the confidence band includes zero, the
+effect is not statistically significant at the chosen confidence level. Here the curve is roughly
+linear, which is consistent with the single-coefficient model. A strongly curved shape would suggest
+that the linear specification is inadequate.
+
+You can also plot on the hazard ratio scale. This is often more interpretable for clinical audiences.
+
+```{python}
+# Same curve on the HR scale (HR = 1 is the reference)
+gw.plot_smooth_hr(shr, scale="hr")
+```
+
+The `df` parameter controls the flexibility of the spline. Higher values allow more wiggly curves.
+The default (`df=4`) is a good starting point. The `reference` parameter sets the covariate value
+where the log-HR is zero; it defaults to the weighted mean.
+
+```{python}
+# A more flexible curve (df=6) with age 50 as the reference
+shr6 = cox.smooth_hr("age", df=6, reference=50)
+gw.plot_smooth_hr(shr6)
+```
+
+The tidy DataFrame is available via `to_frame()` for further analysis.
+
+```{python}
+# Export the smooth curve as a Polars DataFrame
+shr.to_frame(format="polars")
+```
+
 ## Residuals
 
 Residuals reveal how individual observations relate to the fitted model. The `residuals()` method

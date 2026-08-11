@@ -11,14 +11,6 @@ public capability roadmap.
 
 Regression model extensions and flexible semi-parametric approaches.
 
-### Advanced Proportional-Hazards Tests
-
-Extended testing of the Cox model assumptions.
-
-- Smooth non-linear hazard ratio curves (`smoothHR`-style): spline-based visualization of covariate
-effects on the log-hazard scale, complementing `cox_zph()` for diagnosing non-linearity in
-continuous predictors
-
 ### Flexible Parametric Models
 
 Semi-parametric and parametric spline-based hazard regression.

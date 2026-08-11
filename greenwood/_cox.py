@@ -33,7 +33,7 @@ from ._backends import to_dataframe
 if TYPE_CHECKING:
     from ._surv import Surv
 
-__all__ = ["CoxPH", "ZPHResult", "ZPHWindowResult"]
+__all__ = ["CoxPH", "SmoothHRResult", "ZPHResult", "ZPHWindowResult"]
 
 Array = npt.NDArray[Any]
 
@@ -176,6 +176,95 @@ class ZPHResult:
         ```
         """
         return to_dataframe(self._table_columns(detail=detail), format=format)
+
+
+@dataclass(frozen=True)
+class SmoothHRResult:
+    """Smooth non-linear hazard ratio curve for a continuous covariate.
+
+    Contains the estimated log-hazard ratio (and hazard ratio) as a function of a
+    continuous covariate, computed by refitting the Cox model with a B-spline basis
+    expansion. The curve shows how the covariate's effect on the hazard varies across its
+    range, relative to a reference value.
+
+    Attributes
+    ----------
+    term
+        Name of the covariate whose smooth effect is estimated.
+    reference
+        Reference value of the covariate. The log-HR is zero at this point.
+    grid
+        Array of covariate values at which the curve is evaluated.
+    log_hr
+        Log hazard ratio at each grid point (relative to ``reference``).
+    hr
+        Hazard ratio at each grid point (``exp(log_hr)``).
+    log_hr_lower
+        Lower confidence bound on the log-HR.
+    log_hr_upper
+        Upper confidence bound on the log-HR.
+    hr_lower
+        Lower confidence bound on the HR (``exp(log_hr_lower)``).
+    hr_upper
+        Upper confidence bound on the HR (``exp(log_hr_upper)``).
+    df
+        Degrees of freedom of the spline (number of basis functions).
+    knots
+        Interior knot positions used for the B-spline basis.
+    adjustment
+        Dictionary of covariate names and the values they were held at.
+    """
+
+    term: str
+    reference: float
+    grid: Array
+    log_hr: Array
+    hr: Array
+    log_hr_lower: Array
+    log_hr_upper: Array
+    hr_lower: Array
+    hr_upper: Array
+    df: int
+    knots: Array
+    adjustment: dict[str, float]
+
+    def __repr__(self) -> str:
+        return (
+            f"SmoothHRResult(term={self.term!r}, reference={self.reference}, "
+            f"df={self.df}, grid={len(self.grid)} points)"
+        )
+
+    def _table_columns(self, *, scale: str = "log_hr") -> dict[str, Any]:
+        if scale == "hr":
+            return {
+                self.term: self.grid.tolist(),
+                "hr": self.hr.tolist(),
+                "hr_lower": self.hr_lower.tolist(),
+                "hr_upper": self.hr_upper.tolist(),
+            }
+        return {
+            self.term: self.grid.tolist(),
+            "log_hr": self.log_hr.tolist(),
+            "log_hr_lower": self.log_hr_lower.tolist(),
+            "log_hr_upper": self.log_hr_upper.tolist(),
+        }
+
+    def to_frame(self, *, scale: str = "log_hr", format: str | None = None) -> Any:
+        """Return the smooth curve as a DataFrame.
+
+        Parameters
+        ----------
+        scale
+            ``"log_hr"`` (default) returns log hazard ratios and confidence bounds.
+            ``"hr"`` returns hazard ratios (exponentiated).
+        format
+            Output format: ``None`` (default), ``"pandas"``, ``"polars"``, or ``"pyarrow"``.
+
+        Returns
+        -------
+        pandas.DataFrame, polars.DataFrame, or pyarrow.Table
+        """
+        return to_dataframe(self._table_columns(scale=scale), format=format)
 
 
 _TIES = frozenset({"efron", "breslow"})
@@ -2861,6 +2950,154 @@ class CoxPH:
             per_term=per_term,
             global_test=global_test,
             windows=windows,
+        )
+
+    def smooth_hr(
+        self,
+        term: str,
+        *,
+        df: int = 4,
+        n_grid: int = 200,
+        reference: float | None = None,
+    ) -> SmoothHRResult:
+        """Smooth non-linear hazard ratio curve for a continuous covariate.
+
+        Refits the Cox model replacing the linear term for ``term`` with a B-spline basis
+        expansion, then computes the log-hazard ratio (and confidence band) across the
+        covariate's range relative to a reference value. The result reveals non-linear
+        covariate effects that a single coefficient cannot capture.
+
+        Parameters
+        ----------
+        term
+            Name of the covariate to expand. Must be one of the fitted model's ``term_names_``.
+        df
+            Degrees of freedom for the spline (number of basis functions). Defaults to 4, which
+            gives a cubic spline with one interior knot. Higher values allow more flexible curves
+            but risk overfitting.
+        n_grid
+            Number of equally spaced points at which to evaluate the curve (default 200).
+        reference
+            Reference value for the covariate. The log-HR is zero at this point. Defaults to the
+            weighted mean of the covariate in the training data.
+
+        Returns
+        -------
+        SmoothHRResult
+            Contains the evaluation grid, log-HR, HR, and pointwise confidence bands. Use
+            ``to_frame()`` for a tidy DataFrame or pass the result to ``plot_smooth_hr()``.
+
+        Examples
+        --------
+        ```{python}
+        import greenwood as gw
+
+        lung = gw.load_dataset("lung", backend="polars")
+        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+
+        shr = cox.smooth_hr("age")
+        shr.to_frame(format="polars")
+        ```
+        """
+        from scipy.interpolate import BSpline
+
+        if term not in self.term_names_:
+            raise ValueError(
+                f"term {term!r} not found in model. Available terms: {self.term_names_!r}"
+            )
+
+        term_idx = self.term_names_.index(term)
+        x_term = self._x[:, term_idx]
+
+        if reference is None:
+            reference = float((self._weight * x_term).sum() / self._weight.sum())
+
+        x_min, x_max = float(x_term.min()), float(x_term.max())
+        grid = np.linspace(x_min, x_max, n_grid)
+
+        n_interior = df - 4 + 1
+        if n_interior < 0:
+            raise ValueError(f"df must be >= 3, got {df}")
+        quantiles = np.linspace(0, 1, n_interior + 2)[1:-1]
+        interior_knots = np.quantile(x_term, quantiles) if len(quantiles) > 0 else np.array([])
+
+        degree = 3
+        knots_full = np.concatenate(
+            [
+                np.repeat(x_min, degree + 1),
+                interior_knots,
+                np.repeat(x_max, degree + 1),
+            ]
+        )
+
+        basis_train = np.array(BSpline.design_matrix(x_term, knots_full, degree).toarray())
+        basis_grid = np.array(
+            BSpline.design_matrix(np.clip(grid, x_min, x_max), knots_full, degree).toarray()
+        )
+        basis_ref = np.array(
+            BSpline.design_matrix(
+                np.array([np.clip(reference, x_min, x_max)]), knots_full, degree
+            ).toarray()
+        )
+
+        other_idx = [i for i in range(len(self.term_names_)) if i != term_idx]
+        other_x = self._x[:, other_idx]
+        x_spline = np.column_stack([basis_train, other_x])
+        spline_names = [f"_spline_{j}" for j in range(basis_train.shape[1])] + [
+            self.term_names_[i] for i in other_idx
+        ]
+
+        from ._surv import Surv
+
+        has_late_entry = bool(np.any(np.isfinite(self._entry) & (self._entry > 0)))
+        w: Array | None = None
+        if not np.allclose(self._weight, 1.0):
+            w = self._weight
+        if has_late_entry:
+            surv = Surv.counting(start=self._entry, stop=self._exit, event=self._event, weights=w)
+        else:
+            surv = Surv.right(self._exit, event=self._event, weights=w)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            refit = CoxPH(ties=self.ties, conf_level=self.conf_level).fit(
+                surv,
+                x_spline,
+                robust=self.robust,
+            )
+        refit.term_names_ = spline_names
+
+        n_basis = basis_train.shape[1]
+        beta_spline = refit.coef_[:n_basis]
+        vcov_spline = refit.vcov_[:n_basis, :n_basis]
+
+        log_hr_grid = (basis_grid - basis_ref) @ beta_spline
+        diff = basis_grid - basis_ref
+        var_grid = np.sum(diff @ vcov_spline * diff, axis=1)
+        se_grid = np.sqrt(np.maximum(var_grid, 0.0))
+
+        z = float(norm.ppf(1.0 - (1.0 - self.conf_level) / 2.0))
+        log_hr_lower = log_hr_grid - z * se_grid
+        log_hr_upper = log_hr_grid + z * se_grid
+
+        other_means = (self._weight[:, None] * self._x[:, other_idx]).sum(
+            axis=0
+        ) / self._weight.sum()
+        adjustment = {self.term_names_[i]: float(other_means[j]) for j, i in enumerate(other_idx)}
+
+        return SmoothHRResult(
+            term=term,
+            reference=reference,
+            grid=grid,
+            log_hr=log_hr_grid,
+            hr=np.exp(log_hr_grid),
+            log_hr_lower=log_hr_lower,
+            log_hr_upper=log_hr_upper,
+            hr_lower=np.exp(log_hr_lower),
+            hr_upper=np.exp(log_hr_upper),
+            df=df,
+            knots=interior_knots,
+            adjustment=adjustment,
         )
 
     def _score_residuals(self, beta: Array) -> Array:
