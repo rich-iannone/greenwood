@@ -156,7 +156,7 @@ distribution multiplied through the transition matrix.
 
 A competing-risks model is a multi-state model with one initial state and several absorbing
 states and no intermediate transitions. If that is your situation, use
-[`AalenJohansen`](12-competing-risks.qmd) directly, which also gives standard errors for the
+[`AalenJohansen`](13-competing-risks.qmd) directly, which also gives standard errors for the
 cumulative incidence.
 :::
 
@@ -164,7 +164,7 @@ cumulative incidence.
 
 You can now estimate occupancy probabilities for general multi-state processes.
 
-- [Competing risks](12-competing-risks.qmd) covers the important special case with standard
+- [Competing risks](13-competing-risks.qmd) covers the important special case with standard
 errors and the Fine-Gray regression model.
 - [Survival data](03-survival-data.qmd) explains the counting-process response that
 underlies multi-state data.

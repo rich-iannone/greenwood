@@ -836,5 +836,5 @@ You can now fit a Cox model, read hazard ratios, and assess overall fit.
 computes residuals, predicts survival curves, and adds robust variance and stratification.
 - [Parametric survival models](11-parametric-models.qmd) offers an alternative modeling approach
 when you are willing to specify the shape of the survival distribution.
-- [Prediction performance](14-prediction-performance.qmd) evaluates how well a fitted model
+- [Prediction performance](15-prediction-performance.qmd) evaluates how well a fitted model
 discriminates and calibrates.
