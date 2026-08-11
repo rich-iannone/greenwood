@@ -94,6 +94,38 @@ samples. Complement the test by plotting scaled Schoenfeld residuals or by fitti
 models when you have reason to suspect a time-varying effect.
 :::
 
+### Localizing violations with time windows
+
+A global `cox_zph()` test tells you *whether* proportional hazards is violated, but not *when*. If
+a treatment helps early but fades later, you want to know where the transition happens. The
+`breaks=` parameter splits the follow-up into time windows and runs the Grambsch-Therneau test
+within each one.
+
+```{python}
+# Test PH within three windows: (0, 180], (180, 365], and (365, inf]
+zph_w = cox.cox_zph(breaks=[180, 365])
+zph_w
+```
+
+The printed summary shows the global result plus a count of windows. To see per-window statistics,
+pass `detail="windows"` to `to_frame()`.
+
+```{python}
+# Per-window test statistics, one row per term per window plus a GLOBAL row per window
+zph_w.to_frame(detail="windows", format="polars")
+```
+
+In this example the age effect shows a significant departure from proportional hazards in the first
+six months (p = 0.009 in the `(0, 180]` window) but not later. This pattern would be invisible in
+the overall test, where the age p-value is 0.71. The windowed view makes it actionable: you might
+consider a time-varying coefficient for age in the early period, or stratify the analysis at 180
+days.
+
+Windows with fewer than two events are automatically skipped. Choosing `breaks=` is a judgment call.
+Clinical milestones (30-day mortality, 1-year landmark) or quantiles of the event-time distribution
+are both reasonable starting points. The global test result in the `ZPHResult` is unchanged by
+`breaks=`. It always reflects the full follow-up.
+
 ## Residuals
 
 Residuals reveal how individual observations relate to the fitted model. The `residuals()` method
