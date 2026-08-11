@@ -372,3 +372,107 @@ def test_aft_loglogistic_predict_rmst_sigma_ge_1(lung_surv) -> None:  # type: ig
         assert np.all(result > 0)
     finally:
         aft.scale_ = original_scale
+
+
+# ---------------------------------------------------------------------------
+# Generalized gamma distribution
+# ---------------------------------------------------------------------------
+
+
+def test_gengamma_basic(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    gg = AFT("gengamma").fit(y, df[["age", "sex"]])
+    assert gg.dist == "gengamma"
+    assert gg.Q_ is not None
+    assert gg.Q_se_ is not None
+    assert gg.loglik_ >= AFT("weibull").fit(y, df[["age", "sex"]]).loglik_ - 0.01
+
+
+def test_gengamma_nests_weibull(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    """Generalized gamma should achieve at least the Weibull log-likelihood."""
+    df, y = lung_surv
+    gg = AFT("gengamma").fit(y, df[["age", "sex"]])
+    wb = AFT("weibull").fit(y, df[["age", "sex"]])
+    assert gg.loglik_ >= wb.loglik_ - 0.01
+
+
+def test_gengamma_repr(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    gg = AFT("gengamma").fit(y, df[["age", "sex"]])
+    r = repr(gg)
+    assert "gengamma" in r
+    assert "Q =" in r
+    assert "Scale" in r
+
+
+def test_gengamma_to_frame(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    gg = AFT("gengamma").fit(y, df[["age", "sex"]])
+    result = gg.to_frame(format="pandas")
+    assert len(result) == 3
+    assert "(Intercept)" in result["term"].values
+
+
+def test_gengamma_glance(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    gg = AFT("gengamma").fit(y, df[["age", "sex"]])
+    g = gw.glance(gg, format="pandas")
+    assert "Q" in g.columns
+    assert g["dist"].iloc[0] == "gengamma"
+
+
+def test_gengamma_predict_survival(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    gg = AFT("gengamma").fit(y, df[["age", "sex"]])
+    nd = df[["age", "sex"]].iloc[:3]
+    pred = gg.predict(nd, type="survival", times=[100, 365], format="pandas")
+    assert pred.shape[0] == 2
+    surv_vals = pred.iloc[:, 1:].values
+    assert np.all(surv_vals >= 0)
+    assert np.all(surv_vals <= 1)
+    assert np.all(np.diff(surv_vals, axis=0) <= 0)
+
+
+def test_gengamma_predict_quantile(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    gg = AFT("gengamma").fit(y, df[["age", "sex"]])
+    nd = df[["age", "sex"]].iloc[:3]
+    q = gg.predict(nd, type="quantile", p=[0.25, 0.5, 0.75], format="pandas")
+    assert q.shape == (3, 4)
+    vals = q.iloc[:, 1:].values
+    assert np.all(vals > 0)
+    assert np.all(np.diff(vals, axis=0) > 0)
+
+
+def test_gengamma_predict_lp(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    gg = AFT("gengamma").fit(y, df[["age", "sex"]])
+    lp = gg.predict(df[["age", "sex"]].iloc[:3], type="lp")
+    assert lp.shape == (3,)
+
+
+def test_gengamma_test_distributions(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    gg = AFT("gengamma").fit(y, df[["age", "sex"]])
+    result = gg.test_distributions(format="pandas")
+    assert len(result) == 4
+    assert set(result["dist"]) == {"weibull", "lognormal", "exponential", "loglogistic"}
+    assert all(result["p_value"] >= 0)
+    assert all(result["p_value"] <= 1)
+    assert all(result["lr_statistic"] >= 0)
+
+
+def test_gengamma_test_distributions_only_gengamma(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    wb = AFT("weibull").fit(y, df[["age", "sex"]])
+    with pytest.raises(ValueError, match="only available for"):
+        wb.test_distributions()
+
+
+def test_gengamma_coef_close_to_weibull(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    """When Q converges to 1, coefficients should match Weibull."""
+    df, y = lung_surv
+    gg = AFT("gengamma").fit(y, df[["age", "sex"]])
+    wb = AFT("weibull").fit(y, df[["age", "sex"]])
+    if abs(gg.Q_ - 1.0) < 0.1:  # type: ignore[operator]
+        np.testing.assert_allclose(gg.coef_, wb.coef_, atol=0.05)
