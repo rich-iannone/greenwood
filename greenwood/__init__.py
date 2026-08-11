@@ -13,7 +13,7 @@ from importlib.metadata import PackageNotFoundError, version
 
 from . import data, summaries, viz
 from ._bootstrap import BootstrapResult, bootstrap
-from ._competing import AalenJohansen, FineGray, MultiState
+from ._competing import AalenJohansen, FineGray, MultiState, grays_test
 from ._core import EventTable, event_table
 from ._cox import CoxPH, SmoothHRResult, ZPHResult, ZPHWindowResult
 from ._flexible import RoystonParmar
@@ -76,6 +76,7 @@ __all__ = [
     "AalenJohansen",
     "FineGray",
     "MultiState",
+    "grays_test",
     "calibration",
     "compare_distributions",
     "concordance_index",
