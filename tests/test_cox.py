@@ -324,6 +324,74 @@ def test_cox_zph_result_to_dataframe(lung_surv) -> None:  # type: ignore[no-unty
     assert "chisq" in table_pa.column_names
 
 
+def test_cox_zph_windowed_basic(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    cox = CoxPH().fit(y, df[["age", "sex"]])
+    zph = cox.cox_zph(breaks=[180, 365])
+
+    assert zph.windows is not None
+    assert len(zph.windows) == 3
+    assert zph.windows[0].interval == (0.0, 180.0)
+    assert zph.windows[1].interval == (180.0, 365.0)
+    assert zph.windows[2].interval == (365.0, float("inf"))
+
+    total_events = sum(w.n_events for w in zph.windows)
+    expected_events = int(cox._event.sum())
+    assert total_events == expected_events
+
+    for w in zph.windows:
+        assert w.n_events >= 2
+        assert set(w.per_term.keys()) == {"age", "sex"}
+        for v in w.per_term.values():
+            assert v["df"] == 1
+            assert 0.0 <= v["p_value"] <= 1.0
+        assert 0.0 <= w.global_test["p_value"] <= 1.0
+
+
+def test_cox_zph_windowed_to_frame(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    cox = CoxPH().fit(y, df[["age", "sex"]])
+    zph = cox.cox_zph(breaks=[300])
+
+    table = zph.to_frame(detail="windows", format="pandas")
+    assert "window" in table.columns
+    assert "n_events" in table.columns
+    assert "term" in table.columns
+    assert len(table) == 6  # 2 windows * (2 terms + GLOBAL)
+
+
+def test_cox_zph_no_breaks_no_windows(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    cox = CoxPH().fit(y, df[["age", "sex"]])
+    zph = cox.cox_zph()
+    assert zph.windows is None
+
+
+def test_cox_zph_windowed_repr(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    cox = CoxPH().fit(y, df[["age", "sex"]])
+    zph = cox.cox_zph(breaks=[200])
+    r = repr(zph)
+    assert "time windows" in r
+
+
+def test_cox_zph_windowed_skips_sparse_windows(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    cox = CoxPH().fit(y, df[["age", "sex"]])
+    zph = cox.cox_zph(breaks=[1, 2])
+    assert zph.windows is not None
+    for w in zph.windows:
+        assert w.n_events >= 2
+
+
+def test_cox_zph_windowed_detail_fallback(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    cox = CoxPH().fit(y, df[["age", "sex"]])
+    zph = cox.cox_zph()
+    table = zph.to_frame(detail="windows", format="pandas")
+    assert "window" not in table.columns
+
+
 def test_concordance_in_unit_interval(lung_surv) -> None:  # type: ignore[no-untyped-def]
     df, y = lung_surv
     c = CoxPH().fit(y, df[["age", "sex"]]).concordance()

@@ -411,6 +411,33 @@ def test_cox_zph_matches_r(ties: str, transform: str) -> None:
     assert_allclose_to_r(z.global_test["chisq"], fixture["global"]["chisq"], what="zph global")
 
 
+def test_cox_zph_windowed_matches_r() -> None:
+    df = gw.load_dataset("lung", backend="pandas")
+    y = Surv.right(df["time"], event=(df["status"] == 2))
+    fixture = load_fixture("cox_zph_windowed")
+    z = gw.CoxPH().fit(y, df[["age", "sex"]]).cox_zph(breaks=[180, 365])
+    assert z.windows is not None
+    assert len(z.windows) == len(fixture["windows"])
+    for w, fw in zip(z.windows, fixture["windows"], strict=True):
+        assert w.n_events == fw["n_events"]
+        for term in ("age", "sex"):
+            assert_allclose_to_r(
+                w.per_term[term]["chisq"],
+                fw["per_term"][term]["chisq"],
+                what=f"zph window {fw['interval']} {term}",
+            )
+            assert_allclose_to_r(
+                w.per_term[term]["p_value"],
+                fw["per_term"][term]["p_value"],
+                what=f"zph window {fw['interval']} {term} p",
+            )
+        assert_allclose_to_r(
+            w.global_test["chisq"],
+            fw["global_test"]["chisq"],
+            what=f"zph window {fw['interval']} global",
+        )
+
+
 @pytest.mark.parametrize("ties", ["breslow", "efron"])
 def test_cox_concordance_matches_r(ties: str) -> None:
     df = gw.load_dataset("lung", backend="pandas")
