@@ -18,14 +18,15 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import numpy.typing as npt
-from scipy.stats import norm
+from scipy.stats import chi2, norm
 
 from ._backends import to_dataframe
 
 if TYPE_CHECKING:
     from ._surv import Surv
+    from ._tests import TestResult
 
-__all__ = ["AalenJohansen", "FineGray", "MultiState"]
+__all__ = ["AalenJohansen", "FineGray", "MultiState", "grays_test"]
 
 Array = npt.NDArray[Any]
 
@@ -135,36 +136,216 @@ def _cif_block(
     return out
 
 
+def _grays_statistic(
+    time: Array,
+    status: Array,
+    labels: Array,
+    groups: list[Any],
+    target: int,
+) -> tuple[float, int, Array, Array]:
+    """Compute Gray's modified chi-square statistic for comparing CIF across groups.
+
+    Uses the subdistribution risk set: subjects with competing events remain at risk with IPCW
+    weights G(t-)/G(Ti-), matching the Fine-Gray convention.
+    """
+    n_groups = len(groups)
+
+    competing = (status != target) & (status > 0)
+    drop_times, drop_surv = _censoring_km(time, status)
+
+    def g_before(t: float) -> float:
+        idx = int(np.searchsorted(drop_times, t, side="left")) - 1
+        return float(drop_surv[idx]) if idx >= 0 else 1.0
+
+    g_before_i = np.array([g_before(float(ti)) for ti in time])
+
+    target_times = np.sort(np.unique(time[status == target]))
+
+    observed = np.zeros(n_groups)
+    expected = np.zeros(n_groups)
+    var = np.zeros((n_groups, n_groups))
+
+    for tj in target_times:
+        tj_f = float(tj)
+        g_tj = g_before(tj_f)
+
+        w = np.zeros_like(time, dtype=float)
+        w[time >= tj] = 1.0
+        mask = competing & (time < tj)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            w[mask] = np.where(g_before_i[mask] > 0, g_tj / g_before_i[mask], 0.0)
+
+        y_g = np.array([float(w[labels == g].sum()) for g in groups])
+        d_g = np.array(
+            [float(((time == tj) & (status == target) & (labels == g)).sum()) for g in groups]
+        )
+
+        y_total = y_g.sum()
+        d_total = d_g.sum()
+
+        if y_total <= 0 or d_total <= 0:
+            continue
+
+        observed += d_g
+        expected += y_g * d_total / y_total
+
+        if y_total > 1:
+            common = d_total * (y_total - d_total) / (y_total**2 * (y_total - 1))
+            for j in range(n_groups):
+                for k in range(n_groups):
+                    if j == k:
+                        var[j, k] += common * y_g[j] * (y_total - y_g[j])
+                    else:
+                        var[j, k] -= common * y_g[j] * y_g[k]
+
+    u = observed - expected
+    statistic = float(u[:-1] @ np.linalg.solve(var[:-1, :-1], u[:-1]))
+    return statistic, n_groups - 1, observed, expected
+
+
+def grays_test(surv: Surv, group: Any, *, cause: int | str = 1) -> TestResult:
+    r"""Compare cumulative incidence functions across groups using Gray's test.
+
+    Gray's test (1988) is the competing-risks analogue of the log-rank test. While the log-rank test
+    compares overall survival across groups, Gray's test compares the cumulative incidence function
+    (CIF) for a specific cause across groups, properly accounting for competing events.
+
+    The test uses the subdistribution hazard framework: subjects who experience a competing event
+    remain in the risk set with inverse-probability-of-censoring weights, reflecting the fact that
+    they can no longer experience the target cause but still contribute information about its
+    cumulative incidence.
+
+    Parameters
+    ----------
+    surv
+        A multi-state `Surv` response built with `Surv.multistate()`. Must have at least two causes.
+        Event codes are 0 for censoring and 1..K for causes.
+    group
+        Group labels, one per observation. Can be a Narwhals series, 1-D array, or Python sequence.
+        Must have the same length as `surv`. At least two groups are required.
+    cause
+        The cause of interest to compare across groups. Can be a state label (string) or an integer
+        cause code (1-indexed). Default is `1` (the first cause).
+
+    Returns
+    -------
+    TestResult
+        A result object with attributes:
+
+        - `statistic`: Chi-square test statistic.
+        - `df`: Degrees of freedom (number of groups minus one).
+        - `p_value`: Upper-tail chi-square p-value.
+        - `method`: `"Gray's test"` with the cause label.
+        - `observed`: Dictionary mapping group labels to observed event counts.
+        - `expected`: Dictionary mapping group labels to expected event counts.
+
+    Details
+    -------
+    Gray's test differs from the log-rank test applied to cause-specific hazards. The log-rank test
+    on cause-specific hazards answers "do the cause-specific hazard rates differ?" while Gray's test
+    answers "do the cumulative incidence functions differ?" These can give different conclusions
+    because the CIF depends on all cause-specific hazards, not just the target one.
+
+    The test uses the same IPCW weighting as the Fine-Gray model: subjects with competing events
+    before time t contribute weight G(t-)/G(Ti-), where G is the Kaplan-Meier estimate of the
+    censoring distribution.
+
+    Examples
+    --------
+    Test whether the cumulative incidence of plasma-cell malignancy (pcm) differs between sexes in
+    the `mgus2` dataset:
+
+    ```{python}
+    import greenwood as gw
+
+    mg = gw.load_dataset("mgus2", backend="pandas")
+    etime = mg["ptime"].where(mg["pstat"] == 1, mg["futime"])
+    cause = mg["pstat"].where(mg["pstat"] == 1, 2 * mg["death"])
+    cr = gw.Surv.multistate(etime, event=cause, states=("pcm", "death"))
+
+    gw.grays_test(cr, group=mg["sex"], cause="pcm")
+    ```
+
+    Test the other cause (death) across groups:
+
+    ```{python}
+    gw.grays_test(cr, group=mg["sex"], cause="death")
+    ```
+    """
+    from ._surv import _to_1d_array
+    from ._tests import TestResult
+
+    if not surv.is_multistate:
+        raise ValueError("grays_test needs a multi-state response; build it with Surv.multistate.")
+
+    assert surv.states is not None
+    if isinstance(cause, str):
+        if cause not in surv.states:
+            raise ValueError(f"cause {cause!r} is not one of the states {surv.states}.")
+        target = surv.states.index(cause) + 1
+        cause_label = cause
+    elif 1 <= cause <= len(surv.states):
+        target = cause
+        cause_label = surv.states[cause - 1]
+    else:
+        raise ValueError(f"cause {cause!r} is not a valid state label or code.")
+
+    labels_all = _to_1d_array(group, dtype=object)
+    if labels_all.shape[0] != surv.n:
+        raise ValueError("`group` must have the same length as the response.")
+
+    groups = sorted(set(labels_all.tolist()), key=lambda v: (str(type(v)), v))
+    if len(groups) < 2:
+        raise ValueError("grays_test needs at least two groups.")
+
+    time = surv.stop
+    status = surv.status
+
+    if np.count_nonzero(status == target) == 0:
+        raise ValueError(f"No events for cause {cause_label!r}; the test is undefined.")
+
+    statistic, df, observed, expected = _grays_statistic(time, status, labels_all, groups, target)
+    p_value = float(chi2.sf(statistic, df))
+
+    return TestResult(
+        statistic=statistic,
+        df=df,
+        p_value=p_value,
+        method=f"Gray's test (cause={cause_label!r})",
+        observed=dict(zip(groups, observed.tolist(), strict=True)),
+        expected=dict(zip(groups, expected.tolist(), strict=True)),
+    )
+
+
 class AalenJohansen:
     r"""Aalen-Johansen estimator of cumulative incidence functions for competing risks.
 
-    In survival analysis, competing risks occur when subjects can experience multiple types
-    of events (e.g., progression to malignancy vs. death from other causes), and experiencing
-    one event precludes the others. The Aalen-Johansen estimator extends the Kaplan-Meier
-    approach to this setting by estimating the cumulative incidence function (CIF) for each
-    cause: the probability of experiencing that specific cause by time t, accounting for
-    competition from other causes.
+    In survival analysis, competing risks occur when subjects can experience multiple types of
+    events (e.g., progression to malignancy vs. death from other causes), and experiencing one event
+    precludes the others. The Aalen-Johansen estimator extends the Kaplan-Meier approach to this
+    setting by estimating the cumulative incidence function (CIF) for each cause: the probability of
+    experiencing that specific cause by time t, accounting for competition from other causes.
 
     Unlike naive estimates that ignore censoring or competing events, the Aalen-Johansen CIF
-    correctly accounts for both. It is computed using transition probabilities between states
-    via generalized Kaplan-Meier estimates. Call `fit()` with a multi-state `Surv` response
-    (built with `Surv.multistate()`) to obtain estimates for each competing cause. Results
-    are returned as tidy DataFrames with one row per combination of stratum, cause, and time.
+    correctly accounts for both. It is computed using transition probabilities between states via
+    generalized Kaplan-Meier estimates. Call `fit()` with a multi-state `Surv` response (built with
+    `Surv.multistate()`) to obtain estimates for each competing cause. Results are returned as tidy
+    DataFrames with one row per combination of stratum, cause, and time.
 
     The estimator uses the formula $\mathrm{CIF}_j(t) = \sum_{s \le t} \hat{S}(s^-) P_{0j}(s)$,
-    where $\hat{S}(s^-)$ is the probability of being event-free before time $s$, and
-    $P_{0j}(s)$ is the transition probability from censoring to cause $j$. Confidence intervals
-    use the Aalen (Marubini-Valsecchi) delta-method variance, with a choice of CI transforms
-    matching R's `survfit` (`"plain"`, `"log"`, `"log-log"`).
+    where $\hat{S}(s^-)$ is the probability of being event-free before time $s$, and $P_{0j}(s)$ is
+    the transition probability from censoring to cause $j$. Confidence intervals use the Aalen
+    (Marubini-Valsecchi) delta-method variance, with a choice of CI transforms matching R's
+    `survfit` (`"plain"`, `"log"`, `"log-log"`).
 
     Parameters
     ----------
     conf_type
-        Confidence-interval transform: `"plain"` (default, linear Wald), `"log"`
-        (CI on log F, then back-transform), or `"log-log"` (CI on log(-log(F)),
-        the same transform R's `survfit` applies to the CIF).
+        Confidence-interval transform: `"plain"` (default, linear Wald), `"log"` (CI on log F, then
+        back-transform), or `"log-log"` (CI on log(-log(F)), the same transform R's `survfit`
+        applies to the CIF).
     conf_level
-        Confidence level for the confidence intervals (default is `0.95`).
+        Confidence level for the confidence intervals (the default is `0.95`).
 
     Returns
     -------
@@ -174,18 +355,17 @@ class AalenJohansen:
 
     Details
     -------
-    Call `fit(surv, by=...)` with a multi-state `Surv` response (built with
-    `Surv.multistate`, where `event` codes are 0 for censoring and `1..K` for the competing
-    causes). Results are tidy frames via `to_frame()` (optionally `format=`) with one row
-    per stratum, cause, and time.
+    Call `fit(surv, by=...)` with a multi-state `Surv` response (built with `Surv.multistate`, where
+    `event` codes are 0 for censoring and `1..K` for the competing causes). Results are tidy frames
+    via `to_frame()` (optionally `format=`) with one row per stratum, cause, and time.
 
     Examples
     --------
     The bundled `mgus2` dataset follows monoclonal-gammopathy patients who may progress to
     plasma-cell malignancy (`"pcm"`) or die first, a competing-risks setup. Build the
-    competing-risks response by combining the progression and death indicators into a single
-    cause code (0 censored, 1 progression, 2 death), then fit the estimator. Printing the
-    fitted object reports the final cumulative incidence for each cause.
+    competing-risks response by combining the progression and death indicators into a single cause
+    code (`0` censored, `1` progression, `2` death), then fit the estimator. Printing the fitted
+    object reports the final cumulative incidence for each cause.
 
     ```{python}
     import greenwood as gw
@@ -241,28 +421,28 @@ class AalenJohansen:
         r"""Fit cumulative incidence functions to a competing-risks response.
 
         Computes the cumulative incidence function (CIF) for each cause-of-interest from a
-        multi-state `Surv` response. Unlike Kaplan-Meier (which handles only a single event
-        type), the Aalen-Johansen estimator accounts for competing events: subjects who
-        experience a competing cause are removed from the risk set, preventing overly optimistic
-        estimates of the probability of experiencing the target cause. Results are stored in
-        the fitted object. Access them via `to_frame()` (optionally `format=`).
+        multi-state `Surv` response. Unlike Kaplan-Meier (which handles only a single event type),
+        the Aalen-Johansen estimator accounts for competing events: subjects who experience a
+        competing cause are removed from the risk set, preventing overly optimistic estimates of the
+        probability of experiencing the target cause. Results are stored in the fitted object.
+        Access them via `to_frame()` (optionally `format=`).
 
         The Aalen-Johansen estimator generalizes both Kaplan-Meier and Nelson-Aalen to the
         competing-risks setting. For each cause $j$, it estimates $F_j(t)$, the cumulative
-        probability of experiencing cause $j$ by time $t$, accounting for all competing causes.
-        The CIFs sum to the overall event probability at any time. Pass `by=` to produce
-        separate CIF estimates per group (stratified competing-risks analysis).
+        probability of experiencing cause $j$ by time $t$, accounting for all competing causes. The
+        CIFs sum to the overall event probability at any time. Pass `by=` to produce separate CIF
+        estimates per group (stratified competing-risks analysis).
 
         Parameters
         ----------
         surv
             A multi-state `Surv` response built with `Surv.multistate()`. Must have multiple
-            causes-of-interest. Raises `ValueError` if a single-event response is passed
-            (use `KaplanMeier` for that).
+            causes-of-interest. Raises `ValueError` if a single-event response is passed (use
+            `KaplanMeier` for that).
         by
-            Optional grouping variable (e.g., a column or array). Produces one set of
-            cumulative incidence functions per unique value of `by`. Default (`None`): fit
-            a single, unstratified set of CIFs.
+            Optional grouping variable (e.g., a column or array). Produces one set of cumulative
+            incidence functions per unique value of `by`. Default (`None`): fit a single,
+            unstratified set of CIFs.
 
         Returns
         -------
@@ -276,16 +456,16 @@ class AalenJohansen:
         The Aalen-Johansen estimator is a product-integral estimator of the CIF:
         $F_j(t) = \int \hat{S}_{-}(u) \, dM_j(u)$, where $\hat{S}_{-}(u)$ is the estimated
         probability of surviving (remaining uncensored) just before $u$, and $M_j(u)$ is the
-        counting process for cause $j$. It reduces to Kaplan-Meier when there is only one cause
-        and no censoring.
+        counting process for cause $j$. It reduces to Kaplan-Meier when there is only one cause and
+        no censoring.
 
         Left truncation is not yet supported. Multi-state responses must be built with
         `Surv.multistate()`.
 
         Examples
         --------
-        Fit cumulative incidence functions on the competing-risks `mgus2` dataset, where
-        subjects can experience plasma-cell malignancy (pcm) or death:
+        Fit cumulative incidence functions on the competing-risks `mgus2` dataset, where subjects
+        can experience plasma-cell malignancy (pcm) or death:
 
         ```{python}
         import greenwood as gw
@@ -375,15 +555,15 @@ class AalenJohansen:
     def to_frame(self, *, format: str | None = None) -> Any:
         """Return cumulative-incidence estimates as a DataFrame.
 
-        Exports the Aalen-Johansen fit with one row per cause and time point, including the
-        risk set, cumulative-incidence estimate, standard error, confidence limits, and
-        optional strata labels.
+        Exports the Aalen-Johansen fit with one row per cause and time point, including the risk
+        set, cumulative-incidence estimate, standard error, confidence limits, and optional strata
+        labels.
 
         Parameters
         ----------
         format
-            Output format: `None` (default), `"pandas"`, `"polars"`, or `"pyarrow"`. When
-            `None`, a backend is auto-detected (Polars, then Pandas, then PyArrow).
+            Output format: `None` (default), `"pandas"`, `"polars"`, or `"pyarrow"`. When `None`, a
+            backend is auto-detected (Polars, then Pandas, then PyArrow).
 
         Returns
         -------
@@ -394,13 +574,12 @@ class AalenJohansen:
         Raises
         ------
         ImportError
-            If the requested (or, when auto-detecting, any) DataFrame library is not
-            installed.
+            If the requested (or, when auto-detecting, any) DataFrame library is not installed.
 
         Examples
         --------
-        Fit the estimator on the competing-risks `mgus2` data and export the cumulative-
-        incidence functions as a Polars frame:
+        Fit the estimator on the competing-risks `mgus2` data and export the cumulative-incidence
+        functions as a Polars DataFrame:
 
         ```{python}
         import greenwood as gw
