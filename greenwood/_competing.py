@@ -142,65 +142,161 @@ def _grays_statistic(
     labels: Array,
     groups: list[Any],
     target: int,
+    rho: float = 0.0,
 ) -> tuple[float, int, Array, Array]:
-    """Compute Gray's modified chi-square statistic for comparing CIF across groups.
+    """Gray's test statistic.
 
-    Uses the subdistribution risk set: subjects with competing events remain at risk with IPCW
-    weights G(t-)/G(Ti-), matching the Fine-Gray convention.
+    Uses per-group all-cause KM and CIF to form the modified at-risk set, and a martingale-based
+    influence-function variance.
     """
-    n_groups = len(groups)
+    ng = len(groups)
+    ng1 = ng - 1
 
-    competing = (status != target) & (status > 0)
-    drop_times, drop_surv = _censoring_km(time, status)
+    order = np.argsort(time, kind="stable")
+    y = time[order]
+    raw = status[order]
+    m = np.where(raw == target, 1, np.where(raw > 0, 2, 0))
+    ig = np.array([groups.index(labels[i]) for i in order], dtype=int)
 
-    def g_before(t: float) -> float:
-        idx = int(np.searchsorted(drop_times, t, side="left")) - 1
-        return float(drop_surv[idx]) if idx >= 0 else 1.0
+    n = len(y)
+    rs = np.array([int((ig == j).sum()) for j in range(ng)])
 
-    g_before_i = np.array([g_before(float(ti)) for ti in time])
+    s = np.zeros(ng1)
+    v_tri = np.zeros(ng1 * (ng1 + 1) // 2)
 
-    target_times = np.sort(np.unique(time[status == target]))
+    f1m = np.zeros(ng)
+    f1 = np.zeros(ng)
+    skmm = np.ones(ng)
+    skm = np.ones(ng)
+    v3 = np.zeros(ng)
+    v2 = np.zeros((ng1, ng))
+    c_mat = np.zeros((ng, ng))
+    a_mat = np.zeros((ng, ng))
 
-    observed = np.zeros(n_groups)
-    expected = np.zeros(n_groups)
-    var = np.zeros((n_groups, n_groups))
+    fm = 0.0
 
-    for tj in target_times:
-        tj_f = float(tj)
-        g_tj = g_before(tj_f)
+    observed = np.zeros(ng)
+    expected = np.zeros(ng)
 
-        w = np.zeros_like(time, dtype=float)
-        w[time >= tj] = 1.0
-        mask = competing & (time < tj)
-        with np.errstate(divide="ignore", invalid="ignore"):
-            w[mask] = np.where(g_before_i[mask] > 0, g_tj / g_before_i[mask], 0.0)
+    ll = 0
+    while ll < n:
+        lu = ll
+        while lu + 1 < n and y[lu + 1] == y[ll]:
+            lu += 1
 
-        y_g = np.array([float(w[labels == g].sum()) for g in groups])
-        d_g = np.array(
-            [float(((time == tj) & (status == target) & (labels == g)).sum()) for g in groups]
-        )
+        d = np.zeros((3, ng), dtype=int)
+        for i in range(ll, lu + 1):
+            d[m[i], ig[i]] += 1
 
-        y_total = y_g.sum()
-        d_total = d_g.sum()
+        nd1 = int(d[1].sum())
+        nd2 = int(d[2].sum())
 
-        if y_total <= 0 or d_total <= 0:
+        if nd1 == 0 and nd2 == 0:
+            for i in range(ll, lu + 1):
+                rs[ig[i]] -= 1
+            ll = lu + 1
             continue
 
-        observed += d_g
-        expected += y_g * d_total / y_total
+        tr = 0.0
+        tq = 0.0
+        for i in range(ng):
+            if rs[i] <= 0:
+                continue
+            td = d[1, i] + d[2, i]
+            skm[i] = skmm[i] * (rs[i] - td) / rs[i]
+            f1[i] = f1m[i] + skmm[i] * d[1, i] / rs[i]
+            tr += rs[i] / skmm[i]
+            tq += rs[i] * (1.0 - f1m[i]) / skmm[i]
 
-        if y_total > 1:
-            common = d_total * (y_total - d_total) / (y_total**2 * (y_total - 1))
-            for j in range(n_groups):
-                for k in range(n_groups):
-                    if j == k:
-                        var[j, k] += common * y_g[j] * (y_total - y_g[j])
-                    else:
-                        var[j, k] -= common * y_g[j] * y_g[k]
+        f = fm + nd1 / tr if tr > 0 else fm
+        fb = (1.0 - fm) ** rho
 
-    u = observed - expected
-    statistic = float(u[:-1] @ np.linalg.solve(var[:-1, :-1], u[:-1]))
-    return statistic, n_groups - 1, observed, expected
+        a_mat[:] = 0.0
+        for i in range(ng):
+            if rs[i] <= 0:
+                continue
+            t1 = rs[i] / skmm[i]
+            a_mat[i, i] = fb * t1 * (1.0 - t1 / tr)
+            if a_mat[i, i] != 0:
+                c_mat[i, i] += a_mat[i, i] * nd1 / (tr * (1.0 - fm)) if (1.0 - fm) != 0 else 0.0
+            for j in range(i + 1, ng):
+                if rs[j] <= 0:
+                    continue
+                a_mat[i, j] = -fb * t1 * rs[j] / (skmm[j] * tr)
+                if a_mat[i, j] != 0:
+                    c_mat[i, j] += a_mat[i, j] * nd1 / (tr * (1.0 - fm)) if (1.0 - fm) != 0 else 0.0
+        for i in range(1, ng):
+            for j in range(i):
+                a_mat[i, j] = a_mat[j, i]
+                c_mat[i, j] = c_mat[j, i]
+
+        for i in range(ng1):
+            if rs[i] <= 0:
+                continue
+            e_i = nd1 * rs[i] * (1.0 - f1m[i]) / (skmm[i] * tq) if tq > 0 else 0.0
+            s[i] += fb * (d[1, i] - e_i)
+            observed[i] += d[1, i]
+            expected[i] += e_i
+        observed[ng - 1] += d[1, ng - 1]
+        if tq > 0:
+            expected[ng - 1] += nd1 * rs[ng - 1] * (1.0 - f1m[ng - 1]) / (skmm[ng - 1] * tq)
+
+        if nd1 > 0:
+            for k in range(ng):
+                if rs[k] <= 0:
+                    continue
+                t4 = 1.0 - (1.0 - f) / skm[k] if skm[k] > 0 else 1.0
+                t5 = 1.0 - (nd1 - 1) / (tr * skmm[k] - 1) if tr * skmm[k] > 1 else 1.0
+                t3 = t5 * skmm[k] * nd1 / (tr * rs[k])
+                v3[k] += t4 * t4 * t3
+                for i in range(ng1):
+                    t1 = a_mat[i, k] - t4 * c_mat[i, k]
+                    v2[i, k] += t1 * t4 * t3
+                    for j in range(i + 1):
+                        idx = i * (i + 1) // 2 + j
+                        t2 = a_mat[j, k] - t4 * c_mat[j, k]
+                        v_tri[idx] += t1 * t2 * t3
+
+        if nd2 > 0:
+            for k in range(ng):
+                if skm[k] <= 0 or d[2, k] <= 0:
+                    continue
+                t4 = (1.0 - f) / skm[k]
+                t5 = 1.0 - (d[2, k] - 1.0) / (rs[k] - 1.0) if rs[k] > 1 else 1.0
+                t3 = t5 * skmm[k] ** 2 * d[2, k] / rs[k] ** 2
+                v3[k] += t4 * t4 * t3
+                for i in range(ng1):
+                    t1 = t4 * c_mat[i, k]
+                    v2[i, k] -= t1 * t4 * t3
+                    for j in range(i + 1):
+                        idx = i * (i + 1) // 2 + j
+                        t2 = t4 * c_mat[j, k]
+                        v_tri[idx] += t1 * t2 * t3
+
+        for i in range(ll, lu + 1):
+            rs[ig[i]] -= 1
+        fm = f
+        f1m[:] = f1
+        skmm[:] = skm
+        ll = lu + 1
+
+    for i in range(ng1):
+        for j in range(i + 1):
+            idx = i * (i + 1) // 2 + j
+            for k in range(ng):
+                v_tri[idx] += c_mat[i, k] * c_mat[j, k] * v3[k]
+                v_tri[idx] += c_mat[i, k] * v2[j, k]
+                v_tri[idx] += c_mat[j, k] * v2[i, k]
+
+    vs = np.zeros((ng1, ng1))
+    for i in range(ng1):
+        for j in range(i + 1):
+            idx = i * (i + 1) // 2 + j
+            vs[i, j] = v_tri[idx]
+            vs[j, i] = vs[i, j]
+
+    statistic = float(s @ np.linalg.solve(vs, s))
+    return statistic, ng1, observed, expected
 
 
 def grays_test(surv: Surv, group: Any, *, cause: int | str = 1) -> TestResult:
