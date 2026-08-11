@@ -7,18 +7,6 @@ title: "Roadmap"
 Greenwood is built in dependency-ordered, individually shippable steps. This is the
 public capability roadmap.
 
-## Planned — Medium Term
-
-Regression model extensions and flexible semi-parametric approaches.
-
-### Flexible Parametric Models
-
-Semi-parametric and parametric spline-based hazard regression.
-
-- Generalized gamma regression (encompasses Weibull, log-normal, exponential)
-
----
-
 ## Planned — Long Term
 
 Advanced estimators for complex survival problems and specialized applications.
