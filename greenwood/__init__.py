@@ -3,9 +3,8 @@
 Narwhals-native, validated against R's `survival`, visualized with Altair and Great Tables.
 
 This release provides the `Surv` response object, the risk-set / event-table kernel, the
-non-parametric estimators (`KaplanMeier`, `NelsonAalen`), group comparison tests
-(`logrank_test()`), and interactive visualization (`plot_survival()` with aligned risk
-tables).
+non-parametric estimators (`KaplanMeier`, `NelsonAalen`), group comparison tests (`logrank_test()`),
+and interactive visualization (`plot_survival()` with aligned risk tables).
 """
 
 from __future__ import annotations
@@ -28,6 +27,7 @@ from ._metrics import (
 )
 from ._nonparametric import KaplanMeier, NelsonAalen
 from ._parametric import AFT
+from ._pem import PiecewiseExponential
 from ._penalized import CoxNet, CoxNetCVResult, cv_coxnet
 from ._power import logrank_n_events, logrank_power, logrank_sample_size
 from ._resample import cross_validate
@@ -72,6 +72,7 @@ __all__ = [
     "ZPHWindowResult",
     "SmoothHRResult",
     "AFT",
+    "PiecewiseExponential",
     "AalenJohansen",
     "FineGray",
     "MultiState",
