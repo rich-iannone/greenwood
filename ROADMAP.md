@@ -25,7 +25,6 @@ optimization to ensure non-negative hazards and proper survival functions
 
 Extended methods for cause-specific and multi-state analyses.
 
-- Gray's test for differences in cumulative incidence across groups
 - Variance estimation for multi-state transition probabilities
 - Pseudo-observation approach for CIF and multi-state occupancy regression
 - Custom estimands via pseudo-observations framework
