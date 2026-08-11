@@ -661,7 +661,45 @@ write_json_fixture(
   "multistate_mgus2"
 )
 
-# Gray's test needs the cmprsk package (not in this toolchain); planned next.
+# -- Gray's test via the cmprsk package -------------------------------------------
+# Gray's test compares cumulative incidence functions across groups.
+# R: cmprsk::cuminc() provides Gray's test as a byproduct of CIF estimation.
+
+if (requireNamespace("cmprsk", quietly = TRUE)) {
+  # Test CIF of pcm across sex groups
+  ci <- cmprsk::cuminc(mg$etime, mg$event, group = mg$sex)
+  # ci$Tests is a matrix: rows = causes, columns = stat, pv, df
+  grays_pcm <- list(
+    statistic = ci$Tests["1", "stat"],
+    p_value   = ci$Tests["1", "pv"],
+    df        = ci$Tests["1", "df"]
+  )
+  grays_death <- list(
+    statistic = ci$Tests["2", "stat"],
+    p_value   = ci$Tests["2", "pv"],
+    df        = ci$Tests["2", "df"]
+  )
+  write_json_fixture(
+    list(pcm = grays_pcm, death = grays_death),
+    "grays_test_mgus2_sex"
+  )
+
+  # Three-group test: age groups
+  mg$age_group <- ifelse(mg$age < 60, "young", ifelse(mg$age < 70, "mid", "old"))
+  ci3 <- cmprsk::cuminc(mg$etime, mg$event, group = mg$age_group)
+  grays_pcm_3 <- list(
+    statistic = ci3$Tests["1", "stat"],
+    p_value   = ci3$Tests["1", "pv"],
+    df        = ci3$Tests["1", "df"]
+  )
+  write_json_fixture(
+    list(pcm = grays_pcm_3),
+    "grays_test_mgus2_age"
+  )
+  cat("Gray's test fixtures written (cmprsk available)\n")
+} else {
+  cat("cmprsk not installed; skipping Gray's test fixtures\n")
+}
 
 # -- Prediction performance: IPCW Brier score (survival:::brier) --------------------
 
