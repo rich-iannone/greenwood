@@ -34,6 +34,7 @@ nav_icons:
     "Cox model diagnostics": stethoscope
     "Time-varying covariates": timer
     "Parametric survival models": waves
+    "Piecewise exponential models": layers
     "Competing risks": split
     "Multi-state models": network
     "Prediction performance": target
@@ -83,7 +84,13 @@ reference:
         members: true
       - name: ZPHResult
         members: true
+      - name: ZPHWindowResult
+        members: true
+      - name: SmoothHRResult
+        members: true
       - name: AFT
+        members: true
+      - name: PiecewiseExponential
         members: true
       - name: RoystonParmar
         members: true
@@ -140,6 +147,7 @@ reference:
       - plot_forest
       - plot_cif
       - plot_influence
+      - plot_smooth_hr
       - risk_table
 
   - title: Core kernel
