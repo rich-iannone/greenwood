@@ -16,7 +16,7 @@ from . import data, summaries, viz
 from ._bootstrap import BootstrapResult, bootstrap
 from ._competing import AalenJohansen, FineGray, MultiState
 from ._core import EventTable, event_table
-from ._cox import CoxPH, ZPHResult
+from ._cox import CoxPH, ZPHResult, ZPHWindowResult
 from ._flexible import RoystonParmar
 from ._metrics import (
     brier_score,
@@ -68,6 +68,7 @@ __all__ = [
     "cv_coxnet",
     "RoystonParmar",
     "ZPHResult",
+    "ZPHWindowResult",
     "AFT",
     "AalenJohansen",
     "FineGray",
