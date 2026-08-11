@@ -218,3 +218,83 @@ def test_multistate_infers_states() -> None:
     ms = MultiState().fit(start=[0, 0], stop=[1, 2], state=["a", "a"], event=["b", None])
     assert ms.states_ == ("a", "b")
     assert list(ms.to_frame(format="pandas").columns) == ["time", "a", "b"]
+
+
+# -- Gray's test -----------------------------------------------------------------
+
+
+def test_grays_test_basic() -> None:
+    df, y = _mgus2_cr()
+    result = gw.grays_test(y, group=df["sex"], cause="pcm")
+    assert result.statistic >= 0
+    assert 0 <= result.p_value <= 1
+    assert result.df == 1
+    assert result.method == "Gray's test (cause='pcm')"
+    assert len(result.observed) == 2
+    assert len(result.expected) == 2
+
+
+def test_grays_test_cause_by_code() -> None:
+    df, y = _mgus2_cr()
+    by_label = gw.grays_test(y, group=df["sex"], cause="pcm")
+    by_code = gw.grays_test(y, group=df["sex"], cause=1)
+    assert by_label.statistic == pytest.approx(by_code.statistic)
+    assert by_label.p_value == pytest.approx(by_code.p_value)
+
+
+def test_grays_test_death_cause() -> None:
+    df, y = _mgus2_cr()
+    result = gw.grays_test(y, group=df["sex"], cause="death")
+    assert result.statistic >= 0
+    assert result.method == "Gray's test (cause='death')"
+
+
+def test_grays_test_requires_multistate() -> None:
+    with pytest.raises(ValueError, match="multi-state"):
+        gw.grays_test(Surv.right([1, 2, 3], [1, 1, 1]), group=[1, 1, 2])
+
+
+def test_grays_test_invalid_cause() -> None:
+    _, y = _mgus2_cr()
+    with pytest.raises(ValueError, match="not a valid"):
+        gw.grays_test(y, group=np.ones(y.n, dtype=int), cause=99)
+
+
+def test_grays_test_unknown_cause_label() -> None:
+    _, y = _mgus2_cr()
+    with pytest.raises(ValueError, match="not one of the states"):
+        gw.grays_test(y, group=np.ones(y.n, dtype=int), cause="relapse")
+
+
+def test_grays_test_group_length_mismatch() -> None:
+    _, y = _mgus2_cr()
+    with pytest.raises(ValueError, match="same length"):
+        gw.grays_test(y, group=[1, 2])
+
+
+def test_grays_test_single_group() -> None:
+    _, y = _mgus2_cr()
+    with pytest.raises(ValueError, match="at least two"):
+        gw.grays_test(y, group=np.ones(y.n, dtype=int))
+
+
+def test_grays_test_no_target_events() -> None:
+    y = Surv.multistate([1, 2, 3, 4], event=[0, 2, 0, 2], states=("pcm", "death"))
+    with pytest.raises(ValueError, match="No events"):
+        gw.grays_test(y, group=[1, 1, 2, 2], cause="pcm")
+
+
+def test_grays_test_observed_expected_sum() -> None:
+    df, y = _mgus2_cr()
+    result = gw.grays_test(y, group=df["sex"], cause="pcm")
+    total_obs = sum(result.observed.values())
+    total_exp = sum(result.expected.values())
+    assert total_obs == pytest.approx(total_exp, rel=1e-10)
+
+
+def test_grays_test_three_groups() -> None:
+    df, y = _mgus2_cr()
+    age_group = np.where(df["age"] < 60, "young", np.where(df["age"] < 70, "mid", "old"))
+    result = gw.grays_test(y, group=age_group, cause="pcm")
+    assert result.df == 2
+    assert len(result.observed) == 3
