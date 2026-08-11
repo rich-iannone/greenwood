@@ -714,17 +714,37 @@ def test_grays_test_matches_r() -> None:
     y = Surv.multistate(etime, event=cause, states=("pcm", "death"))
     fixture = load_fixture("grays_test_mgus2_sex")
 
+    tol = dict(rtol=1e-6, atol=1e-6)
     result_pcm = gw.grays_test(y, group=df["sex"], cause="pcm")
-    assert_allclose_to_r(result_pcm.statistic, fixture["pcm"]["statistic"], what="gray pcm stat")
-    assert_allclose_to_r(result_pcm.p_value, fixture["pcm"]["p_value"], what="gray pcm p")
+    assert_allclose_to_r(
+        result_pcm.statistic, fixture["pcm"]["statistic"], what="gray pcm stat", **tol
+    )
+    assert_allclose_to_r(result_pcm.p_value, fixture["pcm"]["p_value"], what="gray pcm p", **tol)
     assert result_pcm.df == int(fixture["pcm"]["df"])
 
     result_death = gw.grays_test(y, group=df["sex"], cause="death")
     assert_allclose_to_r(
-        result_death.statistic, fixture["death"]["statistic"], what="gray death stat"
+        result_death.statistic, fixture["death"]["statistic"], what="gray death stat", **tol
     )
-    assert_allclose_to_r(result_death.p_value, fixture["death"]["p_value"], what="gray death p")
+    assert_allclose_to_r(
+        result_death.p_value, fixture["death"]["p_value"], what="gray death p", **tol
+    )
     assert result_death.df == int(fixture["death"]["df"])
+
+
+def test_grays_test_three_groups_matches_r() -> None:
+    df = gw.load_dataset("mgus2", backend="pandas")
+    etime = np.where(df["pstat"] == 1, df["ptime"], df["futime"])
+    cause = np.where(df["pstat"] == 1, 1, 2 * df["death"])
+    y = Surv.multistate(etime, event=cause, states=("pcm", "death"))
+    fixture = load_fixture("grays_test_mgus2_age")
+
+    age_group = np.where(df["age"] < 60, "young", np.where(df["age"] < 70, "mid", "old"))
+    tol = dict(rtol=1e-6, atol=1e-6)
+    result = gw.grays_test(y, group=age_group, cause="pcm")
+    assert_allclose_to_r(result.statistic, fixture["pcm"]["statistic"], what="gray age stat", **tol)
+    assert_allclose_to_r(result.p_value, fixture["pcm"]["p_value"], what="gray age p", **tol)
+    assert result.df == int(fixture["pcm"]["df"])
 
 
 def test_multistate_occupancy_matches_r() -> None:
