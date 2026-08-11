@@ -18,14 +18,15 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import numpy.typing as npt
-from scipy.stats import norm
+from scipy.stats import chi2, norm
 
 from ._backends import to_dataframe
 
 if TYPE_CHECKING:
     from ._surv import Surv
+    from ._tests import TestResult
 
-__all__ = ["AalenJohansen", "FineGray", "MultiState"]
+__all__ = ["AalenJohansen", "FineGray", "MultiState", "grays_test"]
 
 Array = npt.NDArray[Any]
 
@@ -135,36 +136,312 @@ def _cif_block(
     return out
 
 
+def _grays_statistic(
+    time: Array,
+    status: Array,
+    labels: Array,
+    groups: list[Any],
+    target: int,
+    rho: float = 0.0,
+) -> tuple[float, int, Array, Array]:
+    """Gray's test statistic.
+
+    Uses per-group all-cause KM and CIF to form the modified at-risk set, and a martingale-based
+    influence-function variance.
+    """
+    ng = len(groups)
+    ng1 = ng - 1
+
+    order = np.argsort(time, kind="stable")
+    y = time[order]
+    raw = status[order]
+    m = np.where(raw == target, 1, np.where(raw > 0, 2, 0))
+    ig = np.array([groups.index(labels[i]) for i in order], dtype=int)
+
+    n = len(y)
+    rs = np.array([int((ig == j).sum()) for j in range(ng)])
+
+    s = np.zeros(ng1)
+    v_tri = np.zeros(ng1 * (ng1 + 1) // 2)
+
+    f1m = np.zeros(ng)
+    f1 = np.zeros(ng)
+    skmm = np.ones(ng)
+    skm = np.ones(ng)
+    v3 = np.zeros(ng)
+    v2 = np.zeros((ng1, ng))
+    c_mat = np.zeros((ng, ng))
+    a_mat = np.zeros((ng, ng))
+
+    fm = 0.0
+
+    observed = np.zeros(ng)
+    expected = np.zeros(ng)
+
+    ll = 0
+    while ll < n:
+        lu = ll
+        while lu + 1 < n and y[lu + 1] == y[ll]:
+            lu += 1
+
+        d = np.zeros((3, ng), dtype=int)
+        for i in range(ll, lu + 1):
+            d[m[i], ig[i]] += 1
+
+        nd1 = int(d[1].sum())
+        nd2 = int(d[2].sum())
+
+        if nd1 == 0 and nd2 == 0:
+            for i in range(ll, lu + 1):
+                rs[ig[i]] -= 1
+            ll = lu + 1
+            continue
+
+        tr = 0.0
+        tq = 0.0
+        for i in range(ng):
+            if rs[i] <= 0:
+                continue
+            td = d[1, i] + d[2, i]
+            skm[i] = skmm[i] * (rs[i] - td) / rs[i]
+            f1[i] = f1m[i] + skmm[i] * d[1, i] / rs[i]
+            tr += rs[i] / skmm[i]
+            tq += rs[i] * (1.0 - f1m[i]) / skmm[i]
+
+        f = fm + nd1 / tr if tr > 0 else fm
+        fb = (1.0 - fm) ** rho
+
+        a_mat[:] = 0.0
+        for i in range(ng):
+            if rs[i] <= 0:
+                continue
+            t1 = rs[i] / skmm[i]
+            a_mat[i, i] = fb * t1 * (1.0 - t1 / tr)
+            if a_mat[i, i] != 0:
+                c_mat[i, i] += a_mat[i, i] * nd1 / (tr * (1.0 - fm)) if (1.0 - fm) != 0 else 0.0
+            for j in range(i + 1, ng):
+                if rs[j] <= 0:
+                    continue
+                a_mat[i, j] = -fb * t1 * rs[j] / (skmm[j] * tr)
+                if a_mat[i, j] != 0:
+                    c_mat[i, j] += a_mat[i, j] * nd1 / (tr * (1.0 - fm)) if (1.0 - fm) != 0 else 0.0
+        for i in range(1, ng):
+            for j in range(i):
+                a_mat[i, j] = a_mat[j, i]
+                c_mat[i, j] = c_mat[j, i]
+
+        for i in range(ng1):
+            if rs[i] <= 0:
+                continue
+            e_i = nd1 * rs[i] * (1.0 - f1m[i]) / (skmm[i] * tq) if tq > 0 else 0.0
+            s[i] += fb * (d[1, i] - e_i)
+            observed[i] += d[1, i]
+            expected[i] += e_i
+        observed[ng - 1] += d[1, ng - 1]
+        if tq > 0:
+            expected[ng - 1] += nd1 * rs[ng - 1] * (1.0 - f1m[ng - 1]) / (skmm[ng - 1] * tq)
+
+        if nd1 > 0:
+            for k in range(ng):
+                if rs[k] <= 0:
+                    continue
+                t4 = 1.0 - (1.0 - f) / skm[k] if skm[k] > 0 else 1.0
+                t5 = 1.0 - (nd1 - 1) / (tr * skmm[k] - 1) if tr * skmm[k] > 1 else 1.0
+                t3 = t5 * skmm[k] * nd1 / (tr * rs[k])
+                v3[k] += t4 * t4 * t3
+                for i in range(ng1):
+                    t1 = a_mat[i, k] - t4 * c_mat[i, k]
+                    v2[i, k] += t1 * t4 * t3
+                    for j in range(i + 1):
+                        idx = i * (i + 1) // 2 + j
+                        t2 = a_mat[j, k] - t4 * c_mat[j, k]
+                        v_tri[idx] += t1 * t2 * t3
+
+        if nd2 > 0:
+            for k in range(ng):
+                if skm[k] <= 0 or d[2, k] <= 0:
+                    continue
+                t4 = (1.0 - f) / skm[k]
+                t5 = 1.0 - (d[2, k] - 1.0) / (rs[k] - 1.0) if rs[k] > 1 else 1.0
+                t3 = t5 * skmm[k] ** 2 * d[2, k] / rs[k] ** 2
+                v3[k] += t4 * t4 * t3
+                for i in range(ng1):
+                    t1 = t4 * c_mat[i, k]
+                    v2[i, k] -= t1 * t4 * t3
+                    for j in range(i + 1):
+                        idx = i * (i + 1) // 2 + j
+                        t2 = t4 * c_mat[j, k]
+                        v_tri[idx] += t1 * t2 * t3
+
+        for i in range(ll, lu + 1):
+            rs[ig[i]] -= 1
+        fm = f
+        f1m[:] = f1
+        skmm[:] = skm
+        ll = lu + 1
+
+    for i in range(ng1):
+        for j in range(i + 1):
+            idx = i * (i + 1) // 2 + j
+            for k in range(ng):
+                v_tri[idx] += c_mat[i, k] * c_mat[j, k] * v3[k]
+                v_tri[idx] += c_mat[i, k] * v2[j, k]
+                v_tri[idx] += c_mat[j, k] * v2[i, k]
+
+    vs = np.zeros((ng1, ng1))
+    for i in range(ng1):
+        for j in range(i + 1):
+            idx = i * (i + 1) // 2 + j
+            vs[i, j] = v_tri[idx]
+            vs[j, i] = vs[i, j]
+
+    statistic = float(s @ np.linalg.solve(vs, s))
+    return statistic, ng1, observed, expected
+
+
+def grays_test(surv: Surv, group: Any, *, cause: int | str = 1) -> TestResult:
+    r"""Compare cumulative incidence functions across groups using Gray's test.
+
+    Gray's test (1988) is the competing-risks analogue of the log-rank test. While the log-rank test
+    compares overall survival across groups, Gray's test compares the cumulative incidence function
+    (CIF) for a specific cause across groups, properly accounting for competing events.
+
+    The test uses the subdistribution hazard framework: subjects who experience a competing event
+    remain in the risk set with inverse-probability-of-censoring weights, reflecting the fact that
+    they can no longer experience the target cause but still contribute information about its
+    cumulative incidence.
+
+    Parameters
+    ----------
+    surv
+        A multi-state `Surv` response built with `Surv.multistate()`. Must have at least two causes.
+        Event codes are 0 for censoring and 1..K for causes.
+    group
+        Group labels, one per observation. Can be a Narwhals series, 1-D array, or Python sequence.
+        Must have the same length as `surv`. At least two groups are required.
+    cause
+        The cause of interest to compare across groups. Can be a state label (string) or an integer
+        cause code (1-indexed). Default is `1` (the first cause).
+
+    Returns
+    -------
+    TestResult
+        A result object with attributes:
+
+        - `statistic`: Chi-square test statistic.
+        - `df`: Degrees of freedom (number of groups minus one).
+        - `p_value`: Upper-tail chi-square p-value.
+        - `method`: `"Gray's test"` with the cause label.
+        - `observed`: Dictionary mapping group labels to observed event counts.
+        - `expected`: Dictionary mapping group labels to expected event counts.
+
+    Details
+    -------
+    Gray's test differs from the log-rank test applied to cause-specific hazards. The log-rank test
+    on cause-specific hazards answers "do the cause-specific hazard rates differ?" while Gray's test
+    answers "do the cumulative incidence functions differ?" These can give different conclusions
+    because the CIF depends on all cause-specific hazards, not just the target one.
+
+    The test uses the same IPCW weighting as the Fine-Gray model: subjects with competing events
+    before time t contribute weight G(t-)/G(Ti-), where G is the Kaplan-Meier estimate of the
+    censoring distribution.
+
+    Examples
+    --------
+    Test whether the cumulative incidence of plasma-cell malignancy (pcm) differs between sexes in
+    the `mgus2` dataset:
+
+    ```{python}
+    import greenwood as gw
+
+    mg = gw.load_dataset("mgus2", backend="pandas")
+    etime = mg["ptime"].where(mg["pstat"] == 1, mg["futime"])
+    cause = mg["pstat"].where(mg["pstat"] == 1, 2 * mg["death"])
+    cr = gw.Surv.multistate(etime, event=cause, states=("pcm", "death"))
+
+    gw.grays_test(cr, group=mg["sex"], cause="pcm")
+    ```
+
+    Test the other cause (death) across groups:
+
+    ```{python}
+    gw.grays_test(cr, group=mg["sex"], cause="death")
+    ```
+    """
+    from ._surv import _to_1d_array
+    from ._tests import TestResult
+
+    if not surv.is_multistate:
+        raise ValueError("grays_test needs a multi-state response; build it with Surv.multistate.")
+
+    assert surv.states is not None
+    if isinstance(cause, str):
+        if cause not in surv.states:
+            raise ValueError(f"cause {cause!r} is not one of the states {surv.states}.")
+        target = surv.states.index(cause) + 1
+        cause_label = cause
+    elif 1 <= cause <= len(surv.states):
+        target = cause
+        cause_label = surv.states[cause - 1]
+    else:
+        raise ValueError(f"cause {cause!r} is not a valid state label or code.")
+
+    labels_all = _to_1d_array(group, dtype=object)
+    if labels_all.shape[0] != surv.n:
+        raise ValueError("`group` must have the same length as the response.")
+
+    groups = sorted(set(labels_all.tolist()), key=lambda v: (str(type(v)), v))
+    if len(groups) < 2:
+        raise ValueError("grays_test needs at least two groups.")
+
+    time = surv.stop
+    status = surv.status
+
+    if np.count_nonzero(status == target) == 0:
+        raise ValueError(f"No events for cause {cause_label!r}; the test is undefined.")
+
+    statistic, df, observed, expected = _grays_statistic(time, status, labels_all, groups, target)
+    p_value = float(chi2.sf(statistic, df))
+
+    return TestResult(
+        statistic=statistic,
+        df=df,
+        p_value=p_value,
+        method=f"Gray's test (cause={cause_label!r})",
+        observed=dict(zip(groups, observed.tolist(), strict=True)),
+        expected=dict(zip(groups, expected.tolist(), strict=True)),
+    )
+
+
 class AalenJohansen:
     r"""Aalen-Johansen estimator of cumulative incidence functions for competing risks.
 
-    In survival analysis, competing risks occur when subjects can experience multiple types
-    of events (e.g., progression to malignancy vs. death from other causes), and experiencing
-    one event precludes the others. The Aalen-Johansen estimator extends the Kaplan-Meier
-    approach to this setting by estimating the cumulative incidence function (CIF) for each
-    cause: the probability of experiencing that specific cause by time t, accounting for
-    competition from other causes.
+    In survival analysis, competing risks occur when subjects can experience multiple types of
+    events (e.g., progression to malignancy vs. death from other causes), and experiencing one event
+    precludes the others. The Aalen-Johansen estimator extends the Kaplan-Meier approach to this
+    setting by estimating the cumulative incidence function (CIF) for each cause: the probability of
+    experiencing that specific cause by time t, accounting for competition from other causes.
 
     Unlike naive estimates that ignore censoring or competing events, the Aalen-Johansen CIF
-    correctly accounts for both. It is computed using transition probabilities between states
-    via generalized Kaplan-Meier estimates. Call `fit()` with a multi-state `Surv` response
-    (built with `Surv.multistate()`) to obtain estimates for each competing cause. Results
-    are returned as tidy DataFrames with one row per combination of stratum, cause, and time.
+    correctly accounts for both. It is computed using transition probabilities between states via
+    generalized Kaplan-Meier estimates. Call `fit()` with a multi-state `Surv` response (built with
+    `Surv.multistate()`) to obtain estimates for each competing cause. Results are returned as tidy
+    DataFrames with one row per combination of stratum, cause, and time.
 
     The estimator uses the formula $\mathrm{CIF}_j(t) = \sum_{s \le t} \hat{S}(s^-) P_{0j}(s)$,
-    where $\hat{S}(s^-)$ is the probability of being event-free before time $s$, and
-    $P_{0j}(s)$ is the transition probability from censoring to cause $j$. Confidence intervals
-    use the Aalen (Marubini-Valsecchi) delta-method variance, with a choice of CI transforms
-    matching R's `survfit` (`"plain"`, `"log"`, `"log-log"`).
+    where $\hat{S}(s^-)$ is the probability of being event-free before time $s$, and $P_{0j}(s)$ is
+    the transition probability from censoring to cause $j$. Confidence intervals use the Aalen
+    (Marubini-Valsecchi) delta-method variance, with a choice of CI transforms matching R's
+    `survfit` (`"plain"`, `"log"`, `"log-log"`).
 
     Parameters
     ----------
     conf_type
-        Confidence-interval transform: `"plain"` (default, linear Wald), `"log"`
-        (CI on log F, then back-transform), or `"log-log"` (CI on log(-log(F)),
-        the same transform R's `survfit` applies to the CIF).
+        Confidence-interval transform: `"plain"` (default, linear Wald), `"log"` (CI on log F, then
+        back-transform), or `"log-log"` (CI on log(-log(F)), the same transform R's `survfit`
+        applies to the CIF).
     conf_level
-        Confidence level for the confidence intervals (default is `0.95`).
+        Confidence level for the confidence intervals (the default is `0.95`).
 
     Returns
     -------
@@ -174,18 +451,17 @@ class AalenJohansen:
 
     Details
     -------
-    Call `fit(surv, by=...)` with a multi-state `Surv` response (built with
-    `Surv.multistate`, where `event` codes are 0 for censoring and `1..K` for the competing
-    causes). Results are tidy frames via `to_frame()` (optionally `format=`) with one row
-    per stratum, cause, and time.
+    Call `fit(surv, by=...)` with a multi-state `Surv` response (built with `Surv.multistate`, where
+    `event` codes are 0 for censoring and `1..K` for the competing causes). Results are tidy frames
+    via `to_frame()` (optionally `format=`) with one row per stratum, cause, and time.
 
     Examples
     --------
     The bundled `mgus2` dataset follows monoclonal-gammopathy patients who may progress to
     plasma-cell malignancy (`"pcm"`) or die first, a competing-risks setup. Build the
-    competing-risks response by combining the progression and death indicators into a single
-    cause code (0 censored, 1 progression, 2 death), then fit the estimator. Printing the
-    fitted object reports the final cumulative incidence for each cause.
+    competing-risks response by combining the progression and death indicators into a single cause
+    code (`0` censored, `1` progression, `2` death), then fit the estimator. Printing the fitted
+    object reports the final cumulative incidence for each cause.
 
     ```{python}
     import greenwood as gw
@@ -241,28 +517,28 @@ class AalenJohansen:
         r"""Fit cumulative incidence functions to a competing-risks response.
 
         Computes the cumulative incidence function (CIF) for each cause-of-interest from a
-        multi-state `Surv` response. Unlike Kaplan-Meier (which handles only a single event
-        type), the Aalen-Johansen estimator accounts for competing events: subjects who
-        experience a competing cause are removed from the risk set, preventing overly optimistic
-        estimates of the probability of experiencing the target cause. Results are stored in
-        the fitted object. Access them via `to_frame()` (optionally `format=`).
+        multi-state `Surv` response. Unlike Kaplan-Meier (which handles only a single event type),
+        the Aalen-Johansen estimator accounts for competing events: subjects who experience a
+        competing cause are removed from the risk set, preventing overly optimistic estimates of the
+        probability of experiencing the target cause. Results are stored in the fitted object.
+        Access them via `to_frame()` (optionally `format=`).
 
         The Aalen-Johansen estimator generalizes both Kaplan-Meier and Nelson-Aalen to the
         competing-risks setting. For each cause $j$, it estimates $F_j(t)$, the cumulative
-        probability of experiencing cause $j$ by time $t$, accounting for all competing causes.
-        The CIFs sum to the overall event probability at any time. Pass `by=` to produce
-        separate CIF estimates per group (stratified competing-risks analysis).
+        probability of experiencing cause $j$ by time $t$, accounting for all competing causes. The
+        CIFs sum to the overall event probability at any time. Pass `by=` to produce separate CIF
+        estimates per group (stratified competing-risks analysis).
 
         Parameters
         ----------
         surv
             A multi-state `Surv` response built with `Surv.multistate()`. Must have multiple
-            causes-of-interest. Raises `ValueError` if a single-event response is passed
-            (use `KaplanMeier` for that).
+            causes-of-interest. Raises `ValueError` if a single-event response is passed (use
+            `KaplanMeier` for that).
         by
-            Optional grouping variable (e.g., a column or array). Produces one set of
-            cumulative incidence functions per unique value of `by`. Default (`None`): fit
-            a single, unstratified set of CIFs.
+            Optional grouping variable (e.g., a column or array). Produces one set of cumulative
+            incidence functions per unique value of `by`. Default (`None`): fit a single,
+            unstratified set of CIFs.
 
         Returns
         -------
@@ -276,16 +552,16 @@ class AalenJohansen:
         The Aalen-Johansen estimator is a product-integral estimator of the CIF:
         $F_j(t) = \int \hat{S}_{-}(u) \, dM_j(u)$, where $\hat{S}_{-}(u)$ is the estimated
         probability of surviving (remaining uncensored) just before $u$, and $M_j(u)$ is the
-        counting process for cause $j$. It reduces to Kaplan-Meier when there is only one cause
-        and no censoring.
+        counting process for cause $j$. It reduces to Kaplan-Meier when there is only one cause and
+        no censoring.
 
         Left truncation is not yet supported. Multi-state responses must be built with
         `Surv.multistate()`.
 
         Examples
         --------
-        Fit cumulative incidence functions on the competing-risks `mgus2` dataset, where
-        subjects can experience plasma-cell malignancy (pcm) or death:
+        Fit cumulative incidence functions on the competing-risks `mgus2` dataset, where subjects
+        can experience plasma-cell malignancy (pcm) or death:
 
         ```{python}
         import greenwood as gw
@@ -375,15 +651,15 @@ class AalenJohansen:
     def to_frame(self, *, format: str | None = None) -> Any:
         """Return cumulative-incidence estimates as a DataFrame.
 
-        Exports the Aalen-Johansen fit with one row per cause and time point, including the
-        risk set, cumulative-incidence estimate, standard error, confidence limits, and
-        optional strata labels.
+        Exports the Aalen-Johansen fit with one row per cause and time point, including the risk
+        set, cumulative-incidence estimate, standard error, confidence limits, and optional strata
+        labels.
 
         Parameters
         ----------
         format
-            Output format: `None` (default), `"pandas"`, `"polars"`, or `"pyarrow"`. When
-            `None`, a backend is auto-detected (Polars, then Pandas, then PyArrow).
+            Output format: `None` (default), `"pandas"`, `"polars"`, or `"pyarrow"`. When `None`, a
+            backend is auto-detected (Polars, then Pandas, then PyArrow).
 
         Returns
         -------
@@ -394,13 +670,12 @@ class AalenJohansen:
         Raises
         ------
         ImportError
-            If the requested (or, when auto-detecting, any) DataFrame library is not
-            installed.
+            If the requested (or, when auto-detecting, any) DataFrame library is not installed.
 
         Examples
         --------
-        Fit the estimator on the competing-risks `mgus2` data and export the cumulative-
-        incidence functions as a Polars frame:
+        Fit the estimator on the competing-risks `mgus2` data and export the cumulative-incidence
+        functions as a Polars DataFrame:
 
         ```{python}
         import greenwood as gw

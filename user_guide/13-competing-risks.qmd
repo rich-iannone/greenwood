@@ -241,6 +241,48 @@ The `conf_type=` and `conf_level=` parameters are independent: mix and match any
 your reporting requirements. All choices produce the same point estimate. Only the interval width
 and its scale transform differ.
 
+## Testing for group differences with Gray's test
+
+The Aalen-Johansen estimator and stratified CIF show the cumulative incidence curves by group, but
+do not formally test whether the groups differ. Gray's test (1988) is the competing-risks analogue
+of the log-rank test. It compares the cumulative incidence function for a specific cause across
+groups, properly accounting for competing events.
+
+```{python}
+# Rebuild the dataset and response
+mg = gw.load_dataset("mgus2", backend="polars")
+
+etime = np.where(mg["pstat"] == 1, mg["ptime"], mg["futime"])
+cause = np.where(mg["pstat"] == 1, 1, 2 * mg["death"])
+y = gw.Surv.multistate(etime, event=cause, states=("pcm", "death"))
+
+# Test whether the CIF of pcm differs between sexes
+gw.grays_test(y, group=mg["sex"], cause="pcm")
+```
+
+The test returns a `TestResult` with the chi-square statistic, degrees of freedom, p-value, and
+per-group observed vs. expected event counts. You can test any cause in the competing-risks response
+by changing the `cause=` argument.
+
+```{python}
+# Test the death cause instead
+gw.grays_test(y, group=mg["sex"], cause="death")
+```
+
+Gray's test uses the subdistribution risk set, the same framework behind the Fine-Gray model.
+Subjects who experience a competing event remain in the risk set with inverse-probability-of-
+censoring weights. This makes the test sensitive to differences in the cumulative incidence function
+itself, not just the cause-specific hazard rate. For comparing more than two groups, the test
+produces a multi-degree-of-freedom chi-square statistic.
+
+::: {.callout-note}
+## Gray's test vs. the log-rank test
+
+The log-rank test applied to cause-specific hazards asks "do the cause-specific hazard rates
+differ?". Gray's test asks "do the cumulative incidence functions differ?". These questions can give
+different answers because the CIF depends on all cause-specific hazards, not just the target one.
+:::
+
 ## Modeling with the Fine-Gray model
 
 The cumulative incidence function describes groups. To model how covariates affect the incidence of
