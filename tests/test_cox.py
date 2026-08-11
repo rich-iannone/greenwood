@@ -392,6 +392,81 @@ def test_cox_zph_windowed_detail_fallback(lung_surv) -> None:  # type: ignore[no
     assert "window" not in table.columns
 
 
+def test_smooth_hr_basic(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    cox = CoxPH().fit(y, df[["age", "sex"]])
+    shr = cox.smooth_hr("age")
+
+    assert shr.term == "age"
+    assert len(shr.grid) == 200
+    assert shr.grid[0] == float(df["age"].min())
+    assert shr.grid[-1] == float(df["age"].max())
+    assert shr.log_hr.shape == (200,)
+    assert shr.hr.shape == (200,)
+    assert shr.log_hr_lower.shape == (200,)
+    assert shr.log_hr_upper.shape == (200,)
+    assert np.all(shr.log_hr_lower <= shr.log_hr)
+    assert np.all(shr.log_hr <= shr.log_hr_upper)
+    assert np.allclose(shr.hr, np.exp(shr.log_hr))
+
+
+def test_smooth_hr_reference_is_zero(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    cox = CoxPH().fit(y, df[["age", "sex"]])
+    ref_val = 60.0
+    shr = cox.smooth_hr("age", reference=ref_val)
+    assert shr.reference == ref_val
+    closest = int(np.argmin(np.abs(shr.grid - ref_val)))
+    assert abs(shr.log_hr[closest]) < 0.1
+
+
+def test_smooth_hr_custom_df(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    cox = CoxPH().fit(y, df[["age", "sex"]])
+    shr = cox.smooth_hr("age", df=6)
+    assert shr.df == 6
+    assert len(shr.knots) == 3
+
+
+def test_smooth_hr_to_frame(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    cox = CoxPH().fit(y, df[["age", "sex"]])
+    shr = cox.smooth_hr("age", n_grid=50)
+
+    table = shr.to_frame(format="pandas")
+    assert "age" in table.columns
+    assert "log_hr" in table.columns
+    assert len(table) == 50
+
+    table_hr = shr.to_frame(scale="hr", format="pandas")
+    assert "hr" in table_hr.columns
+    assert "log_hr" not in table_hr.columns
+
+
+def test_smooth_hr_invalid_term(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    cox = CoxPH().fit(y, df[["age", "sex"]])
+    with pytest.raises(ValueError, match="not found"):
+        cox.smooth_hr("nonexistent")
+
+
+def test_smooth_hr_repr(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    cox = CoxPH().fit(y, df[["age", "sex"]])
+    shr = cox.smooth_hr("age")
+    r = repr(shr)
+    assert "age" in r
+    assert "200 points" in r
+
+
+def test_smooth_hr_adjustment(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    cox = CoxPH().fit(y, df[["age", "sex"]])
+    shr = cox.smooth_hr("age")
+    assert "sex" in shr.adjustment
+    assert "age" not in shr.adjustment
+
+
 def test_concordance_in_unit_interval(lung_surv) -> None:  # type: ignore[no-untyped-def]
     df, y = lung_surv
     c = CoxPH().fit(y, df[["age", "sex"]]).concordance()
