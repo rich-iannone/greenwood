@@ -15,7 +15,6 @@ Regression model extensions and flexible semi-parametric approaches.
 
 Extended testing of the Cox model assumptions.
 
-- Time-stratified tests for non-proportional hazards
 - Smooth non-linear hazard ratio curves (`smoothHR`-style): spline-based visualization of covariate
 effects on the log-hazard scale, complementing `cox_zph()` for diagnosing non-linearity in
 continuous predictors
