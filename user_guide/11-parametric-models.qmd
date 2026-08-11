@@ -326,6 +326,67 @@ aft.predict_expectation(newdata, tau=365, format="polars")
 aft.predict_expectation(newdata, tau=365, ci=True, format="polars")
 ```
 
+## Generalized gamma regression
+
+The four standard AFT distributions each impose a fixed hazard shape. Picking among them by AIC
+works, but it treats the candidates as unrelated. The generalized gamma distribution offers a more
+principled approach: it is a three-parameter family that nests Weibull (Q = 1), log-normal (Q
+approaches 0), and exponential (Q = 1, sigma = 1) as special cases. Fitting it gives a formal
+likelihood ratio test of whether a simpler sub-model is adequate.
+
+```{python}
+# Fit a generalized gamma AFT model
+lung = gw.load_dataset("lung", backend="polars")
+y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+
+gg = gw.AFT("gengamma").fit(y, lung[["age", "sex"]])
+gg
+```
+
+The extra shape parameter Q controls the distributional family. When Q is near 1 the data favor a
+Weibull shape. When it is near 0 the data favor a log-normal shape. Values far from both suggest
+that neither simple family is adequate.
+
+### Testing nested sub-models
+
+The `test_distributions()` method fits each nested sub-model (Weibull, log-normal, exponential,
+log-logistic) and compares it against the generalized gamma via a likelihood ratio test with one
+degree of freedom. A large p-value means the simpler model cannot be rejected.
+
+```{python}
+# Compare the generalized gamma against its nested sub-models
+gg.test_distributions(format="polars")
+```
+
+A non-significant p-value for a sub-model (say, Weibull) means the extra Q parameter does not
+improve the fit enough to justify the added complexity. You can then use the simpler model with
+confidence. The AIC column gives a penalty-adjusted comparison that also accounts for sample size.
+
+### Predictions
+
+Predictions from the generalized gamma work the same way as from any other AFT model. All prediction
+types (survival, quantiles, mean, RMST) are supported.
+
+```{python}
+# Predict survival probabilities at specific times
+newdata = pd.DataFrame({"age": [50, 70], "sex": [1, 1]})
+gg.predict(newdata, type="survival", times=[180, 365, 730], format="polars")
+```
+
+```{python}
+# Predicted median survival time
+gg.predict(newdata, type="quantile", p=0.5, format="polars")
+```
+
+::: {.callout-tip}
+## When to use the generalized gamma
+
+Use `"gengamma"` when you want a data-driven answer to "which parametric family fits best?" rather
+than comparing AICs across separate fits. If `test_distributions()` shows that Weibull is adequate
+(large p-value for Q = 1), use the simpler Weibull model for final inference. If no sub-model is
+adequate, the generalized gamma itself may be the right choice.
+:::
+
 ## Flexible parametric (Royston-Parmar) models
 
 The AFT distributions impose a fixed hazard shape. When none of them fits well but you still want
