@@ -1,0 +1,143 @@
+---
+title: Piecewise exponential models
+guide-section: "Regression"
+bread-crumbs: false
+---
+
+```{python}
+#| echo: false
+#| output: false
+import great_docs as gd
+
+gd.enable_tbl_preview(n_head=8, n_tail=3)
+```
+
+A piecewise exponential model (PEM) splits the time axis into intervals and assumes a constant
+hazard within each one. This sits between the Cox model, which leaves the baseline hazard entirely
+unspecified, and a fully parametric AFT, which assumes a specific distributional shape. The PEM
+estimates the baseline hazard directly as a step function, giving you interpretable rates in each
+time window while still allowing covariates to shift the hazard proportionally.
+
+Under the hood the PEM is equivalent to a Poisson GLM on an interval-expanded dataset, with
+`log(exposure)` as an offset. Greenwood fits it via Newton-Raphson (iteratively reweighted least
+squares), so no additional dependencies are needed.
+
+We use the lung dataset throughout:
+
+```{python}
+import greenwood as gw
+
+lung = gw.load_dataset("lung", backend="polars")
+y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+```
+
+## Fitting with manual break points
+
+Pass `breaks=` to set the times where the hazard is allowed to change. Three intervals are a common
+starting point: early, middle, and late follow-up.
+
+```{python}
+pem = gw.PiecewiseExponential(breaks=[180, 365]).fit(y, lung[["age", "sex"]])
+pem
+```
+
+The coefficient table looks like a Cox model. The `age` and `sex` effects are log hazard ratios,
+interpreted the same way. The difference is that the baseline hazard is now explicitly estimated
+rather than left nonparametric.
+
+```{python}
+pem.to_frame(format="polars")
+```
+
+## Inspecting the baseline hazard
+
+The `baseline_hazard()` method returns the estimated constant hazard rate in each interval.
+
+```{python}
+pem.baseline_hazard(format="polars")
+```
+
+Higher hazard values mean more events per unit time in that interval, adjusting for covariates.
+
+## Automatic knot selection
+
+When you do not supply `breaks=`, Greenwood tries 0 through `max_knots` internal knots and picks the
+set that minimizes the AIC (or BIC, with `knot_strategy="bic"`). Knot candidates are placed at
+quantiles of the event-time distribution.
+
+```{python}
+pem_auto = gw.PiecewiseExponential(knot_strategy="aic", max_knots=8).fit(
+    y, lung[["age", "sex"]]
+)
+pem_auto
+```
+
+If automatic selection returns zero breaks, the data do not support a more complex baseline than a
+single exponential. This is a useful model-selection result in itself.
+
+## Predicting survival curves
+
+The `predict()` method returns survival probabilities (or cumulative hazards) at specified times.
+
+```{python}
+pred = pem.predict(
+    newdata=lung[["age", "sex"]].head(3),
+    type="survival",
+    times=[100, 200, 365, 500, 730],
+    format="polars",
+)
+pred
+```
+
+The piecewise constant baseline means survival curves are piecewise exponential: straight segments
+on a log scale, with slope changes at the break points.
+
+Cumulative hazard is available with `type="cumhaz"`:
+
+```{python}
+cumhaz = pem.predict(
+    newdata=lung[["age", "sex"]].head(3),
+    type="cumhaz",
+    times=[100, 200, 365, 500, 730],
+    format="polars",
+)
+cumhaz
+```
+
+## Comparing with Cox
+
+PEM covariate estimates should be close to Cox when the interval structure is flexible enough.
+Large differences may signal that the proportional hazards assumption holds differently once the
+baseline is parameterized.
+
+```{python}
+cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+cox.to_frame(format="polars")
+```
+
+```{python}
+pem.to_frame(format="polars")
+```
+
+## Tidy summaries
+
+The PEM integrates with the tidy/glance framework:
+
+```{python}
+gw.tidy(pem, format="polars")
+```
+
+```{python}
+gw.glance(pem, format="polars")
+```
+
+## When to use a PEM
+
+The piecewise exponential model is a good choice when:
+
+- You want an explicit baseline hazard estimate (for reporting rates, not just relative effects).
+- The hazard has clear period structure (early mortality, treatment plateau, late relapse).
+- You need to extrapolate beyond observed follow-up but do not want to commit to a parametric
+distribution shape.
+- You are bridging between a nonparametric analysis and a fully parametric one and want to check
+sensitivity to baseline hazard assumptions.

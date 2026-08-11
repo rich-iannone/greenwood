@@ -37,9 +37,9 @@ any backend.
 [Comparing groups](06-comparing-groups.qmd), and [Visualizing survival](07-visualization.qmd).
 - **Regression**: [Cox regression](08-cox-regression.qmd),
 [Cox model diagnostics](09-cox-diagnostics.qmd), and [Parametric models](11-parametric-models.qmd).
-- **Multiple event types**: [Competing risks](12-competing-risks.qmd) and
-[Multi-state models](13-multi-state.qmd).
-- **Evaluation**: [Prediction performance](14-prediction-performance.qmd).
+- **Multiple event types**: [Competing risks](13-competing-risks.qmd) and
+[Multi-state models](14-multi-state.qmd).
+- **Evaluation**: [Prediction performance](15-prediction-performance.qmd).
 
 ## Next steps
 

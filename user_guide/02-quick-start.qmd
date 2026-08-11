@@ -131,4 +131,4 @@ part of the guide takes one of these steps further.
 [Visualizing survival](07-visualization.qmd) cover description and comparison.
 - [Cox regression](08-cox-regression.qmd) and
 [Parametric survival models](11-parametric-models.qmd) cover modeling, and
-[Prediction performance](14-prediction-performance.qmd) covers evaluation.
+[Prediction performance](15-prediction-performance.qmd) covers evaluation.

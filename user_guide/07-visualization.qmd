@@ -397,7 +397,7 @@ gw.plot_cif(
 A common mistake is to estimate the cumulative incidence of cause $k$ as $1 - \hat{S}_k(t)$, where
 $\hat{S}_k$ is the Kaplan-Meier curve treating all other causes as censored. This overestimates the
 CIF because censoring competing events inflates the at-risk set. The Aalen-Johansen CIF is the
-correct estimate. See [Competing risks](12-competing-risks.qmd) for the full explanation.
+correct estimate. See [Competing risks](13-competing-risks.qmd) for the full explanation.
 :::
 
 ::: {.callout-note}
@@ -405,7 +405,7 @@ correct estimate. See [Competing risks](12-competing-risks.qmd) for the full exp
 
 If the grouped curves look different, you can confirm the difference with Gray's test, the
 competing-risks analogue of the log-rank test. That is covered in
-[Competing risks](12-competing-risks.qmd).
+[Competing risks](13-competing-risks.qmd).
 :::
 
 ## Next steps
@@ -414,7 +414,7 @@ You can now produce and customize publication-quality survival figures.
 
 - [Cox regression](08-cox-regression.qmd) introduces models whose coefficients you will
 later visualize as forest plots.
-- [Competing risks](12-competing-risks.qmd) produces cumulative incidence curves, which are
+- [Competing risks](13-competing-risks.qmd) produces cumulative incidence curves, which are
 plotted the same way.
 - Revisit [Comparing groups](06-comparing-groups.qmd) to pair a grouped figure with a formal
 test.
