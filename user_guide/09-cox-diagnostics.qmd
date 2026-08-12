@@ -518,14 +518,14 @@ cox.concordance()
 
 The C-statistic summarizes discrimination across all observed pairs, but it does not say whether
 predicted probabilities are well calibrated. For a more complete picture of model performance,
-including calibration and the Brier score, see [Prediction performance](prediction-performance.qmd).
+including calibration and the Brier score, see [Prediction performance](15-prediction-performance.qmd).
 
 ## Next steps
 
 You can now validate a Cox model and use it to predict.
 
-- [Prediction performance](prediction-performance.qmd) extends discrimination and adds the Brier
+- [Prediction performance](15-prediction-performance.qmd) extends discrimination and adds the Brier
 score for calibration, including for external risk scores.
-- [Parametric survival models](parametric-models.qmd) provide an alternative when the proportional
+- [Parametric survival models](11-parametric-models.qmd) provide an alternative when the proportional
 hazards assumption is untenable.
-- Revisit [Cox regression](cox-regression.qmd) for the modeling basics if any of this is unfamiliar.
+- Revisit [Cox regression](08-cox-regression.qmd) for the modeling basics if any of this is unfamiliar.
