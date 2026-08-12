@@ -369,52 +369,66 @@ own baseline hazard.
 ## Testing for trend in ordered groups
 
 When your groups are naturally ordered as disease stages (I, II, III, IV), dose levels (low, medium,
-high), or educational attainment (primary, secondary, tertiary), a general log-rank test asks the
-right question but it doesn't use the information about ordering. A trend test is more powerful
-because it looks specifically for a linear relationship across the ordered levels.
+high), or performance-status grades, a general log-rank test asks the right question but it doesn't
+use the information about ordering. A trend test is more powerful because it looks specifically for
+a linear relationship across the ordered levels.
 
 The trend test compares a linear contrast across groups to see if survival changes systematically
 with group ordering. It produces a one-degree-of-freedom chi-square test, which is more powerful
 than the multi-degree-of-freedom log-rank test when groups are truly ordered.
 
+::: {.callout-important}
+## Trend tests require a real ordering
+
+Only use `trend_test()` on a variable with a genuine order, such as disease stage, dose level, or
+ECOG performance status. Applying it to a nominal variable such as histological cell type (where
+"squamous", "small cell", "adeno", and "large" have no inherent rank) still produces a number, but
+that number answers a question that makes no sense for the data, since whatever order you feed it
+becomes the alternative hypothesis being tested. For an unordered categorical variable, use
+`logrank_test()` for the omnibus comparison or `pairwise_logrank_test()` to localize the difference
+between specific pairs.
+:::
+
 ### Default scoring
 
-By default, groups are sorted and assigned scores 0, 1, 2, ..., (*k* - 1). Here we test whether
-survival differs across cell types in the `veteran` dataset, treating them as an ordered grouping.
+By default, groups are sorted and assigned scores 0, 1, 2, ..., (*k* - 1). We test whether survival
+in the `lung` dataset declines with worsening ECOG performance status (`ph.ecog`), which grades how
+much a cancer limits a patient's daily activity from 0 (fully active) to 3 (bedridden) and is a
+genuinely ordinal scale.
 
 ```{python}
-# Load the veteran dataset and build the response
-vet = gw.load_dataset("veteran", backend="polars")
-y = gw.Surv.right(vet["time"], event=vet["status"])
+import polars as pl
 
-# Test linear trend across ordered cell types (default integer scores)
-gw.trend_test(y, group=vet["celltype"])
+# Load the lung dataset and drop the small number of missing ECOG scores
+lung = gw.load_dataset("lung", backend="polars")
+lung_clean = lung.filter(pl.col("ph.ecog").is_not_null())
+y = gw.Surv.right(lung_clean["time"], event=(lung_clean["status"] == 2))
+
+# Test linear trend across ECOG grades (default integer scores 0, 1, 2, 3)
+gw.trend_test(y, group=lung_clean["ph.ecog"])
 ```
 
 The result is a `TestResult` with `df=1`, indicating a one-degree-of-freedom test. The `observed`
-and `expected` event counts per group reveal which groups contribute most to the trend, and the
+and `expected` event counts per grade reveal which levels contribute most to the trend, and the
 p-value tells you if the trend is statistically significant.
 
 ### Custom scoring
 
-If the ordering is not uniform (for instance, some groups have very different prognoses) you can
-specify custom scores. Scores must be numeric and reflect your belief about the ordering.
+The default integer scores assume the gap between each pair of adjacent grades matters equally. That
+may not hold: ECOG 3 (bedridden) is a much steeper decline from ECOG 2 than ECOG 1 is from ECOG 0.
+If you believe risk accelerates at the high end of the scale, you can supply your own scores. Scores
+must be numeric and reflect your belief about the spacing between levels, not just their order.
 
 ```{python}
-# Load the veteran dataset and build the response
-vet = gw.load_dataset("veteran", backend="polars")
+# Quadratic scores emphasize the steep decline from ECOG 2 to ECOG 3
+scores = {0: 0, 1: 1, 2: 4, 3: 9}
 
-y = gw.Surv.right(vet["time"], event=vet["status"])
-
-# Custom scores: adeno and large get weight 1, smallcell and squamous get weight 3
-scores = {"adeno": 1, "large": 1, "smallcell": 3, "squamous": 3}
-
-# Apply the custom scoring to reflect domain knowledge about group ordering
-gw.trend_test(y, group=vet["celltype"], scores=scores)
+# Apply the custom scoring to test a supra-linear decline in performance status
+gw.trend_test(y, group=lung_clean["ph.ecog"], scores=scores)
 ```
 
 Different scores can change the test statistic, reflecting your scientific hypothesis about how the
-groups are ordered.
+groups are spaced, not just ordered.
 
 ### Weighted trend tests
 
@@ -423,27 +437,20 @@ differences. With `rho=1`, the Peto-Peto variant emphasizes early event times, w
 you suspect early separation of the curves.
 
 ```{python}
-# Load the veteran dataset and build the response
-vet = gw.load_dataset("veteran", backend="polars")
-y = gw.Surv.right(vet["time"], event=vet["status"])
-
 # Peto-Peto trend test: rho=1 weights early events more heavily
-gw.trend_test(y, group=vet["celltype"], rho=1)
+gw.trend_test(y, group=lung_clean["ph.ecog"], rho=1)
 ```
 
 ### Stratified trend tests
 
 You can also stratify a trend test to control for confounders while still testing for linear trend
-across ordered groups. The stratified test computes the trend separately in each stratum and then
-combines the results.
+across ordered groups. Here we test for a trend across ECOG grades while controlling for sex, the
+same confounder the stratified RMST comparison above adjusted for. The stratified test computes the
+trend separately within each stratum and then combines the results.
 
 ```{python}
-# Load the veteran dataset and build the response
-vet = gw.load_dataset("veteran", backend="polars")
-y = gw.Surv.right(vet["time"], event=vet["status"])
-
-# Test trend in celltype while controlling for treatment group
-gw.trend_test(y, group=vet["celltype"], strata=vet["trt"])
+# Test trend in ECOG grade while controlling for sex
+gw.trend_test(y, group=lung_clean["ph.ecog"], strata=lung_clean["sex"])
 ```
 
 ::: {.callout-note}
