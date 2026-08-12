@@ -242,9 +242,9 @@ Episode splitting
   the times at which any covariate changes value, producing one row per interval with
   constant covariate values and the event indicator set to 1 only on the final row if the
   subject had an event. When multiple covariates change at different times, the split points
-  are the union of all change times for that subject. In Greenwood, `tvc_split()` automates
-  episode splitting from a long-format measurement table to a ready-to-fit counting-process
-  dataset.
+  are the union of all change times for that subject. In Greenwood, `split_episodes()`
+  automates episode splitting from a long-format measurement table to a ready-to-fit
+  counting-process dataset.
 
 Efron approximation
 : A method for handling **tied event times** in the Cox partial likelihood. When multiple
