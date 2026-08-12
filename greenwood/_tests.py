@@ -684,47 +684,49 @@ def trend_test(
 
     Examples
     --------
-    Test for linear trend in survival across ordered cell types:
+    Test for linear trend in survival across ordered ECOG performance-status grades:
 
     ```{python}
     import greenwood as gw
+    import polars as pl
 
     # Load data and build a right-censored response
-    vet = gw.load_dataset("veteran", backend="polars")
-    y = gw.Surv.right(vet["time"], event=vet["status"])
+    lung = gw.load_dataset("lung", backend="polars")
+    lung = lung.filter(pl.col("ph.ecog").is_not_null())
+    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 
-    # Default: cell types are sorted and assigned scores 0,1,2,3
-    result = gw.trend_test(y, group=vet["celltype"])
+    # Default: ECOG grades are sorted and assigned scores 0,1,2,3
+    result = gw.trend_test(y, group=lung["ph.ecog"])
     result
     ```
 
-    Use custom scores to give different weight to cell type severity:
+    Use custom scores to give different weight to each grade:
 
     ```{python}
-    # Scores: adeno and large are low-risk (0,1), smallcell and squamous are high-risk (3,4)
-    scores = {"adeno": 0, "large": 1, "smallcell": 3, "squamous": 4}
-    gw.trend_test(y, group=vet["celltype"], scores=scores)
+    # Quadratic scores emphasize the steep decline from ECOG 2 to ECOG 3
+    scores = {0: 0, 1: 1, 2: 4, 3: 9}
+    gw.trend_test(y, group=lung["ph.ecog"], scores=scores)
     ```
 
     Use Peto-Peto weighting to emphasize early differences:
 
     ```{python}
     # Peto-Peto: rho=1 gives more weight to early event times
-    gw.trend_test(y, group=vet["celltype"], rho=1, gamma=0)
+    gw.trend_test(y, group=lung["ph.ecog"], rho=1, gamma=0)
     ```
 
     Use Tarone-Ware weighting to emphasize late differences (gamma=1):
 
     ```{python}
     # Tarone-Ware: gamma=1 gives more weight to late event times
-    gw.trend_test(y, group=vet["celltype"], rho=0, gamma=1)
+    gw.trend_test(y, group=lung["ph.ecog"], rho=0, gamma=1)
     ```
 
-    Stratified by treatment to control for treatment effects:
+    Stratified by sex to control for a confounder:
 
     ```{python}
-    # Stratify by treatment arm to adjust for treatment effects
-    gw.trend_test(y, group=vet["celltype"], strata=vet["trt"])
+    # Stratify by sex to adjust for a known confounder
+    gw.trend_test(y, group=lung["ph.ecog"], strata=lung["sex"])
     ```
     """
     from ._surv import CensoringType, _to_1d_array
