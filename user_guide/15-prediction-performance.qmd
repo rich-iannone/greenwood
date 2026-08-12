@@ -83,20 +83,63 @@ gw.concordance_index(y, risk)
 ::: {.callout-note}
 ## Discrimination is only part of the story
 
-A model can rank subjects well yet produce poorly calibrated probabilities, or vice versa.
-The concordance index says nothing about whether predicted probabilities are numerically
-accurate. That is what the Brier score adds.
+A model can rank subjects well yet produce poorly calibrated probabilities, or vice versa. The
+concordance index says nothing about whether predicted probabilities are numerically accurate. That
+is what the Brier score adds.
+:::
+
+## Censoring-corrected discrimination: the IPCW concordance index
+
+Harrell's C treats censored subjects by simply excluding incomparable pairs. When censoring is light
+and roughly uniform, this works well. But when censoring is heavy (more than 30-40% of subjects) or
+differs across risk groups, the resulting estimate can be biased because the excluded pairs are not
+missing at random.
+
+The IPCW concordance index of Uno et al. (2011) corrects for this by weighting each concordant pair
+by the inverse of the censoring probability at the event time. Subjects whose events occur at times
+when many others have already been censored receive higher weight, compensating for the information
+lost to censoring. The result is a consistent estimator of the true concordance probability.
+
+```{python}
+lung = gw.load_dataset("lung", backend="polars")
+
+y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+
+risk = cox.predict(type="lp")
+gw.concordance_index_ipcw(y, risk)
+```
+
+In the `lung` dataset censoring is moderate (~28%), so the IPCW and Harrell values are close. In
+datasets with heavier censoring the two can diverge meaningfully. The IPCW version is the safer
+default for formal model comparisons.
+
+The `tau` parameter restricts the evaluation to events before a truncation time. This avoids
+instability from very small censoring probabilities in the tail, where few subjects remain under
+observation. It also focuses discrimination on a clinically relevant horizon.
+
+```{python}
+gw.concordance_index_ipcw(y, risk, tau=365.0)
+```
+
+::: {.callout-tip}
+## Choosing tau
+
+When the censoring survival function drops close to zero in the tail, the IPCW weights become very
+large and the estimate becomes unstable. Setting `tau` to the end of the clinically relevant
+follow-up window (for example, one year or five years) avoids this. The default is the largest
+observed event time, which works well when censoring remains moderate throughout follow-up.
 :::
 
 ## Accuracy: the Brier score
 
 The Brier score is the mean squared error between predicted survival probabilities and actual
-outcomes, evaluated at a fixed time. Lower is better. Because outcomes are censored, the
-score uses inverse-probability-of-censoring weighting so that censored subjects contribute
-correctly rather than being ignored or mishandled.
+outcomes, evaluated at a fixed time. Lower is better. Because outcomes are censored, the score uses
+inverse-probability-of-censoring weighting so that censored subjects contribute correctly rather
+than being ignored or mishandled.
 
-To compute it you supply predicted survival probabilities for each subject at each evaluation
-time. Start by asking the Cox model for survival curves at three fixed times.
+To compute it you supply predicted survival probabilities for each subject at each evaluation time.
+Start by asking the Cox model for survival curves at three fixed times.
 
 ```{python}
 lung = gw.load_dataset("lung", backend="polars")
@@ -109,10 +152,10 @@ surv = cox.predict(lung[["age", "sex"]], type="survival", times=times, format="p
 surv.shape
 ```
 
-The returned DataFrame has a leading `time` column and one column per subject, so its shape
-is 3 rows (the requested times) by 229 columns (228 subjects plus the time column). The
-Brier score wants the transpose of this: an array with one row per subject and one column per
-time. We drop the `time` column and transpose to get there.
+The returned DataFrame has a leading `time` column and one column per subject, so its shape is 3
+rows (the requested times) by 229 columns (228 subjects plus the time column). The Brier score wants
+the transpose of this: an array with one row per subject and one column per time. We drop the `time`
+column and transpose to get there.
 
 ```{python}
 probs = surv.drop("time").to_numpy().T
@@ -125,12 +168,12 @@ With the probabilities in the expected `(n_subjects, n_times)` shape, we can sco
 gw.brier_score(y, probs, times)
 ```
 
-The result is one Brier score per time. As a rule of thumb, a useful model should beat the
-Brier score of a model that ignores covariates, and a score approaching 0.25 at a time where
-about half the subjects have had the event is close to uninformative.
+The result is one Brier score per time. As a rule of thumb, a useful model should beat the Brier
+score of a model that ignores covariates, and a score approaching 0.25 at a time where about half
+the subjects have had the event is close to uninformative.
 
-To summarize accuracy across a range of times in a single number, integrate the Brier score
-over time.
+To summarize accuracy across a range of times in a single number, integrate the Brier score over
+time.
 
 ```{python}
 gw.integrated_brier_score(y, probs, times)
@@ -139,33 +182,32 @@ gw.integrated_brier_score(y, probs, times)
 ::: {.callout-tip}
 ## Evaluate on data the model did not see
 
-Computing these metrics on the same data used to fit the model gives optimistic results.
-For an honest assessment, evaluate on a held-out test set or use cross-validation, fitting on
-one part of the data and scoring predictions on another.
+Computing these metrics on the same data used to fit the model gives optimistic results. For an
+honest assessment, evaluate on a held-out test set or use cross-validation, fitting on one part of
+the data and scoring predictions on another.
 :::
 
 ## Time-dependent discrimination: AUC over time
 
-The concordance index summarises discrimination with a single number across all event times.
-But a marker's ability to separate early failures from survivors often changes over follow-up:
-a biomarker may identify six-month events well but lose its signal at five years.
-`time_dependent_auc()` gives you a per-horizon view by computing the area under the ROC curve
-separately at each requested time.
+The concordance index summarises discrimination with a single number across all event times. But a
+marker's ability to separate early failures from survivors often changes over follow-up: a biomarker
+may identify six-month events well but lose its signal at five years. `time_dependent_auc()` gives
+you a per-horizon view by computing the area under the ROC curve separately at each requested time.
 
 At each time $t$, the estimator compares *cases* (subjects who had an event by $t$) against
-*controls* (subjects still at risk after $t$), and measures how well the marker separates the
-two groups. Inverse-probability-of-censoring weights correct for the fact that not all
-subjects are observed to the end of follow-up. The marker must be on a scale where larger
-means higher risk, so, the Cox linear predictor is a natural choice.
+*controls* (subjects still at risk after $t$), and measures how well the marker separates the two
+groups. Inverse-probability-of-censoring weights correct for the fact that not all subjects are
+observed to the end of follow-up. The marker must be on a scale where larger means higher risk, so,
+the Cox linear predictor is a natural choice.
 
 ```{python}
 lp = cox.predict(type="lp")
 gw.time_dependent_auc(y, lp, times=[180, 365, 540])
 ```
 
-Each value is the AUC at one horizon. Values above 0.5 mean the marker separates early
-failures from survivors better than chance at that time. Values close to 0.5 signal that the
-marker has lost predictive power at that horizon.
+Each value is the AUC at one horizon. Values above 0.5 mean the marker separates early failures from
+survivors better than chance at that time. Values close to 0.5 signal that the marker has lost
+predictive power at that horizon.
 
 To reduce these to a single number for model comparison, `integrated_auc()` computes the
 time-averaged AUC using the trapezoidal rule over the supplied time range.
@@ -174,15 +216,15 @@ time-averaged AUC using the trapezoidal rule over the supplied time range.
 gw.integrated_auc(y, lp, times=[180, 365, 540])
 ```
 
-The integrated AUC plays the same role as the integrated Brier score: it collapses
-time-specific discrimination into one comparison-friendly number. Higher is better, and 0.5
-is the random baseline.
+The integrated AUC plays the same role as the integrated Brier score: it collapses time-specific
+discrimination into one comparison-friendly number. Higher is better, and 0.5 is the random
+baseline.
 
 ## Cross-validation
 
-Rather than splitting the data by hand, `cross_validate()` runs k-fold cross-validation for
-you: it fits a fresh copy of the model on each set of training folds and scores its
-predictions on the held-out fold. Pass an unfitted model, the response, and the covariates.
+Rather than splitting the data by hand, `cross_validate()` runs k-fold cross-validation for you: it
+fits a fresh copy of the model on each set of training folds and scores its predictions on the
+held-out fold. Pass an unfitted model, the response, and the covariates.
 
 ```{python}
 lung = gw.load_dataset("lung", backend="polars")
@@ -285,11 +327,11 @@ enough information to reliably distinguish the two models on this metric alone.
 
 ## Calibration
 
-Discrimination and the Brier score both summarize a model in a single number. Calibration
-asks a more detailed question: at a chosen time, do the predicted survival probabilities match
-what actually happens? `calibration()` groups subjects into bins by their predicted survival
-at a horizon, then compares the mean prediction in each bin against the observed survival, a
-Kaplan-Meier estimate for that bin.
+Discrimination and the Brier score both summarize a model in a single number. Calibration asks a
+more detailed question: at a chosen time, do the predicted survival probabilities match what
+actually happens? `calibration()` groups subjects into bins by their predicted survival at a
+horizon, then compares the mean prediction in each bin against the observed survival, a Kaplan-Meier
+estimate for that bin.
 
 ```{python}
 lung = gw.load_dataset("lung", backend="polars")
@@ -306,10 +348,10 @@ predicted = surv_at_year.slice(0, 1).drop("time").to_numpy().flatten()
 gw.calibration(y, predicted, 365.0, n_bins=5, format="polars")
 ```
 
-Each row is a bin, from the lowest predicted survival to the highest. A well-calibrated model
-has `observed` close to `predicted` in every bin, with the observed values inside their
-confidence limits. Systematic gaps, for example predictions consistently higher than observed,
-signal miscalibration even when discrimination is good.
+Each row is a bin, from the lowest predicted survival to the highest. A well-calibrated model has
+`observed` close to `predicted` in every bin, with the observed values inside their confidence
+limits. Systematic gaps, for example predictions consistently higher than observed, signal
+miscalibration even when discrimination is good.
 
 ::: {.callout-tip}
 ## Assess calibration out of sample too
