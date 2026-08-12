@@ -135,6 +135,7 @@ reference:
     desc: Concordance, IPCW Brier score, time-dependent AUC, and calibration.
     contents:
       - concordance_index
+      - concordance_index_ipcw
       - brier_score
       - integrated_brier_score
       - time_dependent_auc

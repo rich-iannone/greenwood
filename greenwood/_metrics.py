@@ -2,6 +2,8 @@
 
 - `concordance_index`: Harrell's C-statistic for an arbitrary risk score, validated against
   R's `survival::concordance`.
+- `concordance_index_ipcw`: Uno's IPCW-corrected concordance index, more robust under heavy
+  censoring than Harrell's C.
 - `brier_score` / `integrated_brier_score`: the inverse-probability-of-censoring-weighted
   (Graf) Brier score at fixed times and its time integral, validated against R's
   `survival:::brier`.
@@ -19,6 +21,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     "concordance_index",
+    "concordance_index_ipcw",
     "brier_score",
     "integrated_brier_score",
     "calibration",
@@ -150,6 +153,149 @@ def concordance_index(surv: Surv, risk: Any) -> float:
     return concordant / comparable
 
 
+def concordance_index_ipcw(
+    surv: Surv,
+    risk: Any,
+    *,
+    tau: float | None = None,
+) -> float:
+    r"""IPCW concordance index (Uno et al., 2011) for right-censored survival data.
+
+    An inverse-probability-of-censoring-weighted concordance index that corrects for censoring bias.
+    Unlike Harrell's C, the IPCW concordance is a consistent estimator of the true concordance
+    probability even under informative censoring patterns. It is more robust when censoring is heavy
+    or differs across risk groups.
+
+    **When to use this instead of** `concordance_index` (Harrell's C):
+
+    - When censoring exceeds 30-40% of subjects.
+    - When censoring patterns differ across risk groups (informative censoring).
+    - When comparing models across datasets with different censoring rates.
+
+    **Interpretation**: Same scale as Harrell's C (0.5 = random, 1.0 = perfect discrimination).
+    Values are comparable to Harrell's C under light censoring and diverge when censoring is heavy.
+
+    Parameters
+    ----------
+    surv
+        A right-censored `Surv` response (time-to-event data).
+    risk
+        Risk score for each subject, one per observation. Higher values indicate higher risk
+        (earlier expected failure). Accepts a 1-D array, Pandas/Polars Series, or Python sequence.
+    tau
+        Truncation time. Only pairs with an event before `tau` contribute. This avoids instability
+        from low censoring survival in the tail. Defaults to the largest observed event time.
+
+    Returns
+    -------
+    float
+        IPCW concordance index between 0 and 1.
+
+    Details
+    -------
+    **Uno estimator**: For each subject $i$ with an observed event at $T_i \le \tau$, compare
+    against all subjects $j$ with $T_j > T_i$:
+
+    $$
+    \hat{C}_{\mathrm{IPCW}} =
+    \frac{\displaystyle\sum_{i:\Delta_i=1,\,T_i \le \tau}
+          \hat{G}(T_i^-)^{-2}
+          \Bigl[\#\{j: T_j > T_i,\, \eta_j < \eta_i\}
+               + \tfrac{1}{2}\#\{j: T_j > T_i,\, \eta_j = \eta_i\}\Bigr]}
+         {\displaystyle\sum_{i:\Delta_i=1,\,T_i \le \tau}
+          \hat{G}(T_i^-)^{-2} \cdot \#\{j: T_j > T_i\}}
+    $$
+
+    where $\hat{G}$ is the Kaplan-Meier estimate of the censoring distribution.
+
+    **Truncation**: Restricting to events before $\tau$ avoids instability from dividing by very
+    small censoring probabilities in the tail. The default $\tau$ is the largest event time. Set it
+    explicitly to the maximum follow-up of interest.
+
+    References
+    ----------
+    Uno H., Cai T., Pencina M.J., D'Agostino R.B., Wei L.J. (2011). On the C-statistics for
+    evaluating overall adequacy of risk prediction procedures with censored survival data.
+    *Statistics in Medicine*, 30(10), 1105-1117.
+
+    Examples
+    --------
+    Fit a Cox model on the `lung` dataset and compute the IPCW concordance:
+
+    ```{python}
+    import greenwood as gw
+
+    lung = gw.load_dataset("lung", backend="polars")
+    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+    cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+
+    lp = cox.predict(type="lp")
+
+    # Compare Harrell's C with IPCW C
+    c_harrell = gw.concordance_index(y, lp)
+    c_ipcw = gw.concordance_index_ipcw(y, lp)
+    print(f"Harrell C: {c_harrell:.4f}")
+    print(f"IPCW C:    {c_ipcw:.4f}")
+    ```
+
+    Truncate at 1 year to focus on short-term discrimination:
+
+    ```{python}
+    c_1yr = gw.concordance_index_ipcw(y, lp, tau=365.0)
+    print(f"IPCW C (1-year): {c_1yr:.4f}")
+    ```
+    """
+    from ._surv import _to_1d_array
+
+    scores = _to_1d_array(risk)
+    T = surv.stop
+    evt = surv.event.astype(bool)
+    n = surv.n
+    if scores.shape[0] != n:
+        raise ValueError("`risk` must have the same length as the response.")
+
+    if tau is None:
+        event_times = T[evt]
+        if event_times.shape[0] == 0:
+            raise ValueError("No events in the data.")
+        tau = float(event_times.max())
+
+    g_times, g_surv = _censoring_survival(surv)
+
+    def _g_left(t_arr: Array) -> Array:
+        if g_times.shape[0] == 0:
+            return np.ones(len(t_arr))
+        idx = np.searchsorted(g_times, t_arr, side="left") - 1
+        return np.where(idx >= 0, g_surv[idx.clip(min=0)], 1.0)
+
+    case_mask = evt & (tau >= T)
+    if not case_mask.any():
+        raise ValueError(f"No events before tau={tau}.")
+
+    T_case = T[case_mask]
+    eta_case = scores[case_mask]
+
+    g_case = _g_left(T_case)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        w = np.where(g_case > 0, 1.0 / g_case**2, 0.0)
+
+    numerator = 0.0
+    denominator = 0.0
+    for i in range(T_case.shape[0]):
+        later = T_case[i] < T
+        n_later = int(later.sum())
+        if n_later == 0:
+            continue
+        conc = float(np.sum(eta_case[i] > scores[later]))
+        conc += 0.5 * float(np.sum(eta_case[i] == scores[later]))
+        numerator += w[i] * conc
+        denominator += w[i] * n_later
+
+    if denominator == 0.0:
+        raise ValueError("No comparable pairs found.")
+    return numerator / denominator
+
+
 def _censoring_survival(surv: Surv) -> tuple[Array, Array]:
     from ._competing import _censoring_km
 
@@ -160,36 +306,36 @@ def _censoring_survival(surv: Surv) -> tuple[Array, Array]:
 def brier_score(surv: Surv, survival_prob: Any, times: Any) -> Array:
     r"""IPCW (Graf) Brier score of predicted survival probabilities at specified times.
 
-    Measures calibration and accuracy of predicted survival probabilities at fixed time points
-    using inverse-probability-of-censoring-weighted (IPCW) averaging. The Brier score is the
-    mean squared difference between predicted and observed outcomes, weighted so censored
-    subjects contribute honestly without bias.
+    Measures calibration and accuracy of predicted survival probabilities at fixed time points using
+    inverse-probability-of-censoring-weighted (IPCW) averaging. The Brier score is the mean squared
+    difference between predicted and observed outcomes, weighted so censored subjects contribute
+    honestly without bias.
 
     **Interpretation**:
 
     - Ranges from 0 (perfect predictions) to 1 (worst possible).
-    - Lower is better. A Brier score of 0.25 means, on average, predictions are off by
-      $\pm 0.5$ in terms of squared deviation.
+    - Lower is better. A Brier score of 0.25 means, on average, predictions are off by $\pm 0.5$ in
+    terms of squared deviation.
     - **Null model baseline**: A model predicting 50% survival at every time has Brier score
-      $\approx 0.25$. Compare your model to this baseline to assess practical improvement.
+    $\approx 0.25$. Compare your model to this baseline to assess practical improvement.
     - Score typically increases with time (harder to predict farther into the future).
 
     **Practical use**: After fitting a survival model (Cox, parametric, flexible), evaluate
-    calibration at important clinical horizons (e.g., 1-year, 5-year survival). Compute Brier
-    scores at multiple times, then use `integrated_brier_score()` for a single summary.
+    calibration at important clinical horizons (e.g., 1-year, 5-year survival). Compute Brier scores
+    at multiple times, then use `integrated_brier_score()` for a single summary.
 
     Parameters
     ----------
     surv
         A right-censored `Surv` response (time-to-event data).
     survival_prob
-        Predicted survival probabilities, shape `(n_subjects, n_times)`. Each entry is a
-        predicted probability of surviving beyond the corresponding time. Must be between 0
-        and 1. Example: columns from `CoxPH.predict(type="survival", times=...)` (excluding
-        the `time` column), transposed so rows are times and columns are subjects.
+        Predicted survival probabilities, shape `(n_subjects, n_times)`. Each entry is a predicted
+        probability of surviving beyond the corresponding time. Must be between `0` and `1`.
+        For example: columns from `CoxPH.predict(type="survival", times=...)` (excluding the `time`
+        column), transposed so rows are times and columns are subjects.
     times
-        Evaluation times where Brier scores are computed. 1-D array-like. Must have length
-        equal to the second dimension of `survival_prob`.
+        Evaluation times where Brier scores are computed. 1-D array-like. Must have length equal to
+        the second dimension of `survival_prob`.
 
     Returns
     -------
