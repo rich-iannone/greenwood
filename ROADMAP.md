@@ -41,8 +41,6 @@ Discrimination and calibration assessment beyond point-in-time.
 
 - Integrated discrimination improvement (IDI) and net reclassification improvement (NRI)
 - Time-dependent Brier score refinements and sensitivity analyses
-- `concordance_index_ipcw`: inverse-probability-of-censoring-weighted concordance index for
-time-dependent discrimination (more robust than Harrell's C under heavy censoring)
 - `ipc_weights` / `CensoringDistributionEstimator`: IPC weights as first-class utilities,
 enabling manual reweighting for metrics and models beyond concordance
 
