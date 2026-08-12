@@ -93,6 +93,16 @@ the default in R's **survival** package. The `"log-log"` transform keeps the lim
 range from 0 to 1 more reliably at the tails, and `"plain"` gives a symmetric interval on the
 probability scale.
 
+::: {.callout-note}
+## The default transform is not the same for every estimator
+
+`KaplanMeier` defaults to `conf_type="log"`, matching R. `AalenJohansen` (the cumulative incidence
+estimator for competing risks, see [Competing risks](13-competing-risks.qmd#confidence-intervals))
+defaults to `conf_type="plain"` instead, matching R's default for that estimator. If you fit both
+in the same analysis, set `conf_type=` explicitly on each rather than relying on the defaults to
+agree.
+:::
+
 You set the transform when you construct the estimator, so we fit a second `KaplanMeier` with
 `conf_type="log-log"` and keep it separate from the default fit above.
 
@@ -165,10 +175,10 @@ pl.concat(results)
 
 **Transform summary:**
 
-- log** (default): symmetric on the log scale and matches R's **survival** package (this is a good
-all-purpose choice).
-- log-log: bounds intervals more reliably at the tails (best when survival is near 0 or 1).
-- plain: symmetric on probability scale (intuitive but can exceed [0,1] at extreme tails).
+- **log** (default): symmetric on the log scale and matches R's **survival** package (this is a
+good all-purpose choice).
+- **log-log**: bounds intervals more reliably at the tails (best when survival is near 0 or 1).
+- **plain**: symmetric on probability scale (intuitive but can exceed [0,1] at extreme tails).
 
 Choose the transform before fitting and report which you used.
 
