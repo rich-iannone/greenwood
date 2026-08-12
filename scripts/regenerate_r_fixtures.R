@@ -784,6 +784,62 @@ write_json_fixture(
   "td_auc_lung"
 )
 
+# -- IPCW concordance index: Uno et al. (2011) ------------------------------------
+#
+# Uses the same censoring KM convention as Python's _censoring_km (nudged Fine-Gray).
+# Marker is the same Cox LP (age + sex, Efron) on lung as the td_auc fixture above.
+
+uno_ipcw_concordance <- function(T, delta, marker, tau) {
+  censor_times <- sort(unique(T[delta == 0L]))
+  g_surv_val <- 1.0
+  g_times_vec <- numeric(0)
+  g_surv_vec <- numeric(0)
+  for (c_t in censor_times) {
+    n_risk <- sum(T > c_t) + sum(delta == 0L & T == c_t)
+    d <- sum(delta == 0L & T == c_t)
+    g_surv_val <- g_surv_val * (1.0 - d / n_risk)
+    g_times_vec <- c(g_times_vec, c_t)
+    g_surv_vec <- c(g_surv_vec, g_surv_val)
+  }
+
+  g_left <- function(t_vec) {
+    sapply(t_vec, function(t) {
+      idx <- which(g_times_vec < t)
+      if (length(idx) == 0L) 1.0 else g_surv_vec[max(idx)]
+    })
+  }
+
+  case_mask <- (delta == 1L) & (T <= tau)
+  T_case <- T[case_mask]
+  eta_case <- marker[case_mask]
+  g_case <- g_left(T_case)
+  w <- ifelse(g_case > 0, 1.0 / g_case^2, 0.0)
+
+  numerator <- 0.0
+  denominator <- 0.0
+  for (i in seq_along(T_case)) {
+    later <- T > T_case[i]
+    n_later <- sum(later)
+    if (n_later == 0) next
+    conc <- sum(eta_case[i] > marker[later]) + 0.5 * sum(eta_case[i] == marker[later])
+    numerator <- numerator + w[i] * conc
+    denominator <- denominator + w[i] * n_later
+  }
+  numerator / denominator
+}
+
+ipcw_delta <- as.integer(lung$status == 2)
+ipcw_tau_default <- max(lung$time[ipcw_delta == 1L])
+
+write_json_fixture(
+  list(
+    c_ipcw_default = uno_ipcw_concordance(lung$time, ipcw_delta, auc_lp, ipcw_tau_default),
+    c_ipcw_tau365  = uno_ipcw_concordance(lung$time, ipcw_delta, auc_lp, 365.0),
+    tau_default     = ipcw_tau_default
+  ),
+  "concordance_ipcw_lung"
+)
+
 # -- Cox residual diagnostics (Breslow ties) --------------------------------------
 
 cox_residuals_breslow_fixture <- function() {
