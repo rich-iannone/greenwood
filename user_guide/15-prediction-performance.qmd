@@ -11,16 +11,16 @@ import great_docs as gd
 gd.enable_tbl_preview(n_head=8, n_tail=3)
 ```
 
-A model that fits the data in front of it is not necessarily a model that predicts well. To
-judge a survival model as a predictor, or to compare competing models, you need metrics that
-account for censoring. Greenwood provides three complementary ones: (1) the concordance index,
-(measures how well a model ranks subjects by risk), (2) the Brier score (measures how accurate
-its probability predictions are), and (3) the time-dependent AUC (shows how discrimination
-changes over the follow-up horizon). This guide page explains all three and shows how to
-compute them for a fitted model or for any external risk score.
+A model that fits the data in front of it is not necessarily a model that predicts well. To judge a
+survival model as a predictor, or to compare competing models, you need metrics that account for
+censoring. Greenwood provides three complementary ones: (1) the concordance index, (measures how
+well a model ranks subjects by risk), (2) the Brier score (measures how accurate its probability
+predictions are), and (3) the time-dependent AUC (shows how discrimination changes over the
+follow-up horizon). This guide page explains all three and shows how to compute them for a fitted
+model or for any external risk score.
 
-We start from the `lung` outcomes and a Cox model fit to them. This is the model whose
-predictions we will judge.
+We start from the `lung` outcomes and a Cox model fit to them. This is the model whose predictions
+we will judge.
 
 ```{python}
 import greenwood as gw
@@ -31,9 +31,9 @@ y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 y
 ```
 
-The response `y` records 165 events among 228 subjects. We fit a Cox model to it, then set the
-model aside: everything below needs only `y` and the risk scores and survival probabilities
-that `cox` produces.
+The response `y` records 165 events among 228 subjects. We fit a Cox model to it, then set the model
+aside: everything below needs only `y` and the risk scores and survival probabilities that `cox`
+produces.
 
 ```{python}
 cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
@@ -41,16 +41,15 @@ cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
 
 ## Discrimination: the concordance index
 
-Discrimination is the ability to rank subjects correctly: to give higher risk scores to
-subjects who go on to have the event sooner. The concordance index, or C-statistic, measures
-exactly this. It is the probability that, for a randomly chosen comparable pair of subjects,
-the one who failed first had the higher risk score. A value of 0.5 is no better than a coin
-flip, and 1.0 is perfect ordering.
+Discrimination is the ability to rank subjects correctly: to give higher risk scores to subjects who
+go on to have the event sooner. The concordance index, or C-statistic, measures exactly this. It is
+the probability that, for a randomly chosen comparable pair of subjects, the one who failed first
+had the higher risk score. A value of 0.5 is no better than a coin flip, and 1.0 is perfect
+ordering.
 
-You can compute it for any risk score, which makes it useful for evaluating a model on new
-data or for comparing an external score. Here we use the Cox model's linear predictor. Asking
-for `type="lp"` returns one number per subject, where a larger value means higher predicted
-risk.
+You can compute it for any risk score, which makes it useful for evaluating a model on new data or
+for comparing an external score. Here we use the Cox model's linear predictor. Asking for
+`type="lp"` returns one number per subject, where a larger value means higher predicted risk.
 
 ```{python}
 lung = gw.load_dataset("lung", backend="polars")
@@ -65,16 +64,16 @@ risk[:8]
 ::: {.callout-tip}
 ## Linear predictors are centered
 
-The linear predictor returned by `predict(type="lp")` is always centered around the mean of
-the training covariates. This ensures consistent, numerically stable predictions across all
-variable types: continuous, categorical, and mixed. The centering is applied uniformly, so you
-always get mathematically sound risk scores, even in edge cases like categorical-only models
-with all positive associations.
+The linear predictor returned by `predict(type="lp")` is always centered around the mean of the
+training covariates. This ensures consistent, numerically stable predictions across all variable
+types: continuous, categorical, and mixed. The centering is applied uniformly, so you always get
+mathematically sound risk scores, even in edge cases like categorical-only models with all positive
+associations.
 :::
 
 These are the scores the index will rank against the observed event order. Because higher risk
-should correspond to earlier failure, we pass a score where larger means higher risk, such as
-this linear predictor or its exponential.
+should correspond to earlier failure, we pass a score where larger means higher risk, such as this
+linear predictor or its exponential.
 
 ```{python}
 gw.concordance_index(y, risk)
