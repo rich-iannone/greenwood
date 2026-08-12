@@ -792,6 +792,18 @@ def test_concordance_index_matches_r() -> None:
     assert_allclose_to_r(c, fixture["concordance"], what="concordance_index")
 
 
+@pytest.mark.rparity
+def test_concordance_index_ipcw_matches_r() -> None:
+    df = gw.load_dataset("lung", backend="pandas")
+    y = Surv.right(df["time"], event=(df["status"] == 2))
+    fixture = load_fixture("concordance_ipcw_lung")
+    marker = np.asarray(load_fixture("td_auc_lung")["marker"], dtype=float)
+    c_default = gw.concordance_index_ipcw(y, marker)
+    assert_allclose_to_r(c_default, fixture["c_ipcw_default"], what="ipcw_c_default")
+    c_tau365 = gw.concordance_index_ipcw(y, marker, tau=365.0)
+    assert_allclose_to_r(c_tau365, fixture["c_ipcw_tau365"], what="ipcw_c_tau365")
+
+
 def test_risk_table_numbers_match_r() -> None:
     # get_risk_table_frame() needs only numpy/pandas (no plotnine), so it runs here.
     fixture = load_fixture("risk_table_lung_sex")
