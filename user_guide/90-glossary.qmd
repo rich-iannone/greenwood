@@ -65,8 +65,32 @@ Brier score
   unobserved event times. Lower is better, and a naive constant-survival model gives an upper
   benchmark. Available via `brier_score()`.
 
+BCa bootstrap (bias-corrected and accelerated bootstrap)
+: A bootstrap confidence interval method that applies two corrections to the percentile
+  bootstrap to account for bias and skewness in the bootstrap distribution. The
+  bias-correction factor $\hat{z}_0$ shifts the percentile selection based on the fraction
+  of bootstrap replicates that fall below the observed statistic; the acceleration $\hat{a}$
+  adjusts for how quickly the standard error changes with the parameter value, estimated via
+  jackknife. BCa intervals achieve better coverage than the **percentile bootstrap** (raw
+  empirical quantiles) or the **normal bootstrap** (bootstrap standard error with a normal
+  approximation) when the estimator's sampling distribution is skewed or asymmetric. In
+  Greenwood, `bootstrap_ci()` supports `method="bca"` (default), `method="percentile"`, and
+  `method="normal"`.
+
 C-statistic
 : See **concordance index**.
+
+Cause-specific hazard
+: The instantaneous rate at which subjects experience a specific cause of failure,
+  conditioning on not having experienced any cause yet:
+  $h_k(t) = \lim_{\delta \to 0} P(t \le T < t + \delta,\, \text{cause} = k \mid T \ge t) / \delta$.
+  When competing events are present, a subject who experiences a competing cause is removed
+  from the risk set and their time is treated as censored for the cause of interest. This
+  produces unbiased hazard estimates but does not correspond directly to the cumulative
+  probability of each cause: summing one-minus-Kaplan-Meier estimates across causes
+  overestimates the total probability of failure. Contrast with the **subdistribution
+  hazard** underlying the **Fine-Gray model**, which preserves a direct link to the
+  **cumulative incidence function** by keeping competing-event subjects in the risk set.
 
 Censoring
 : The situation in which the exact event time is not observed for a subject. Censoring is the
@@ -157,6 +181,28 @@ Cumulative incidence function (CIF)
   one-minus-Kaplan-Meier approach, the CIF is not biased by competing events. Estimated
   non-parametrically by `AalenJohansen` and modeled by `FineGray`.
 
+Delta method
+: A general technique for approximating the variance of a function of an estimated
+  quantity. If $\hat\theta$ is an estimator with variance $V$ and $g$ is a differentiable
+  transformation, the delta method gives $\text{Var}(g(\hat\theta)) \approx [g'(\hat\theta)]^2 V$.
+  In survival analysis it is used to derive confidence intervals for quantities such as
+  exponentiated Cox coefficients (hazard ratios), cumulative incidence functions, and
+  survival probabilities at specific time points. The multivariate form,
+  $\text{Var}(g(\hat\theta)) \approx \nabla g(\hat\theta)^\top V\, \nabla g(\hat\theta)$,
+  handles vector-valued parameters. Greenwood applies the delta method throughout
+  `_metrics.py` and `_competing.py` to propagate uncertainty from model parameters to
+  derived quantities.
+
+Deviance residuals
+: Signed square roots of the subject-level contribution to the log-likelihood ratio
+  statistic, obtained by transforming the **martingale residuals** $M_i$ as
+  $D_i = \text{sign}(M_i)\sqrt{-2[M_i + \delta_i \log(\delta_i - M_i)]}$, where $\delta_i$
+  is the event indicator. Deviance residuals are more symmetric around zero than martingale
+  residuals, making them easier to use for identifying outliers: large positive values
+  correspond to subjects who experienced the event much sooner than the model predicted, and
+  large negative values to subjects who lived much longer than expected. Available from a
+  fitted `CoxPH` model via `residuals(type="deviance")`.
+
 dfbeta residuals
 : Approximate influence statistics that measure how much each subject's data changes each
   estimated coefficient. The dfbeta for subject $i$ and coefficient $j$ is the difference
@@ -188,6 +234,17 @@ Event table
   ($n_\text{risk}$), the number of events ($n_\text{event}$), and the number of censorings
   ($n_\text{censor}$). It is the common foundation for Kaplan-Meier, the log-rank test, and
   Cox regression. Available via `event_table()`.
+
+Episode splitting
+: The data-transformation step that converts a dataset with one row per subject and
+  time-varying covariate measurements into the **counting-process form** required by Cox
+  regression. Each subject's follow-up is divided into a series of intervals delimited by
+  the times at which any covariate changes value, producing one row per interval with
+  constant covariate values and the event indicator set to 1 only on the final row if the
+  subject had an event. When multiple covariates change at different times, the split points
+  are the union of all change times for that subject. In Greenwood, `tvc_split()` automates
+  episode splitting from a long-format measurement table to a ready-to-fit counting-process
+  dataset.
 
 Efron approximation
 : A method for handling **tied event times** in the Cox partial likelihood. When multiple
@@ -247,6 +304,17 @@ Forest plot
   compare effect sizes and their uncertainty at a glance. In Greenwood, `plot_forest()`
   produces an interactive forest plot from a fitted `CoxPH` model.
 
+Gray's test
+: A non-parametric hypothesis test for equality of **cumulative incidence functions** across
+  two or more groups in a **competing-risks** setting. It is the competing-risks analogue of
+  the **log-rank test**, but rather than comparing cause-specific hazards it directly tests
+  whether the CIFs of the target cause differ between groups, accounting for the effect of
+  competing events. The test statistic is a weighted sum of differences between observed and
+  expected CIF increments, and **Fleming-Harrington** $(\rho, \gamma)$ weights are supported.
+  Gray's test is the appropriate choice when the research question is "does the treatment
+  affect the cumulative probability of this event?" rather than "does the treatment affect
+  the rate at which the event occurs?" Available via `gray_test()` in Greenwood.
+
 Greenwood's formula
 : The standard variance estimator for the Kaplan-Meier survival curve:
   $\widehat{\text{Var}}(\hat{S}(t)) = \hat{S}(t)^2 \sum_{t_i \le t} \frac{d_i}{n_i(n_i - d_i)}$,
@@ -266,6 +334,39 @@ Hazard ratio
   is the hazard ratio associated with a one-unit increase in covariate $j$. Values greater
   than 1 indicate higher hazard (shorter survival) for the group with the higher covariate
   value.
+
+Illness-death model
+: A three-state **multi-state model** with transitions from a healthy (initial) state to
+  either an illness state or to death directly, and from illness to death. It is the
+  canonical example in the multi-state literature and underlies many clinical analyses of
+  disease progression: a patient may die without ever becoming ill (healthy → dead) or may
+  first become ill and then die (healthy → ill → dead). The illness-death model generalizes
+  both simple survival analysis (if the illness state is ignored) and **competing risks** (if
+  illness is treated as an absorbing event). With all three transitions specified it models
+  both the occurrence and the downstream effect of the intermediate event on mortality. In
+  Greenwood, the illness-death model is a special case of the `MultiState` framework.
+
+Immortal time bias
+: A systematic bias in observational survival studies that arises when a period of
+  follow-up during which a subject could not have experienced the outcome is incorrectly
+  attributed to a treatment or exposure group. The "immortal" time — when subjects are, by
+  construction, event-free — inflates apparent survival in that group. A common example is
+  classifying a subject as "treated" from study entry even though treatment did not start
+  until weeks later: the pre-treatment follow-up is credited to the treated group, making
+  treatment appear beneficial even if it has no effect. The bias is corrected by using the
+  **counting-process form** and entering subjects into the exposed risk set only from their
+  actual exposure time, which Greenwood supports via `Surv.counting(start, stop, event)`.
+
+Influence diagnostics
+: A suite of per-subject statistics that jointly assess how much each observation affects
+  the model fit, how well it is predicted, and how unusual its covariate pattern is. The
+  three primary components are: **leverage** (how extreme the covariate pattern is),
+  **deviance residuals** (how poorly the observation is predicted), and **likelihood
+  displacement** (the overall impact on the log-likelihood if the observation is removed).
+  Together they distinguish two failure modes: an observation with high leverage but a small
+  residual is influential yet well-fitted; one with a large residual but low leverage is
+  poorly predicted but not especially influential. In Greenwood, `CoxPH.influence()` returns
+  a table combining all three diagnostics for each subject.
 
 Integrated Brier score (IBS)
 : The **Brier score** averaged over a range of evaluation times, providing a single summary
@@ -312,6 +413,26 @@ Left truncation (late entry)
   $s_i > 0$. If their event had occurred before $s_i$, they would not be in the data at all.
   Handled via the **counting-process form** `Surv.counting(start, stop, event)`.
 
+Leverage
+: A scalar summary of how extreme a subject's covariate pattern is relative to the rest of
+  the risk set, measured as the diagonal of the Cox model's approximate hat matrix:
+  $h_i = \mathbf{L}_i^\top \hat{V}\, \mathbf{L}_i$, where $\mathbf{L}_i$ is the subject's
+  summed **score residual** contribution and $\hat{V}$ is the estimated covariance matrix of
+  $\hat\beta$. High leverage indicates that a subject occupies a sparse region of covariate
+  space and therefore has the potential to pull coefficient estimates toward its own observed
+  outcome. Leverage is one component of the **influence diagnostics** table returned by
+  `CoxPH.influence()`. See also **likelihood displacement** and **dfbeta residuals**.
+
+Likelihood displacement
+: A scalar influence measure for each subject, quantifying how much the log-likelihood
+  changes when that subject is removed. In the Cox model it is computed as the quadratic
+  form $\text{LD}_i = \hat\beta_{\Delta i}^\top I\, \hat\beta_{\Delta i}$, where
+  $\hat\beta_{\Delta i}$ is the approximate change in $\hat\beta$ when subject $i$ is deleted
+  (the **dfbeta** vector) and $I$ is the observed information matrix. Likelihood displacement
+  combines both the **leverage** and residual components into a single scalar: a subject with
+  high leverage and a large residual will have large likelihood displacement. It is included
+  in the **influence diagnostics** table returned by `CoxPH.influence()`.
+
 Lin-Wei sandwich estimator
 : A robust variance estimator for the Cox model, also known as the sandwich or
   "robust" variance. It replaces the model-based (inverse information) variance with
@@ -321,12 +442,36 @@ Lin-Wei sandwich estimator
   to clustered data by summing score residuals within clusters before forming $M$. Activated
   in Greenwood via `CoxPH.fit(..., robust=True)` or by supplying `cluster=`.
 
+Location-scale parameterization
+: The canonical form in which **accelerated failure time** models are expressed internally:
+  $\log T = \mu + \sigma\,\varepsilon$, where $\mu$ is the location (the linear predictor
+  $\mathbf{x}^\top\boldsymbol\gamma$ plus an intercept), $\sigma$ is the scale parameter,
+  and $\varepsilon$ is a standardized error whose distribution determines the event-time
+  family. The Weibull AFT corresponds to an extreme-value (Gumbel) $\varepsilon$; log-normal
+  to a standard normal $\varepsilon$; log-logistic to a standard logistic $\varepsilon$.
+  This parameterization unifies all AFT families into a single linear-model structure on the
+  log-time scale and is the form used by Greenwood's `AFT` internally regardless of which
+  distribution is selected.
+
 Log-rank test
 : A non-parametric test for equality of survival curves across two or more groups. It sums
   the (observed − expected) event counts at each event time, where expected counts are
   computed under the null hypothesis of equal hazard rates. The log-rank test is most
   powerful when hazards are proportional over time. Use **Fleming-Harrington** weights for
   alternatives. Available via `logrank_test()`.
+
+Martingale residuals
+: Per-subject residuals from a fitted Cox model equal to the difference between the observed
+  event indicator and the model's expected cumulative number of events:
+  $M_i = \delta_i - \hat{H}_0(t_i)\exp(\mathbf{x}_i^\top\hat\beta)$, where $\delta_i
+  \in \{0,1\}$ is the event indicator and $\hat{H}_0(t_i)$ is the estimated baseline
+  cumulative hazard at the subject's exit time. Martingale residuals have expected value zero
+  when the model is correct. They are the primary tool for checking whether continuous
+  covariates enter the model on the right scale: plotting $M_i$ against a candidate covariate
+  reveals nonlinear effects as a curved lowess smooth. Their main drawback is asymmetry:
+  bounded above by 1 but unbounded below, so large negative values are expected for
+  long-surviving censored subjects. **Deviance residuals** symmetrize them. Available from
+  `CoxPH` via `residuals(type="martingale")`.
 
 Multi-state model
 : A model in which subjects can occupy one of several states and transition between them over
@@ -350,6 +495,16 @@ Non-parametric model
   (such as a scale or shape parameter). The **Kaplan-Meier** and **Nelson-Aalen** estimators
   and the **Aalen-Johansen** cumulative incidence function are all non-parametric. Contrast
   with **parametric model** and **semi-parametric model**.
+
+Occupancy probability
+: In a **multi-state model**, the probability that a subject is in a specific state at time
+  $t$: $\pi_k(t) = P(\text{state at time }t = k)$. Occupancy probabilities sum to 1 across
+  all states at every time point and are the primary quantities of interest in most
+  multi-state analyses. They differ from **transition probabilities** in the **transition
+  matrix**: the entry $p_{jk}(s, t)$ conditions on being in state $j$ at $s$, whereas
+  $\pi_k(t)$ marginalizes over the initial-state distribution. In the two-state alive/dead
+  model, $\pi_\text{alive}(t)$ reduces to the **Kaplan-Meier** survival estimate. Computed
+  by `MultiState` in Greenwood via `state_occupancy()`.
 
 Pairwise log-rank test
 : An extension of the log-rank test that performs all pairwise group comparisons when there
@@ -388,11 +543,44 @@ Penalizer
   least one coefficient becomes non-zero) down to `eps * lambda_max`. See also
   **elastic-net penalty**, **lasso**, and **ridge**.
 
+Peto-Peto test
+: A weighted log-rank test that emphasizes early survival differences by assigning weight
+  $W(t) = \hat{S}(t^-)$ at each event time, where $\hat{S}$ is the pooled Kaplan-Meier
+  estimate. It is the special case $(\rho = 1, \gamma = 0)$ of the **Fleming-Harrington**
+  family. The Peto-Peto test is more powerful than the standard log-rank test when the
+  treatment effect is concentrated early in follow-up and diminishes over time, but less
+  powerful when differences emerge late. Because the two tests can give very different
+  $p$-values when hazard ratios cross, it is important to visualize survival curves before
+  choosing a weighting scheme. Available via `logrank_test(rho=1, gamma=0)` in Greenwood.
+
+Piecewise exponential model (PEM)
+: A parametric survival model that assumes a constant (exponential) hazard within each of a
+  set of pre-specified time intervals while allowing the hazard level to differ freely across
+  intervals. Covariate effects enter as proportional hazard multipliers shared across all
+  intervals. The key computational insight is that a PEM is algebraically equivalent to a
+  Poisson generalized linear model fitted on interval-expanded data with a log-exposure
+  offset, making standard GLM software directly applicable. The PEM occupies the middle
+  ground between the fully non-parametric **Cox proportional hazards model** (no assumption
+  on the baseline hazard shape) and rigid fully **parametric models**: it provides a
+  piecewise-constant baseline hazard that can be plotted and extrapolated. Available via
+  `PEM` in Greenwood; interval boundaries can be selected automatically by AIC or BIC.
+
 Proportional hazards assumption
 : The assumption in the Cox model that the hazard ratio between any two subjects is constant
   over time (that is, the hazard functions are parallel on a log scale). It can be tested
   formally with the **Schoenfeld residual** correlation test, available via
   `CoxPH.zph()` which returns a `ZPHResult`.
+
+Restricted cubic spline
+: A piecewise cubic polynomial that is constrained to be linear beyond the outermost knots
+  (the boundary knots), reducing sensitivity to sparse data at the extremes of the range.
+  Between the interior knots, it is a standard cubic spline: smooth (continuous up to the
+  second derivative) and flexible. Internal knots are typically placed at quantiles of the
+  event-time distribution, and the number of knots controls the smoothness–flexibility
+  trade-off. Restricted cubic splines are the basis expansion used by the **Royston-Parmar**
+  model to represent the log cumulative hazard as a smooth function of $\log(t)$: with $k$
+  internal knots, $k - 1$ spline basis terms enter the linear predictor. The number of knots
+  is controlled by the `n_knots=` argument to `RoystonParmar` in Greenwood.
 
 Restricted mean survival time (RMST)
 : The expected event-free survival time up to a pre-specified time horizon $\tau$:
@@ -427,6 +615,18 @@ Right censoring
   is that the true event time exceeds the observed time $t_i$. Built with
   `Surv.right(time, event)`.
 
+ROC curve (receiver operating characteristic curve)
+: A graphical summary of a binary classifier's discrimination across all possible decision
+  thresholds. For each threshold on the predicted risk score, it plots the true positive rate
+  (sensitivity) against the false positive rate (1 − specificity), tracing a curve from
+  (0, 0) to (1, 1). The area under the ROC curve (AUC) summarizes discrimination in a
+  single threshold-free number: 0.5 corresponds to random ranking and 1.0 to perfect
+  discrimination. In survival analysis, a time-specific ROC curve is constructed at each
+  evaluation horizon $t^*$ by defining cases as subjects who had the event before $t^*$ and
+  controls as subjects still at risk after $t^*$; observations censored before $t^*$ are
+  reweighted by **IPCW**. The resulting **time-dependent AUC** is available via
+  `time_dependent_auc()` in Greenwood.
+
 Royston-Parmar model
 : A flexible parametric survival model that uses restricted cubic splines to represent the
   log cumulative hazard (or log cumulative odds of the event), allowing smooth, data-driven
@@ -434,6 +634,18 @@ Royston-Parmar model
   bridges the gap between fully parametric models and the non-parametric Cox approach:
   parameters are fully estimated so extrapolation and smooth hazard curves are possible.
   Available via `RoystonParmar`.
+
+Schoenfeld power formula
+: A result due to Schoenfeld (1981) that links the power of the **log-rank test** to the
+  total number of observed events rather than to the sample size or follow-up duration
+  separately. Under a proportional-hazards alternative with hazard ratio $\Delta$, the
+  number of events required to achieve power $1 - \beta$ at two-sided significance level
+  $\alpha$ is approximately $d \approx (z_{\alpha/2} + z_\beta)^2 / (\log \Delta)^2$, where
+  $z_p$ is the $p$-th standard normal quantile. Because the formula depends only on $d$ and
+  $\Delta$, trial planning separates into two steps: first determine the required event
+  count, then determine the sample size needed to observe that many events given expected
+  censoring and accrual rates. Greenwood's `power_logrank()` and `samplesize_logrank()`
+  implement these calculations.
 
 Schoenfeld residuals
 : Residuals from a fitted Cox model used to assess the **proportional hazards assumption**.
@@ -444,6 +656,18 @@ Schoenfeld residuals
   Grambsch-Therneau test, which regresses them on time to produce a formal chi-squared test
   per covariate. Computed by `CoxPH.cox_zph()`, returned as a `ZPHResult`.
 
+Score residuals
+: Per-subject, per-covariate residuals from a fitted Cox model representing each subject's
+  contribution to the score (gradient) of the partial log-likelihood evaluated at
+  $\hat\beta$. For subject $i$ and covariate $j$, the score residual is
+  $L_{ij} = \int_0^\infty [x_{ij}(t) - \bar{x}_j(t)]\,dM_i(t)$, where $\bar{x}_j(t)$ is
+  the risk-set weighted mean of covariate $j$ at time $t$ and $dM_i$ is the **martingale
+  residual** increment. The matrix of score residuals is the "meat" of the **Lin-Wei
+  sandwich estimator**: when subjects are clustered, score residuals are summed within
+  clusters before forming the sandwich. **dfbeta residuals** are linear functions of score
+  residuals obtained by pre-multiplying by the inverse information matrix. Accessible from
+  `CoxPH` via `residuals(type="score")`.
+
 Semi-parametric model
 : A model that combines a non-parametric component with a parametric one. The **Cox
   proportional hazards model** is the canonical example: the baseline hazard $h_0(t)$ is
@@ -453,6 +677,18 @@ Semi-parametric model
   $h_0(t)$. Semi-parametric models are more flexible than fully **parametric models** while
   retaining interpretable covariate effects, at the cost of not being able to compute
   quantities (such as mean survival time) that require integrating the full hazard function.
+
+Soft-thresholding
+: The proximal operator of the L1 norm, defined as
+  $\mathcal{S}_\lambda(v_j) = \text{sign}(v_j)\max(|v_j| - \lambda,\, 0)$. It shrinks each
+  element of a vector toward zero by $\lambda$ and sets elements with $|v_j| \le \lambda$
+  exactly to zero, which is why it is the core computational step for fitting
+  **lasso**-penalized models. After each gradient update on the smooth loss (e.g., the
+  negative Cox partial likelihood), every coefficient is passed through the soft-threshold
+  operator to enforce the L1 penalty. In **FISTA**, soft-thresholding is applied after each
+  momentum-corrected gradient step. For the **elastic-net** penalty, the threshold is
+  $\lambda\alpha$ (the lasso component) and the result is divided by $1 + \lambda(1-\alpha)$
+  to apply the simultaneous ridge shrinkage. Used internally by `CoxNet`.
 
 Strata
 : See **stratification**. In Greenwood's API, the `by=` argument to `CoxPH.fit()`,
@@ -512,6 +748,18 @@ Trend test
   more powerful than the omnibus log-rank test when the alternative is a trend rather than
   an arbitrary difference. Supports **Fleming-Harrington** weights and stratification.
   Available via `trend_test()`.
+
+Transition matrix
+: In a **multi-state model**, the matrix $P(s, t)$ whose $(j, k)$ entry is the probability
+  of moving from state $j$ to state $k$ between times $s$ and $t$:
+  $p_{jk}(s, t) = P(X(t) = k \mid X(s) = j)$. The Aalen-Johansen estimator generalizes
+  **Kaplan-Meier** to multi-state processes by computing a product integral
+  $\hat{P}(s, t) = \prod_{u \in (s,\,t]} [I + d\hat{A}(u)]$, where $d\hat{A}(u)$ is the
+  matrix of estimated cause-specific hazard increments at event time $u$. Row sums of the
+  transition matrix equal 1, and the $(0, 0)$ entry of the two-state model recovers the
+  Kaplan-Meier survival estimate. **Occupancy probabilities** are derived from the transition
+  matrix by weighting rows by the initial-state distribution. Accessible from `MultiState`
+  via `transition_matrix()` in Greenwood.
 
 Truncation
 : A form of selection in which a subject's inclusion in the study depends on their event
