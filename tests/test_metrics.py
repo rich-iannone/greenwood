@@ -137,3 +137,66 @@ def test_calibration_input_validation() -> None:
         gw.calibration(y, [0.5, 0.5], 2.0)
     with pytest.raises(ValueError, match="n_bins"):
         gw.calibration(y, [0.1, 0.2, 0.3, 0.4], 2.0, n_bins=1)
+
+
+# -- IPCW concordance -----------------------------------------------------------
+
+
+def test_ipcw_concordance_perfect_ordering() -> None:
+    time = [1, 2, 3, 4]
+    event = [1, 1, 1, 1]
+    risk = [4.0, 3.0, 2.0, 1.0]
+    assert gw.concordance_index_ipcw(Surv.right(time, event), risk) == pytest.approx(1.0)
+
+
+def test_ipcw_concordance_reversed_ordering() -> None:
+    time = [1, 2, 3, 4]
+    event = [1, 1, 1, 1]
+    risk = [1.0, 2.0, 3.0, 4.0]
+    assert gw.concordance_index_ipcw(Surv.right(time, event), risk) == pytest.approx(0.0)
+
+
+def test_ipcw_concordance_no_censoring_equals_harrell() -> None:
+    rng = np.random.default_rng(23)
+    time = rng.exponential(1.0, size=50)
+    event = np.ones(50, dtype=int)
+    risk = rng.normal(size=50)
+    y = Surv.right(time, event)
+    c_harrell = gw.concordance_index(y, risk)
+    c_ipcw = gw.concordance_index_ipcw(y, risk)
+    assert c_ipcw == pytest.approx(c_harrell)
+
+
+def test_ipcw_concordance_length_checked() -> None:
+    with pytest.raises(ValueError, match="same length"):
+        gw.concordance_index_ipcw(Surv.right([1, 2, 3], [1, 1, 1]), [0.1, 0.2])
+
+
+def test_ipcw_concordance_no_events_raises() -> None:
+    with pytest.raises(ValueError, match="No events"):
+        gw.concordance_index_ipcw(Surv.right([1, 2, 3], [0, 0, 0]), [0.1, 0.2, 0.3])
+
+
+def test_ipcw_concordance_no_events_before_tau_raises() -> None:
+    with pytest.raises(ValueError, match="No events before tau"):
+        gw.concordance_index_ipcw(Surv.right([10, 20, 30], [1, 1, 1]), [0.1, 0.2, 0.3], tau=5.0)
+
+
+def test_ipcw_concordance_tau_restricts_events() -> None:
+    df = gw.load_dataset("lung", backend="pandas")
+    y = Surv.right(df["time"], event=(df["status"] == 2))
+    cox = gw.CoxPH().fit(y, df[["age", "sex"]])
+    lp = cox.predict(type="lp")
+    c_full = gw.concordance_index_ipcw(y, lp)
+    c_tau = gw.concordance_index_ipcw(y, lp, tau=365.0)
+    assert 0 < c_tau < 1
+    assert c_full != pytest.approx(c_tau, abs=1e-6)
+
+
+def test_ipcw_concordance_in_unit_range() -> None:
+    df = gw.load_dataset("lung", backend="pandas")
+    y = Surv.right(df["time"], event=(df["status"] == 2))
+    cox = gw.CoxPH().fit(y, df[["age", "sex"]])
+    lp = cox.predict(type="lp")
+    c = gw.concordance_index_ipcw(y, lp)
+    assert 0 <= c <= 1
