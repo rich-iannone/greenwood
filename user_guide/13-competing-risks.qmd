@@ -160,6 +160,15 @@ probability scale, matching R's `survfit` default for competing risks. The `"log
 constructs the interval on the log-CIF scale before back-transforming, and `"log-log"` uses the same
 `log(-log(F))` scale that R applies to the CIF.
 
+::: {.callout-note}
+## `AalenJohansen`'s default differs from `KaplanMeier`'s
+
+`AalenJohansen` defaults to `conf_type="plain"`, matching R's `survfit` for competing risks. This is
+not the same as `KaplanMeier`'s default of `conf_type="log"` (see
+[Kaplan-Meier](05-kaplan-meier.qmd#confidence-intervals)). If an analysis fits both estimators, set
+`conf_type=` explicitly on each rather than assuming the defaults match.
+:::
+
 You set the transform at construction time.
 
 ```{python}
