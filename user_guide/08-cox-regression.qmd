@@ -343,9 +343,15 @@ event occurred. Left truncation and delayed entry use the same counting-process 
 :::
 
 ::: {.callout-important}
-## Subject timelines must start at `0`
+## Use subject-relative time, not calendar time
 
-Each subject needs their own timeline starting at 0 (subject-relative time), not calendar time.
+When a covariate changes several times for the *same* subject (as in this section), that subject's
+own intervals should be measured from their own zero, not from a shared calendar clock. Mixing
+absolute dates across subjects is a distinct problem from **left truncation** (late entry), where a
+single subject legitimately enters the risk set at a delayed start time, for example when age is
+used as the time scale and follow-up begins at each subject's enrollment age rather than at birth.
+Left truncation is fully supported (see [Survival data](03-survival-data.qmd#the-surv-object)) and
+does not require every subject's first interval to start at 0.
 
 **Correct** (subject-relative): Each subject's earliest interval starts at 0
 
@@ -415,8 +421,11 @@ df
 
 Now you can use `start_relative` and `stop_relative` in `Surv.counting()`.
 
-**Note**: Greenwood will warn if it detects counting-process data where subjects don't start at 0,
-as this usually indicates an error in data preparation.
+**Note**: Greenwood warns when it detects widely-spaced entry times in counting-process data, since
+that pattern often indicates calendar time was used by mistake. This heuristic can also fire on a
+genuine left-truncation design where subjects legitimately enter at very different times (for
+example, staggered enrollment ages). If you have confirmed your entry times are intentional late
+entries rather than an artifact of calendar time, the warning can be safely ignored.
 
 This matters because risk sets are formed by subjects at risk at each event time. Using calendar
 time instead of subject-relative time creates an imbalance where early times have many subjects at
