@@ -31,13 +31,13 @@ Run `make help` for the full list.
 `cmprsk`/`flexsurv`/`riskRegression`/`mstate` for specialized estimators) is the brand.
 Regenerate fixtures with `Rscript scripts/regenerate_r_fixtures.R` and validate with
 `make test-rparity`.
-- **Narwhals-native.** Never assume Pandas; write data handling against Narwhals and drop
+- **Narwhals-native.** Never assume Pandas but write data handling against Narwhals and drop
 to NumPy only inside numeric kernels.
 - **Typed & deterministic.** Full type hints (`py.typed`), `pyright` clean, byte-identical
 output for identical inputs.
 - **Prose style.**  Docstrings use Quarto/Markdown, not RST: single backticks for inline
 code, numpydoc section headers (`Parameters`, `Returns`).
-- Implementation lives in underscore-prefixed private modules; the public surface is
+- Implementation lives in underscore-prefixed private modules and the public surface is
 curated explicitly in `__init__.py`.
 
 ## Pull requests
