@@ -77,6 +77,17 @@ BCa bootstrap (bias-corrected and accelerated bootstrap)
   Greenwood, `bootstrap_ci()` supports `method="bca"` (default), `method="percentile"`, and
   `method="normal"`.
 
+B-spline basis
+: A flexible basis function set for smooth curve fitting, defined by piecewise polynomials
+  joined at knot locations with continuity constraints up to a chosen order. Unlike a
+  **restricted cubic spline**, a B-spline is not constrained to be linear beyond the boundary
+  knots, which makes it well suited to a diagnostic role where extrapolation is not required.
+  In Greenwood, `CoxPH.smooth_hr()` uses a B-spline basis (built with
+  `scipy.interpolate.BSpline`) to fit a flexible, non-linear log-hazard-ratio curve for one
+  covariate, in contrast to the restricted cubic spline basis that `RoystonParmar` uses to
+  model the baseline log cumulative hazard. The `df=` argument controls the number of basis
+  functions and therefore how wiggly the fitted curve can be.
+
 C-statistic
 : See **concordance index**.
 
@@ -98,6 +109,17 @@ Censoring
   Greenwood supports four censoring types: **right censoring**, **left censoring**,
   **interval censoring**, and the **counting-process form** for left truncation and
   time-varying covariates.
+
+Complete-case analysis
+: The default missing-data strategy in Greenwood's regression models: any row with a missing
+  value in the response, a covariate, or an auxiliary column such as `strata=`, `cluster=`,
+  or `frailty_cluster=` is dropped before fitting, and the remaining complete rows are
+  analyzed as if they were the whole sample. This mirrors the behavior of R's modeling
+  functions. Complete-case analysis is simple and unbiased when values are missing completely
+  at random, but it discards information and can bias estimates when missingness depends on
+  the outcome or on unobserved covariates. `CoxPH.fit()`, `AFT.fit()`, and related methods all
+  apply complete-case analysis silently; inspect your data for missingness patterns before
+  fitting if this is a concern.
 
 Concordance index (C-statistic, Harrell's C)
 : A measure of a model's ability to rank subjects by their event times. It is the proportion
@@ -212,7 +234,14 @@ dfbeta residuals
   useful for identifying subjects who have disproportionate influence on a specific
   coefficient. Greenwood's `_score_residuals()` method computes the score-residual building
   blocks used to form dfbeta values and the **Lin-Wei** robust variance.
-
+dfbetas residuals
+: The standardized form of **dfbeta residuals**, obtained by dividing each dfbeta value by
+  the corresponding coefficient's model-based standard error. Because dfbeta is on the raw
+  coefficient scale, comparing its magnitude across covariates with different units or
+  variances is not meaningful; dividing by the standard error puts every covariate's
+  influence values on a common, unit-free scale, making it possible to rank observations by
+  influence across the whole coefficient vector at once. Available from `CoxPH` via
+  `residuals(type="dfbetas")`.
 Endpoint
 : The specific outcome a study is designed to measure, defined in advance as the criterion
   for declaring that an **event** has occurred. A study may have a single primary endpoint
@@ -245,6 +274,25 @@ Episode splitting
   are the union of all change times for that subject. In Greenwood, `split_episodes()`
   automates episode splitting from a long-format measurement table to a ready-to-fit
   counting-process dataset.
+
+ECOG performance status
+: A five-point ordinal scale (0 through 4) developed by the Eastern Cooperative Oncology Group
+  to grade how much a disease limits a patient's daily activity, ranging from 0 (fully active)
+  to 4 (completely disabled). It is one of the most common covariates in oncology survival
+  studies because it is a strong, simply measured predictor of prognosis. The bundled `lung`
+  dataset records it in the `ph.ecog` column (with a small number of missing values), and it
+  is genuinely ordinal, unlike a nominal classification such as histological cell type, which
+  makes it a natural choice for the **trend test** as well as an ordinary covariate in
+  `CoxPH` or `AFT`.
+
+Effective degrees of freedom
+: A measure of model complexity for a penalized regression model, used in place of the raw
+  covariate count when computing **information criteria**. For a pure lasso fit the effective
+  degrees of freedom equals the number of non-zero coefficients, since each surviving
+  coefficient is estimated essentially unpenalized. For ridge or elastic-net fits, where every
+  coefficient is shrunk continuously rather than set to zero, it is instead the trace of the
+  ridge hat matrix, a fractional value between 0 and the number of covariates that reflects
+  how much shrinkage has been applied. Available from `CoxNet` via `effective_df()`.
 
 Efron approximation
 : A method for handling **tied event times** in the Cox partial likelihood. When multiple
@@ -303,6 +351,17 @@ Forest plot
   a symbol for the estimate and a horizontal line for the interval, making it easy to
   compare effect sizes and their uncertainty at a glance. In Greenwood, `plot_forest()`
   produces an interactive forest plot from a fitted `CoxPH` model.
+
+Formula interface
+: A string-based alternative to passing a covariate DataFrame directly, in which the
+  right-hand side of a model is written as a Wilkinson-style formula, for example
+  `"age + sex"` or `"age * sex"` (main effects plus their interaction). Parsed by the optional
+  [formulaic](https://matthewwardrop.github.io/formulaic/) dependency, the formula interface
+  expands categorical columns into indicator variables automatically, supports `C(column)` to
+  force a numeric-looking column to be treated as categorical, and supports
+  `C(column, contr.treatment(base=...))` to control the **reference category**. Available on
+  `CoxPH.fit()` and `AFT.fit()` via the `data=` argument together with a formula string in
+  place of the covariate frame.
 
 Gray's test
 : A non-parametric hypothesis test for equality of **cumulative incidence functions** across
@@ -368,6 +427,19 @@ Influence diagnostics
   poorly predicted but not especially influential. In Greenwood, `CoxPH.influence()` returns
   a table combining all three diagnostics for each subject.
 
+Information criteria (AIC, BIC)
+: Two related summaries that rank candidate models by trading off fit against complexity,
+  both computed from the model's log-likelihood $\ell$ and its number of parameters $k$ (or
+  **effective degrees of freedom** for penalized models). The Akaike information criterion is
+  $\text{AIC} = -2\ell + 2k$; the Bayesian information criterion instead penalizes complexity
+  by the sample size, $\text{BIC} = -2\ell + k \log(n)$, where $n$ is typically the number of
+  events. Because the BIC penalty grows with $\log(n)$, it favors simpler models more
+  strongly than AIC once the sample is reasonably large. Lower values are better for both.
+  Greenwood reports AIC and BIC via `glance()` for `CoxPH`, `AFT`, `RoystonParmar`, and
+  `PiecewiseExponential`, and uses them to automatically select knot counts
+  (`PiecewiseExponential(knot_strategy="aic"/"bic")`) and to rank distributional families
+  (`compare_distributions()`).
+
 Integrated Brier score (IBS)
 : The **Brier score** averaged over a range of evaluation times, providing a single summary
   of overall predictive accuracy across the follow-up period. Available via
@@ -390,6 +462,25 @@ Kaplan-Meier estimator (product-limit estimator)
   drops at each event time by the conditional probability of the event at that time:
   $\hat{S}(t) = \prod_{t_i \le t} \left(1 - \frac{d_i}{n_i}\right)$.
   Confidence intervals use **Greenwood's formula**. Available via `KaplanMeier`.
+
+Karnofsky performance score
+: An eleven-point ordinal scale, scored in increments of 10 from 0 (dead) to 100 (normal, no
+  symptoms), that grades a patient's ability to carry out daily activities. It predates and
+  serves a similar purpose to the **ECOG performance status**, and the two are often reported
+  side by side in oncology datasets. The bundled `lung` dataset records both a physician-rated
+  score (`ph.karno`) and a patient self-rated score (`pat.karno`), and `veteran` records a
+  single `karno` column; comparing physician- and patient-rated scores for the same subject
+  can itself be informative about how reporting perspective affects prognosis.
+
+Landmark analysis
+: An analysis strategy in which subjects are only included, or only evaluated, from a fixed
+  point in follow-up (the landmark time) onward, restricted to those known to be event-free
+  at that time. Landmarking is a common device for avoiding **immortal time bias** when a
+  variable of interest (such as response to an early treatment) is not known until partway
+  through follow-up: rather than assigning that status from study entry, the analysis is
+  deferred to the landmark time so that every included subject has had an equal chance to
+  reach it. See **conditional survival** for the corresponding quantity,
+  $P(T > t \mid T > c)$, which Greenwood computes via `CoxPH.predict(conditional_after=c)`.
 
 Left censoring
 : A censoring mechanism in which the event is known to have occurred before the observation
@@ -473,6 +564,16 @@ Martingale residuals
   long-surviving censored subjects. **Deviance residuals** symmetrize them. Available from
   `CoxPH` via `residuals(type="martingale")`.
 
+Model-based standard error
+: The default standard error reported for a Cox model's coefficients, computed from the
+  inverse of the observed information matrix (the negative Hessian of the partial
+  log-likelihood) rather than from the **Lin-Wei sandwich estimator**. It is correct when the
+  model is properly specified and observations are independent, but it understates
+  uncertainty when the model is misspecified or when observations are correlated (repeated
+  measures, clustered data). Also called the naive standard error. In Greenwood, it remains
+  available as `naive_std_error_` (and `naive_vcov_`) on a fitted `CoxPH` model even after
+  refitting with `robust=True`, so the two can be compared directly.
+
 Multi-state model
 : A model in which subjects can occupy one of several states and transition between them over
   time. Competing risks is a special case (one transient state, multiple absorbing states).
@@ -505,6 +606,18 @@ Occupancy probability
   $\pi_k(t)$ marginalizes over the initial-state distribution. In the two-state alive/dead
   model, $\pi_\text{alive}(t)$ reduces to the **Kaplan-Meier** survival estimate. Computed
   by `MultiState` in Greenwood via `state_occupancy()`.
+
+One-standard-error (1-SE) rule
+: A model-selection heuristic for choosing a regularization strength from a cross-validated
+  grid, used as an alternative to simply picking the value with the best mean score. After
+  identifying the penalizer with the best mean cross-validation score (highest concordance or
+  lowest Brier score) and its standard error across folds, the 1-SE rule selects the most
+  heavily regularized (sparsest) penalizer whose mean score is still within one standard
+  error of the best. Because model performance is often statistically indistinguishable
+  across a range of penalizer values, this trades a negligible amount of predictive accuracy
+  for a simpler, more interpretable, and less overfit-prone model. In Greenwood,
+  `cv_coxnet()` reports both choices: `best_penalizer_` (the best mean score) and
+  `penalizer_1se_` (the 1-SE choice).
 
 Pairwise log-rank test
 : An extension of the log-rank test that performs all pairwise group comparisons when there
@@ -563,7 +676,8 @@ Piecewise exponential model (PEM)
   ground between the fully non-parametric **Cox proportional hazards model** (no assumption
   on the baseline hazard shape) and rigid fully **parametric models**: it provides a
   piecewise-constant baseline hazard that can be plotted and extrapolated. Available via
-  `PEM` in Greenwood; interval boundaries can be selected automatically by AIC or BIC.
+  `PiecewiseExponential` in Greenwood; interval boundaries can be selected automatically by
+  AIC or BIC.
 
 Proportional hazards assumption
 : The assumption in the Cox model that the hazard ratio between any two subjects is constant
@@ -581,6 +695,17 @@ Restricted cubic spline
   model to represent the log cumulative hazard as a smooth function of $\log(t)$: with $k$
   internal knots, $k - 1$ spline basis terms enter the linear predictor. The number of knots
   is controlled by the `n_knots=` argument to `RoystonParmar` in Greenwood.
+
+Reference category
+: The baseline level of a categorical covariate against which all other levels are compared
+  once the covariate is expanded into indicator (dummy) variables. A categorical column with
+  $k$ levels contributes $k - 1$ indicator terms to the model; the omitted level is the
+  reference, and each reported coefficient is the log hazard ratio (or log acceleration
+  factor) for its level relative to that reference. Greenwood's **formula interface** picks
+  the first level alphabetically as the reference by default; a different reference is chosen
+  with `C(column, contr.treatment(base="level"))`. Encoding an unordered categorical column as
+  raw integers instead of indicator variables is a common mistake, since it forces the model
+  to treat the codes as a single continuous, linearly increasing effect.
 
 Restricted mean survival time (RMST)
 : The expected event-free survival time up to a pre-specified time horizon $\tau$:
@@ -677,6 +802,24 @@ Semi-parametric model
   $h_0(t)$. Semi-parametric models are more flexible than fully **parametric models** while
   retaining interpretable covariate effects, at the cost of not being able to compute
   quantities (such as mean survival time) that require integrating the full hazard function.
+
+Shared frailty
+: A Cox model extension that adds a cluster-level random effect to the hazard to account for
+  unmeasured heterogeneity shared by subjects in the same group (hospital, family,
+  recurrent-event unit). Two distributions are available. **Gamma frailty** multiplies the
+  hazard by a cluster-specific random effect $z \sim \text{Gamma}(1/\theta, 1/\theta)$, so
+  $h(t \mid x, z) = z\, h_0(t) \exp(\beta^\top x)$; its variance $\theta$ is estimated with an
+  EM algorithm, alternating between profiling out $(\beta, z)$ at the current $\theta$ and
+  updating $\theta$ from the posterior expectation of the random effects. **Log-normal
+  frailty** instead adds an additive random effect on the log-hazard scale,
+  $h(t \mid x, u) = h_0(t) \exp(\beta^\top x + u)$ with $u \sim \mathcal{N}(0, \sigma^2)$,
+  jointly optimized with $(\beta, u)$ by penalized partial likelihood and $\sigma^2$ updated
+  by REML. Larger $\theta$ or $\sigma^2$ indicates stronger between-cluster heterogeneity, and
+  a likelihood-ratio test of the null `theta = 0` (or `sigma2 = 0`) is available via
+  `frailty_test()`. In Greenwood, both are fit with
+  `CoxPH(frailty="gamma"/"lognormal", frailty_cluster=...)`, which currently requires
+  right-censored data and `ties="breslow"`. Contrast with the **Lin-Wei sandwich estimator**,
+  which corrects standard errors for cluster correlation without changing the model itself.
 
 Soft-thresholding
 : The proximal operator of the L1 norm, defined as
@@ -777,3 +920,15 @@ Weibull distribution
   satisfies both the **accelerated failure time** and the **proportional hazards**
   parameterizations, making it the default distribution in many AFT implementations
   including Greenwood's `AFT`.
+
+Z-score standardization
+: Rescaling a covariate to have mean 0 and standard deviation 1 by subtracting its mean and
+  dividing by its standard deviation, also called feature standardization. In a Cox model,
+  covariates on wildly different scales (a 0/1 indicator alongside a covariate in the tens of
+  thousands) can make the Newton-Raphson solver's Hessian ill-conditioned, slowing convergence
+  and inflating standard errors; Greenwood's `CoxPH.fit()` warns when the ratio of the largest
+  to smallest covariate standard deviation exceeds 100. Standardizing before fitting resolves
+  this at the cost of changing what each coefficient means: it becomes the log hazard ratio
+  per one-standard-deviation increase in the covariate rather than per one raw unit. `CoxNet`
+  standardizes covariates internally by default and reports coefficients back on the original
+  scale, so this step is not needed there.
