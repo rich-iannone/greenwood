@@ -3,7 +3,7 @@ message: 'If you use the "Greenwood" package, please cite it as below.'
 type: software
 license: MIT
 title: "Greenwood: Modern survival analysis for Python"
-version: "0.5.0"
+version: "0.6.0"
 abstract: >-
   Greenwood is a survival analysis library for Python. It is Narwhals-native so it works
   across Pandas, Polars, and more, is rigorously validated against R's survival package,
