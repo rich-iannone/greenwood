@@ -37,6 +37,7 @@ nav_icons:
     "Piecewise exponential models": layers
     "Competing risks": split
     "Multi-state models": network
+    "Machine learning": trees
     "Prediction performance": target
     "Glossary": book-open-text
 
@@ -95,6 +96,18 @@ reference:
       - name: RoystonParmar
         members: true
 
+  - title: Machine learning
+    desc: Tree-based ensemble survival models grown with the log-rank splitting rule, producing per-subject survival and cumulative-hazard functions.
+    contents:
+      - name: SurvivalTree
+        members: true
+      - name: RandomSurvivalForest
+        members: true
+      - name: ExtraSurvivalTrees
+        members: true
+      - name: GradientBoostingSurvivalAnalysis
+        members: true
+
   - title: Competing risks & multi-state
     desc: Cumulative incidence, the Fine-Gray model, and multi-state transition probabilities.
     contents:
@@ -146,12 +159,12 @@ reference:
     desc: Interactive survival curves, forest plots, and cumulative incidence visualizations with aligned numbers-at-risk tables.
     contents:
       - plot_survival
+      - plot_predicted_survival
       - plot_forest
       - plot_cif
       - plot_influence
       - plot_smooth_hr
       - risk_table
-
   - title: Core kernel
     desc: The risk-set / event-table tabulation shared by KM, log-rank, and Cox.
     contents:
