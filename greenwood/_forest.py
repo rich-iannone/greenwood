@@ -169,7 +169,7 @@ def _best_logrank_split(
             continue
         chi_valid = np.where(valid, chi[:-1], -np.inf)
         p = int(np.argmax(chi_valid))
-        if not np.isfinite(chi_valid[p]):
+        if not np.isfinite(chi_valid[p]):  # pragma: no cover - argmax over valid is always finite
             continue
         score = float(chi_valid[p])
         if best is None or score > best[2]:
