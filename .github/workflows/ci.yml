@@ -50,6 +50,24 @@ jobs:
         # R toolchain here; R is only used offline to regenerate those fixtures.
         run: pytest tests -n auto
 
+  parity:
+    # Optional cross-checks that need heavier, less-portable extras: Numba (accelerated
+    # split kernel) and scikit-survival (GPL, Python >= 3.11 only), so this runs on a
+    # single well-supported interpreter rather than the full matrix. The relevant tests
+    # skip gracefully when these packages are absent elsewhere.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install -e ".[dev,parity]"
+      - name: Run Numba and scikit-survival parity tests
+        run: pytest tests/test_forest_rsf.py tests/test_boosting.py tests/test_forest_sksurv_parity.py -n auto
+
   build:
     name: Build distribution
     runs-on: ubuntu-latest

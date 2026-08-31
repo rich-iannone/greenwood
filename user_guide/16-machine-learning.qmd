@@ -1,0 +1,191 @@
+---
+title: Machine learning
+guide-section: "Machine learning"
+---
+
+```{python}
+#| echo: false
+#| output: false
+import great_docs as gd
+
+gd.enable_tbl_preview(n_head=8, n_tail=3)
+```
+
+The Cox model and its parametric cousins assume a particular shape for how covariates act on the
+hazard (usually linear and proportional). When you have many covariates, non-linear effects, or
+interactions you did not anticipate, tree-based machine-learning models can predict better without
+those assumptions. Greenwood ships three, all fully non-parametric and all producing per-subject
+survival and cumulative-hazard *functions* rather than a single risk score: a `SurvivalTree`, the
+bagged `RandomSurvivalForest` (and its extremely-randomized `ExtraSurvivalTrees` variant), and
+`GradientBoostingSurvivalAnalysis`. This page introduces each, then shows how to score, interpret,
+and visualize them.
+
+We'll work with `lung`-dataset outcomes, keeping the rows with complete covariates so the examples
+are easy to follow.
+
+```{python}
+import greenwood as gw
+
+# Load the lung dataset and keep rows with complete covariates
+lung = gw.load_dataset("lung", backend="polars").drop_nulls(
+    subset=["ph.ecog", "ph.karno", "wt.loss"]
+)
+
+y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+covariates = ["age", "sex", "ph.ecog", "ph.karno", "wt.loss"]
+y
+```
+
+## Survival trees
+
+A `SurvivalTree` recursively splits subjects into groups whose survival curves differ as much as
+possible, measured by the log-rank statistic at each candidate split. Each leaf stores a
+Kaplan-Meier survival curve and a Nelson-Aalen cumulative hazard estimated from the subjects that
+land in it. A single tree is easy to reason about but high-variance; it is most useful as the
+interpretable building block of an ensemble.
+
+```{python}
+# Grow a shallow, interpretable survival tree
+tree = gw.SurvivalTree(max_depth=3, random_state=0).fit(y, lung[covariates])
+tree
+```
+
+Calling `predict` with the default `type="risk"` returns Ishwaran's *ensemble mortality* (the sum
+of the predicted cumulative hazard over the training event times). Larger values mean higher risk.
+
+```{python}
+# Risk score for the first eight subjects (higher = higher risk)
+tree.predict(lung[covariates])[:8]
+```
+
+## Random survival forests
+
+A `RandomSurvivalForest` averages many decorrelated survival trees, each grown on a bootstrap sample
+of the data and considering a random subset of covariates at every split. Averaging drives down the
+variance of the single tree and yields a well-calibrated, flexible model. Passing `oob_score=True`
+computes an out-of-bag concordance estimate (an honest, held-out measure of discrimination) using
+only the trees for which each subject was not in the bootstrap sample.
+
+```{python}
+# Fit a forest and report the out-of-bag concordance
+rsf = gw.RandomSurvivalForest(
+    n_estimators=200, oob_score=True, random_state=0
+).fit(y, lung[covariates])
+rsf
+```
+
+### Predictions
+
+Like the tree, the forest predicts a scalar risk score by default. It also predicts full survival or
+cumulative-hazard curves: pass `type="survival"` (or `"cumulative_hazard"`) and optional `times`, and
+you get one column per subject.
+
+```{python}
+# Predicted survival probabilities at one and two years for three subjects
+rsf.predict(lung[covariates][:3], type="survival", times=[365, 730])
+```
+
+### Variable importance
+
+`variable_importance()` measures how much each covariate contributes by permuting its values in the
+out-of-bag samples and recording the drop in concordance. Larger values indicate more important
+covariates. The same table is what `tidy()` returns for a fitted forest.
+
+```{python}
+# Permutation variable importance (out-of-bag)
+rsf.variable_importance()
+```
+
+## Extra survival trees
+
+`ExtraSurvivalTrees` is an extremely-randomized variant: in addition to sampling covariates, it draws
+the split *threshold* at random for each candidate rather than optimizing it. The extra randomness
+further decorrelates the trees, often lowering variance and speeding up fitting. Following the
+extra-trees convention, it grows each tree on the whole sample by default; set `bootstrap=True` when
+you want out-of-bag scoring or variable importance.
+
+```{python}
+# Extremely-randomized survival trees with out-of-bag scoring enabled
+ext = gw.ExtraSurvivalTrees(
+    n_estimators=200, bootstrap=True, oob_score=True, random_state=0
+).fit(y, lung[covariates])
+ext
+```
+
+::: {.callout-tip}
+## Accelerating the split search on large data
+
+The best-split search is the dominant cost when fitting forests on large datasets. If you install
+the `fast` extra (`pip install greenwood[fast]`), you can pass `engine="numba"` to
+`RandomSurvivalForest` or `ExtraSurvivalTrees` for a compiled split kernel that avoids materializing
+the large risk-set matrices. The default `engine="numpy"` is deterministic and needs no extra
+dependency; the Numba path produces a statistically equivalent fit that may differ slightly in
+tie-breaking.
+:::
+
+## Gradient-boosted survival
+
+`GradientBoostingSurvivalAnalysis` takes a different route. Instead of averaging independent trees,
+it builds an additive model by fitting each new (shallow) regression tree to the negative gradient
+of the Cox partial-likelihood loss (the martingale residuals under the current model) and adding a
+shrunken version of it. The result is a non-linear generalization of the Cox model that often
+predicts very well on structured tabular data.
+
+```{python}
+# Fit a gradient-boosted survival model
+gbm = gw.GradientBoostingSurvivalAnalysis(
+    n_estimators=300, learning_rate=0.05, max_depth=2, random_state=0
+).fit(y, lung[covariates])
+gbm
+```
+
+The additive score `F(x)` is the boosted analogue of the Cox linear predictor. `predict(type="lp")`
+returns it, `type="risk"` returns `exp(F(x))`, and `type="survival"` combines it with a Breslow
+baseline hazard to produce survival curves.
+
+```{python}
+# Survival curves at one and two years for three subjects
+gbm.predict(lung[covariates][:3], type="survival", times=[365, 730])
+```
+
+Boosting reports impurity-based variable importance (the total reduction in squared error credited
+to each covariate, normalized to sum to one):
+
+```{python}
+# Impurity-based variable importance
+gbm.variable_importance()
+```
+
+## Visualizing per-subject curves
+
+Because these models predict an individual survival curve for every subject,
+`plot_predicted_survival()` draws one step curve per row of new data. It works with any of the
+machine-learning models (and with `CoxPH`), so you can compare how predicted survival varies across
+individuals.
+
+```{python}
+# Compare predicted survival for four patients from the forest
+gw.plot_predicted_survival(rsf, lung[covariates][:4])
+```
+
+Pass `type="cumulative_hazard"` for the cumulative-hazard scale, or `labels=` to name the curves.
+
+## Comparing models
+
+All of these models expose a risk score, so you can judge and compare them with the same
+censoring-aware metrics as any other model. Here we compare the three ensembles by concordance on
+the training data (for an honest estimate, evaluate on held-out data or use the forest's out-of-bag
+score).
+
+```{python}
+# In-sample concordance for the three ensemble models
+scores = {
+    "random forest": gw.concordance_index(y, rsf.predict(lung[covariates])),
+    "extra trees": gw.concordance_index(y, ext.predict(lung[covariates])),
+    "gradient boosting": gw.concordance_index(y, gbm.predict(lung[covariates])),
+}
+scores
+```
+
+See [Prediction performance](15-prediction-performance.qmd) for concordance on held-out data, the
+Brier score, and time-dependent AUC (the right way to compare these models).

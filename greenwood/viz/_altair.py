@@ -1,15 +1,14 @@
 """Kaplan-Meier survival curves and numbers-at-risk tables, drawn with Altair.
 
-A Narwhals-native alternative to the plotnine backend: everything returns composable Altair
-objects, so no Pandas or Matplotlib is pulled in. `plot_survival` gives an `alt.Chart` (an
-interactive Vega-Lite spec), and with `risk_table=True` it returns an `alt.VConcatChart`
-stacking the curve over an aligned numbers-at-risk table (the x-axes share a scale). Altair
-is an optional dependency (the `altair` extra), so it is imported lazily.
+A Narwhals-native alternative to the plotnine backend: everything returns composable Altair objects.
+`plot_survival` gives an `alt.Chart` (an interactive Vega-Lite spec), and with `risk_table=True` it
+returns an `alt.VConcatChart` stacking the curve over an aligned numbers-at-risk table (the x-axes
+share a scale). Altair is an optional dependency (the `altair` extra), so it is imported lazily.
 
-The step geometry is expressed with Vega-Lite's native ``interpolate="step-after"`` rather
-than the manual point-doubling the plotnine backend uses, so the frames handed to Altair hold
-one row per event time. Those frames are built through `to_dataframe`, so a Polars-only user
-gets Polars all the way through (Altair consumes it via Narwhals).
+The step geometry is expressed with Vega-Lite's native `interpolate="step-after"` rather than the
+manual point-doubling the plotnine backend uses, so the frames handed to Altair hold one row per
+event time. Those frames are built through `to_dataframe`, so a Polars-only user gets Polars all the
+way through (Altair consumes it via Narwhals).
 """
 
 from __future__ import annotations
@@ -22,7 +21,7 @@ from ._shared import _risk_table_columns, _strata_label
 if TYPE_CHECKING:
     from .._nonparametric import KaplanMeier
 
-__all__ = ["plot_survival"]
+__all__ = ["plot_survival", "plot_predicted_survival"]
 
 _SOLID = "#20558A"
 _VALID_CI = "isValid(datum.conf_low) && isValid(datum.conf_high)"
@@ -69,8 +68,8 @@ def _require_altair() -> Any:
 def _step_columns(km: KaplanMeier) -> dict[str, list[Any]]:
     """One row per event time (plus a leading point at t=0), for all blocks combined.
 
-    Vega-Lite's ``step-after`` interpolation draws the right-continuous step, so unlike the
-    plotnine backend we do not double the coordinates by hand.
+    Vega-Lite's `step-after` interpolation draws the right-continuous step, so unlike the plotnine
+    backend we do not double the coordinates by hand.
     """
     time: list[float] = []
     estimate: list[float] = []
@@ -357,3 +356,140 @@ def _risk_table_chart(
         )
         .properties(width=width, height=20 * max(1, len(km._blocks)))
     )
+
+
+def _predicted_curve_columns(
+    model: Any, newdata: Any, kind: str, times: Any, labels: Any
+) -> tuple[dict[str, list[Any]], list[str]]:
+    """Long-form step coordinates for per-subject predicted curves, one row per (subject, time).
+
+    Reads whatever DataFrame `model.predict(..., type=kind)` returns via Narwhals (so any backend
+    works), prepends the boundary point at the smallest queried time, and returns column lists
+    plus the ordered subject labels.
+    """
+    import narwhals as nw  # pyright: ignore[reportMissingImports]
+
+    frame = nw.from_native(model.predict(newdata, type=kind, times=times), eager_only=True)
+    time = [float(t) for t in frame["time"].to_numpy()]
+    subject_cols = [c for c in frame.columns if c != "time"]
+    if labels is not None:
+        labels = list(labels)
+        if len(labels) != len(subject_cols):
+            raise ValueError(
+                f"labels has {len(labels)} entries but there are {len(subject_cols)} subjects."
+            )
+        names = [str(name) for name in labels]
+    else:
+        names = list(subject_cols)
+
+    boundary = 1.0 if kind == "survival" else 0.0
+    t0 = min(time) if time else 0.0
+    out: dict[str, list[Any]] = {"time": [], "subject": [], "value": []}
+    for col, name in zip(subject_cols, names, strict=True):
+        values = [float(v) for v in frame[col].to_numpy()]
+        out["time"].append(t0)
+        out["subject"].append(name)
+        out["value"].append(boundary)
+        for t, v in zip(time, values, strict=True):
+            out["time"].append(t)
+            out["subject"].append(name)
+            out["value"].append(v)
+    return out, names
+
+
+def plot_predicted_survival(
+    model: Any,
+    newdata: Any,
+    *,
+    type: str = "survival",
+    times: Any = None,
+    labels: Any = None,
+    xlab: str = "Time",
+    ylab: str | None = None,
+    width: int = 500,
+    height: int = 300,
+    backend: str = "altair",
+) -> Any:
+    r"""Plot per-subject predicted survival or cumulative-hazard curves.
+
+    Draws one right-continuous step curve per row of `newdata`, using any fitted model that exposes
+    `predict(newdata, type=..., times=..., format=...)` returning a frame of per-subject curves —
+    for example `SurvivalTree`, `RandomSurvivalForest`, `ExtraSurvivalTrees`, `CoxPH`, or `CoxNet`.
+    This complements `plot_survival`, which draws population Kaplan-Meier curves, by visualizing how
+    predicted risk varies across individuals.
+
+    Parameters
+    ----------
+    model
+        A fitted estimator whose `predict` accepts `type=` and returns a `time` column plus one
+        column per subject (e.g. a survival forest).
+    newdata
+        Covariates for the subjects to plot (a dataframe or 2-D array), passed to `model.predict`.
+    type
+        Curve to draw: `"survival"` (default) or `"cumulative_hazard"`.
+    times
+        Times at which to evaluate the curves. Defaults to the model's training event times.
+    labels
+        Optional per-subject legend labels (one per row of `newdata`).
+    xlab
+        X-axis label (default `"Time"`).
+    ylab
+        Y-axis label. Defaults to `"Survival probability"` or `"Cumulative hazard"` by `type`.
+    width, height
+        Plot dimensions in pixels (defaults 500x300).
+    backend
+        Plotting backend. Currently only `"altair"` is supported.
+
+    Returns
+    -------
+    altair.Chart
+        An interactive Altair chart with one colored step curve per subject.
+
+    Examples
+    --------
+    Fit a random survival forest and plot survival curves for a few subjects:
+
+    ```{python}
+    import greenwood as gw
+
+    # Load data and build a right-censored response
+    lung = gw.load_dataset("lung", backend="pandas").dropna(subset=["ph.ecog", "ph.karno"])
+    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+    cols = ["age", "sex", "ph.ecog", "ph.karno", "wt.loss"]
+
+    # Fit a forest and plot per-subject predicted survival
+    rsf = gw.RandomSurvivalForest(n_estimators=100, random_state=0).fit(y, lung[cols])
+    gw.plot_predicted_survival(rsf, lung[cols][:4])
+    ```
+    """
+    if backend != "altair":
+        raise ValueError(f"backend must be 'altair', got {backend!r}")
+    if type not in ("survival", "cumulative_hazard"):
+        raise ValueError(f"type must be 'survival' or 'cumulative_hazard', got {type!r}.")
+
+    alt = _require_altair()
+    if ylab is None:
+        ylab = "Survival probability" if type == "survival" else "Cumulative hazard"
+
+    columns, names = _predicted_curve_columns(model, newdata, type, times, labels)
+    frame = to_dataframe(columns)
+    color_scale = alt.Scale(domain=names, range=list(_PALETTE)[: len(names)] or [_SOLID])
+
+    y_scale = alt.Scale(domain=[0.0, 1.0]) if type == "survival" else alt.Scale(zero=True)
+    chart = (
+        alt.Chart(frame)
+        .mark_line(interpolate="step-after")
+        .encode(
+            x=alt.X("time:Q", title=xlab),
+            y=alt.Y("value:Q", title=ylab, scale=y_scale),
+            color=alt.Color("subject:N", title="Subject", scale=color_scale),
+            tooltip=[
+                alt.Tooltip("subject:N", title="Subject"),
+                alt.Tooltip("time:Q", title=xlab),
+                alt.Tooltip("value:Q", title=ylab, format=".3f"),
+            ],
+        )
+        .properties(width=width, height=height)
+        .interactive()
+    )
+    return chart

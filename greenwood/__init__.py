@@ -12,11 +12,13 @@ from __future__ import annotations
 from importlib.metadata import PackageNotFoundError, version
 
 from . import data, summaries, viz
+from ._boosting import GradientBoostingSurvivalAnalysis
 from ._bootstrap import BootstrapResult, bootstrap
 from ._competing import AalenJohansen, FineGray, MultiState, grays_test
 from ._core import EventTable, event_table
 from ._cox import CoxPH, SmoothHRResult, ZPHResult, ZPHWindowResult
 from ._flexible import RoystonParmar
+from ._forest import ExtraSurvivalTrees, RandomSurvivalForest, SurvivalTree
 from ._metrics import (
     brier_score,
     calibration,
@@ -44,6 +46,7 @@ from .viz import (
     plot_cif,
     plot_forest,
     plot_influence,
+    plot_predicted_survival,
     plot_smooth_hr,
     plot_survival,
     risk_table,
@@ -69,6 +72,10 @@ __all__ = [
     "CoxNetCVResult",
     "cv_coxnet",
     "RoystonParmar",
+    "SurvivalTree",
+    "RandomSurvivalForest",
+    "ExtraSurvivalTrees",
+    "GradientBoostingSurvivalAnalysis",
     "ZPHResult",
     "ZPHWindowResult",
     "SmoothHRResult",
@@ -101,6 +108,7 @@ __all__ = [
     "pairwise_rmst_test",
     "RMSTResult",
     "plot_survival",
+    "plot_predicted_survival",
     "risk_table",
     "get_risk_table_frame",
     "plot_forest",
