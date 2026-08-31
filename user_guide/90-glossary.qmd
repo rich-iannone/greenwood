@@ -32,6 +32,13 @@ At-risk / risk set
   been censored just before a given time $t$. The size of the risk set, $n(t)$, is the
   denominator in most survival estimators. See also **event table**.
 
+Bagging (bootstrap aggregation)
+: An ensemble technique that trains each base learner on a bootstrap resample of the data
+  (rows sampled with replacement) and averages their predictions. Averaging many decorrelated
+  learners reduces variance without adding bias. It is the mechanism behind Greenwood's
+  **random survival forest**: each tree sees a different bootstrap sample, and the rows left
+  out of a tree's sample form its **out-of-bag** set.
+
 Baseline hazard
 : The hazard function $h_0(t)$ for a subject whose covariates are all zero (or at their
   reference level) in a Cox model. It is left unspecified by the Cox partial likelihood and
@@ -313,6 +320,20 @@ Elastic-net penalty
   The elastic-net is the penalty used by Greenwood's `CoxNet`, with `l1_ratio=1.0` (lasso)
   as the default.
 
+Ensemble mortality
+: The scalar risk score produced by Greenwood's tree ensembles, defined (following Ishwaran et al.)
+  as the sum of a subject's predicted cumulative hazard over the training event times. Larger values
+  mean higher risk, so it can be passed straight to `concordance_index()`. It is what
+  `predict(type="risk")` returns for `SurvivalTree`, `RandomSurvivalForest`, and
+  `ExtraSurvivalTrees`.
+
+Extremely randomized survival trees (extra trees)
+: A variant of the **random survival forest** that, in addition to sampling covariates at each
+  split, draws the split threshold at random rather than optimizing it. The extra randomness further
+  decorrelates the trees, often lowering variance and speeding up fitting at the cost of a little
+  bias. Available via `ExtraSurvivalTrees`, which grows trees on the full sample by default (set
+  `bootstrap=True` for out-of-bag scoring).
+
 Fine-Gray model
 : A regression model for competing-risks data based on the **subdistribution hazard** of a
   specific cause. It models how covariates affect the cumulative incidence function directly,
@@ -363,6 +384,14 @@ Formula interface
   `CoxPH.fit()` and `AFT.fit()` via the `data=` argument together with a formula string in
   place of the covariate frame.
 
+Gradient boosting (survival)
+: An ensemble method that builds an additive model by fitting each new, shallow regression
+  tree to the negative gradient of a loss under the current model, then adding a shrunken
+  version of it. Greenwood's `GradientBoostingSurvivalAnalysis` uses the negative Cox
+  partial-likelihood as the loss, so each tree is fit to the **martingale residuals**; a
+  **Breslow** baseline then turns the additive log-risk score into survival curves. The
+  `learning_rate` controls shrinkage and `n_estimators` the number of trees.
+
 Gray's test
 : A non-parametric hypothesis test for equality of **cumulative incidence functions** across
   two or more groups in a **competing-risks** setting. It is the competing-risks analogue of
@@ -372,7 +401,7 @@ Gray's test
   expected CIF increments, and **Fleming-Harrington** $(\rho, \gamma)$ weights are supported.
   Gray's test is the appropriate choice when the research question is "does the treatment
   affect the cumulative probability of this event?" rather than "does the treatment affect
-  the rate at which the event occurs?" Available via `gray_test()` in Greenwood.
+  the rate at which the event occurs?" Available via `grays_test()` in Greenwood.
 
 Greenwood's formula
 : The standard variance estimator for the Kaplan-Meier survival curve:
@@ -619,6 +648,13 @@ One-standard-error (1-SE) rule
   `cv_coxnet()` reports both choices: `best_penalizer_` (the best mean score) and
   `penalizer_1se_` (the 1-SE choice).
 
+Out-of-bag (OOB) estimate
+: An estimate of predictive performance computed from **bagging** without a separate validation
+  set: each subject is scored using only the trees whose bootstrap sample excluded it.
+  Greenwood's `RandomSurvivalForest` (and `ExtraSurvivalTrees` with `bootstrap=True`) reports
+  out-of-bag concordance via `oob_score=True`, and uses the same held-out mechanism for
+  **permutation variable importance**.
+
 Pairwise log-rank test
 : An extension of the log-rank test that performs all pairwise group comparisons when there
   are more than two groups, with an optional multiplicity correction (e.g., Holm). Avoids
@@ -656,6 +692,13 @@ Penalizer
   least one coefficient becomes non-zero) down to `eps * lambda_max`. See also
   **elastic-net penalty**, **lasso**, and **ridge**.
 
+Permutation variable importance
+: A model-agnostic measure of a covariate's contribution, obtained by randomly permuting its
+  values and recording the resulting drop in predictive performance; a larger drop means a
+  more important covariate. Greenwood's forests compute it on the **out-of-bag** samples
+  (the increase in $1 - \text{concordance}$) via `variable_importance()`, which is also what
+  `tidy()` returns for a fitted forest.
+
 Peto-Peto test
 : A weighted log-rank test that emphasizes early survival differences by assigning weight
   $W(t) = \hat{S}(t^-)$ at each event time, where $\hat{S}$ is the pooled Kaplan-Meier
@@ -684,6 +727,14 @@ Proportional hazards assumption
   over time (that is, the hazard functions are parallel on a log scale). It can be tested
   formally with the **Schoenfeld residual** correlation test, available via
   `CoxPH.zph()` which returns a `ZPHResult`.
+
+Random survival forest (RSF)
+: A **bagging** ensemble of **survival trees**, each grown on a bootstrap sample and considering a
+  random subset of covariates at every split, following Ishwaran et al. (2008). Predictions average
+  the per-tree cumulative-hazard functions, giving a flexible, low-variance non-parametric model
+  that captures non-linearities and interactions without a proportional-hazards assumption.
+  Available via `RandomSurvivalForest`, with an optional Numba-accelerated split search
+  (`engine="numba"`).
 
 Restricted cubic spline
 : A piecewise cubic polynomial that is constrained to be linear beyond the outermost knots
@@ -856,6 +907,14 @@ Survival function
   It is a non-increasing function starting at $S(0) = 1$ and approaching 0 as
   $t \to \infty$. Estimated non-parametrically by **Kaplan-Meier** or derived from the
   **Nelson-Aalen** cumulative hazard as $\exp(-\hat{H}(t))$.
+
+Survival tree
+: A decision tree for time-to-event data that recursively splits subjects into groups whose
+  survival differs as much as possible, choosing each split to maximize the two-sample
+  **log-rank** statistic between the child groups. Each leaf stores a Kaplan-Meier survival
+  curve and a Nelson-Aalen cumulative hazard from its subjects. A single tree is interpretable
+  but high-variance; it is the base learner of the **random survival forest**. Available via
+  `SurvivalTree`.
 
 Surv object
 : The response type in Greenwood that bundles event times with their status codes and
