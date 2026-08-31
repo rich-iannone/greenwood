@@ -61,6 +61,7 @@ plotnine = ["plotnine>=0.13"]
 altair = ["altair>=6", "vl-convert-python>=1.9"]
 tables = ["great-tables>=0.17"]
 fast = ["numba>=0.59"]
+parity = ["greenwood[fast]", "scikit-survival>=0.23"]
 all = ["greenwood[pd,pl,pa,formula,plotnine,altair,tables]"]
 dev = [
     "pytest>=8",
@@ -79,6 +80,7 @@ dev = [
     "plotnine>=0.13",
     "altair>=6",
     "vl-convert-python>=1.9",
+    "numba>=0.59",
 ]
 docs = [
     "jupyter",
