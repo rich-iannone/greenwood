@@ -1,10 +1,9 @@
 """Tests for the tree-based survival estimators (`SurvivalTree`, `RandomSurvivalForest`).
 
-There is no R or scikit-survival reference in the test environment (scikit-survival is GPL and
-not a dependency), so correctness is pinned by structural and statistical properties: predicted
-survival curves are valid step functions (monotone, bounded in `[0, 1]`), the risk score is
-consistent with the survival curves, fits are reproducible under a fixed seed, the ensemble
-out-of-bag concordance beats chance, and a forest sharpens a single tree.
+Correctness is checked here by structural and statistical properties: predicted survival curves are
+valid step functions (monotone, bounded in `[0, 1]`), the risk score is consistent with the survival
+curves, fits are reproducible under a fixed seed, the ensemble out-of-bag concordance beats chance,
+and a forest sharpens a single tree.
 """
 
 from __future__ import annotations
@@ -13,8 +12,19 @@ import numpy as np
 import pytest
 
 import greenwood as gw
+import greenwood._forest as forest
 from greenwood import ExtraSurvivalTrees, RandomSurvivalForest, Surv, SurvivalTree
-from greenwood._forest import _HAS_NUMBA
+from greenwood._forest import (
+    _HAS_NUMBA,
+    _best_logrank_split,
+    _best_logrank_split_numba,
+    _compact_grid,
+    _logrank_kernel_impl,
+    _random_logrank_split,
+    _resolve_engine,
+    _resolve_max_features,
+    _RiskEventGrid,
+)
 
 
 @pytest.fixture(scope="module")
@@ -30,6 +40,13 @@ def data():
 def _curve_matrix(frame) -> np.ndarray:
     cols = [c for c in frame.columns if c != "time"]
     return frame[cols].to_numpy()
+
+
+def _small():
+    time = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+    event = np.array([True, True, False, True, True, False])
+    col = np.array([0.1, 0.2, 0.3, 0.4, 0.5, 0.6])
+    return time, event, col
 
 
 # -- SurvivalTree ---------------------------------------------------------------------------
@@ -292,3 +309,244 @@ def test_engine_auto_runs(data) -> None:
     y, x = data
     rsf = RandomSurvivalForest(n_estimators=20, engine="auto", random_state=0).fit(y, x)
     assert rsf.predict(x).shape == (x.shape[0],)
+
+
+# -- engine and max-features resolvers ------------------------------------------------------
+
+
+def test_resolve_engine_variants() -> None:
+    assert _resolve_engine("numpy") is False
+    assert _resolve_engine("auto") == forest._HAS_NUMBA
+    with pytest.raises(ValueError, match="engine must be one of"):
+        _resolve_engine("bogus")
+
+
+def test_resolve_engine_numba_without_numba(monkeypatch) -> None:
+    monkeypatch.setattr(forest, "_HAS_NUMBA", False)
+    with pytest.raises(ImportError, match="numba"):
+        _resolve_engine("numba")
+
+
+@pytest.mark.parametrize(
+    "spec, n_features, expected",
+    [
+        (None, 5, 5),
+        ("sqrt", 9, 3),
+        ("log2", 8, 3),
+        (2, 5, 2),
+        (0.5, 8, 4),
+        (100, 5, 5),  # clipped to n_features
+        (0, 5, 1),  # clipped up to 1
+    ],
+)
+def test_resolve_max_features(spec, n_features, expected) -> None:
+    assert _resolve_max_features(spec, n_features) == expected
+
+
+def test_resolve_max_features_bad_string() -> None:
+    with pytest.raises(ValueError, match="Unknown max_features"):
+        _resolve_max_features("nonsense", 5)
+
+
+def test_resolve_max_features_bad_type() -> None:
+    with pytest.raises(TypeError, match="max_features must be"):
+        _resolve_max_features(object(), 5)
+
+
+# -- split-search helpers on degenerate inputs ----------------------------------------------
+
+
+def test_compact_grid_no_events() -> None:
+    time = np.array([1.0, 2.0, 3.0])
+    event = np.array([False, False, False])
+    event_times, n_tot, d_tot, var_factor = _compact_grid(time, event)
+    assert event_times.size == 0
+    assert n_tot.size == 0 and d_tot.size == 0 and var_factor.size == 0
+
+
+def test_best_logrank_split_empty_grid() -> None:
+    time = np.array([1.0, 2.0, 3.0])
+    event = np.array([False, False, False])
+    grid = _RiskEventGrid(time, event)
+    x = np.array([[0.0], [1.0], [2.0]])
+    assert _best_logrank_split(grid, x, np.array([0]), 1) is None
+
+
+def test_best_logrank_split_constant_feature() -> None:
+    time = np.array([1.0, 2.0, 3.0, 4.0])
+    event = np.array([True, True, True, False])
+    grid = _RiskEventGrid(time, event)
+    x_const = np.zeros((4, 1))
+    # No valid split when the only feature is constant.
+    assert _best_logrank_split(grid, x_const, np.array([0]), 1) is None
+
+
+def test_random_logrank_split_empty_and_constant() -> None:
+    rng = np.random.default_rng(0)
+    # Empty grid (no events).
+    grid_empty = _RiskEventGrid(np.array([1.0, 2.0]), np.array([False, False]))
+    assert _random_logrank_split(grid_empty, np.zeros((2, 1)), np.array([0]), 1, rng) is None
+    # Constant feature yields no split.
+    grid = _RiskEventGrid(np.array([1.0, 2.0, 3.0, 4.0]), np.array([True, True, True, False]))
+    assert _random_logrank_split(grid, np.zeros((4, 1)), np.array([0]), 1, rng) is None
+
+
+def test_random_logrank_split_finds_split() -> None:
+    rng = np.random.default_rng(1)
+    time, event, col = _small()
+    grid = _RiskEventGrid(time, event)
+    result = _random_logrank_split(grid, col[:, None], np.array([0]), 1, rng)
+    assert result is not None
+    feat, threshold, chi = result
+    assert feat == 0 and np.isfinite(threshold) and chi >= 0
+
+
+def test_best_logrank_split_numba_empty_grid() -> None:
+    # Reaches the early return before the (possibly absent) compiled kernel is called.
+    time = np.array([1.0, 2.0, 3.0])
+    event = np.array([False, False, False])
+    x = np.array([[0.0], [1.0], [2.0]])
+    assert _best_logrank_split_numba(x, np.array([0]), 1, time, event) is None
+
+
+def test_logrank_kernel_impl_pure_python() -> None:
+    # Exercises the reference (un-jitted) kernel body directly.
+    time, event, col = _small()
+    event_times, n_tot, d_tot, var_factor = _compact_grid(time, event)
+    time_idx_le = np.searchsorted(event_times, time, side="right").astype(np.int64)
+
+    thr, chi = _logrank_kernel_impl(col, time_idx_le, event, n_tot, d_tot, var_factor, 1)
+    assert np.isfinite(thr) and chi >= 0.0
+
+    # No valid split when the leaf minimum exceeds the sample size.
+    thr_none, chi_none = _logrank_kernel_impl(col, time_idx_le, event, n_tot, d_tot, var_factor, 10)
+    assert np.isnan(thr_none) and chi_none == -1.0
+
+
+# -- SurvivalTree constructor and fit validation --------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "kwargs, match",
+    [
+        ({"min_samples_split": 1}, "min_samples_split"),
+        ({"min_samples_leaf": 0}, "min_samples_leaf"),
+        ({"max_depth": 0}, "max_depth"),
+        ({"splitter": "bogus"}, "splitter"),
+    ],
+)
+def test_survival_tree_invalid_params(kwargs, match) -> None:
+    with pytest.raises(ValueError, match=match):
+        SurvivalTree(**kwargs)
+
+
+def test_survival_tree_unfitted_repr() -> None:
+    assert "<unfitted>" in repr(SurvivalTree())
+
+
+def test_survival_tree_fit_requires_response() -> None:
+    x = np.array([[1.0], [2.0], [3.0]])
+    with pytest.raises(ValueError, match="Surv` response is required"):
+        SurvivalTree().fit(None, x)
+
+
+def test_survival_tree_fit_row_mismatch(data) -> None:
+    y, x = data
+    with pytest.raises(ValueError, match="same number of rows"):
+        SurvivalTree(random_state=0).fit(y, x[:-3])
+
+
+def test_survival_tree_fit_no_events() -> None:
+    y = Surv.right(time=[5, 6, 7, 8], event=[0, 0, 0, 0])
+    x = np.array([[1.0], [2.0], [3.0], [4.0]])
+    with pytest.raises(ValueError, match="No events remain"):
+        SurvivalTree().fit(y, x)
+
+
+def test_survival_tree_engine_bad_raises_on_fit(data) -> None:
+    y, x = data
+    with pytest.raises(ValueError, match="engine must be one of"):
+        SurvivalTree(engine="bogus", random_state=0).fit(y, x)
+
+
+def test_survival_curve_before_first_event(data) -> None:
+    # Query time below the first event time hits the step-function boundary branch.
+    y, x = data
+    tree = SurvivalTree(max_depth=3, random_state=0).fit(y, x)
+    frame = tree.predict(x[:2], type="survival", times=[0.0], format="pandas")
+    vals = frame[[c for c in frame.columns if c != "time"]].to_numpy()
+    assert np.allclose(vals, 1.0)  # survival is 1 before any event
+
+
+def test_survival_tree_predict_cumulative_hazard(data) -> None:
+    y, x = data
+    tree = SurvivalTree(max_depth=3, random_state=0).fit(y, x)
+    frame = tree.predict(x[:3], type="cumulative_hazard", times=[100, 300], format="pandas")
+    vals = frame[[c for c in frame.columns if c != "time"]].to_numpy()
+    assert np.all(np.diff(vals, axis=0) >= -1e-12)  # non-decreasing over time
+
+
+def test_survival_tree_predict_rejects_unknown_type(data) -> None:
+    y, x = data
+    tree = SurvivalTree(max_depth=3, random_state=0).fit(y, x)
+    with pytest.raises(ValueError, match="Unknown predict type"):
+        tree.predict(x, type="lp")
+
+
+# -- forest constructor, repr, and fit validation -------------------------------------------
+
+
+def test_forest_invalid_n_estimators() -> None:
+    with pytest.raises(ValueError, match="n_estimators"):
+        RandomSurvivalForest(n_estimators=0)
+
+
+def test_forest_unfitted_repr() -> None:
+    assert "<unfitted>" in repr(RandomSurvivalForest())
+    assert "<unfitted>" in repr(ExtraSurvivalTrees())
+
+
+def test_forest_fitted_repr_with_oob(data) -> None:
+    y, x = data
+    rsf = RandomSurvivalForest(n_estimators=20, oob_score=True, random_state=0).fit(y, x)
+    assert "out-of-bag concordance" in repr(rsf)
+
+
+def test_forest_fit_row_mismatch(data) -> None:
+    y, x = data
+    with pytest.raises(ValueError, match="same number of rows"):
+        RandomSurvivalForest(n_estimators=3, random_state=0).fit(y, x[:-3])
+
+
+def test_forest_fit_no_events() -> None:
+    y = Surv.right(time=[5, 6, 7, 8, 9, 10], event=[0, 0, 0, 0, 0, 0])
+    x = np.arange(6.0).reshape(6, 1)
+    with pytest.raises(ValueError, match="No events remain"):
+        RandomSurvivalForest(n_estimators=3, random_state=0).fit(y, x)
+
+
+def test_forest_predict_survival_before_first_event(data) -> None:
+    y, x = data
+    rsf = RandomSurvivalForest(n_estimators=15, random_state=0).fit(y, x)
+    frame = rsf.predict(x[:2], type="survival", times=[0.0], format="pandas")
+    vals = frame[[c for c in frame.columns if c != "time"]].to_numpy()
+    assert np.allclose(vals, 1.0)
+
+
+def test_compute_oob_score_returns_none_without_oob_subjects(data) -> None:
+    y, x = data
+    rsf = RandomSurvivalForest(n_estimators=5, random_state=0).fit(y, x)
+    # Force every tree to have an empty out-of-bag set: each tree is skipped and no subject is
+    # scored, so the estimate is undefined.
+    rsf._oob_masks = [np.zeros(rsf.n_, dtype=bool) for _ in rsf._oob_masks]
+    assert rsf._compute_oob_score() is None
+
+
+def test_permutation_importance_skips_tree_without_oob(data) -> None:
+    y, x = data
+    rsf = RandomSurvivalForest(n_estimators=8, random_state=0).fit(y, x)
+    # Blank out one tree's OOB set so it is skipped inside the permutation-importance loop, while
+    # the remaining trees still score enough subjects to compute importances.
+    rsf._oob_masks[0] = np.zeros(rsf.n_, dtype=bool)
+    result = rsf.variable_importance(n_repeats=2, random_state=0, format="pandas")
+    assert set(result["term"]) == set(x.columns)
