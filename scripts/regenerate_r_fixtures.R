@@ -290,6 +290,72 @@ pairwise_logrank_fixture <- function() {
 }
 write_json_fixture(pairwise_logrank_fixture(), "pairwise_logrank_veteran")
 
+# -- MaxCombo test: Z-statistics and correlation under multiple FH weights ----------
+#
+# Computes the Z-statistics and correlation matrix for the MaxCombo test using the
+# same Fleming-Harrington weighted log-rank formula as Greenwood's _tests.py.
+
+maxcombo_fixture <- function() {
+  lung2 <- lung[complete.cases(lung[, c("time", "status", "sex")]), ]
+  time_ <- lung2$time
+  status <- as.integer(lung2$status == 2)
+  grp <- lung2$sex
+
+  event_times <- sort(unique(time_[status == 1]))
+  nt <- length(event_times)
+
+  n_risk_1 <- n_risk_2 <- n_event_1 <- n_event_2 <- numeric(nt)
+  for (i in seq_along(event_times)) {
+    t <- event_times[i]
+    n_risk_1[i] <- sum(time_[grp == 1] >= t)
+    n_risk_2[i] <- sum(time_[grp == 2] >= t)
+    n_event_1[i] <- sum(time_[grp == 1] == t & status[grp == 1] == 1)
+    n_event_2[i] <- sum(time_[grp == 2] == t & status[grp == 2] == 1)
+  }
+  n_risk <- n_risk_1 + n_risk_2
+  n_event <- n_event_1 + n_event_2
+
+  surv_pool <- cumprod(ifelse(n_risk > 0, 1 - n_event / n_risk, 1))
+  surv_left <- c(1, surv_pool[-nt])
+
+  wt_list <- list(c(0, 0), c(1, 0), c(0, 1), c(1, 1))
+  nw <- length(wt_list)
+  fh_w <- matrix(0, nrow = nw, ncol = nt)
+  for (wi in seq_len(nw)) {
+    fh_w[wi, ] <- surv_left^wt_list[[wi]][1] * (1 - surv_left)^wt_list[[wi]][2]
+  }
+
+  expected_rate <- ifelse(n_risk > 0, n_event / n_risk, 0)
+  base_var <- ifelse(n_risk > 1,
+    n_event * (n_risk - n_event) / (n_risk^2 * (n_risk - 1)), 0
+  )
+  gvf <- n_risk_1 * (n_risk - n_risk_1)
+
+  u_vec <- numeric(nw)
+  sigma <- matrix(0, nrow = nw, ncol = nw)
+  for (wi in seq_len(nw)) {
+    u_vec[wi] <- sum(fh_w[wi, ] * (n_event_1 - n_risk_1 * expected_rate))
+    for (wj in wi:nw) {
+      cv <- sum(fh_w[wi, ] * fh_w[wj, ] * base_var * gvf)
+      sigma[wi, wj] <- cv
+      sigma[wj, wi] <- cv
+    }
+  }
+  sd_vec <- sqrt(diag(sigma))
+  z_vec <- u_vec / sd_vec
+  corr <- sigma / outer(sd_vec, sd_vec)
+
+  list(
+    z_statistics = list(
+      "0_0" = z_vec[1], "1_0" = z_vec[2],
+      "0_1" = z_vec[3], "1_1" = z_vec[4]
+    ),
+    correlation = corr,
+    statistic = max(abs(z_vec))
+  )
+}
+write_json_fixture(maxcombo_fixture(), "maxcombo_lung_sex")
+
 # -- Numbers at risk at fixed times (for risk tables) -------------------------------
 
 risk_table_fixture <- function(fit, times) {
@@ -834,8 +900,8 @@ ipcw_tau_default <- max(lung$time[ipcw_delta == 1L])
 write_json_fixture(
   list(
     c_ipcw_default = uno_ipcw_concordance(lung$time, ipcw_delta, auc_lp, ipcw_tau_default),
-    c_ipcw_tau365  = uno_ipcw_concordance(lung$time, ipcw_delta, auc_lp, 365.0),
-    tau_default     = ipcw_tau_default
+    c_ipcw_tau365 = uno_ipcw_concordance(lung$time, ipcw_delta, auc_lp, 365.0),
+    tau_default = ipcw_tau_default
   ),
   "concordance_ipcw_lung"
 )
