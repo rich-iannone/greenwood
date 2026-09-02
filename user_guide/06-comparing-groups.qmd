@@ -129,6 +129,46 @@ censoring patterns and follows the validation rules documented in the
 [Validation and reproducibility](03-survival-data.qmd#validation-and-reproducibility) section.
 :::
 
+## The MaxCombo test for non-proportional hazards
+
+The choice-of-weights problem has a principled solution: the MaxCombo test evaluates several
+Fleming-Harrington weight functions simultaneously and uses the largest signal. It computes
+standardized Z-statistics for each weight, then takes the maximum absolute value as the test
+statistic. The p-value accounts for the multiplicity by using the joint multivariate normal
+distribution of the Z-statistics under the null hypothesis.
+
+```{python}
+gw.maxcombo_test(y, group=lung["sex"])
+```
+
+The default weight set covers the four standard scenarios: `(0,0)` for proportional hazards,
+`(1,0)` for early differences, `(0,1)` for late differences, and `(1,1)` for crossing
+hazards. You can also supply a custom set.
+
+```{python}
+gw.maxcombo_test(y, group=lung["sex"], weights=[(0, 0), (0, 1)])
+```
+
+The result includes the individual Z-statistics so you can see which weight drove the signal. The
+`correlation` matrix shows how dependent the tests are. High correlation (common in practice) means
+the multiplicity penalty is mild. The MaxCombo p-value is often close to the best single-weight
+p-value rather than dramatically larger.
+
+```{python}
+result = gw.maxcombo_test(y, group=lung["sex"])
+result.z_statistics
+```
+
+::: {.callout-note}
+## When to use MaxCombo vs. a single weighted log-rank
+
+Use a single weighted test when you have a strong prior about the treatment-effect timing (for
+example, you know the effect is immediate). Use MaxCombo when you are unsure whether the effect will
+be early, late, or sustained. This is common in immunotherapy trials where delayed effects are
+expected but not guaranteed. The MaxCombo protects against choosing the wrong weight while paying
+only a small price in power when the effect turns out to be proportional.
+:::
+
 ## Comparing more than two groups
 
 The log-rank test extends to any number of groups, giving one overall test. We switch to the
