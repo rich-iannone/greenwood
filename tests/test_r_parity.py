@@ -311,6 +311,25 @@ def test_pairwise_logrank_matches_r() -> None:
         )
 
 
+@pytest.mark.rparity
+def test_maxcombo_matches_r() -> None:
+    df = gw.load_dataset("lung", backend="pandas")
+    y = Surv.right(df["time"], event=(df["status"] == 2))
+    fixture = load_fixture("maxcombo_lung_sex")
+    result = gw.maxcombo_test(y, group=df["sex"])
+
+    weights_keys = [(0, 0), (1, 0), (0, 1), (1, 1)]
+    fixture_z = [fixture["z_statistics"][f"{r}_{g}"] for r, g in weights_keys]
+    result_z = [result.z_statistics[w] for w in weights_keys]
+    assert_allclose_to_r(result_z, fixture_z, what="maxcombo Z")
+    assert_allclose_to_r(
+        result.correlation.ravel(),
+        np.array(fixture["correlation"]).ravel(),
+        what="maxcombo correlation",
+    )
+    assert_allclose_to_r(result.statistic, fixture["statistic"], what="maxcombo statistic")
+
+
 def _check_cox(cox: gw.CoxPH, fixture: dict[str, Any], label: str) -> None:
     assert cox.term_names_ == fixture["terms"]
     assert cox.n_ == fixture["n"]
