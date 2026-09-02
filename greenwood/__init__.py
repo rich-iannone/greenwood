@@ -36,7 +36,14 @@ from ._power import logrank_n_events, logrank_power, logrank_sample_size
 from ._resample import cross_validate
 from ._rmst import RMSTResult, pairwise_rmst_test, rmst_diff, rmst_test
 from ._surv import CensoringType, Surv
-from ._tests import TestResult, logrank_test, pairwise_logrank_test, trend_test
+from ._tests import (
+    MaxComboResult,
+    TestResult,
+    logrank_test,
+    maxcombo_test,
+    pairwise_logrank_test,
+    trend_test,
+)
 from ._tvc import split_episodes
 from ._univariate import Parametric, compare_distributions
 from .data import available_datasets, load_dataset
@@ -100,8 +107,10 @@ __all__ = [
     "integrated_brier_score",
     "time_dependent_auc",
     "logrank_test",
+    "maxcombo_test",
     "pairwise_logrank_test",
     "trend_test",
+    "MaxComboResult",
     "TestResult",
     "rmst_test",
     "rmst_diff",
