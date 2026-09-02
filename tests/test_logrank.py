@@ -343,3 +343,116 @@ def test_trend_test_array_scores() -> None:
     result = trend_test(y, group=group, scores=[0.0, 1.0, 2.0])
     assert result.statistic >= 0
     assert 0 <= result.p_value <= 1
+
+
+# -- MaxCombo test ---------------------------------------------------------------
+
+
+def test_maxcombo_basic() -> None:
+    import greenwood as gw
+
+    lung = gw.load_dataset("lung", backend="pandas")
+    y = Surv.right(lung["time"], event=(lung["status"] == 2))
+    result = gw.maxcombo_test(y, group=lung["sex"])
+    assert result.statistic > 0
+    assert 0 < result.p_value < 1
+    assert len(result.z_statistics) == 4
+    assert result.correlation.shape == (4, 4)
+    assert "MaxCombo" in result.method
+
+
+def test_maxcombo_z_matches_logrank() -> None:
+    import greenwood as gw
+
+    lung = gw.load_dataset("lung", backend="pandas")
+    y = Surv.right(lung["time"], event=(lung["status"] == 2))
+    result = gw.maxcombo_test(y, group=lung["sex"], weights=[(0, 0)])
+    lr = gw.logrank_test(y, group=lung["sex"])
+    assert result.z_statistics[(0, 0)] == pytest.approx(np.sqrt(lr.statistic), rel=1e-10)
+
+
+def test_maxcombo_custom_weights() -> None:
+    import greenwood as gw
+
+    lung = gw.load_dataset("lung", backend="pandas")
+    y = Surv.right(lung["time"], event=(lung["status"] == 2))
+    result = gw.maxcombo_test(y, group=lung["sex"], weights=[(0, 0), (0, 1)])
+    assert len(result.z_statistics) == 2
+    assert result.correlation.shape == (2, 2)
+
+
+def test_maxcombo_requires_two_groups() -> None:
+    import greenwood as gw
+
+    y = Surv.right([1, 2, 3], [1, 1, 1])
+    with pytest.raises(ValueError, match="exactly two groups"):
+        gw.maxcombo_test(y, group=["A", "A", "A"])
+
+
+def test_maxcombo_rejects_three_groups() -> None:
+    import greenwood as gw
+
+    y = Surv.right([1, 2, 3, 4, 5, 6], [1, 1, 1, 1, 1, 1])
+    with pytest.raises(ValueError, match="exactly two groups"):
+        gw.maxcombo_test(y, group=["A", "A", "B", "B", "C", "C"])
+
+
+def test_maxcombo_no_events_raises() -> None:
+    import greenwood as gw
+
+    y = Surv.right([1, 2, 3, 4], [0, 0, 0, 0])
+    with pytest.raises(ValueError, match="No events"):
+        gw.maxcombo_test(y, group=["A", "A", "B", "B"])
+
+
+def test_maxcombo_length_mismatch() -> None:
+    import greenwood as gw
+
+    y = Surv.right([1, 2, 3], [1, 1, 1])
+    with pytest.raises(ValueError, match="same length"):
+        gw.maxcombo_test(y, group=["A", "B"])
+
+
+def test_maxcombo_p_below_logrank_for_strong_signal() -> None:
+    import greenwood as gw
+
+    lung = gw.load_dataset("lung", backend="pandas")
+    y = Surv.right(lung["time"], event=(lung["status"] == 2))
+    mc = gw.maxcombo_test(y, group=lung["sex"])
+    lr = gw.logrank_test(y, group=lung["sex"])
+    assert mc.p_value < lr.p_value
+
+
+def test_maxcombo_repr() -> None:
+    import greenwood as gw
+
+    lung = gw.load_dataset("lung", backend="pandas")
+    y = Surv.right(lung["time"], event=(lung["status"] == 2))
+    result = gw.maxcombo_test(y, group=lung["sex"])
+    s = repr(result)
+    assert "MaxComboResult" in s
+    assert "statistic=" in s
+    assert "p_value=" in s
+
+
+def test_maxcombo_stratified() -> None:
+    import greenwood as gw
+
+    lung = gw.load_dataset("lung", backend="pandas")
+    lung = lung.dropna(subset=["ph.ecog"])
+    y = Surv.right(lung["time"], event=(lung["status"] == 2))
+    result = gw.maxcombo_test(y, group=lung["sex"], strata=lung["ph.ecog"])
+    assert result.statistic > 0
+    assert 0 < result.p_value < 1
+    assert "Stratified" in result.method
+
+
+def test_maxcombo_correlation_symmetric_unit_diagonal() -> None:
+    import greenwood as gw
+
+    lung = gw.load_dataset("lung", backend="pandas")
+    y = Surv.right(lung["time"], event=(lung["status"] == 2))
+    result = gw.maxcombo_test(y, group=lung["sex"])
+    corr = result.correlation
+    np.testing.assert_allclose(corr, corr.T)
+    np.testing.assert_allclose(np.diag(corr), 1.0)
