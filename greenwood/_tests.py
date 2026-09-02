@@ -22,7 +22,14 @@ from ._backends import to_dataframe
 if TYPE_CHECKING:
     from ._surv import Surv
 
-__all__ = ["logrank_test", "pairwise_logrank_test", "trend_test", "TestResult"]
+__all__ = [
+    "logrank_test",
+    "maxcombo_test",
+    "pairwise_logrank_test",
+    "trend_test",
+    "MaxComboResult",
+    "TestResult",
+]
 
 Array = npt.NDArray[Any]
 
@@ -123,6 +130,40 @@ class TestResult:
         return (
             f"TestResult(method={self.method!r}, statistic={self.statistic:.4f}, "
             f"df={self.df}, p_value={self.p_value:.4g})"
+        )
+
+
+@dataclass(frozen=True)
+class MaxComboResult:
+    """The outcome of a MaxCombo weighted log-rank test.
+
+    Attributes
+    ----------
+    statistic
+        The MaxCombo test statistic: the maximum absolute Z-statistic across the weight
+        functions.
+    p_value
+        P-value from the multivariate normal distribution. The probability of observing
+        a max |Z| this large or larger under the null hypothesis.
+    z_statistics
+        Dictionary mapping each (rho, gamma) weight tuple to its Z-statistic.
+    correlation
+        Correlation matrix between the Z-statistics under H0, as a NumPy array.
+    method
+        Human-readable description of the test.
+    """
+
+    statistic: float
+    p_value: float
+    z_statistics: dict[tuple[float, float], float]
+    correlation: Array
+    method: str
+
+    def __repr__(self) -> str:
+        weights = list(self.z_statistics.keys())
+        return (
+            f"MaxComboResult(statistic={self.statistic:.4f}, "
+            f"p_value={self.p_value:.4g}, weights={weights})"
         )
 
 
@@ -399,6 +440,263 @@ def logrank_test(
         method=method,
         observed=dict(zip(groups, observed.tolist(), strict=True)),
         expected=dict(zip(groups, expected.tolist(), strict=True)),
+    )
+
+
+def _maxcombo_z_and_corr(
+    entry: Array,
+    exit_: Array,
+    event: Array,
+    weight: Array,
+    labels: Array,
+    groups: list[Any],
+    strata: Array | None,
+    weights: list[tuple[float, float]],
+) -> tuple[Array, Array]:
+    """Compute Z-statistics and their correlation matrix for multiple FH weight functions.
+
+    For 2-group tests, the Z-statistic is the standardized (O - E) / sqrt(V) for the first
+    group under each weight. The correlation comes from the shared per-time-point variance
+    structure weighted by different FH weight functions.
+    """
+    n_weights = len(weights)
+    z_vec = np.zeros(n_weights)
+    sigma = np.zeros((n_weights, n_weights))
+
+    def _accumulate_block(
+        ent: Array,
+        ex: Array,
+        ev: Array,
+        wt: Array,
+        lab: Array,
+    ) -> None:
+        n_groups = len(groups)
+        times = np.unique(ex[ev])
+        if times.size == 0:
+            return
+
+        n_risk_g = np.empty((n_groups, times.size))
+        n_event_g = np.zeros((n_groups, times.size))
+        for j, label in enumerate(groups):
+            mask = lab == label
+            n_risk_g[j] = _at_risk(ent[mask], ex[mask], wt[mask], times)
+            ev_mask = mask & ev
+            idx = np.searchsorted(times, ex[ev_mask])
+            np.add.at(n_event_g[j], idx, wt[ev_mask])
+
+        n_risk = n_risk_g.sum(axis=0)
+        n_event = n_event_g.sum(axis=0)
+
+        with np.errstate(divide="ignore", invalid="ignore"):
+            surv_pool = np.cumprod(np.where(n_risk > 0, 1.0 - n_event / n_risk, 1.0))
+        surv_left = np.concatenate(([1.0], surv_pool[:-1]))
+
+        fh_w = np.empty((n_weights, times.size))
+        for wi, (rho, gamma) in enumerate(weights):
+            fh_w[wi] = surv_left**rho * (1.0 - surv_left) ** gamma
+
+        with np.errstate(divide="ignore", invalid="ignore"):
+            expected_rate = np.where(n_risk > 0, n_event / n_risk, 0.0)
+            base_var = np.where(
+                n_risk > 1,
+                n_event * (n_risk - n_event) / (n_risk**2 * (n_risk - 1.0)),
+                0.0,
+            )
+        group_var_factor = n_risk_g[0] * (n_risk - n_risk_g[0])
+
+        for wi in range(n_weights):
+            u_wi = float(np.sum(fh_w[wi] * (n_event_g[0] - n_risk_g[0] * expected_rate)))
+            z_vec[wi] += u_wi
+            for wj in range(wi, n_weights):
+                cov_wij = float(np.sum(fh_w[wi] * fh_w[wj] * base_var * group_var_factor))
+                sigma[wi, wj] += cov_wij
+                if wj != wi:
+                    sigma[wj, wi] += cov_wij
+
+    if strata is None:
+        _accumulate_block(entry, exit_, event, weight, labels)
+    else:
+        for s in np.unique(strata):
+            m = strata == s
+            _accumulate_block(entry[m], exit_[m], event[m], weight[m], labels[m])
+
+    with np.errstate(divide="ignore", invalid="ignore"):
+        sd = np.sqrt(np.diag(sigma))
+        z_vec = np.where(sd > 0, z_vec / sd, 0.0)
+        outer_sd = np.outer(sd, sd)
+        corr = np.where(outer_sd > 0, sigma / outer_sd, np.eye(n_weights))
+
+    np.fill_diagonal(corr, 1.0)
+
+    return z_vec, corr
+
+
+def _pmvnorm_max_abs(c: float, corr: Array, n_samples: int = 2**18) -> float:
+    """P(max|Z_i| <= c) under MVN(0, corr) via Sobol quasi-Monte Carlo."""
+    from scipy.stats import norm as norm_dist
+    from scipy.stats import qmc
+
+    k = corr.shape[0]
+    if k == 1:
+        return float(2.0 * norm_dist.cdf(c) - 1.0)
+
+    corr_pd = corr.copy()
+    corr_pd += np.eye(k) * max(0.0, 1e-10 - float(np.linalg.eigvalsh(corr_pd)[0]))
+    L = np.linalg.cholesky(corr_pd)
+    sampler = qmc.Sobol(d=k, scramble=True, seed=np.random.default_rng(0))
+    u = sampler.random(n_samples)
+    z = norm_dist.ppf(u) @ L.T
+    return float(np.all(np.abs(z) <= c, axis=1).mean())
+
+
+def maxcombo_test(
+    surv: Surv,
+    group: Any,
+    *,
+    weights: list[tuple[float, float]] | None = None,
+    strata: Any = None,
+) -> MaxComboResult:
+    r"""MaxCombo test: maximum of multiple weighted log-rank Z-statistics.
+
+    The MaxCombo test evaluates survival differences using several Fleming-Harrington
+    weight functions simultaneously and takes the largest absolute Z-statistic as the
+    test statistic. This makes it robust to unknown treatment-effect timing. When the
+    effect is immediate, the standard log-rank (rho=0, gamma=0) dominates. When the
+    effect is delayed, the late-emphasis weight (rho=0, gamma=1) dominates. The MaxCombo
+    adapts automatically.
+
+    **When to use**: When the proportional hazards assumption may not hold and you do not
+    know in advance whether the treatment effect will be early, late, or sustained. This
+    is common in immunotherapy and oncology trials where delayed effects are expected but
+    not guaranteed.
+
+    Parameters
+    ----------
+    surv
+        A `Surv` response object (right-censored or counting-process).
+    group
+        Group labels, one per observation. Must have exactly two unique levels.
+    weights
+        List of (rho, gamma) tuples defining the Fleming-Harrington weight functions.
+        Defaults to the standard four-weight combo:
+        `[(0, 0), (1, 0), (0, 1), (1, 1)]`, covering unweighted, early-emphasis,
+        late-emphasis, and middle-emphasis tests.
+    strata
+        Optional stratifying factor. When provided, each weighted test is stratified
+        (computed within each stratum, then combined).
+
+    Returns
+    -------
+    MaxComboResult
+        A result object with attributes:
+
+        - `statistic`: The maximum absolute Z-statistic across all weight functions.
+        - `p_value`: P-value from the multivariate normal distribution.
+        - `z_statistics`: Dictionary mapping each (rho, gamma) tuple to its Z-statistic.
+        - `correlation`: Correlation matrix between the Z-statistics under H0.
+        - `method`: Description of the test.
+
+    Details
+    -------
+    The MaxCombo test is based on the joint distribution of the standardized weighted
+    log-rank statistics under H0. Under the null hypothesis of equal survival, the
+    Z-statistics are asymptotically multivariate normal with mean zero and a correlation
+    matrix determined by the shared risk-set structure. The p-value is computed as
+
+    $$
+    p = P\bigl(\max_j |Z_j| \ge T_{\mathrm{obs}}\bigr)
+      = 1 - P\bigl(\text{all } |Z_j| < T_{\mathrm{obs}}\bigr),
+    $$
+
+    where the probability is evaluated under the multivariate normal using Sobol
+    quasi-Monte Carlo integration.
+
+    References
+    ----------
+    Lee S.H. (2007). On the versatility of the combination of the weighted log-rank
+    statistics. *Computational Statistics & Data Analysis*, 51(12), 6557-6564.
+
+    Examples
+    --------
+    Test whether survival differs between the two sexes in the `lung` dataset using
+    the default four-weight MaxCombo:
+
+    ```{python}
+    import greenwood as gw
+
+    lung = gw.load_dataset("lung", backend="polars")
+    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+
+    result = gw.maxcombo_test(y, group=lung["sex"])
+    result
+    ```
+
+    Examine which weight function produced the largest signal:
+
+    ```{python}
+    result.z_statistics
+    ```
+
+    Use a custom weight set focusing on standard and delayed effects:
+
+    ```{python}
+    gw.maxcombo_test(y, group=lung["sex"], weights=[(0, 0), (0, 1)])
+    ```
+    """
+    from ._surv import CensoringType, _to_1d_array
+
+    if surv.type not in (CensoringType.RIGHT, CensoringType.COUNTING):
+        raise NotImplementedError(
+            f"maxcombo_test supports right-censored and counting-process responses, "
+            f"not {surv.type.value!r}."
+        )
+
+    labels_all = _to_1d_array(group, dtype=object)
+    if labels_all.shape[0] != surv.n:
+        raise ValueError("`group` must have the same length as the response.")
+
+    strata_arr = None
+    if strata is not None:
+        strata_arr = _to_1d_array(strata, dtype=object)
+        if strata_arr.shape[0] != surv.n:
+            raise ValueError("`strata` must have the same length as the response.")
+
+    entry = surv.entry
+    exit_ = surv.stop
+    event = surv.event
+    obs_weight = surv.weights if surv.weights is not None else np.ones(surv.n)
+
+    groups = sorted(set(labels_all.tolist()), key=lambda v: (str(type(v)), v))
+    if len(groups) != 2:
+        raise ValueError("maxcombo_test requires exactly two groups.")
+    if np.count_nonzero(event) == 0:
+        raise ValueError("No events in the data; the test is undefined.")
+
+    if weights is None:
+        weights = [(0, 0), (1, 0), (0, 1), (1, 1)]
+    if len(weights) < 1:
+        raise ValueError("At least one weight function is required.")
+
+    z_vec, corr = _maxcombo_z_and_corr(
+        entry, exit_, event, obs_weight, labels_all, groups, strata_arr, weights
+    )
+
+    stat = float(np.max(np.abs(z_vec)))
+    p_inside = _pmvnorm_max_abs(stat, corr)
+    p_value = max(1.0 - p_inside, 0.0)
+
+    z_dict = {w: float(z_vec[i]) for i, w in enumerate(weights)}
+    weight_str = ", ".join(f"({r},{g})" for r, g in weights)
+    method = f"MaxCombo test [{weight_str}]"
+    if strata is not None:
+        method = f"Stratified {method[0].lower()}{method[1:]}"
+
+    return MaxComboResult(
+        statistic=stat,
+        p_value=p_value,
+        z_statistics=z_dict,
+        correlation=corr,
+        method=method,
     )
 
 
