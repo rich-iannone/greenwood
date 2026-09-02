@@ -119,9 +119,10 @@ reference:
         members: true
 
   - title: Group comparisons
-    desc: The log-rank test, trend tests for ordered groups, the G-rho (Fleming-Harrington) family, Gray's test for cumulative incidence, and restricted mean survival time (RMST) comparisons.
+    desc: The log-rank test, MaxCombo test for non-proportional hazards, trend tests for ordered groups, the G-rho (Fleming-Harrington) family, Gray's test for cumulative incidence, and restricted mean survival time (RMST) comparisons.
     contents:
       - logrank_test
+      - maxcombo_test
       - trend_test
       - pairwise_logrank_test
       - grays_test
