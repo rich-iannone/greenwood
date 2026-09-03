@@ -19,6 +19,7 @@ from ._core import EventTable, event_table
 from ._cox import CoxPH, SmoothHRResult, ZPHResult, ZPHWindowResult
 from ._flexible import RoystonParmar
 from ._forest import ExtraSurvivalTrees, RandomSurvivalForest, SurvivalTree
+from ._ipcw import CensoringDistribution, IPCRidge
 from ._metrics import (
     brier_score,
     calibration,
@@ -83,6 +84,8 @@ __all__ = [
     "RandomSurvivalForest",
     "ExtraSurvivalTrees",
     "GradientBoostingSurvivalAnalysis",
+    "CensoringDistribution",
+    "IPCRidge",
     "ZPHResult",
     "ZPHWindowResult",
     "SmoothHRResult",
