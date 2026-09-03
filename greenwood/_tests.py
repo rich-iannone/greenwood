@@ -543,7 +543,7 @@ def _pmvnorm_max_abs(c: float, corr: Array, n_samples: int = 2**18) -> float:
     corr_pd = corr.copy()
     corr_pd += np.eye(k) * max(0.0, 1e-10 - float(np.linalg.eigvalsh(corr_pd)[0]))
     L = np.linalg.cholesky(corr_pd)
-    sampler = qmc.Sobol(d=k, scramble=True, seed=np.random.default_rng(0))
+    sampler = qmc.Sobol(d=k, scramble=True, seed=np.random.default_rng(0))  # pyright: ignore[reportCallIssue]
     u = sampler.random(n_samples)
     z = norm_dist.ppf(u) @ L.T
     return float(np.all(np.abs(z) <= c, axis=1).mean())
