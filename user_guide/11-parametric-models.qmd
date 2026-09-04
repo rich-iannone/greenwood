@@ -486,6 +486,55 @@ rp.predict_expectation(newdata, tau=365, format="polars")
 rp.predict_expectation(newdata, tau=365, ci=True, format="polars")
 ```
 
+### Selecting degrees of freedom with AIC and BIC
+
+The loglik sweep above shows how fit improves with spline complexity, but it does not penalize for
+the additional parameters. AIC and BIC do: they balance log-likelihood against model size, so you
+can pick the `df` that fits best without overfitting. The `glance()` function computes both
+automatically for a fitted `RoystonParmar`.
+
+```{python}
+# Compare AIC and BIC across spline degrees of freedom
+rows = []
+for df in (1, 2, 3, 4, 5):
+    m = gw.RoystonParmar(df=df).fit(y, lung[["age", "sex"]])
+    g = gw.glance(m, format="polars")
+    rows.append({"df": df, "aic": g["aic"][0], "bic": g["bic"][0]})
+
+pd.DataFrame(rows)
+```
+
+Lower values are better. AIC and BIC often agree, but BIC penalizes complexity more heavily and may
+favor a simpler model. When they disagree, AIC is oriented toward prediction accuracy while BIC
+favors the most parsimonious model that explains the data.
+
+### Summarizing with tidy and glance
+
+`tidy()` returns the coefficient table from `to_frame()`, giving one row per parameter (spline
+gammas and covariate effects) with the estimate, standard error, z-statistic, and p-value:
+
+```{python}
+# Tidy: one row per parameter (spline + covariates)
+gw.tidy(rp, format="polars")
+```
+
+The `gamma` rows are the restricted cubic spline coefficients that define the baseline log
+cumulative hazard shape. The named rows (`age`, `sex`) are the covariate effects on the log
+cumulative hazard scale. A positive coefficient means higher cumulative hazard, and therefore
+shorter survival.
+
+`glance()` returns a single-row summary of the overall fit:
+
+```{python}
+# Glance: model-level summary
+gw.glance(rp, format="polars")
+```
+
+The `df` column is the total number of estimated parameters (spline coefficients plus covariate
+effects), and `n_knots` is the number of interior knots used by the spline. These summaries are
+useful for building comparison tables across models with different `df` values or different
+covariate sets.
+
 ## Survival predictions with confidence intervals
 
 When predicting survival probabilities from an AFT model, you can also compute confidence intervals
