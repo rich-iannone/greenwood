@@ -607,6 +607,124 @@ class AFT:
         se_s = np.abs(ds_dmu) * se_mu[None, :]  # (n_times, n_subjects)
         return se_s
 
+    # -- residuals & diagnostics ---------------------------------------------
+
+    _RESIDUAL_TYPES = frozenset(
+        {
+            "response",
+            "cox_snell",
+            "martingale",
+            "deviance",
+            "score",
+            "dfbeta",
+            "dfbetas",
+        }
+    )
+
+    def residuals(self, type: str = "martingale", *, format: str | None = None) -> Any:
+        r"""Return diagnostic residuals from the fitted AFT model.
+
+        Parameters
+        ----------
+        type
+            Type of residuals to return:
+
+            - `"response"`: Raw residuals on the log-time scale, $\log(t) - X\hat\beta$. One per
+            observation.
+            - `"cox_snell"`: $-\log \hat S(t_i \mid x_i)$, the estimated cumulative hazard at the
+            observed time. Under a correct model, these follow $\text{Exp}(1)$ for uncensored
+            observations.
+            - `"martingale"` (default): $\delta_i - r^{CS}_i$ where $\delta$ is the event indicator
+            and $r^{CS}$ is the Cox-Snell residual. Range $(-\infty, 1]$.
+            - `"deviance"`: Signed likelihood-ratio residuals. Positive for censored observations;
+            signed by $z$ for events. More symmetrically distributed than martingale residuals.
+            - `"score"`: Efficient score residuals (derivative of each observation's log-likelihood
+            contribution w.r.t. the coefficients). One row per observation, one column per term.
+            - `"dfbeta"`: Approximate change in each coefficient if observation $i$ were deleted.
+            One row per observation, one column per term.
+            - `"dfbetas"`: Standardized dfbeta (dfbeta divided by the coefficient SE). Comparable
+            across covariates on different scales.
+
+        format
+            Output format for multi-column residual types: `None` (auto-detect), `"pandas"`,
+            `"polars"`, or `"pyarrow"`. Returns a numpy array for `"response"`, `"cox_snell"`,
+            `"martingale"`, and `"deviance"`.
+
+        Returns
+        -------
+        ndarray or DataFrame
+            For `"response"`, `"cox_snell"`, `"martingale"`, and `"deviance"`: a 1-D array (one
+            value per observation). For all other types: a DataFrame with one column per term.
+
+        Examples
+        --------
+        ```{python}
+        import greenwood as gw
+
+        lung = gw.load_dataset("lung", backend="polars")
+        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        aft = gw.AFT("weibull").fit(y, lung[["age", "sex"]])
+
+        aft.residuals("martingale")[:5]
+        ```
+
+        ```{python}
+        aft.residuals("dfbeta", format="polars")
+        ```
+        """
+        if type == "response":
+            return np.exp(self._log_t) - np.exp(self._x @ self.coef_)
+        if type == "cox_snell":
+            return self._cox_snell_residuals()
+        if type == "martingale":
+            return self._event.astype(float) - self._cox_snell_residuals()
+        if type == "deviance":
+            z = (self._log_t - self._x @ self.coef_) / self.scale_
+            log_f, log_s = _log_density_survival(self.dist, z, Q=self._q)
+            event = self._event.astype(float)
+            log_f_0, _ = _log_density_survival(self.dist, np.zeros(1), Q=self._q)
+            d2_event = 2.0 * (float(log_f_0[0]) - log_f)
+            d2_censor = -2.0 * log_s
+            d2 = np.where(event == 1, d2_event, d2_censor)
+            sign = np.where(event == 1, np.sign(z), 1.0)
+            return sign * np.sqrt(np.clip(d2, 0.0, None))
+        if type == "score":
+            scores = self._score_residuals()
+            data = {name: scores[:, j] for j, name in enumerate(self.term_names_)}
+            return to_dataframe(data, format=format)
+        if type == "dfbeta":
+            scores = self._score_residuals()
+            n = len(self.coef_)
+            vcov_beta = self.vcov_[:n, :n]
+            dfb = scores @ vcov_beta
+            data = {name: dfb[:, j] for j, name in enumerate(self.term_names_)}
+            return to_dataframe(data, format=format)
+        if type == "dfbetas":
+            scores = self._score_residuals()
+            n = len(self.coef_)
+            vcov_beta = self.vcov_[:n, :n]
+            dfb = scores @ vcov_beta
+            dfbs = dfb / self.std_error_[None, :]
+            data = {name: dfbs[:, j] for j, name in enumerate(self.term_names_)}
+            return to_dataframe(data, format=format)
+        valid = "', '".join(sorted(self._RESIDUAL_TYPES))
+        raise ValueError(f"Unknown residual type {type!r}; use one of '{valid}'.")
+
+    def _cox_snell_residuals(self) -> Array:
+        """Cox-Snell residuals: estimated cumulative hazard at observed time."""
+        z = (self._log_t - self._x @ self.coef_) / self.scale_
+        _, log_s = _log_density_survival(self.dist, z, Q=self._q)
+        return -log_s
+
+    def _score_residuals(self) -> Array:
+        """Per-observation score residuals w.r.t. the coefficient vector."""
+        z = (self._log_t - self._x @ self.coef_) / self.scale_
+        log_f, log_s = _log_density_survival(self.dist, z, Q=self._q)
+        dlogf = _dlogf_dz(self.dist, z, Q=self._q)
+        dlogs = -np.exp(log_f - log_s)
+        w = self._event * dlogf + (1.0 - self._event) * dlogs
+        return w[:, None] * (-self._x / self.scale_)
+
     def predict(
         self,
         newdata: Any = None,
