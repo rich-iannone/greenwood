@@ -103,6 +103,7 @@ class AalenAdditive:
                 self.summary_se_,
                 self.summary_z_,
                 self.summary_p_,
+                strict=True,
             )
         ]
         table = align_table(
