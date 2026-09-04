@@ -51,6 +51,21 @@ def _log_density_survival(dist: str, z: Array, *, Q: float = 0.0) -> tuple[Array
     return logistic.logpdf(z), logistic.logsf(z)
 
 
+def _dlogf_dz(dist: str, z: Array, *, Q: float = 0.0) -> Array:
+    """Derivative of the standardized log-density w.r.t. `z`."""
+    if dist in ("weibull", "exponential"):
+        return 1.0 - np.exp(z)
+    if dist == "lognormal":
+        return -z
+    if dist == "gengamma":
+        h = 1e-5
+        f_plus, _ = _gengamma_log_density_survival(z + h, Q)
+        f_minus, _ = _gengamma_log_density_survival(z - h, Q)
+        return (f_plus - f_minus) / (2.0 * h)
+    # loglogistic
+    return 1.0 - 2.0 * logistic.cdf(z)
+
+
 def _gengamma_log_density_survival(z: Array, Q: float) -> tuple[Array, Array]:
     """Log-density and log-survival for the generalized gamma error at standardized `z`.
 
