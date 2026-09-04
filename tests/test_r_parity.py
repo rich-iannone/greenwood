@@ -628,6 +628,48 @@ def test_aft_matches_r_survreg(dist: str) -> None:
     )
 
 
+@pytest.mark.parametrize("dist", ["weibull", "exponential", "lognormal", "loglogistic"])
+def test_aft_residuals_match_r(dist: str) -> None:
+    df = gw.load_dataset("lung", backend="pandas")
+    y = Surv.right(df["time"], event=(df["status"] == 2))
+    fixture = load_fixture(f"aft_residuals_{dist}")
+    model = gw.AFT(dist).fit(y, df[["age", "sex"]])
+
+    resp = model.residuals("response")
+    assert_allclose_to_r(resp, fixture["response"], atol=1e-2, what=f"{dist} response")
+
+    dev = model.residuals("deviance")
+    assert_allclose_to_r(dev, fixture["deviance"], atol=1e-4, what=f"{dist} deviance")
+
+    dfb = model.residuals("dfbeta", format="pandas")
+    assert_allclose_to_r(
+        dfb["(Intercept)"].to_numpy(),
+        fixture["dfbeta_intercept"],
+        atol=2e-2,
+        what=f"{dist} dfbeta intercept",
+    )
+    assert_allclose_to_r(
+        dfb["age"].to_numpy(), fixture["dfbeta_age"], atol=1e-3, what=f"{dist} dfbeta age"
+    )
+    assert_allclose_to_r(
+        dfb["sex"].to_numpy(), fixture["dfbeta_sex"], atol=2e-2, what=f"{dist} dfbeta sex"
+    )
+
+    dfbs = model.residuals("dfbetas", format="pandas")
+    assert_allclose_to_r(
+        dfbs["(Intercept)"].to_numpy(),
+        fixture["dfbetas_intercept"],
+        atol=1e-1,
+        what=f"{dist} dfbetas intercept",
+    )
+    assert_allclose_to_r(
+        dfbs["age"].to_numpy(), fixture["dfbetas_age"], atol=1e-1, what=f"{dist} dfbetas age"
+    )
+    assert_allclose_to_r(
+        dfbs["sex"].to_numpy(), fixture["dfbetas_sex"], atol=1e-1, what=f"{dist} dfbetas sex"
+    )
+
+
 def test_aalen_johansen_cif_matches_r() -> None:
     df = gw.load_dataset("mgus2", backend="pandas")
     etime = np.where(df["pstat"] == 1, df["ptime"], df["futime"])
