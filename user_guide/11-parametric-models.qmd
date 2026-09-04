@@ -680,6 +680,105 @@ individual-level predictions. Nonparametric RMST makes no assumptions and tests 
 differences.
 :::
 
+## Weibull diagnostic plots
+
+AIC and likelihood ratio tests give you a number, but a picture often tells you more. The Weibull
+plot is the standard visual diagnostic for checking whether a parametric distribution fits the data.
+It transforms the Kaplan-Meier survival estimates onto axes where the assumed distribution
+appears as a straight line. Points that fall on a line confirm the assumption. Systematic
+curvature suggests the distribution is wrong.
+
+The `plot_weibull()` function draws this plot. By default it uses the Weibull (complementary
+log-log) transform: $\log(t)$ on the x-axis and $\log(-\log(S(t)))$ on the y-axis.
+
+```{python}
+# Load data and build the response
+lung = gw.load_dataset("lung", backend="polars")
+y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+
+# Fit an unstratified KM and draw the Weibull diagnostic plot
+km = gw.KaplanMeier().fit(y)
+gw.plot_weibull(km)
+```
+
+If the points fall approximately on a straight line, the Weibull assumption is reasonable. The slope
+of the line is the reciprocal of the Weibull scale parameter, and the intercept reflects the
+location.
+
+### Checking the proportional hazards assumption
+
+The Weibull plot is also used to check the proportional hazards assumption between groups. If two
+groups have proportional hazards, their transformed curves will be parallel (shifted vertically but
+with the same slope). Fit a stratified Kaplan-Meier and pass it to `plot_weibull()`:
+
+```{python}
+# Stratified KM by sex: parallel lines suggest proportional hazards
+km_sex = gw.KaplanMeier().fit(y, by=lung["sex"])
+gw.plot_weibull(km_sex, title="Weibull plot by sex")
+```
+
+Lines that are roughly parallel indicate that the PH assumption holds between the groups. If the
+lines cross or diverge, the assumption may be violated and a time-varying or stratified model may be
+more appropriate.
+
+### Overlaying a fitted parametric model
+
+When you have both a Kaplan-Meier estimate and a fitted AFT model, you can overlay the theoretical
+parametric line on the empirical points to visualize how well the model fits. Pass the fitted `AFT`
+as the `aft=` argument:
+
+```{python}
+# Fit a Weibull AFT and overlay the theoretical line on the KM scatter
+km_overall = gw.KaplanMeier().fit(y)
+aft = gw.AFT("weibull").fit(y, lung[["age", "sex"]])
+
+gw.plot_weibull(km_overall, aft=aft, title="Weibull fit: KM vs. parametric")
+```
+
+The dashed line is the fitted Weibull model. When it tracks the empirical points closely, the
+parametric assumption is well supported. Gaps between the line and the points indicate regions where
+the model fits poorly.
+
+::: {.callout-note}
+## AFT overlay requires an unstratified KM
+
+The parametric overlay draws a single theoretical line from the AFT model's fitted parameters. This
+is only meaningful for an unstratified (single-population) Kaplan-Meier. If you pass a stratified KM
+together with an AFT, `plot_weibull()` raises an error.
+:::
+
+### Other distributions
+
+The `dist=` parameter switches the y-axis transform to match other AFT distributions. This lets you
+check log-normal or log-logistic assumptions the same way:
+
+- `dist="lognormal"`: plots $\Phi^{-1}(1 - S(t))$ vs $\log(t)$, where $\Phi^{-1}$ is the
+  standard normal quantile function (probit). Linear points indicate a log-normal distribution.
+- `dist="loglogistic"`: plots $\log((1 - S(t)) / S(t))$ vs $\log(t)$ (the logit of the failure
+  probability). Linear points indicate a log-logistic distribution.
+
+```{python}
+# Check the log-normal assumption
+gw.plot_weibull(km_overall, dist="lognormal", title="Log-normal diagnostic")
+```
+
+```{python}
+# Check the log-logistic assumption
+gw.plot_weibull(km_overall, dist="loglogistic", title="Log-logistic diagnostic")
+```
+
+Comparing the three plots side by side tells you which distributional family linearizes the data
+best. This visual approach complements the AIC comparison from `compare_distributions()` and the
+likelihood ratio tests from `test_distributions()`.
+
+::: {.callout-tip}
+## Weibull plot + AIC = confidence in your distribution choice
+
+Use `compare_distributions()` or `test_distributions()` for a numeric answer and `plot_weibull()`
+for the visual confirmation. If AIC picks Weibull and the Weibull plot is linear, you can proceed
+with confidence. If the numbers and the picture disagree, investigate further.
+:::
+
 ## Next steps
 
 You can now fit, compare, and predict from parametric survival models.
