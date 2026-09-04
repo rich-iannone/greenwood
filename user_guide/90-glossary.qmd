@@ -76,7 +76,7 @@ BCa bootstrap (bias-corrected and accelerated bootstrap)
 : A bootstrap confidence interval method that applies two corrections to the percentile
   bootstrap to account for bias and skewness in the bootstrap distribution. The
   bias-correction factor $\hat{z}_0$ shifts the percentile selection based on the fraction
-  of bootstrap replicates that fall below the observed statistic; the acceleration $\hat{a}$
+  of bootstrap replicates that fall below the observed statistic. The acceleration $\hat{a}$
   adjusts for how quickly the standard error changes with the parameter value, estimated via
   jackknife. BCa intervals achieve better coverage than the **percentile bootstrap** (raw
   empirical quantiles) or the **normal bootstrap** (bootstrap standard error with a normal
@@ -133,7 +133,7 @@ Complete-case analysis
   functions. Complete-case analysis is simple and unbiased when values are missing completely
   at random, but it discards information and can bias estimates when missingness depends on
   the outcome or on unobserved covariates. `CoxPH.fit()`, `AFT.fit()`, and related methods all
-  apply complete-case analysis silently; inspect your data for missingness patterns before
+  apply complete-case analysis silently. Inspect your data for missingness patterns before
   fitting if this is a concern.
 
 Concordance index (C-statistic, Harrell's C)
@@ -209,7 +209,7 @@ CoxNet
 
 Cross-validation (k-fold)
 : A resampling procedure for estimating model performance or selecting hyperparameters. The
-  data are partitioned into $k$ roughly equal-sized folds; the model is trained on $k - 1$
+  data are partitioned into $k$ roughly equal-sized folds while the model is trained on $k - 1$
   folds and evaluated on the held-out fold, rotating through all $k$ folds so every
   observation is used for evaluation exactly once. The $k$ evaluation scores are then averaged
   to give a single performance estimate. In survival analysis, **stratified** k-fold splits
@@ -262,14 +262,16 @@ dfbeta residuals
   derived from the score (gradient) residuals and the observed information matrix. They are
   useful for identifying subjects who have disproportionate influence on a specific
   coefficient. Available from `CoxPH` and `AFT` via `residuals(type="dfbeta")`.
+
 dfbetas residuals
 : The standardized form of **dfbeta residuals**, obtained by dividing each dfbeta value by
   the corresponding coefficient's model-based standard error. Because dfbeta is on the raw
   coefficient scale, comparing its magnitude across covariates with different units or
-  variances is not meaningful; dividing by the standard error puts every covariate's
+  variances is not meaningful. Dividing by the standard error puts every covariate's
   influence values on a common, unit-free scale, making it possible to rank observations by
   influence across the whole coefficient vector at once. Available from `CoxPH` and `AFT` via
   `residuals(type="dfbetas")`.
+
 Endpoint
 : The specific outcome a study is designed to measure, defined in advance as the criterion
   for declaring that an **event** has occurred. A study may have a single primary endpoint
@@ -283,7 +285,7 @@ Endpoint
 Event
 : The outcome of interest in a survival study: death, disease progression, machine failure,
   customer churn, or any other well-defined, non-repeating endpoint. An observation for which
-  the event occurred within the follow-up period is called an **event observation**; one for
+  the event occurred within the follow-up period is called an **event observation**. One for
   which it did not (or could not be confirmed) is **censored**.
 
 Event table
@@ -335,7 +337,7 @@ Elastic-net penalty
 : A regularization penalty that blends **lasso** (L1) and **ridge** (L2) penalties:
   $\lambda[\alpha \|\beta\|_1 + (1 - \alpha)\|\beta\|_2^2]$, where $\lambda$ is the overall
   regularization strength (the **penalizer**) and $\alpha$ (the `l1_ratio`) is the mixing
-  parameter. Setting $\alpha = 1$ gives pure lasso; $\alpha = 0$ gives pure ridge. Values
+  parameter. Setting $\alpha = 1$ gives pure lasso while $\alpha = 0$ gives pure ridge. Values
   strictly between 0 and 1 blend both penalties: lasso's sparsity (some coefficients are
   driven exactly to zero) is combined with ridge's stability when predictors are correlated.
   The elastic-net is the penalty used by Greenwood's `CoxNet`, with `l1_ratio=1.0` (lasso)
@@ -409,7 +411,7 @@ Gradient boosting (survival)
 : An ensemble method that builds an additive model by fitting each new, shallow regression
   tree to the negative gradient of a loss under the current model, then adding a shrunken
   version of it. Greenwood's `GradientBoostingSurvivalAnalysis` uses the negative Cox
-  partial-likelihood as the loss, so each tree is fit to the **martingale residuals**; a
+  partial-likelihood as the loss, so each tree is fit to the **martingale residuals**. A
   **Breslow** baseline then turns the additive log-risk score into survival curves. The
   `learning_rate` controls shrinkage and `n_estimators` the number of trees.
 
@@ -473,7 +475,7 @@ Influence diagnostics
   **deviance residuals** (how poorly the observation is predicted), and **likelihood
   displacement** (the overall impact on the log-likelihood if the observation is removed).
   Together they distinguish two failure modes: an observation with high leverage but a small
-  residual is influential yet well-fitted; one with a large residual but low leverage is
+  residual is influential yet well-fitted. One with a large residual but low leverage is
   poorly predicted but not especially influential. In Greenwood, `CoxPH.influence()` returns
   a table combining all three diagnostics for each subject.
 
@@ -481,7 +483,7 @@ Information criteria (AIC, BIC)
 : Two related summaries that rank candidate models by trading off fit against complexity,
   both computed from the model's log-likelihood $\ell$ and its number of parameters $k$ (or
   **effective degrees of freedom** for penalized models). The Akaike information criterion is
-  $\text{AIC} = -2\ell + 2k$; the Bayesian information criterion instead penalizes complexity
+  $\text{AIC} = -2\ell + 2k$. The Bayesian information criterion instead penalizes complexity
   by the sample size, $\text{BIC} = -2\ell + k \log(n)$, where $n$ is typically the number of
   events. Because the BIC penalty grows with $\log(n)$, it favors simpler models more
   strongly than AIC once the sample is reasonably large. Lower values are better for both.
@@ -519,7 +521,7 @@ Karnofsky performance score
   serves a similar purpose to the **ECOG performance status**, and the two are often reported
   side by side in oncology datasets. The bundled `lung` dataset records both a physician-rated
   score (`ph.karno`) and a patient self-rated score (`pat.karno`), and `veteran` records a
-  single `karno` column; comparing physician- and patient-rated scores for the same subject
+  single `karno` column. Comparing physician- and patient-rated scores for the same subject
   can itself be informative about how reporting perspective affects prognosis.
 
 Landmark analysis
@@ -594,8 +596,8 @@ Location-scale parameterization
   $\log T = \mu + \sigma\,\varepsilon$, where $\mu$ is the location (the linear predictor
   $\mathbf{x}^\top\boldsymbol\gamma$ plus an intercept), $\sigma$ is the scale parameter,
   and $\varepsilon$ is a standardized error whose distribution determines the event-time
-  family. The Weibull AFT corresponds to an extreme-value (Gumbel) $\varepsilon$; log-normal
-  to a standard normal $\varepsilon$; log-logistic to a standard logistic $\varepsilon$.
+  family. The Weibull AFT corresponds to an extreme-value (Gumbel) $\varepsilon$, log-normal
+  to a standard normal $\varepsilon$, and log-logistic to a standard logistic $\varepsilon$.
   This parameterization unifies all AFT families into a single linear-model structure on the
   log-time scale and is the form used by Greenwood's `AFT` internally regardless of which
   distribution is selected.
@@ -712,7 +714,7 @@ Partial likelihood
 Penalizer
 : The regularization strength parameter $\lambda$ that scales the penalty added to a model's
   log-likelihood. A larger penalizer shrinks coefficients more aggressively toward zero,
-  increasing bias but reducing variance and guarding against overfitting; a penalizer of zero
+  increasing bias but reducing variance and guarding against overfitting. A penalizer of zero
   recovers the unpenalized model. In Greenwood's `CoxNet` the penalizer is the primary tuning
   parameter, and `cv_coxnet()` selects it automatically via **cross-validation** over a
   log-spaced grid spanning from a data-derived maximum ($\lambda_{\max}$, below which at
@@ -721,7 +723,7 @@ Penalizer
 
 Permutation variable importance
 : A model-agnostic measure of a covariate's contribution, obtained by randomly permuting its
-  values and recording the resulting drop in predictive performance; a larger drop means a
+  values and recording the resulting drop in predictive performance. A larger drop means a
   more important covariate. Greenwood's forests compute it on the **out-of-bag** samples
   (the increase in $1 - \text{concordance}$) via `variable_importance()`, which is also what
   `tidy()` returns for a fitted forest.
@@ -746,7 +748,7 @@ Piecewise exponential model (PEM)
   ground between the fully non-parametric **Cox proportional hazards model** (no assumption
   on the baseline hazard shape) and rigid fully **parametric models**: it provides a
   piecewise-constant baseline hazard that can be plotted and extrapolated. Available via
-  `PiecewiseExponential` in Greenwood; interval boundaries can be selected automatically by
+  `PiecewiseExponential` in Greenwood. Interval boundaries can be selected automatically by
   AIC or BIC.
 
 Probit transform (survival)
@@ -783,11 +785,11 @@ Restricted cubic spline
 Reference category
 : The baseline level of a categorical covariate against which all other levels are compared
   once the covariate is expanded into indicator (dummy) variables. A categorical column with
-  $k$ levels contributes $k - 1$ indicator terms to the model; the omitted level is the
+  $k$ levels contributes $k - 1$ indicator terms to the model. The omitted level is the
   reference, and each reported coefficient is the log hazard ratio (or log acceleration
   factor) for its level relative to that reference. Greenwood's **formula interface** picks
-  the first level alphabetically as the reference by default; a different reference is chosen
-  with `C(column, contr.treatment(base="level"))`. Encoding an unordered categorical column as
+  the first level alphabetically as the reference by default (a different reference is chosen
+  with `C(column, contr.treatment(base="level"))`). Encoding an unordered categorical column as
   raw integers instead of indicator variables is a common mistake, since it forces the model
   to treat the codes as a single continuous, linearly increasing effect.
 
@@ -842,7 +844,7 @@ ROC curve (receiver operating characteristic curve)
   single threshold-free number: 0.5 corresponds to random ranking and 1.0 to perfect
   discrimination. In survival analysis, a time-specific ROC curve is constructed at each
   evaluation horizon $t^*$ by defining cases as subjects who had the event before $t^*$ and
-  controls as subjects still at risk after $t^*$; observations censored before $t^*$ are
+  controls as subjects still at risk after $t^*$. Observations censored before $t^*$ are
   reweighted by **IPCW**. The resulting **time-dependent AUC** is available via
   `time_dependent_auc()` in Greenwood.
 
@@ -903,7 +905,7 @@ Shared frailty
   unmeasured heterogeneity shared by subjects in the same group (hospital, family,
   recurrent-event unit). Two distributions are available. **Gamma frailty** multiplies the
   hazard by a cluster-specific random effect $z \sim \text{Gamma}(1/\theta, 1/\theta)$, so
-  $h(t \mid x, z) = z\, h_0(t) \exp(\beta^\top x)$; its variance $\theta$ is estimated with an
+  $h(t \mid x, z) = z\, h_0(t) \exp(\beta^\top x)$. Its variance $\theta$ is estimated with an
   EM algorithm, alternating between profiling out $(\beta, z)$ at the current $\theta$ and
   updating $\theta$ from the posterior expectation of the random effects. **Log-normal
   frailty** instead adds an additive random effect on the log-hazard scale,
@@ -957,7 +959,7 @@ Survival tree
   survival differs as much as possible, choosing each split to maximize the two-sample
   **log-rank** statistic between the child groups. Each leaf stores a Kaplan-Meier survival
   curve and a Nelson-Aalen cumulative hazard from its subjects. A single tree is interpretable
-  but high-variance; it is the base learner of the **random survival forest**. Available via
+  but high-variance (it is the base learner of the **random survival forest**). Available via
   `SurvivalTree`.
 
 Surv object
@@ -1041,7 +1043,7 @@ Z-score standardization
   dividing by its standard deviation, also called feature standardization. In a Cox model,
   covariates on wildly different scales (a 0/1 indicator alongside a covariate in the tens of
   thousands) can make the Newton-Raphson solver's Hessian ill-conditioned, slowing convergence
-  and inflating standard errors; Greenwood's `CoxPH.fit()` warns when the ratio of the largest
+  and inflating standard errors. Greenwood's `CoxPH.fit()` warns when the ratio of the largest
   to smallest covariate standard deviation exceeds 100. Standardizing before fitting resolves
   this at the cost of changing what each coefficient means: it becomes the log hazard ratio
   per one-standard-deviation increase in the covariate rather than per one raw unit. `CoxNet`
