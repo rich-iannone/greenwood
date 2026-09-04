@@ -476,3 +476,87 @@ def test_gengamma_coef_close_to_weibull(lung_surv) -> None:  # type: ignore[no-u
     wb = AFT("weibull").fit(y, df[["age", "sex"]])
     if abs(gg.Q_ - 1.0) < 0.1:  # type: ignore[operator]
         np.testing.assert_allclose(gg.coef_, wb.coef_, atol=0.05)
+
+
+# -- Residual diagnostics -----------------------------------------------------
+
+
+def test_residuals_response_shape(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    model = AFT("weibull").fit(y, df[["age", "sex"]])
+    r = model.residuals("response")
+    assert isinstance(r, np.ndarray)
+    assert r.shape == (model.n_,)
+
+
+def test_residuals_cox_snell_positive(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    model = AFT("weibull").fit(y, df[["age", "sex"]])
+    cs = model.residuals("cox_snell")
+    assert np.all(cs >= 0)
+
+
+def test_residuals_martingale_identity(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    model = AFT("weibull").fit(y, df[["age", "sex"]])
+    mart = model.residuals("martingale")
+    cs = model.residuals("cox_snell")
+    np.testing.assert_allclose(mart, model._event.astype(float) - cs)
+
+
+def test_residuals_deviance_shape(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    model = AFT("weibull").fit(y, df[["age", "sex"]])
+    d = model.residuals("deviance")
+    assert isinstance(d, np.ndarray)
+    assert d.shape == (model.n_,)
+
+
+def test_residuals_score_shape(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    model = AFT("weibull").fit(y, df[["age", "sex"]])
+    s = model.residuals("score", format="pandas")
+    assert list(s.columns) == model.term_names_
+    assert len(s) == model.n_
+
+
+def test_residuals_dfbeta_shape(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    model = AFT("weibull").fit(y, df[["age", "sex"]])
+    d = model.residuals("dfbeta", format="pandas")
+    assert list(d.columns) == model.term_names_
+    assert len(d) == model.n_
+
+
+def test_residuals_dfbetas_shape(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    model = AFT("weibull").fit(y, df[["age", "sex"]])
+    d = model.residuals("dfbetas", format="pandas")
+    assert list(d.columns) == model.term_names_
+    assert len(d) == model.n_
+
+
+def test_residuals_invalid_type_raises(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    model = AFT("weibull").fit(y, df[["age", "sex"]])
+    with pytest.raises(ValueError, match="Unknown residual type"):
+        model.residuals("schoenfeld")
+
+
+@pytest.mark.parametrize("dist", ["weibull", "exponential", "lognormal", "loglogistic"])
+def test_residuals_all_dists_smoke(lung_surv, dist: str) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    model = AFT(dist).fit(y, df[["age", "sex"]])
+    for rtype in AFT._RESIDUAL_TYPES:
+        r = model.residuals(rtype, format="pandas")
+        assert r is not None
+
+
+def test_residuals_format_polars(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    pytest.importorskip("polars")
+    import polars as pl
+
+    df, y = lung_surv
+    model = AFT("weibull").fit(y, df[["age", "sex"]])
+    d = model.residuals("dfbeta", format="polars")
+    assert isinstance(d, pl.DataFrame)

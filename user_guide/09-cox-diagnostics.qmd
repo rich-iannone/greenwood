@@ -525,7 +525,9 @@ including calibration and the Brier score, see [Prediction performance](15-predi
 You can now validate a Cox model and use it to predict.
 
 - [Prediction performance](15-prediction-performance.qmd) extends discrimination and adds the Brier
-score for calibration, including for external risk scores.
-- [Parametric survival models](11-parametric-models.qmd) provide an alternative when the proportional
-hazards assumption is untenable.
-- Revisit [Cox regression](08-cox-regression.qmd) for the modeling basics if any of this is unfamiliar.
+  score for calibration, including for external risk scores.
+- [Parametric survival models](11-parametric-models.qmd) provide an alternative when the
+  proportional hazards assumption is untenable. That page also covers AFT residuals (response,
+  Cox-Snell, martingale, deviance, score, dfbeta, dfbetas) for diagnosing parametric models.
+- Revisit [Cox regression](08-cox-regression.qmd) for the modeling basics if any of this is
+  unfamiliar.
