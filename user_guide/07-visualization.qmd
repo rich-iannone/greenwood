@@ -428,12 +428,22 @@ competing-risks analogue of the log-rank test. That is covered in
 [Competing risks](13-competing-risks.qmd).
 :::
 
+## Weibull diagnostic plots
+
+Weibull plots are covered in
+[Parametric survival models](11-parametric-models.qmd#weibull-diagnostic-plots). They transform
+Kaplan-Meier estimates onto axes that linearize a given distribution, letting you visually assess
+distributional fit and check the proportional hazards assumption between groups. The entry point is
+`plot_weibull()`.
+
 ## Next steps
 
 You can now produce and customize publication-quality survival figures.
 
 - [Cox regression](08-cox-regression.qmd) introduces models whose coefficients you will
 later visualize as forest plots.
+- [Parametric models](11-parametric-models.qmd#weibull-diagnostic-plots) shows Weibull
+diagnostic plots for checking distributional assumptions.
 - [Competing risks](13-competing-risks.qmd) produces cumulative incidence curves, which are
 plotted the same way.
 - Revisit [Comparing groups](06-comparing-groups.qmd) to pair a grouped figure with a formal
