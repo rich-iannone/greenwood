@@ -55,9 +55,7 @@ class TestFit:
 
     def test_cumulative_is_cumsum(self, fitted_model) -> None:
         m = fitted_model
-        np.testing.assert_allclose(
-            m.cumulative_coefs_, np.cumsum(m.coef_increments_, axis=0)
-        )
+        np.testing.assert_allclose(m.cumulative_coefs_, np.cumsum(m.coef_increments_, axis=0))
 
     def test_event_times_sorted(self, fitted_model) -> None:
         m = fitted_model
@@ -114,7 +112,7 @@ class TestFit:
 class TestOutputMethods:
     def test_cumulative_coefficients_default(self, fitted_model) -> None:
         df = fitted_model.cumulative_coefficients()
-        assert "time" in str(type(df))  or hasattr(df, "columns")
+        assert "time" in str(type(df)) or hasattr(df, "columns")
 
     def test_cumulative_coefficients_polars(self, fitted_model) -> None:
         df = fitted_model.cumulative_coefficients(format="polars")

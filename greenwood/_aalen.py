@@ -122,9 +122,7 @@ class AalenAdditive:
             ]
         )
 
-    def fit(
-        self, surv: Surv, covariates: Any, *, data: Any = None
-    ) -> AalenAdditive:
+    def fit(self, surv: Surv, covariates: Any, *, data: Any = None) -> AalenAdditive:
         r"""Fit the Aalen additive hazards model.
 
         At each event time, an OLS regression of the event indicator on the at-risk design
