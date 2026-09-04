@@ -12,6 +12,7 @@ from __future__ import annotations
 from importlib.metadata import PackageNotFoundError, version
 
 from . import data, summaries, viz
+from ._aalen import AalenAdditive
 from ._boosting import GradientBoostingSurvivalAnalysis
 from ._bootstrap import BootstrapResult, bootstrap
 from ._competing import AalenJohansen, FineGray, MultiState, grays_test
@@ -83,6 +84,7 @@ __all__ = [
     "SurvivalTree",
     "RandomSurvivalForest",
     "ExtraSurvivalTrees",
+    "AalenAdditive",
     "GradientBoostingSurvivalAnalysis",
     "CensoringDistribution",
     "IPCRidge",
