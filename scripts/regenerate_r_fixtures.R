@@ -581,6 +581,29 @@ for (d in c("weibull", "exponential", "lognormal", "loglogistic")) {
   write_json_fixture(aft_fixture(d), paste0("aft_", d))
 }
 
+# -- AFT residual diagnostics via survreg -----------------------------------------
+
+aft_residuals_fixture <- function(dist) {
+  m <- survreg(Surv(time, status) ~ age + sex, data = lung, dist = dist)
+  resp <- residuals(m, "response")
+  dev <- residuals(m, "deviance")
+  dfb <- residuals(m, "dfbeta")
+  dfbs <- residuals(m, "dfbetas")
+  list(
+    response = unname(resp),
+    deviance = unname(dev),
+    dfbeta_intercept = unname(dfb[, 1]),
+    dfbeta_age = unname(dfb[, 2]),
+    dfbeta_sex = unname(dfb[, 3]),
+    dfbetas_intercept = unname(dfbs[, 1]),
+    dfbetas_age = unname(dfbs[, 2]),
+    dfbetas_sex = unname(dfbs[, 3])
+  )
+}
+for (d in c("weibull", "exponential", "lognormal", "loglogistic")) {
+  write_json_fixture(aft_residuals_fixture(d), paste0("aft_residuals_", d))
+}
+
 # -- Univariate parametric distributions (intercept-only survreg) -------------------
 
 parametric_pred_p <- c(0.1, 0.25, 0.5, 0.75, 0.9)
