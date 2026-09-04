@@ -25,7 +25,7 @@ import greenwood as gw
 # Load the bundled lung dataset as a Polars DataFrame
 lung = gw.load_dataset("lung", backend="polars")
 
-# Build a right-censored response; status == 2 marks a death
+# Build a right-censored response (status == 2 marks a death)
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 
 # Display the response summary
@@ -42,7 +42,7 @@ The Cox model assumes that each covariate multiplies the hazard by a constant fa
 does not change over time. If being in a treatment group halves the hazard at one month, the
 model assumes it halves the hazard at every month. That multiplicative factor is the hazard
 ratio, and estimating it is the point of the model. The word "proportional" refers to this
-constant-factor assumption, which you should check after fitting; see
+constant-factor assumption, which you should check after fitting. See
 [Cox model diagnostics](09-cox-diagnostics.qmd).
 
 The great convenience of the Cox model is that it estimates these hazard ratios without
@@ -52,7 +52,7 @@ called semiparametric, and why it is the default choice for most analyses.
 ## Fitting a model
 
 You fit the model with a `Surv` response and a set of covariates. Covariates can be a Pandas
-or Polars data frame; numeric columns are used directly and non-numeric columns are turned
+or Polars data frame. Numeric columns are used directly and non-numeric columns are turned
 into indicator variables automatically. Rows with missing covariate values are dropped, as
 in a standard complete-case analysis.
 
@@ -93,7 +93,7 @@ When multiple subjects experience events at the same time, the Cox model needs a
 handle these "ties". Greenwood supports two tie-handling methods, controlled by the `ties`
 parameter in the constructor:
 
-- `"efron"` (default): Efron's method. Recommended; matches R's survival package default.
+- `"efron"` (default): Efron's method. Recommended as this matches R's survival package default.
 - `"breslow"`: Breslow's method. Computationally simpler but less accurate when ties are common.
 
 The choice usually has minimal impact on results unless ties are very common. When in doubt,
@@ -180,7 +180,7 @@ gw.tidy(cox, exponentiate=True, format="polars")
 
 A hazard ratio above 1 means the covariate increases the hazard, and a value below 1 means
 it decreases it. For a continuous covariate such as `age`, the hazard ratio is the
-multiplicative change in hazard per one-unit increase; a hazard ratio of `1.02` for age means
+multiplicative change in hazard per one-unit increase. A hazard ratio of `1.02` for age means
 roughly a 2% higher hazard for each additional year. For the `sex` indicator, coded `1`
 and `2` in this dataset, a hazard ratio below 1 means the higher-coded group has lower risk.
 
@@ -466,7 +466,7 @@ cox_cluster = gw.CoxPH().fit(
     cluster=lung_with_cluster["family"],
 )
 
-# Display the coefficient table; SEs reflect within-cluster correlation
+# Display the coefficient table (SEs reflect within-cluster correlation)
 gw.tidy(cox_cluster, format="polars")
 ```
 
@@ -531,11 +531,11 @@ Interpretation:
 
 The log-normal frailty model adds a normally distributed random effect on the log-hazard scale:
 $h(t \mid x, u) = h_0(t) \exp(\beta^\top x + u)$ with $u \sim \mathcal{N}(0, \sigma^2)$. Joint
-optimization over $(\beta, u)$ uses penalized partial likelihood; $\sigma^2$ is updated via a REML
-step. The `frailty_effect_` values are on the log-hazard scale and can be negative.
+optimization over $(\beta, u)$ uses penalized partial likelihood and $\sigma^2$ is updated via a
+REML step. The `frailty_effect_` values are on the log-hazard scale and can be negative.
 
 ```{python}
-# Log-normal shared frailty by institution; effects are on the log-hazard scale
+# Log-normal shared frailty by institution (effects are on the log-hazard scale)
 cox_ln = gw.CoxPH(ties="breslow").fit(
     y,
     lung[["age", "sex"]],
@@ -584,7 +584,7 @@ support uses [formulaic](https://matthewwardrop.github.io/formulaic/), installed
 extra.
 
 ```{python}
-# Fit using a Wilkinson formula string; categorical columns are dummy-coded automatically
+# Fit using a Wilkinson formula string (categorical columns are dummy-coded automatically)
 gw.CoxPH().fit(y, "age + sex", data=lung).to_frame(format="polars")[["term", "estimate"]]
 ```
 
@@ -754,7 +754,7 @@ ridge.aic(), lasso.aic()
 ```
 
 ```{python}
-# BIC penalizes complexity more heavily; useful when sample size is large
+# BIC penalizes complexity more heavily (useful when sample size is large)
 ridge.bic(), lasso.bic()
 ```
 
@@ -783,6 +783,178 @@ AIC tends to select models that predict well on new data. BIC tends to select th
 it is among the candidates) and favors simpler models as the sample size grows. Cross-validation
 makes no distributional assumptions and directly estimates out-of-sample performance. When
 computational cost is not a concern, cross-validation via `cv_coxnet()` is generally preferred.
+:::
+
+### Elastic-net: mixing lasso and ridge
+
+The `l1_ratio` parameter controls the blend between lasso (`1.0`) and ridge (`0.0`). Intermediate
+values give elastic-net regularization, which combines variable selection with grouped shrinkage.
+This is useful when covariates are correlated: pure lasso tends to pick one from each correlated
+group and drop the rest, while elastic-net keeps the group together.
+
+```{python}
+# Elastic-net with equal lasso and ridge contributions
+enet = gw.CoxNet(penalizer=0.05, l1_ratio=0.5).fit(y, lung[cols])
+enet
+```
+
+Cross-validation works the same way. To search over both `penalizer` and `l1_ratio`, run
+`cv_coxnet()` at several mixing values and compare:
+
+```{python}
+# Compare CV scores at three mixing levels
+for ratio in [0.2, 0.5, 1.0]:
+    cv = gw.cv_coxnet(y, lung[cols], l1_ratio=ratio, seed=23)
+    print(f"l1_ratio={ratio:.1f}  best_penalizer={cv.best_penalizer_:.4f}  "
+          f"mean_score={cv.best_score_:.4f}")
+```
+
+### Predicting survival from a penalized model
+
+Once you have a tuned `CoxNet`, you can generate predictions for new subjects. The `predict()` method
+supports three prediction types, matching the interface of `CoxPH`:
+
+- `"lp"` (default): the centered linear predictor $X\beta$, a unitless risk score. Higher values
+mean higher hazard. A score of zero corresponds to a subject with average covariate values.
+- `"risk"`: the relative hazard $\exp(X\beta)$. A value of `2.0` means twice the baseline hazard.
+- `"survival"`: subject-specific survival probabilities $S(t \mid x)$ at specified time points,
+computed from the Breslow baseline hazard and each subject's relative risk.
+
+Start by refitting the final model at the CV-selected penalty:
+
+```{python}
+# Refit the final model from CV
+final = gw.CoxNet(penalizer=cv_result.best_penalizer_, l1_ratio=1.0).fit(y, lung[cols])
+
+# Linear predictor (risk score) for the first three subjects
+final.predict(lung[cols][:3], type="lp")
+```
+
+The linear predictor is centered so that the average training subject scores near zero. Positive
+values indicate above-average risk, negative values below-average. Exponentiating gives the relative
+risk, which is often more interpretable:
+
+```{python}
+# Relative risk for the same subjects
+final.predict(lung[cols][:3], type="risk")
+```
+
+For survival predictions, pass `type="survival"` together with the time points of interest. The
+result is a DataFrame with one column per subject and one row per time point. Each cell is the
+estimated probability that the subject survives beyond that time:
+
+```{python}
+# Predicted survival curves at 6-month intervals
+surv = final.predict(lung[cols][:3], type="survival", times=[180, 365, 540], format="polars")
+surv
+```
+
+When `newdata` is omitted, predictions default to the training data. This is useful for computing
+training-set risk scores for downstream analyses like concordance or calibration:
+
+```{python}
+# Training-set risk scores (one per subject in the original data)
+risk = final.predict(type="risk")
+risk[:5]
+```
+
+These risk scores rank subjects by predicted hazard. You can pass them directly to
+`concordance_index()` to measure how well the penalized model discriminates high-risk from low-risk
+subjects, or feed them into `calibration()` to check whether predicted and observed risks agree. See
+[Prediction performance](15-prediction-performance.qmd) for details on both metrics.
+
+### Coefficient path
+
+Plotting how coefficients evolve across a range of penalty values reveals which covariates enter the
+model first and which are the most robust to regularization. The strongest predictors have non-zero
+coefficients even at high penalty values.
+
+```{python}
+import numpy as np
+
+# Fit the lasso across a range of penalties and collect coefficients
+penalizers = np.logspace(-4, 0, 40)
+paths = {name: [] for name in cols}
+for lam in penalizers:
+    m = gw.CoxNet(penalizer=lam, l1_ratio=1.0).fit(y, lung[cols])
+    for j, name in enumerate(cols):
+        paths[name].append(m.coef_[j])
+```
+
+The loop fits 40 models across a log-spaced grid of penalties, storing each covariate's coefficient
+at every step. Reading from right to left (strong to weak penalty), you can see which covariates
+enter the model first as regularization relaxes. Plotting the result makes this easier to read:
+
+```{python}
+import altair as alt
+import pandas as pd
+
+# Reshape into long form for Altair
+rows = []
+for j, name in enumerate(cols):
+    for i, lam in enumerate(penalizers):
+        rows.append({"penalizer": lam, "coefficient": paths[name][i], "term": name})
+path_df = pd.DataFrame(rows)
+
+# Plot the coefficient path
+(
+    alt.Chart(path_df)
+    .mark_line()
+    .encode(
+        x=alt.X("penalizer:Q", scale=alt.Scale(type="log"), title="Penalizer (log scale)"),
+        y=alt.Y("coefficient:Q", title="Coefficient"),
+        color=alt.Color("term:N", title="Term"),
+    )
+    .properties(width=500, height=280, title="Lasso coefficient path")
+)
+```
+
+Covariates that reach zero early (moving right to left along the x-axis) contribute less to the
+model. This path is a useful complement to the AIC/BIC sweep for understanding which variables
+matter.
+
+### Summarizing with tidy and glance
+
+The `tidy()` and `glance()` functions work with `CoxNet`, following the same pattern as other
+Greenwood estimators. This makes it easy to extract results programmatically for reporting or for
+comparing several models in a table.
+
+`tidy()` returns one row per covariate with the penalized coefficient estimate and its hazard ratio:
+
+```{python}
+# Tidy: one row per covariate with the penalized estimate and hazard ratio
+gw.tidy(final, format="polars")
+```
+
+The `estimate` column is the log hazard ratio on the original covariate scale. Covariates driven to
+exactly zero by the lasso still appear in the table, making it clear which variables were excluded.
+Pass `exponentiate=True` to express the estimates as hazard ratios directly, which is easier to
+interpret:
+
+```{python}
+gw.tidy(final, exponentiate=True, format="polars")
+```
+
+`glance()` returns a single-row summary of model-level fit statistics. For `CoxNet` this includes
+the log-likelihood, AIC, BIC, effective degrees of freedom, the penalty settings used, and the
+number of non-zero coefficients:
+
+```{python}
+# Glance: model-level summary
+gw.glance(final, format="polars")
+```
+
+The `effective_df` column is particularly useful for comparing models across different penalty
+values. It reflects the true complexity of the fit: for a pure lasso it equals the number of
+surviving coefficients, while for ridge or elastic-net it accounts for the continuous shrinkage
+applied to each term.
+
+::: {.callout-note}
+## No standard errors for penalized models
+
+Because penalized estimates are deliberately biased, `CoxNet` does not produce standard errors,
+confidence intervals, or p-values. The `tidy()` output includes `estimate` and `hazard_ratio` only.
+For inference on selected variables, refit an unpenalized `CoxPH` with the surviving covariates.
 :::
 
 ## Baseline hazard with confidence intervals
