@@ -188,6 +188,17 @@ Cox proportional hazards model
   partial likelihood, which eliminates $h_0(t)$. Available via `CoxPH`. See also
   **proportional hazards assumption**.
 
+Cox-Snell residuals
+: Residuals defined as the estimated cumulative hazard at each subject's observed time:
+  $r_i^{CS} = -\log \hat{S}(t_i)$, where $\hat{S}(t_i)$ is the model's fitted survival probability
+  for subject $i$. If the model is correctly specified, Cox-Snell residuals follow a
+  unit-exponential distribution for uncensored observations, so a plot of their Nelson-Aalen
+  cumulative hazard against a 45-degree line is a visual goodness-of-fit check. They are also the
+  building block for **martingale residuals**: $M_i = \delta_i - r_i^{CS}$. In the
+  **accelerated failure time** model, the Cox-Snell residual is computed from the standardized
+  residual $z_i = (\log t_i - \mathbf{x}_i^\top\hat\gamma) / \hat\sigma$ via the fitted
+  distribution's survival function. Available from `AFT` via `residuals(type="cox_snell")`.
+
 CoxNet
 : A penalized Cox proportional hazards model that adds an elastic-net penalty
   ($\alpha \|\beta\|_1 + (1-\alpha)\|\beta\|_2^2$) to the partial likelihood. Setting
@@ -237,8 +248,11 @@ Deviance residuals
   is the event indicator. Deviance residuals are more symmetric around zero than martingale
   residuals, making them easier to use for identifying outliers: large positive values
   correspond to subjects who experienced the event much sooner than the model predicted, and
-  large negative values to subjects who lived much longer than expected. Available from a
-  fitted `CoxPH` model via `residuals(type="deviance")`.
+  large negative values to subjects who lived much longer than expected. In the **accelerated
+  failure time** model, deviance residuals use a likelihood-ratio formula: the signed square
+  root of twice the difference between the log-density at the saturated value and at the
+  fitted standardized residual. Available from `CoxPH` and `AFT` via
+  `residuals(type="deviance")`.
 
 dfbeta residuals
 : Approximate influence statistics that measure how much each subject's data changes each
@@ -247,15 +261,14 @@ dfbeta residuals
   removed, approximated without refitting the model. In the Cox model, dfbeta residuals are
   derived from the score (gradient) residuals and the observed information matrix. They are
   useful for identifying subjects who have disproportionate influence on a specific
-  coefficient. Greenwood's `_score_residuals()` method computes the score-residual building
-  blocks used to form dfbeta values and the **Lin-Wei** robust variance.
+  coefficient. Available from `CoxPH` and `AFT` via `residuals(type="dfbeta")`.
 dfbetas residuals
 : The standardized form of **dfbeta residuals**, obtained by dividing each dfbeta value by
   the corresponding coefficient's model-based standard error. Because dfbeta is on the raw
   coefficient scale, comparing its magnitude across covariates with different units or
   variances is not meaningful; dividing by the standard error puts every covariate's
   influence values on a common, unit-free scale, making it possible to rank observations by
-  influence across the whole coefficient vector at once. Available from `CoxPH` via
+  influence across the whole coefficient vector at once. Available from `CoxPH` and `AFT` via
   `residuals(type="dfbetas")`.
 Endpoint
 : The specific outcome a study is designed to measure, defined in advance as the criterion
@@ -605,7 +618,7 @@ Martingale residuals
   reveals nonlinear effects as a curved lowess smooth. Their main drawback is asymmetry:
   bounded above by 1 but unbounded below, so large negative values are expected for
   long-surviving censored subjects. **Deviance residuals** symmetrize them. Available from
-  `CoxPH` via `residuals(type="martingale")`.
+  `CoxPH` and `AFT` via `residuals(type="martingale")`.
 
 Model-based standard error
 : The default standard error reported for a Cox model's coefficients, computed from the
@@ -795,6 +808,16 @@ Response (`y`)
   `y = gw.Surv.right(time, event)` followed by `model.fit(y, X)`, deliberately mirroring
   the $y$, $X$ split familiar from regression.
 
+Response residuals
+: Per-subject residuals that measure the difference between observed and fitted values on the
+  original time scale: $r_i = t_i - \hat{t}_i$, where
+  $\hat{t}_i = \exp(\mathbf{x}_i^\top\hat\gamma)$ is the predicted event time from the
+  **accelerated failure time** model. A positive residual indicates the subject survived longer than
+  the model predicted. Response residuals are analogous to ordinary regression residuals and are
+  useful for a quick visual check of model fit, but they are not symmetric and their variance is not
+  constant, so they are typically supplemented by **deviance residuals** or **Cox-Snell residuals**
+  for formal diagnostics. Available from `AFT` via `residuals(type="response")`.
+
 Ridge (L2 penalty)
 : A regularization method that adds a penalty proportional to the sum of squared coefficient
   values, $\lambda \|\beta\|_2^2$, to the model's log-likelihood or loss function. Ridge
@@ -854,15 +877,16 @@ Schoenfeld residuals
 
 Score residuals
 : Per-subject, per-covariate residuals from a fitted Cox model representing each subject's
-  contribution to the score (gradient) of the partial log-likelihood evaluated at
-  $\hat\beta$. For subject $i$ and covariate $j$, the score residual is
-  $L_{ij} = \int_0^\infty [x_{ij}(t) - \bar{x}_j(t)]\,dM_i(t)$, where $\bar{x}_j(t)$ is
-  the risk-set weighted mean of covariate $j$ at time $t$ and $dM_i$ is the **martingale
-  residual** increment. The matrix of score residuals is the "meat" of the **Lin-Wei
-  sandwich estimator**: when subjects are clustered, score residuals are summed within
-  clusters before forming the sandwich. **dfbeta residuals** are linear functions of score
-  residuals obtained by pre-multiplying by the inverse information matrix. Accessible from
-  `CoxPH` via `residuals(type="score")`.
+  contribution to the score (gradient) of the partial log-likelihood evaluated at $\hat\beta$. For
+  subject $i$ and covariate $j$, the score residual is
+  $L_{ij} = \int_0^\infty [x_{ij}(t) - \bar{x}_j(t)]\,dM_i(t)$, where $\bar{x}_j(t)$ is the risk-set
+  weighted mean of covariate $j$ at time $t$ and $dM_i$ is the **martingale residual** increment.
+  The matrix of score residuals is the "meat" of the **Lin-Wei sandwich estimator**: when subjects
+  are clustered, score residuals are summed within clusters before forming the sandwich.
+  **dfbeta residuals** are linear functions of score residuals obtained by pre-multiplying by the
+  inverse information matrix. In the **accelerated failure time** model, score residuals are the
+  per-subject contributions to the gradient of the log-likelihood with respect to the regression
+  coefficients. Available from `CoxPH` and `AFT` via `residuals(type="score")`.
 
 Semi-parametric model
 : A model that combines a non-parametric component with a parametric one. The **Cox
