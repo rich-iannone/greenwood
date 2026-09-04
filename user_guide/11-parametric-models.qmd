@@ -680,6 +680,88 @@ individual-level predictions. Nonparametric RMST makes no assumptions and tests 
 differences.
 :::
 
+## Residuals
+
+After fitting a parametric model, residuals tell you whether the distributional assumption holds and
+whether any observations are unusual or overly influential. The AFT `residuals()` method supports
+seven types, each answering a different diagnostic question.
+
+### Response and Cox-Snell residuals
+
+Response residuals are the simplest: the difference between the observed time and the predicted time
+on the original scale. Cox-Snell residuals are the estimated cumulative hazard at each observation's
+event or censoring time. Under a correctly specified model, the Cox-Snell residuals for uncensored
+observations follow an Exp(1) distribution, making them the standard tool for checking overall model
+fit.
+
+```{python}
+# Fit a Weibull AFT for residual diagnostics
+lung = gw.load_dataset("lung", backend="polars")
+y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+aft = gw.AFT("weibull").fit(y, lung[["age", "sex"]])
+
+# Response residuals: time - predicted time (one per subject)
+aft.residuals("response")[:5]
+```
+
+```{python}
+# Cox-Snell residuals: cumulative hazard at observed time (always non-negative)
+aft.residuals("cox_snell")[:5]
+```
+
+### Martingale and deviance residuals
+
+Martingale residuals are the event indicator minus the Cox-Snell residual: they measure how much
+"more" or "less" each subject experienced the event than the model expected. Deviance residuals are
+a likelihood-ratio-based transformation that is more symmetrically distributed, making them better
+suited for identifying outliers.
+
+```{python}
+# Martingale residuals: event - Cox-Snell (range: (-inf, 1])
+aft.residuals("martingale")[:5]
+```
+
+```{python}
+# Deviance residuals: symmetric, better for spotting outliers
+aft.residuals("deviance")[:5]
+```
+
+### Score, dfbeta, and dfbetas residuals
+
+Score residuals are the per-observation derivatives of the log-likelihood with respect to the
+coefficients. They have one row per observation and one column per term (including the intercept).
+Dfbeta residuals approximate the change in each coefficient if observation $i$ were deleted. Dfbetas
+standardizes dfbeta by the coefficient standard error so that values are comparable across
+covariates on different scales.
+
+```{python}
+# Score residuals: derivative of each observation's log-likelihood contribution
+aft.residuals("score", format="polars")
+```
+
+```{python}
+# Dfbeta: approximate leave-one-out influence on each coefficient
+aft.residuals("dfbeta", format="polars")
+```
+
+```{python}
+# Dfbetas: standardized dfbeta, comparable across covariates
+aft.residuals("dfbetas", format="polars")
+```
+
+Use martingale and deviance residuals to check whether the distributional assumption is reasonable
+and to spot outliers. Use dfbeta and dfbetas to identify observations that disproportionately
+influence the coefficient estimates. Large values in either direction warrant closer investigation.
+
+::: {.callout-tip}
+## Residuals across distributions
+
+All seven residual types work for every AFT distribution (Weibull, exponential, log-normal,
+log-logistic, and generalized gamma). The underlying math adapts to each distribution automatically
+via the standardized error distribution, so you can compare residual patterns across distributional
+choices to see which assumption fits best.
+:::
+
 ## Weibull diagnostic plots
 
 AIC and likelihood ratio tests give you a number, but a picture often tells you more. The Weibull
@@ -781,8 +863,10 @@ with confidence. If the numbers and the picture disagree, investigate further.
 
 ## Next steps
 
-You can now fit, compare, and predict from parametric survival models.
+You can now fit, compare, predict from, and diagnose parametric survival models.
 
+- [Cox model diagnostics](09-cox-diagnostics.qmd) covers residuals and influence diagnostics for
+the semiparametric alternative, with the same conceptual framework.
 - [Cox regression](08-cox-regression.qmd) is the semiparametric alternative, useful when you
 prefer not to assume a distribution.
 - [Prediction performance](15-prediction-performance.qmd) evaluates any fitted model,
