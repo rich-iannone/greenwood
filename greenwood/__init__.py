@@ -1,11 +1,4 @@
-"""Greenwood: modern survival analysis for Python.
-
-Narwhals-native, validated against R's `survival`, visualized with Altair and Great Tables.
-
-This release provides the `Surv` response object, the risk-set / event-table kernel, the
-non-parametric estimators (`KaplanMeier`, `NelsonAalen`), group comparison tests (`logrank_test()`),
-and interactive visualization (`plot_survival()` with aligned risk tables).
-"""
+"""Greenwood: modern survival analysis for Python."""
 
 from __future__ import annotations
 
@@ -59,6 +52,7 @@ from .viz import (
     plot_predicted_survival,
     plot_smooth_hr,
     plot_survival,
+    plot_weibull,
     risk_table,
     theme_forest,
 )
@@ -132,6 +126,7 @@ __all__ = [
     "plot_smooth_hr",
     "theme_forest",
     "plot_cif",
+    "plot_weibull",
     "load_dataset",
     "available_datasets",
     "split_episodes",
