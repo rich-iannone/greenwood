@@ -544,6 +544,43 @@ class CoxNet:
         return -2.0 * self.loglik_ + np.log(self.n_event_) * self.effective_df()
 
 
+def _tidy_coxnet(
+    model: CoxNet, *, exponentiate: bool = False, format: str | None = None, **_: Any
+) -> Any:
+    cols = model._coefficient_columns()
+    if exponentiate:
+        cols["estimate"] = np.exp(cols["estimate"])
+    return to_dataframe(cols, format=format)
+
+
+def _glance_coxnet(model: CoxNet, *, format: str | None = None, **_: Any) -> Any:
+    edf = model.effective_df()
+    return to_dataframe(
+        {
+            "n": [model.n_],
+            "nevent": [model.n_event_],
+            "loglik": [model.loglik_],
+            "aic": [model.aic()],
+            "bic": [model.bic()],
+            "effective_df": [edf],
+            "penalizer": [model.penalizer],
+            "l1_ratio": [model.l1_ratio],
+            "n_nonzero": [int(np.count_nonzero(model.coef_))],
+        },
+        format=format,
+    )
+
+
+def _register_adapters() -> None:
+    from .summaries import register_glance, register_tidier
+
+    register_tidier("greenwood._penalized.CoxNet", _tidy_coxnet)
+    register_glance("greenwood._penalized.CoxNet", _glance_coxnet)
+
+
+_register_adapters()
+
+
 # ---------------------------------------------------------------------------
 # Cross-validated penalizer selection
 # ---------------------------------------------------------------------------

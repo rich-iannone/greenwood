@@ -333,3 +333,30 @@ def test_bic_penalizes_more_than_aic(data) -> None:  # type: ignore[no-untyped-d
     y, x = data
     model = CoxNet(penalizer=0.05, l1_ratio=0.5).fit(y, x)
     assert model.bic() >= model.aic()
+
+
+def test_tidy_columns(data) -> None:  # type: ignore[no-untyped-def]
+    y, x = data
+    model = CoxNet(penalizer=0.01).fit(y, x)
+    tidy = gw.tidy(model, format="pandas")
+    assert list(tidy.columns) == ["term", "estimate", "hazard_ratio"]
+    assert len(tidy) == x.shape[1]
+
+
+def test_tidy_exponentiate(data) -> None:  # type: ignore[no-untyped-def]
+    y, x = data
+    model = CoxNet(penalizer=0.01).fit(y, x)
+    tidy = gw.tidy(model, exponentiate=True, format="pandas")
+    np.testing.assert_allclose(tidy["estimate"].to_numpy(), model.hazard_ratio_)
+
+
+def test_glance_fields(data) -> None:  # type: ignore[no-untyped-def]
+    y, x = data
+    model = CoxNet(penalizer=0.05, l1_ratio=0.5).fit(y, x)
+    row = gw.glance(model, format="pandas").iloc[0]
+    assert row["nevent"] == 165
+    assert row["aic"] == pytest.approx(model.aic())
+    assert row["bic"] == pytest.approx(model.bic())
+    assert row["penalizer"] == 0.05
+    assert row["l1_ratio"] == 0.5
+    assert row["n_nonzero"] == int(np.count_nonzero(model.coef_))

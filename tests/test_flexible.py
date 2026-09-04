@@ -105,3 +105,31 @@ def test_invalid_arguments() -> None:
         RoystonParmar(df=0)
     with pytest.raises(ValueError, match="conf_level"):
         RoystonParmar(conf_level=1.5)
+
+
+def test_tidy_columns(lung, y) -> None:  # type: ignore[no-untyped-def]
+    rp = RoystonParmar(df=3).fit(y, lung[["age", "sex"]])
+    tidy = gw.tidy(rp, format="pandas")
+
+    assert list(tidy.columns) == [
+        "term",
+        "estimate",
+        "std_error",
+        "statistic",
+        "p_value",
+        "conf_low",
+        "conf_high",
+    ]
+    assert len(tidy) == 6
+    assert list(tidy["term"]) == ["gamma0", "gamma1", "gamma2", "gamma3", "age", "sex"]
+
+
+def test_glance_fields(lung, y) -> None:  # type: ignore[no-untyped-def]
+    rp = RoystonParmar(df=3).fit(y, lung[["age", "sex"]])
+    row = gw.glance(rp, format="pandas").iloc[0]
+
+    assert row["nevent"] == 165
+    assert row["df"] == 6
+    assert row["n_knots"] == 3
+    assert row["aic"] == pytest.approx(-2 * rp.loglik_ + 2 * 6)
+    assert row["bic"] == pytest.approx(-2 * rp.loglik_ + np.log(165) * 6)

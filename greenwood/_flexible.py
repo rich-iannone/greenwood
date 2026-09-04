@@ -852,3 +852,33 @@ class RoystonParmar:
         ```
         """
         return to_dataframe(self._coefficient_columns(), format=format)
+
+
+def _tidy_rp(model: RoystonParmar, *, format: str | None = None, **_: Any) -> Any:
+    return model.to_frame(format=format)
+
+
+def _glance_rp(model: RoystonParmar, *, format: str | None = None, **_: Any) -> Any:
+    n_params = len(model.coef_)
+    return to_dataframe(
+        {
+            "n": [model.n_],
+            "nevent": [model.n_event_],
+            "loglik": [model.loglik_],
+            "aic": [-2.0 * model.loglik_ + 2.0 * n_params],
+            "bic": [-2.0 * model.loglik_ + np.log(model.n_event_) * n_params],
+            "df": [n_params],
+            "n_knots": [model._n_spline - 1],
+        },
+        format=format,
+    )
+
+
+def _register_adapters() -> None:
+    from .summaries import register_glance, register_tidier
+
+    register_tidier("greenwood._flexible.RoystonParmar", _tidy_rp)
+    register_glance("greenwood._flexible.RoystonParmar", _glance_rp)
+
+
+_register_adapters()
