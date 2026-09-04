@@ -37,6 +37,7 @@ _DATASETS = {
     "pbcseq": "pbcseq.csv.gz",
     "colon": "colon.csv.gz",
     "mgus2": "mgus2.csv.gz",
+    "e1684": "e1684.csv.gz",
 }
 
 

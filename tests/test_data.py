@@ -16,6 +16,7 @@ def test_available_datasets() -> None:
         "pbcseq",
         "colon",
         "mgus2",
+        "e1684",
     }
 
 
