@@ -150,6 +150,81 @@ class TestRepr:
         assert "n = 228" in r
 
 
+class TestPredict:
+    def test_survival_shape(self, fitted_model, lung_data) -> None:
+        _, lung = lung_data
+        surv = fitted_model.predict(lung[["age", "sex"]][:3], times=[180, 365])
+        assert surv.shape == (2, 4)
+
+    def test_cumhaz_shape(self, fitted_model, lung_data) -> None:
+        _, lung = lung_data
+        ch = fitted_model.predict(lung[["age", "sex"]][:3], type="cumhaz", times=[180, 365])
+        assert ch.shape == (2, 4)
+
+    def test_survival_in_unit_interval(self, fitted_model, lung_data) -> None:
+        _, lung = lung_data
+        surv = fitted_model.predict(lung[["age", "sex"]], times=[100, 200, 365, 500])
+        for col in surv.columns[1:]:
+            vals = surv[col].to_numpy()
+            assert np.all(vals >= 0.0) and np.all(vals <= 1.0)
+
+    def test_cumhaz_nonnegative(self, fitted_model, lung_data) -> None:
+        _, lung = lung_data
+        ch = fitted_model.predict(lung[["age", "sex"]], type="cumhaz", times=[100, 365])
+        for col in ch.columns[1:]:
+            assert np.all(ch[col].to_numpy() >= 0.0)
+
+    def test_survival_decreasing(self, fitted_model, lung_data) -> None:
+        _, lung = lung_data
+        surv = fitted_model.predict(lung[["age", "sex"]][:1], times=[50, 100, 200, 365, 500])
+        vals = surv["subject_1"].to_numpy()
+        assert np.all(np.diff(vals) <= 1e-12)
+
+    def test_cumhaz_increasing(self, fitted_model, lung_data) -> None:
+        _, lung = lung_data
+        ch = fitted_model.predict(
+            lung[["age", "sex"]][:1], type="cumhaz", times=[50, 100, 200, 365, 500]
+        )
+        vals = ch["subject_1"].to_numpy()
+        assert np.all(np.diff(vals) >= -1e-12)
+
+    def test_survival_exp_neg_cumhaz(self, fitted_model, lung_data) -> None:
+        _, lung = lung_data
+        nd = lung[["age", "sex"]][:2]
+        surv = fitted_model.predict(nd, times=[180, 365])
+        ch = fitted_model.predict(nd, type="cumhaz", times=[180, 365])
+        for col in ["subject_1", "subject_2"]:
+            np.testing.assert_allclose(
+                surv[col].to_numpy(), np.exp(-ch[col].to_numpy()), rtol=1e-12
+            )
+
+    def test_newdata_none_uses_training(self, fitted_model) -> None:
+        surv = fitted_model.predict(times=[180, 365])
+        assert surv.shape[1] == 228 + 1
+
+    def test_default_times_uses_event_times(self, fitted_model, lung_data) -> None:
+        _, lung = lung_data
+        surv = fitted_model.predict(lung[["age", "sex"]][:1])
+        assert len(surv) == len(fitted_model.event_times_)
+
+    def test_before_first_event_time(self, fitted_model, lung_data) -> None:
+        _, lung = lung_data
+        surv = fitted_model.predict(lung[["age", "sex"]][:1], times=[1.0])
+        assert surv["subject_1"].to_numpy()[0] == pytest.approx(1.0)
+
+    def test_invalid_type_raises(self, fitted_model, lung_data) -> None:
+        _, lung = lung_data
+        with pytest.raises(ValueError, match="Unknown predict type"):
+            fitted_model.predict(lung[["age", "sex"]][:1], type="hazard", times=[180])
+
+    def test_format_polars(self, fitted_model, lung_data) -> None:
+        _, lung = lung_data
+        import polars as pl
+
+        surv = fitted_model.predict(lung[["age", "sex"]][:2], times=[180], format="polars")
+        assert isinstance(surv, pl.DataFrame)
+
+
 class TestTidyGlance:
     def test_tidy(self, fitted_model) -> None:
         df = gw.tidy(fitted_model, format="polars")

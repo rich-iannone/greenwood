@@ -313,6 +313,98 @@ class AalenAdditive:
 
         return self
 
+    def predict(
+        self,
+        newdata: Any = None,
+        *,
+        type: str = "survival",
+        times: Any = None,
+        format: str | None = None,
+    ) -> Any:
+        r"""Predict survival or cumulative hazard from the fitted Aalen additive model.
+
+        The cumulative hazard for a subject with covariates $x$ at time $t$ is
+
+        $$
+        \hat{H}(t \mid x) = \hat{B}_0(t) + \sum_{j=1}^{p} \hat{B}_j(t)\,x_j
+        $$
+
+        where $\hat{B}_j(t)$ are the estimated cumulative regression coefficients. Survival follows
+        as $\hat{S}(t \mid x) = \exp(-\hat{H}(t \mid x))$.
+
+        Because the additive hazard model can produce negative cumulative hazard increments for some
+        covariate patterns, predicted cumulative hazards are clipped at zero.
+
+        Parameters
+        ----------
+        newdata
+            Covariate values for prediction. A DataFrame, 2-D array, or `None`. When `None`,
+            predictions are made for the training data subjects.
+        type
+            Prediction type: `"survival"` (default) or `"cumhaz"`.
+        times
+            Query times at which to evaluate predictions. An array-like of positive floats. When
+            `None`, the model's fitted event times are used.
+        format
+            Output format: `None` (auto-detect), `"pandas"`, `"polars"`, or `"pyarrow"`.
+
+        Returns
+        -------
+        DataFrame
+            Columns `time` and `subject_1`, `subject_2`, etc., one row per query time.
+
+        Examples
+        --------
+        ```{python}
+        import greenwood as gw
+
+        lung = gw.load_dataset("lung", backend="polars")
+        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        aalen = gw.AalenAdditive().fit(y, lung[["age", "sex"]])
+
+        aalen.predict(lung[["age", "sex"]][:3], times=[180, 365], format="polars")
+        ```
+        """
+        from ._cox import _design_matrix
+
+        if newdata is None:
+            x = self._x
+        else:
+            x, _ = _design_matrix(newdata)
+
+        if times is None:
+            query = self.event_times_
+        else:
+            query = np.atleast_1d(np.asarray(times, dtype=float))
+
+        idx = np.searchsorted(self.event_times_, query, side="right") - 1
+
+        n_times = len(query)
+        n_subj = x.shape[0]
+        x_aug = np.column_stack([np.ones(n_subj), x])
+
+        cumhaz = np.empty((n_times, n_subj))
+        for i, j in enumerate(idx):
+            if j < 0:
+                cumhaz[i, :] = 0.0
+            else:
+                cumhaz[i, :] = x_aug @ self.cumulative_coefs_[j]
+
+        cumhaz = np.clip(cumhaz, 0.0, None)
+
+        if type == "cumhaz":
+            columns: dict[str, Any] = {"time": query}
+            for i in range(n_subj):
+                columns[f"subject_{i + 1}"] = cumhaz[:, i]
+            return to_dataframe(columns, format=format)
+        if type == "survival":
+            surv = np.exp(-cumhaz)
+            columns = {"time": query}
+            for i in range(n_subj):
+                columns[f"subject_{i + 1}"] = surv[:, i]
+            return to_dataframe(columns, format=format)
+        raise ValueError(f"Unknown predict type {type!r}; use 'survival' or 'cumhaz'.")
+
     def cumulative_coefficients(self, *, format: str | None = None) -> Any:
         r"""Return the cumulative regression coefficients $\hat{B}(t)$ as a DataFrame.
 
