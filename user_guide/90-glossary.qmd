@@ -98,6 +98,14 @@ B-spline basis
 C-statistic
 : See **concordance index**.
 
+Complementary log-log (cloglog) transform
+: The transformation $g(S) = \log(-\log(S(t)))$ applied to survival probabilities. On a plot of
+  $\log(-\log(S(t)))$ vs $\log(t)$, data from a **Weibull distribution** fall on a straight line
+  with slope equal to the Weibull shape parameter. This is the basis of the **Weibull plot**, where
+  departures from linearity indicate the Weibull assumption does not hold. For stratified data,
+  parallel lines on the cloglog scale indicate the **proportional hazards assumption** holds between
+  groups. In Greenwood, `plot_weibull()` uses this transform by default (`dist="weibull"`).
+
 Cause-specific hazard
 : The instantaneous rate at which subjects experience a specific cause of failure,
   conditioning on not having experienced any cause yet:
@@ -562,6 +570,12 @@ Lin-Wei sandwich estimator
   to clustered data by summing score residuals within clusters before forming $M$. Activated
   in Greenwood via `CoxPH.fit(..., robust=True)` or by supplying `cluster=`.
 
+Logit transform (survival)
+: The transformation $g(S) = \log((1 - S(t)) / S(t))$ applied to survival probabilities, which is
+  the log-odds of the failure probability $F(t) = 1 - S(t)$. On a plot of
+  $\log((1 - S(t)) / S(t))$ vs $\log(t)$, data from a log-logistic distribution fall on a straight
+  line. Used in the **Weibull plot** with `dist="loglogistic"`.
+
 Location-scale parameterization
 : The canonical form in which **accelerated failure time** models are expressed internally:
   $\log T = \mu + \sigma\,\varepsilon$, where $\mu$ is the location (the linear predictor
@@ -721,6 +735,12 @@ Piecewise exponential model (PEM)
   piecewise-constant baseline hazard that can be plotted and extrapolated. Available via
   `PiecewiseExponential` in Greenwood; interval boundaries can be selected automatically by
   AIC or BIC.
+
+Probit transform (survival)
+: The transformation $g(S) = \Phi^{-1}(1 - S(t))$ applied to survival probabilities, where
+  $\Phi^{-1}$ is the standard normal quantile function. On a plot of $\Phi^{-1}(1 - S(t))$ vs
+  $\log(t)$, data from a log-normal distribution fall on a straight line. Used in the
+  **Weibull plot** with `dist="lognormal"`.
 
 Proportional hazards assumption
 : The assumption in the Cox model that the hazard ratio between any two subjects is constant
@@ -969,6 +989,18 @@ Truncation
   the event before they could enter the study are not observed at all, biasing estimates if
   not accounted for. The **counting-process form** corrects for left truncation by having
   subjects enter the risk set only at their entry time.
+
+Weibull plot
+: A diagnostic visualization that plots Kaplan-Meier survival estimates on transformed axes where a
+  specified parametric distribution appears as a straight line. The classic Weibull plot uses the
+  **complementary log-log transform**: $\log(-\log(S(t)))$ on the y-axis and $\log(t)$ on the
+  x-axis. Points that fall on a line confirm the distributional assumption. For stratified
+  Kaplan-Meier fits, parallel lines indicate the **proportional hazards assumption** holds between
+  groups. The same idea generalizes to other distributions: the probit transform
+  ($\Phi^{-1}(1 - S(t))$ vs $\log(t)$) linearizes log-normal data, and the logit transform
+  ($\log((1 - S(t)) / S(t))$ vs $\log(t)$) linearizes log-logistic data. An optional parametric
+  overlay from a fitted **AFT** model draws the theoretical line through the empirical points to
+  visualize goodness-of-fit. Available via `plot_weibull()`.
 
 Weibull distribution
 : A two-parameter family of probability distributions widely used in parametric survival
