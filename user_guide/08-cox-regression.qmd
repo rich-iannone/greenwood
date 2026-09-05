@@ -1009,6 +1009,133 @@ baseline_strat = cox_strat.baseline_hazard(ci=True, format="polars")
 baseline_strat
 ```
 
+## Aalen additive hazards model
+
+The Cox model assumes that covariates multiply the hazard by a constant factor. The Aalen additive
+model takes a different approach: it assumes that each covariate *adds* to the hazard, and that the
+size of its contribution can change freely over time. The model is:
+
+$$h(t \mid x) = \beta_0(t) + \beta_1(t) x_1 + \cdots + \beta_p(t) x_p$$
+
+where each $\beta_j(t)$ is an unspecified function of time. Because the effects are nonparametric
+and time-varying, the Aalen model is a natural alternative when the proportional hazards assumption
+is violated or when you want to see how a covariate's influence evolves.
+
+### Fitting the model
+
+`AalenAdditive` is fit by ordinary least squares at each event time. It requires a `Surv` response
+and a covariate frame, just like `CoxPH`. An intercept ($\beta_0(t)$) is added automatically.
+
+```{python}
+# Load data and build the response
+lung = gw.load_dataset("lung", backend="polars")
+y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+
+# Fit the Aalen additive hazards model
+aalen = gw.AalenAdditive().fit(y, lung[["age", "sex"]])
+
+# Print the summary (slope test for each covariate)
+aalen
+```
+
+The printed summary reports a test of whether each covariate's cumulative effect is significantly
+different from zero over the follow-up period. The `slope` column estimates the average rate of
+change in the cumulative coefficient, and the `z` and `p` columns give the corresponding test
+statistic and p-value.
+
+### Cumulative coefficients
+
+The model estimates cumulative regression coefficients $B_j(t) = \int_0^t \beta_j(s)\,ds$ at each
+event time. These are the central output of the Aalen model and show how each covariate's total
+effect accumulates over time.
+
+```{python}
+# Cumulative coefficients as a tidy DataFrame (one row per event time)
+cumcoef = aalen.cumulative_coefficients(format="polars")
+cumcoef
+```
+
+A coefficient that increases steeply means the covariate is actively contributing to hazard during
+that period. A flat segment means the covariate has no effect at that time. A downward bend (which
+can happen because the model is additive, not multiplicative) would indicate a protective effect in
+that interval.
+
+You can plot these curves to visualize how each covariate's influence changes over time:
+
+```{python}
+import altair as alt
+import pandas as pd
+
+# Reshape for plotting (exclude the Intercept for clarity)
+cumcoef_pd = cumcoef.to_pandas()
+long = cumcoef_pd.melt(id_vars="time", value_vars=["age", "sex"],
+                       var_name="term", value_name="cumulative_coefficient")
+
+alt.Chart(long).mark_line().encode(
+    x=alt.X("time:Q", title="Time"),
+    y=alt.Y("cumulative_coefficient:Q", title="Cumulative coefficient"),
+    color=alt.Color("term:N", title="Term"),
+).properties(width=500, height=280, title="Aalen cumulative coefficients")
+```
+
+A roughly linear curve suggests a constant effect over time (which a Cox model would capture well).
+Curvature indicates time-varying effects that the proportional hazards assumption would miss.
+
+### Predictions
+
+`predict()` generates subject-specific survival probabilities or cumulative hazard estimates at
+specified time points. It works the same way as for `CoxPH` and `CoxNet`:
+
+```{python}
+# Predicted survival curves at 6-month intervals for the first three subjects
+aalen.predict(lung[["age", "sex"]][:3], type="survival", times=[180, 365, 540], format="polars")
+```
+
+The survival probabilities are computed from the cumulative hazard, which is built by summing each
+subject's covariate-weighted coefficient increments. Pass `type="cumhaz"` for the cumulative hazard
+directly:
+
+```{python}
+# Cumulative hazard at the same time points
+aalen.predict(lung[["age", "sex"]][:3], type="cumhaz", times=[180, 365, 540], format="polars")
+```
+
+### Summarizing with tidy and glance
+
+The `tidy()` and `glance()` functions work with `AalenAdditive`. `tidy()` returns the summary test
+table with one row per term (intercept plus covariates):
+
+```{python}
+# Tidy: slope test for each term
+gw.tidy(aalen, format="polars")
+```
+
+The `slope` column is the estimated average rate of change in the cumulative coefficient, and `coef`
+is the final cumulative value at the last event time. Together they describe both the trend and total
+magnitude of each covariate's effect.
+
+`glance()` returns a single-row summary of the overall fit:
+
+```{python}
+# Glance: model-level summary
+gw.glance(aalen, format="polars")
+```
+
+### When to use Aalen vs. Cox
+
+The Aalen additive model is most useful when:
+
+- The proportional hazards assumption is violated (as diagnosed by `cox_zph()` or Schoenfeld
+residual plots).
+- You want to estimate how a covariate's effect changes over time, not just whether it changes.
+- The additive hazard structure is scientifically appropriate (for example, when effects are
+believed to contribute independently to the rate, rather than multiplicatively).
+
+The trade-off is that the Aalen model has higher variance than Cox because it estimates a separate
+effect at each event time. With small samples or many covariates, estimates can be noisy. The
+`nmin` parameter controls the minimum risk-set size at which estimation stops, which can stabilize
+the estimates.
+
 ## Next steps
 
 You can now fit a Cox model, read hazard ratios, and assess overall fit.
