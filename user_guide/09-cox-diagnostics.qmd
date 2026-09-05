@@ -94,6 +94,41 @@ samples. Complement the test by plotting scaled Schoenfeld residuals or by fitti
 models when you have reason to suspect a time-varying effect.
 :::
 
+### Visualizing the proportional hazards check
+
+The `plot_schoenfeld()` function plots the scaled Schoenfeld residuals against time for each
+covariate. Under proportional hazards, the residuals should scatter randomly around the coefficient
+estimate (the dashed line) and the loess smooth should be flat. A trend in the smooth is visual
+evidence that the covariate's effect changes over time.
+
+```{python}
+# Scaled Schoenfeld residual plots with Grambsch-Therneau p-values
+gw.plot_schoenfeld(cox)
+```
+
+Each panel shows one covariate. The blue points are scaled Schoenfeld residuals at each event time,
+the red curve is a loess smooth, and the dashed grey line marks the overall coefficient estimate.
+The p-value in each panel title is from the `cox_zph()` test. A flat smooth close to the reference
+line confirms proportional hazards; a curve that departs from it reveals where and how the effect
+changes.
+
+The time axis can be transformed to spread out events more evenly, which sometimes makes trends
+easier to see. Pass `transform="log"` for log time, `transform="km"` for the Kaplan-Meier failure
+probability, or `transform="rank"` for time ranks:
+
+```{python}
+# Log-time axis to spread out early events
+gw.plot_schoenfeld(cox, transform="log")
+```
+
+To suppress the p-value annotation (for example, when you want a cleaner figure for a report), pass
+`show_zph=False`:
+
+```{python}
+# Clean version without p-value annotations
+gw.plot_schoenfeld(cox, show_zph=False, title="PH diagnostic")
+```
+
 ### Localizing violations with time windows
 
 A global `cox_zph()` test tells you *whether* proportional hazards is violated, but not *when*. If
