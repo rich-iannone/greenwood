@@ -125,7 +125,5 @@ def test_plotnine_backend(cox_lung: CoxPH) -> None:
 
 def test_plotnine_with_term_labels(cox_lung: CoxPH) -> None:
     p9 = pytest.importorskip("plotnine")
-    p = gw.plot_forest(
-        cox_lung, backend="plotnine", term_labels={"age": "Age", "sex": "Sex"}
-    )
+    p = gw.plot_forest(cox_lung, backend="plotnine", term_labels={"age": "Age", "sex": "Sex"})
     assert isinstance(p, p9.ggplot)
