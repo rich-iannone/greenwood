@@ -910,6 +910,130 @@ for the visual confirmation. If AIC picks Weibull and the Weibull plot is linear
 with confidence. If the numbers and the picture disagree, investigate further.
 :::
 
+## Mixture cure models
+
+Standard survival models assume that every subject will eventually experience the event if followed
+long enough. In many settings this is not realistic: some patients are cured and will never relapse,
+some parolees will never reoffend, and some machines will never fail in their operating lifetime. A
+mixture cure model handles this by splitting the population into two groups:
+
+- **Susceptible** subjects who will eventually experience the event. Their time-to-event follows a
+standard survival distribution (the *latency* submodel).
+- **Cured** subjects who will never experience the event. They contribute only through the censoring
+mechanism.
+
+The model estimates both the *incidence* (what fraction is cured, as a function of covariates) and
+the *latency* (how long susceptible subjects survive, also as a function of covariates). Greenwood's
+`MixtureCure` uses a logistic regression for incidence and a Cox PH model for latency, fitted
+jointly via the EM algorithm.
+
+### Fitting a cure model
+
+The `fit()` method takes a `Surv` response and two covariate frames: one for the cure (incidence)
+submodel and one for the latency submodel. The covariates can overlap or differ.
+
+```{python}
+# Load the E1684 melanoma interferon trial
+e1684 = gw.load_dataset("e1684", backend="polars")
+y_mel = gw.Surv.right(e1684["FAILTIME"], event=(e1684["FAILCENS"] == 1))
+
+# Fit a mixture cure model:
+#   - Incidence (cure) submodel: treatment and age predict who is cured
+#   - Latency submodel: treatment and age predict when susceptible subjects fail
+mc = gw.MixtureCure().fit(
+    y_mel,
+    latency=e1684[["AGE", "TRT"]],
+    cure=e1684[["AGE", "TRT"]],
+    nboot=200,
+)
+
+mc
+```
+
+The printed summary shows two coefficient tables. The **cure probability model** (logistic)
+estimates the log-odds of being susceptible. A positive coefficient increases the probability of
+being susceptible (i.e., decreases the cure probability). The **failure time distribution model**
+(Cox PH) estimates log hazard ratios among susceptible subjects, with the same interpretation as an
+ordinary Cox model.
+
+Standard errors are computed by bootstrap resampling (controlled by the `nboot` parameter). More
+resamples give more stable SEs at the cost of longer fitting time.
+
+### Predicting cure probability
+
+`predict_cure_prob()` returns the estimated probability that each subject is susceptible (uncured),
+based on their incidence covariates. Subtract from 1 to get the cure probability:
+
+```{python}
+# Susceptibility probability for three subjects
+suscept = mc.predict_cure_prob(e1684[["AGE", "TRT"]][:3])
+
+# Cure probability = 1 - susceptibility
+import numpy as np
+
+for i, p in enumerate(suscept):
+    print(f"Subject {i + 1}: susceptible = {p:.3f}, cured = {1 - p:.3f}")
+```
+
+Subjects with a low susceptibility probability are more likely to be in the cured fraction. These
+estimates depend only on the incidence covariates, not on the latency model.
+
+### Predicting population survival
+
+`predict_survival()` returns the population survival curve, which blends the cured and susceptible
+groups. For a subject with incidence covariates $z$ and latency covariates $x$:
+
+$$S_{\text{pop}}(t \mid x, z) = (1 - \pi(z)) + \pi(z) \cdot S(t \mid x)$$
+
+where $\pi(z)$ is the susceptibility probability and $S(t \mid x)$ is the latency survival. At
+$t = 0$ this equals 1, and as $t \to \infty$ it plateaus at the cure fraction $(1 - \pi(z))$ rather
+than falling to zero.
+
+```{python}
+# Population survival at 1, 2, 5, and 10 years for three subjects
+times = [1.0, 2.0, 5.0, 10.0]
+surv = mc.predict_survival(times, e1684[["AGE", "TRT"]][:3], e1684[["AGE", "TRT"]][:3])
+
+pd.DataFrame(surv, columns=[f"t={t}" for t in times],
+             index=["Subject 1", "Subject 2", "Subject 3"])
+```
+
+The survival curves flatten rather than approaching zero, reflecting the cured fraction. A subject
+with a high cure probability will have a higher survival plateau.
+
+### Summarizing with tidy and glance
+
+`tidy()` returns a stacked coefficient table with both submodels. The `submodel` column
+distinguishes the incidence ("cure") and latency rows:
+
+```{python}
+# Tidy: stacked cure + latency coefficients
+gw.tidy(mc, format="polars")
+```
+
+The cure rows include an intercept (the baseline log-odds of susceptibility), while the latency
+rows do not (following Cox PH convention). Positive cure coefficients increase susceptibility.
+Negative latency coefficients decrease the hazard among susceptible subjects.
+
+`glance()` returns a single-row model summary:
+
+```{python}
+# Glance: model-level summary
+gw.glance(mc, format="polars")
+```
+
+The `n_iter` column shows how many EM iterations were needed for convergence. If `n_iter` equals
+the maximum (`emmax`, default 50), the algorithm may not have converged and you should increase
+`emmax`.
+
+::: {.callout-tip}
+## When to consider a cure model
+
+A cure model is appropriate when the Kaplan-Meier curve for your data levels off well above zero,
+suggesting that a fraction of subjects will never experience the event. If the KM curve continues
+to decline throughout follow-up, a standard Cox or AFT model is more appropriate.
+:::
+
 ## Next steps
 
 You can now fit, compare, predict from, and diagnose parametric survival models.
