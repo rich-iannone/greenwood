@@ -88,6 +88,165 @@ def test_predict_shapes_and_survival_range(data) -> None:  # type: ignore[no-unt
     assert ((surv.iloc[:, 1:] >= 0) & (surv.iloc[:, 1:] <= 1)).all().all()
 
 
+# ---------------------------------------------------------------------------
+# Detailed predict tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def coxnet(data):  # type: ignore[no-untyped-def]
+    y, x = data
+    return CoxNet(penalizer=0.05, l1_ratio=0.5).fit(y, x)
+
+
+class TestPredictLP:
+    def test_lp_shape(self, data, coxnet) -> None:  # type: ignore[no-untyped-def]
+        _, x = data
+        lp = coxnet.predict(x, type="lp")
+        assert lp.shape == (coxnet.n_,)
+
+    def test_lp_newdata_none(self, coxnet) -> None:  # type: ignore[no-untyped-def]
+        lp = coxnet.predict(type="lp")
+        assert lp.shape == (coxnet.n_,)
+
+    def test_lp_numpy_input(self, data, coxnet) -> None:  # type: ignore[no-untyped-def]
+        _, x = data
+        lp_df = coxnet.predict(x, type="lp")
+        lp_np = coxnet.predict(x.values, type="lp")
+        np.testing.assert_allclose(lp_df, lp_np)
+
+    def test_lp_polars_input(self, data, coxnet) -> None:  # type: ignore[no-untyped-def]
+        import polars as pl
+
+        _, x = data
+        lp_pd = coxnet.predict(x, type="lp")
+        lp_pl = coxnet.predict(pl.from_pandas(x), type="lp")
+        np.testing.assert_allclose(lp_pd, lp_pl)
+
+    def test_lp_single_subject(self, data, coxnet) -> None:  # type: ignore[no-untyped-def]
+        _, x = data
+        lp = coxnet.predict(x.iloc[:1], type="lp")
+        assert lp.shape == (1,)
+
+    def test_lp_centered(self, data, coxnet) -> None:  # type: ignore[no-untyped-def]
+        _, x = data
+        lp = coxnet.predict(x, type="lp")
+        assert np.isclose(lp.mean(), 0.0, atol=0.5)
+
+
+class TestPredictRisk:
+    def test_risk_positive(self, data, coxnet) -> None:  # type: ignore[no-untyped-def]
+        _, x = data
+        risk = coxnet.predict(x, type="risk")
+        assert np.all(risk > 0)
+
+    def test_risk_equals_exp_lp(self, data, coxnet) -> None:  # type: ignore[no-untyped-def]
+        _, x = data
+        lp = coxnet.predict(x, type="lp")
+        risk = coxnet.predict(x, type="risk")
+        np.testing.assert_allclose(risk, np.exp(lp))
+
+    def test_risk_shape(self, data, coxnet) -> None:  # type: ignore[no-untyped-def]
+        _, x = data
+        risk = coxnet.predict(x, type="risk")
+        assert risk.shape == (coxnet.n_,)
+
+    def test_risk_newdata_none(self, coxnet) -> None:  # type: ignore[no-untyped-def]
+        risk = coxnet.predict(type="risk")
+        assert risk.shape == (coxnet.n_,)
+        assert np.all(risk > 0)
+
+    def test_risk_single_subject(self, data, coxnet) -> None:  # type: ignore[no-untyped-def]
+        _, x = data
+        risk = coxnet.predict(x.iloc[:1], type="risk")
+        assert risk.shape == (1,)
+        assert risk[0] > 0
+
+
+class TestPredictSurvival:
+    def test_survival_range(self, data, coxnet) -> None:  # type: ignore[no-untyped-def]
+        _, x = data
+        surv = coxnet.predict(x.iloc[:3], type="survival", times=[180, 365], format="pandas")
+        vals = surv.iloc[:, 1:].values
+        assert np.all((vals >= 0) & (vals <= 1))
+
+    def test_survival_monotone_decreasing(self, data, coxnet) -> None:  # type: ignore[no-untyped-def]
+        _, x = data
+        surv = coxnet.predict(
+            x.iloc[:3], type="survival", times=[90, 180, 365, 730], format="pandas"
+        )
+        for col in ["subject_1", "subject_2", "subject_3"]:
+            vals = surv[col].values
+            assert np.all(np.diff(vals) <= 1e-10)
+
+    def test_survival_default_times(self, data, coxnet) -> None:  # type: ignore[no-untyped-def]
+        _, x = data
+        surv = coxnet.predict(x.iloc[:2], type="survival", format="pandas")
+        assert surv.shape[0] > 2
+        assert list(surv.columns[:2]) == ["time", "subject_1"]
+
+    def test_survival_newdata_none(self, coxnet) -> None:  # type: ignore[no-untyped-def]
+        surv = coxnet.predict(type="survival", times=[180], format="pandas")
+        assert surv.shape == (1, coxnet.n_ + 1)
+
+    def test_survival_single_subject(self, data, coxnet) -> None:  # type: ignore[no-untyped-def]
+        _, x = data
+        surv = coxnet.predict(x.iloc[:1], type="survival", times=[180, 365], format="pandas")
+        assert list(surv.columns) == ["time", "subject_1"]
+        assert surv.shape == (2, 2)
+
+    def test_survival_format_polars(self, data, coxnet) -> None:  # type: ignore[no-untyped-def]
+        import polars as pl
+
+        _, x = data
+        surv = coxnet.predict(x.iloc[:2], type="survival", times=[180, 365], format="polars")
+        assert isinstance(surv, pl.DataFrame)
+        assert surv.columns == ["time", "subject_1", "subject_2"]
+
+    def test_survival_format_pandas(self, data, coxnet) -> None:  # type: ignore[no-untyped-def]
+        import pandas as pd
+
+        _, x = data
+        surv = coxnet.predict(x.iloc[:2], type="survival", times=[180, 365], format="pandas")
+        assert isinstance(surv, pd.DataFrame)
+
+    def test_survival_numpy_input(self, data, coxnet) -> None:  # type: ignore[no-untyped-def]
+        _, x = data
+        surv_df = coxnet.predict(x.iloc[:2], type="survival", times=[180], format="pandas")
+        surv_np = coxnet.predict(x.iloc[:2].values, type="survival", times=[180], format="pandas")
+        np.testing.assert_allclose(surv_df.iloc[:, 1:].values, surv_np.iloc[:, 1:].values)
+
+    def test_survival_at_time_zero(self, data, coxnet) -> None:  # type: ignore[no-untyped-def]
+        _, x = data
+        surv = coxnet.predict(x.iloc[:2], type="survival", times=[0.0], format="pandas")
+        vals = surv.iloc[:, 1:].values
+        np.testing.assert_allclose(vals, 1.0)
+
+
+class TestPredictConsistency:
+    def test_zero_penalty_matches_coxph(self, data) -> None:  # type: ignore[no-untyped-def]
+        y, x = data
+        cn = CoxNet(penalizer=0.0).fit(y, x)
+        ref = CoxPH(ties="breslow").fit(y, x)
+        lp_cn = cn.predict(x.iloc[:5], type="lp")
+        lp_ref = ref.predict(x.iloc[:5], type="lp")
+        np.testing.assert_allclose(lp_cn, lp_ref, atol=1e-4)
+
+    def test_zero_penalty_survival_matches_coxph(self, data) -> None:  # type: ignore[no-untyped-def]
+        y, x = data
+        cn = CoxNet(penalizer=0.0).fit(y, x)
+        ref = CoxPH(ties="breslow").fit(y, x)
+        times = [180, 365]
+        s_cn = cn.predict(x.iloc[:3], type="survival", times=times, format="pandas")
+        s_ref = ref.predict(x.iloc[:3], type="survival", times=times, format="pandas")
+        np.testing.assert_allclose(s_cn.iloc[:, 1:].values, s_ref.iloc[:, 1:].values, atol=1e-3)
+
+    def test_invalid_type_raises(self, data, coxnet) -> None:  # type: ignore[no-untyped-def]
+        _, x = data
+        with pytest.raises(ValueError, match="Unknown predict type"):
+            coxnet.predict(x, type="hazard")
+
+
 def test_to_pandas_and_repr(data) -> None:  # type: ignore[no-untyped-def]
     y, x = data
     model = CoxNet(penalizer=0.1, l1_ratio=1.0).fit(y, x)
