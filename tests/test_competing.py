@@ -19,6 +19,7 @@ def test_cif_bounded_and_monotone() -> None:
     table = aj.to_frame(format="pandas")
     for cause in ("pcm", "death"):
         cif = table[table["cause"] == cause].sort_values("time")["estimate"].to_numpy()
+
         assert np.all(np.diff(cif) >= -1e-12)  # non-decreasing
         assert np.all((cif >= 0) & (cif <= 1))
 
@@ -30,6 +31,7 @@ def test_cifs_sum_to_complement_of_survival() -> None:
     last = table[table["time"] == table["time"].max()]
     total_cif = last["estimate"].sum()
     km = gw.KaplanMeier().fit(Surv.right(y.stop, event=y.event))
+
     assert total_cif == pytest.approx(1.0 - km.survival_[-1])
 
 
@@ -51,6 +53,7 @@ def test_invalid_conf_type() -> None:
 def test_conf_type_plain_brackets_estimate() -> None:
     aj = AalenJohansen(conf_type="plain").fit(_simple_multistate())
     table = aj.to_frame(format="pandas")
+
     assert np.all(table["conf_low"].to_numpy() <= table["estimate"].to_numpy() + 1e-12)
     assert np.all(table["estimate"].to_numpy() <= table["conf_high"].to_numpy() + 1e-12)
     assert np.all((table["conf_low"] >= 0) & (table["conf_high"] <= 1))
@@ -60,6 +63,7 @@ def test_conf_type_log_brackets_estimate() -> None:
     aj = AalenJohansen(conf_type="log").fit(_simple_multistate())
     table = aj.to_frame(format="pandas")
     finite = ~table["conf_low"].isna()
+
     assert np.all(
         table.loc[finite, "conf_low"].to_numpy() <= table.loc[finite, "estimate"].to_numpy() + 1e-12
     )
@@ -74,6 +78,7 @@ def test_conf_type_loglog_brackets_estimate() -> None:
     aj = AalenJohansen(conf_type="log-log").fit(_simple_multistate())
     table = aj.to_frame(format="pandas")
     finite = ~table["conf_low"].isna()
+
     assert np.all(
         table.loc[finite, "conf_low"].to_numpy() <= table.loc[finite, "estimate"].to_numpy() + 1e-12
     )
@@ -86,6 +91,7 @@ def test_conf_type_loglog_brackets_estimate() -> None:
 
 def test_to_pandas_columns() -> None:
     table = AalenJohansen().fit(_simple_multistate()).to_frame(format="pandas")
+
     assert list(table.columns) == [
         "cause",
         "time",
@@ -100,6 +106,7 @@ def test_to_pandas_columns() -> None:
 def test_grouped_has_strata_column() -> None:
     y = Surv.multistate([1, 2, 3, 4], event=[1, 2, 1, 2], states=("pcm", "death"))
     table = AalenJohansen().fit(y, by=["a", "a", "b", "b"]).to_frame(format="pandas")
+
     assert "strata" in table.columns
     assert set(table["strata"]) == {"a", "b"}
 
@@ -140,6 +147,7 @@ def test_finegray_accepts_cause_by_code() -> None:
     df, y = _mgus2_cr()
     by_label = FineGray("pcm").fit(y, df[["age", "sex"]]).coef_
     by_code = FineGray(1).fit(y, df[["age", "sex"]]).coef_
+
     np.testing.assert_allclose(by_label, by_code)
 
 
@@ -150,6 +158,7 @@ def test_finegray_tidy_and_glance() -> None:
     fg = FineGray("pcm").fit(y, df[["age", "sex"]])
     tidy = gw.tidy(fg, exponentiate=True)
     np.testing.assert_allclose(tidy["estimate"].to_numpy(), fg.hazard_ratio_)
+
     assert gw.glance(fg, format="pandas").iloc[0]["nevent"] > 0
 
 
@@ -159,6 +168,103 @@ def test_finegray_length_mismatch() -> None:
     df, y = _mgus2_cr()
     with pytest.raises(ValueError, match="same number of rows"):
         FineGray("pcm").fit(y, df[["age"]].iloc[:-1])
+
+
+# -- Fine-Gray to_frame ----------------------------------------------------------
+
+
+class TestFineGrayToFrame:
+    @pytest.fixture(scope="class")
+    def fg(self):  # type: ignore[no-untyped-def]
+        from greenwood import FineGray
+
+        df, y = _mgus2_cr()
+        return FineGray("pcm").fit(y, df[["age", "sex"]])
+
+    def test_columns(self, fg) -> None:  # type: ignore[no-untyped-def]
+        df = fg.to_frame(format="pandas")
+        expected = [
+            "term",
+            "estimate",
+            "std_error",
+            "statistic",
+            "p_value",
+            "conf_low",
+            "conf_high",
+        ]
+
+        assert list(df.columns) == expected
+
+    def test_n_rows_equals_n_terms(self, fg) -> None:  # type: ignore[no-untyped-def]
+        df = fg.to_frame(format="pandas")
+
+        assert df.shape[0] == len(fg.term_names_)
+
+    def test_terms_match(self, fg) -> None:  # type: ignore[no-untyped-def]
+        df = fg.to_frame(format="pandas")
+
+        assert list(df["term"]) == list(fg.term_names_)
+
+    def test_default_estimate_is_log_scale(self, fg) -> None:  # type: ignore[no-untyped-def]
+        df = fg.to_frame(format="pandas")
+
+        np.testing.assert_allclose(df["estimate"].values, fg.coef_)
+
+    def test_exponentiate_returns_hazard_ratios(self, fg) -> None:  # type: ignore[no-untyped-def]
+        df = fg.to_frame(exponentiate=True, format="pandas")
+
+        np.testing.assert_allclose(df["estimate"].values, fg.hazard_ratio_)
+
+    def test_exponentiate_transforms_ci(self, fg) -> None:  # type: ignore[no-untyped-def]
+        df_log = fg.to_frame(format="pandas")
+        df_exp = fg.to_frame(exponentiate=True, format="pandas")
+
+        np.testing.assert_allclose(df_exp["conf_low"].values, np.exp(df_log["conf_low"].values))
+        np.testing.assert_allclose(df_exp["conf_high"].values, np.exp(df_log["conf_high"].values))
+
+    def test_std_error_same_either_scale(self, fg) -> None:  # type: ignore[no-untyped-def]
+        df_log = fg.to_frame(format="pandas")
+        df_exp = fg.to_frame(exponentiate=True, format="pandas")
+
+        np.testing.assert_allclose(df_log["std_error"].values, df_exp["std_error"].values)
+
+    def test_ci_brackets_estimate(self, fg) -> None:  # type: ignore[no-untyped-def]
+        df = fg.to_frame(format="pandas")
+
+        assert (df["conf_low"] <= df["estimate"]).all()
+        assert (df["conf_high"] >= df["estimate"]).all()
+
+    def test_format_polars(self, fg) -> None:  # type: ignore[no-untyped-def]
+        import polars as pl
+
+        df = fg.to_frame(format="polars")
+
+        assert isinstance(df, pl.DataFrame)
+        assert df.columns == [
+            "term",
+            "estimate",
+            "std_error",
+            "statistic",
+            "p_value",
+            "conf_low",
+            "conf_high",
+        ]
+
+    def test_format_default(self, fg) -> None:  # type: ignore[no-untyped-def]
+        df = fg.to_frame()
+
+        assert df.shape[0] == len(fg.term_names_)
+
+    def test_matches_tidy(self, fg) -> None:  # type: ignore[no-untyped-def]
+        df = fg.to_frame(format="pandas")
+        t = gw.tidy(fg, format="pandas")
+
+        assert df.equals(t)
+
+    def test_exponentiate_matches_tidy_exponentiate(self, fg) -> None:  # type: ignore[no-untyped-def]
+        df = fg.to_frame(exponentiate=True, format="pandas")
+        t = gw.tidy(fg, exponentiate=True, format="pandas")
+        np.testing.assert_allclose(df["estimate"].values, t["estimate"].values)
 
 
 # -- Multi-state -----------------------------------------------------------------
@@ -176,9 +282,12 @@ def test_multistate_illness_death_occupancy() -> None:
         states=("mgus", "pcm", "death"),
     )
     table = ms.to_frame(format="pandas")
+
     # Occupancy probabilities sum to 1 at every time.
     row_sums = table[["mgus", "pcm", "death"]].sum(axis=1).to_numpy()
+
     np.testing.assert_allclose(row_sums, 1.0)
+
     # Everyone starts in mgus.
     assert table.iloc[0]["mgus"] <= 1.0 and table["death"].iloc[-1] > 0.0
 
@@ -197,6 +306,7 @@ def test_multistate_predict_step_function() -> None:
         start=[0, 0], stop=[2, 4], state=["a", "a"], event=["b", "b"], states=("a", "b")
     )
     pred = ms.predict([0.0, 3.0, 5.0], format="pandas")
+
     assert list(pred.columns) == ["time", "a", "b"]
     np.testing.assert_allclose(pred[["a", "b"]].sum(axis=1).to_numpy(), 1.0)
 
@@ -216,6 +326,7 @@ def test_multistate_infers_states() -> None:
     from greenwood import MultiState
 
     ms = MultiState().fit(start=[0, 0], stop=[1, 2], state=["a", "a"], event=["b", None])
+
     assert ms.states_ == ("a", "b")
     assert list(ms.to_frame(format="pandas").columns) == ["time", "a", "b"]
 
@@ -226,6 +337,7 @@ def test_multistate_infers_states() -> None:
 def test_grays_test_basic() -> None:
     df, y = _mgus2_cr()
     result = gw.grays_test(y, group=df["sex"], cause="pcm")
+
     assert result.statistic >= 0
     assert 0 <= result.p_value <= 1
     assert result.df == 1
@@ -238,6 +350,7 @@ def test_grays_test_cause_by_code() -> None:
     df, y = _mgus2_cr()
     by_label = gw.grays_test(y, group=df["sex"], cause="pcm")
     by_code = gw.grays_test(y, group=df["sex"], cause=1)
+
     assert by_label.statistic == pytest.approx(by_code.statistic)
     assert by_label.p_value == pytest.approx(by_code.p_value)
 
@@ -245,6 +358,7 @@ def test_grays_test_cause_by_code() -> None:
 def test_grays_test_death_cause() -> None:
     df, y = _mgus2_cr()
     result = gw.grays_test(y, group=df["sex"], cause="death")
+
     assert result.statistic >= 0
     assert result.method == "Gray's test (cause='death')"
 
@@ -289,6 +403,7 @@ def test_grays_test_observed_expected_sum() -> None:
     result = gw.grays_test(y, group=df["sex"], cause="pcm")
     total_obs = sum(result.observed.values())
     total_exp = sum(result.expected.values())
+
     assert total_obs == pytest.approx(total_exp, rel=1e-10)
 
 
@@ -296,5 +411,6 @@ def test_grays_test_three_groups() -> None:
     df, y = _mgus2_cr()
     age_group = np.where(df["age"] < 60, "young", np.where(df["age"] < 70, "mid", "old"))
     result = gw.grays_test(y, group=age_group, cause="pcm")
+
     assert result.df == 2
     assert len(result.observed) == 3
