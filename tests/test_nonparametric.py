@@ -93,6 +93,80 @@ def test_nelson_aalen_cumhaz() -> None:
     np.testing.assert_allclose(na.std_error_**2, [1 / 9, 1 / 9 + 1 / 4, 1 / 9 + 1 / 4 + 1.0])
 
 
+# ---------------------------------------------------------------------------
+# Nelson-Aalen tidy / glance
+# ---------------------------------------------------------------------------
+
+
+class TestNelsonAalenTidy:
+    def test_tidy_columns(self) -> None:
+        lung = gw.load_dataset("lung", backend="pandas")
+        y = Surv.right(lung["time"], event=(lung["status"] == 2))
+        na = NelsonAalen().fit(y)
+        t = gw.tidy(na, format="pandas")
+        expected = ["time", "n_risk", "n_event", "estimate", "std_error", "conf_low", "conf_high"]
+        assert list(t.columns) == expected
+
+    def test_tidy_matches_to_frame(self) -> None:
+        na = NelsonAalen().fit(Surv.right([1, 2, 3, 4], [1, 0, 1, 1]))
+        t = gw.tidy(na, format="pandas")
+        f = na.to_frame(format="pandas")
+        assert t.equals(f)
+
+    def test_tidy_stratified_has_strata(self) -> None:
+        na = NelsonAalen().fit(
+            Surv.right([1, 2, 1, 2], [1, 1, 1, 1]), by=["a", "a", "b", "b"]
+        )
+        t = gw.tidy(na, format="pandas")
+        assert "strata" in t.columns
+        assert set(t["strata"]) == {"a", "b"}
+
+    def test_tidy_format_polars(self) -> None:
+        import polars as pl
+
+        na = NelsonAalen().fit(Surv.right([1, 2, 3], [1, 1, 1]))
+        t = gw.tidy(na, format="polars")
+        assert isinstance(t, pl.DataFrame)
+
+    def test_tidy_estimate_is_cumhaz(self) -> None:
+        na = NelsonAalen().fit(Surv.right([1, 2, 3], [1, 1, 1]))
+        t = gw.tidy(na, format="pandas")
+        np.testing.assert_allclose(t["estimate"].values, na.cumhaz_)
+
+
+class TestNelsonAalenGlance:
+    def test_glance_columns(self) -> None:
+        lung = gw.load_dataset("lung", backend="pandas")
+        y = Surv.right(lung["time"], event=(lung["status"] == 2))
+        na = NelsonAalen().fit(y)
+        g = gw.glance(na, format="pandas")
+        assert list(g.columns) == ["n_start", "events", "max_cumhaz"]
+        assert g.shape[0] == 1
+
+    def test_glance_values(self) -> None:
+        na = NelsonAalen().fit(Surv.right([1, 2, 3], [1, 1, 1]))
+        g = gw.glance(na, format="pandas")
+        assert g["n_start"].iloc[0] == 3.0
+        assert g["events"].iloc[0] == 3.0
+        np.testing.assert_allclose(g["max_cumhaz"].iloc[0], na.cumhaz_[-1])
+
+    def test_glance_stratified(self) -> None:
+        na = NelsonAalen().fit(
+            Surv.right([1, 2, 1, 2], [1, 1, 1, 1]), by=["a", "a", "b", "b"]
+        )
+        g = gw.glance(na, format="pandas")
+        assert "strata" in g.columns
+        assert g.shape[0] == 2
+        assert list(g["strata"]) == ["a", "b"]
+
+    def test_glance_format_polars(self) -> None:
+        import polars as pl
+
+        na = NelsonAalen().fit(Surv.right([1, 2, 3], [1, 1, 1]))
+        g = gw.glance(na, format="polars")
+        assert isinstance(g, pl.DataFrame)
+
+
 def test_km_rmst_equals_area_under_curve() -> None:
     # All events at 1,2,3: S = 2/3, 1/3, 0. Area to tau=3 is
     # 1*(1-0) + (2/3)*(2-1) + (1/3)*(3-2) = 1 + 2/3 + 1/3 = 2.
