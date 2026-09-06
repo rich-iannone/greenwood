@@ -863,6 +863,30 @@ These risk scores rank subjects by predicted hazard. You can pass them directly 
 subjects, or feed them into `calibration()` to check whether predicted and observed risks agree. See
 [Prediction performance](15-prediction-performance.qmd) for details on both metrics.
 
+### Visualizing predicted survival curves
+
+Tables of survival probabilities are useful for exact numbers, but a plot makes it much easier to
+compare how different subjects' predicted survival diverges over time. `plot_predicted_survival()`
+draws one step-function curve per subject, using the same `predict()` machinery under the hood.
+
+```{python}
+# Predicted survival curves for four subjects from the penalized model
+gw.plot_predicted_survival(final, lung[cols][:4])
+```
+
+Each curve traces the estimated probability of surviving past each time point. Subjects whose
+covariates put them at higher risk drop faster. You can add custom labels with the `labels=`
+parameter to make the legend more informative.
+
+```{python}
+# Add descriptive labels to the predicted curves
+gw.plot_predicted_survival(
+    final,
+    lung[cols][:4],
+    labels=["Subject 1", "Subject 2", "Subject 3", "Subject 4"],
+)
+```
+
 ### Coefficient path
 
 Plotting how coefficients evolve across a range of penalty values reveals which covariates enter the
