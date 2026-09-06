@@ -1148,36 +1148,36 @@ _register_adapters()
 class MultiState:
     r"""Aalen-Johansen estimator of multi-state transition and occupancy probabilities.
 
-    Given counting-process intervals `(start, stop]` each labelled with the state occupied
-    (`state`) and the state transitioned to at `stop` (`event`, or a censoring marker), this
-    forms the Aalen-Johansen product $P(0, t) = \prod (I + dA(s))$ and reports the state
-    occupancy probabilities over time. Occupancy probabilities are validated to tolerance
-    against R's `survfit` multi-state `pstate`. (Competing risks and Kaplan-Meier are special
-    cases handled by `AalenJohansen` and `KaplanMeier`.)
+    Given counting-process intervals `(start, stop]` each labelled with the state occupied (`state`)
+    and the state transitioned to at `stop` (`event`, or a censoring marker), this forms the
+    Aalen-Johansen product $P(0, t) = \prod (I + dA(s))$ and reports the state occupancy
+    probabilities over time. Occupancy probabilities are validated to tolerance against R's
+    `survfit` multi-state `pstate`. (Competing risks and Kaplan-Meier are special cases handled by
+    `AalenJohansen` and `KaplanMeier`.)
 
     Returns
     -------
     MultiState
-        Call `fit()` to produce a fitted estimator with attributes `states_`, `time_`,
-        and `occupancy_`, accessible as tidy DataFrames via `to_frame()`.
+        Call `fit()` to produce a fitted estimator with attributes `states_`, `time_`, and
+        `occupancy_`, accessible as tidy DataFrames via `to_frame()`.
 
     Details
     -------
-    The data must be in counting-process (long) format: one row per interval `(start, stop]`
-    that a subject spends in a given state. Each row carries the current state and the state
-    transitioned into at `stop` (or `None` / a censoring marker if the subject was censored).
-    A subject who passes through multiple states contributes one row per state-sojourn.
+    The data must be in counting-process (long) format: one row per interval `(start, stop]` that a
+    subject spends in a given state. Each row carries the current state and the state transitioned
+    into at `stop` (or `None` / a censoring marker if the subject was censored). A subject who
+    passes through multiple states contributes one row per state-sojourn.
 
-    The Aalen-Johansen estimator generalises the Kaplan-Meier curve to an arbitrary state
-    space. The occupancy probabilities at each event time sum to 1 across states, and the
-    result can be read as "if I start in the initial state at time 0, what is the probability
-    of being in each state at time $t$?"
+    The Aalen-Johansen estimator generalises the Kaplan-Meier curve to an arbitrary state space. The
+    occupancy probabilities at each event time sum to 1 across states, and the result can be read as
+    "if I start in the initial state at time 0, what is the probability of being in each state at
+    time $t$?"
 
     Examples
     --------
-    The `mgus2` patients occupy three states: `"mgus"` at entry, then possibly `"pcm"`
-    (plasma-cell malignancy), then `"death"`. Reshape the wide dataset into counting-process
-    intervals, fit the multi-state model, and view the occupancy probabilities over time:
+    The `mgus2` patients occupy three states: `"mgus"` at entry, then possibly `"pcm"` (plasma-cell
+    malignancy), then `"death"`. Reshape the wide dataset into counting-process intervals, fit the
+    multi-state model, and view the occupancy probabilities over time:
 
     ```{python}
     import greenwood as gw
@@ -1229,43 +1229,43 @@ class MultiState:
         """Fit a multi-state model using counting-process intervals.
 
         Estimates state-occupancy probabilities and transition dynamics over time from
-        counting-process data (multiple overlapping intervals per subject). The model tracks
-        how subjects move between states and computes the probability of being in each state
-        at any given time, accounting for censoring and competing transitions.
+        counting-process data (multiple overlapping intervals per subject). The model tracks how
+        subjects move between states and computes the probability of being in each state at any
+        given time, accounting for censoring and competing transitions.
 
         This estimator is ideal for:
 
-        - **Panel data**: Subjects observed at discrete times, with state changes recorded
-          between observations.
-        - **Chronic-disease progression**: Modeling progression through stages (e.g., MGUS →
-          PCM → death).
+        - **Panel data**: Subjects observed at discrete times, with state changes recorded between
+          observations.
+        - **Chronic-disease progression**: Modeling progression through stages (e.g., MGUS -> PCM ->
+          death).
         - **Multi-event data**: Non-absorbing or semi-absorbing intermediate states.
         - **Irregular follow-up**: Each subject's observation times may differ.
 
         The model estimates without distributional assumptions via non-parametric maximum
-        likelihood. Occupancy probabilities are computed as a product of transition
-        matrices evaluated at each event time.
+        likelihood. Occupancy probabilities are computed as a product of transition matrices
+        evaluated at each event time.
 
         Parameters
         ----------
         start
-            Start time of each interval. Can be a 1-D array-like (or Polars/Pandas
-            Series). Intervals are half-open: (start, stop].
+            Start time of each interval. Can be a 1-D array-like (or Polars/Pandas Series).
+            Intervals are half-open: (start, stop].
         stop
-            Stop (end) time of each interval. Must have the same length as `start`.
-            Intervals define subject-time windows.
+            Stop (end) time of each interval. Must have the same length as `start`. Intervals define
+            subject-time windows.
         state
-            The state occupied during each interval (the "from" state). Can be string, int,
-            or other hashable label. Must have the same length as `start` and `stop`.
+            The state occupied during each interval (the "from" state). Can be string, int, or other
+            hashable label. Must have the same length as `start` and `stop`.
         event
-            The state transitioned to at the stop time. If `None`, NaN, or 0, the subject
-            was censored (no transition). Otherwise, must be a valid state label. Must have
-            the same length as `start` and `stop`.
+            The state transitioned to at the stop time. If `None`, NaN, or 0, the subject was
+            censored (no transition). Otherwise, must be a valid state label. Must have the same
+            length as `start` and `stop`.
         states
-            Optional ordered sequence of all state labels (default: auto-detected from data).
-            If provided, must include all unique states in `state` and `event`. Useful for
-            enforcing a specific state ordering (e.g., disease progression order) or
-            including states with no observed transitions.
+            Optional ordered sequence of all state labels (default: auto-detected from data). If
+            provided, must include all unique states in `state` and `event`. Useful for enforcing a
+            specific state ordering (e.g., disease progression order) or including states with no
+            observed transitions.
 
         Returns
         -------
