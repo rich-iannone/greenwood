@@ -267,6 +267,71 @@ class TestFineGrayToFrame:
         np.testing.assert_allclose(df["estimate"].values, t["estimate"].values)
 
 
+# -- AalenJohansen tidy / glance -------------------------------------------------
+
+
+class TestAalenJohansenTidy:
+    def test_tidy_columns(self) -> None:
+        aj = AalenJohansen().fit(_simple_multistate())
+        t = gw.tidy(aj, format="pandas")
+        expected = ["cause", "time", "n_risk", "estimate", "std_error", "conf_low", "conf_high"]
+        assert list(t.columns) == expected
+
+    def test_tidy_matches_to_frame(self) -> None:
+        aj = AalenJohansen().fit(_simple_multistate())
+        t = gw.tidy(aj, format="pandas")
+        f = aj.to_frame(format="pandas")
+        assert t.equals(f)
+
+    def test_tidy_stratified_has_strata(self) -> None:
+        y = Surv.multistate([1, 2, 3, 4], event=[1, 2, 1, 2], states=("pcm", "death"))
+        aj = AalenJohansen().fit(y, by=["a", "a", "b", "b"])
+        t = gw.tidy(aj, format="pandas")
+        assert "strata" in t.columns
+        assert set(t["strata"]) == {"a", "b"}
+
+    def test_tidy_format_polars(self) -> None:
+        import polars as pl
+
+        aj = AalenJohansen().fit(_simple_multistate())
+        t = gw.tidy(aj, format="polars")
+        assert isinstance(t, pl.DataFrame)
+
+    def test_tidy_causes_present(self) -> None:
+        aj = AalenJohansen().fit(_simple_multistate())
+        t = gw.tidy(aj, format="pandas")
+        assert set(t["cause"]) == {"pcm", "death"}
+
+
+class TestAalenJohansenGlance:
+    def test_glance_columns(self) -> None:
+        aj = AalenJohansen().fit(_simple_multistate())
+        g = gw.glance(aj, format="pandas")
+        assert list(g.columns) == ["n_causes", "causes"]
+        assert g.shape[0] == 1
+
+    def test_glance_values(self) -> None:
+        aj = AalenJohansen().fit(_simple_multistate())
+        g = gw.glance(aj, format="pandas")
+        assert g["n_causes"].iloc[0] == 2
+        assert g["causes"].iloc[0] == "pcm, death"
+
+    def test_glance_stratified(self) -> None:
+        y = Surv.multistate([1, 2, 3, 4], event=[1, 2, 1, 2], states=("pcm", "death"))
+        aj = AalenJohansen().fit(y, by=["a", "a", "b", "b"])
+        g = gw.glance(aj, format="pandas")
+        assert "strata" in g.columns
+        assert g.shape[0] == 2
+        assert list(g["strata"]) == ["a", "b"]
+
+    def test_glance_format_polars(self) -> None:
+        import polars as pl
+
+        aj = AalenJohansen().fit(_simple_multistate())
+        g = gw.glance(aj, format="polars")
+        assert isinstance(g, pl.DataFrame)
+
+
 # -- Multi-state -----------------------------------------------------------------
 
 
