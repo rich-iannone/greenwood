@@ -83,6 +83,48 @@ def test_plot_survival_invalid_backend(km_overall: gw.KaplanMeier) -> None:
         gw.plot_survival(km_overall, backend="matplotlib")
 
 
+# ---------------------------------------------------------------------------
+# theme_survival() tests
+# ---------------------------------------------------------------------------
+
+
+class TestThemeSurvival:
+    def test_returns_theme_instance(self) -> None:
+        theme = gw.viz.plotnine.theme_survival()
+        assert isinstance(theme, p9.theme)
+
+    def test_inherits_theme_minimal(self) -> None:
+        theme = gw.viz.plotnine.theme_survival()
+        assert isinstance(theme, p9.themes.theme_minimal)
+
+    def test_legend_position_is_top(self) -> None:
+        theme = gw.viz.plotnine.theme_survival()
+        lp = theme.themeables.get("legend_position")
+        assert lp is not None
+        assert lp.properties.get("value") == "top"
+
+    def test_minor_grid_lines_removed(self) -> None:
+        theme = gw.viz.plotnine.theme_survival()
+        pgm = theme.themeables.get("panel_grid_minor")
+        assert pgm is not None
+        assert pgm.properties.get("visible") is False
+
+    def test_composable_with_ggplot(self, km_overall: gw.KaplanMeier) -> None:
+        plot = gw.viz.plotnine.plot_survival(km_overall)
+        result = plot + gw.viz.plotnine.theme_survival()
+        assert isinstance(result, p9.ggplot)
+
+    def test_applied_theme_preserves_legend_position(self, km_overall: gw.KaplanMeier) -> None:
+        plot = gw.viz.plotnine.plot_survival(km_overall) + gw.viz.plotnine.theme_survival()
+        lp = plot.theme.themeables.get("legend_position")
+        assert lp is not None
+        assert lp.properties.get("value") == "top"
+
+    def test_draws_without_error(self, km_grouped: gw.KaplanMeier) -> None:
+        plot = gw.viz.plotnine.plot_survival(km_grouped) + gw.viz.plotnine.theme_survival()
+        plot.draw(show=False)
+
+
 def test_risk_table_data_shape(km_grouped: gw.KaplanMeier) -> None:
     rtd = gw.get_risk_table_frame(km_grouped, times=[0, 250, 500])
     assert list(rtd.columns) == ["strata", "time", "n_risk"]
