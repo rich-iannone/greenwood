@@ -1292,13 +1292,29 @@ class NelsonAalen:
         return to_dataframe(self._table_columns(), format=format)
 
 
-# Register the tidy/glance adapters so `greenwood.tidy()` and
-# `great_summaries.tidy` can consume a fitted Kaplan-Meier curve.
+def _tidy_nelson_aalen(na: NelsonAalen, *, format: str | None = None, **_: Any) -> Any:
+    """broom-style `tidy`: one row per time point (`estimate` is cumulative hazard)."""
+    return na.to_frame(format=format)
+
+
+def _glance_nelson_aalen(na: NelsonAalen, *, format: str | None = None, **_: Any) -> Any:
+    """broom-style `glance`: one row per stratum with counts and max cumulative hazard."""
+    cols: dict[str, list[Any]] = {}
+    if na._grouped:
+        cols["strata"] = [b.label for b in na._blocks]
+    cols["n_start"] = [float(b.n_risk[0]) if b.n_risk.size else float("nan") for b in na._blocks]
+    cols["events"] = [float(b.n_event.sum()) for b in na._blocks]
+    cols["max_cumhaz"] = [float(b.cumhaz[-1]) if b.cumhaz.size else float("nan") for b in na._blocks]
+    return to_dataframe(cols, format=format)
+
+
 def _register_adapters() -> None:
     from .summaries import register_glance, register_tidier
 
     register_tidier("greenwood._nonparametric.KaplanMeier", _tidy_kaplan_meier)
     register_glance("greenwood._nonparametric.KaplanMeier", _glance_kaplan_meier)
+    register_tidier("greenwood._nonparametric.NelsonAalen", _tidy_nelson_aalen)
+    register_glance("greenwood._nonparametric.NelsonAalen", _glance_nelson_aalen)
 
 
 _register_adapters()
