@@ -174,3 +174,75 @@ def test_summaries(data) -> None:
     assert set(t["term"]) == set(x.columns)
     assert abs(float(t["importance"].sum()) - 1.0) < 1e-9
     assert list(t["importance"]) == sorted(t["importance"], reverse=True)
+
+
+# ---------------------------------------------------------------------------
+# variable_importance() tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def gbm(data):  # type: ignore[no-untyped-def]
+    y, x = data
+    return GBSA(n_estimators=100, learning_rate=0.05, max_depth=2, random_state=0).fit(y, x)
+
+
+class TestVariableImportance:
+    def test_returns_dataframe_with_expected_columns(self, gbm) -> None:  # type: ignore[no-untyped-def]
+        vi = gbm.variable_importance(format="pandas")
+        assert list(vi.columns) == ["term", "importance"]
+
+    def test_all_features_present(self, data, gbm) -> None:  # type: ignore[no-untyped-def]
+        _, x = data
+        vi = gbm.variable_importance(format="pandas")
+        assert set(vi["term"]) == set(x.columns)
+
+    def test_importance_sums_to_one(self, gbm) -> None:  # type: ignore[no-untyped-def]
+        vi = gbm.variable_importance(format="pandas")
+        assert abs(float(vi["importance"].sum()) - 1.0) < 1e-9
+
+    def test_importance_non_negative(self, gbm) -> None:  # type: ignore[no-untyped-def]
+        vi = gbm.variable_importance(format="pandas")
+        assert (vi["importance"] >= 0).all()
+
+    def test_sorted_descending(self, gbm) -> None:  # type: ignore[no-untyped-def]
+        vi = gbm.variable_importance(format="pandas")
+        vals = vi["importance"].tolist()
+        assert vals == sorted(vals, reverse=True)
+
+    def test_n_rows_equals_n_features(self, gbm) -> None:  # type: ignore[no-untyped-def]
+        vi = gbm.variable_importance(format="pandas")
+        assert vi.shape[0] == gbm.n_features_in_
+
+    def test_matches_feature_importances_attr(self, gbm) -> None:  # type: ignore[no-untyped-def]
+        vi = gbm.variable_importance(format="pandas")
+        order = np.argsort(gbm.feature_importances_)[::-1]
+        np.testing.assert_allclose(
+            vi["importance"].values, gbm.feature_importances_[order]
+        )
+
+    def test_format_polars(self, gbm) -> None:  # type: ignore[no-untyped-def]
+        import polars as pl
+
+        vi = gbm.variable_importance(format="polars")
+        assert isinstance(vi, pl.DataFrame)
+        assert vi.columns == ["term", "importance"]
+
+    def test_format_default(self, gbm) -> None:  # type: ignore[no-untyped-def]
+        vi = gbm.variable_importance()
+        assert vi.shape[0] == gbm.n_features_in_
+
+    def test_matches_tidy(self, gbm) -> None:  # type: ignore[no-untyped-def]
+        vi = gbm.variable_importance(format="pandas")
+        t = gw.tidy(gbm, format="pandas")
+        np.testing.assert_allclose(vi["importance"].values, t["importance"].values)
+        assert list(vi["term"]) == list(t["term"])
+
+    def test_single_feature(self) -> None:
+        lung = gw.load_dataset("lung", backend="pandas").dropna(subset=["ph.ecog"])
+        y = Surv.right(lung["time"], event=(lung["status"] == 2))
+        gbm1 = GBSA(n_estimators=20, max_depth=1, random_state=0).fit(y, lung[["ph.ecog"]])
+        vi = gbm1.variable_importance(format="pandas")
+        assert vi.shape == (1, 2)
+        assert vi["term"].iloc[0] == "ph.ecog"
+        assert abs(float(vi["importance"].iloc[0]) - 1.0) < 1e-9
