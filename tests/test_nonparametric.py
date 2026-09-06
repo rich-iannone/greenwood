@@ -167,6 +167,93 @@ class TestNelsonAalenGlance:
         assert isinstance(g, pl.DataFrame)
 
 
+# ---------------------------------------------------------------------------
+# KaplanMeier.quantile() tests
+# ---------------------------------------------------------------------------
+
+
+class TestKaplanMeierQuantile:
+    def test_quantile_median_matches_median(self) -> None:
+        km = KaplanMeier().fit(Surv.right([1, 2, 3, 4], [1, 1, 1, 1]))
+        assert km.quantile(0.5) == km.median()
+
+    def test_quantile_first_quartile(self) -> None:
+        km = KaplanMeier().fit(Surv.right([1, 2, 3, 4], [1, 1, 1, 1]))
+        # S = 0.75, 0.5, 0.25, 0. First time S <= 0.75 is t=1.
+        assert km.quantile(0.25) == 1.0
+
+    def test_quantile_third_quartile(self) -> None:
+        km = KaplanMeier().fit(Surv.right([1, 2, 3, 4], [1, 1, 1, 1]))
+        # First time S <= 0.25 is t=3.
+        assert km.quantile(0.75) == 3.0
+
+    def test_quantile_never_reached_returns_nan(self) -> None:
+        km = KaplanMeier().fit(Surv.right([1, 2, 3], [1, 0, 0]))
+        # S = 2/3, 2/3, 2/3. Never drops to 0.5, so median is nan.
+        assert np.isnan(km.quantile(0.5))
+
+    def test_quantile_with_ci(self) -> None:
+        km = KaplanMeier().fit(Surv.right([1, 2, 3, 4], [1, 1, 1, 1]))
+        result = km.quantile(0.5, ci=True)
+        assert isinstance(result, tuple)
+        assert len(result) == 3
+        estimate, lower, upper = result
+        assert estimate == 2.0
+        assert lower <= estimate
+        assert upper >= estimate or np.isnan(upper)
+
+    def test_quantile_ci_matches_median_ci(self) -> None:
+        km = KaplanMeier().fit(Surv.right([1, 2, 3, 4, 5, 6, 7, 8], [1, 1, 1, 1, 1, 0, 0, 0]))
+        q_est, q_lo, q_hi = km.quantile(0.5, ci=True)
+        m_est, m_lo, m_hi = km.median(ci=True)
+        assert q_est == m_est
+        assert q_lo == m_lo
+        assert (q_hi == m_hi) or (np.isnan(q_hi) and np.isnan(m_hi))
+
+    def test_quantile_grouped(self) -> None:
+        km = KaplanMeier().fit(
+            Surv.right([1, 2, 3, 4, 1, 2, 3, 4], [1, 1, 1, 1, 1, 1, 1, 1]),
+            by=["a", "a", "a", "a", "b", "b", "b", "b"],
+        )
+        result = km.quantile(0.5)
+        assert isinstance(result, dict)
+        assert set(result) == {"a", "b"}
+        assert result["a"] == 2.0
+        assert result["b"] == 2.0
+
+    def test_quantile_grouped_with_ci(self) -> None:
+        km = KaplanMeier().fit(
+            Surv.right([1, 2, 3, 4, 1, 2, 3, 4], [1, 1, 1, 1, 1, 1, 1, 1]),
+            by=["a", "a", "a", "a", "b", "b", "b", "b"],
+        )
+        result = km.quantile(0.25, ci=True)
+        assert isinstance(result, dict)
+        for label in ("a", "b"):
+            est, lower, upper = result[label]
+            assert est == 1.0
+            assert lower <= est
+            assert upper >= est or np.isnan(upper)
+
+    def test_quantile_ordering(self) -> None:
+        km = KaplanMeier().fit(Surv.right([1, 2, 3, 4, 5], [1, 1, 1, 1, 1]))
+        q25 = km.quantile(0.25)
+        q50 = km.quantile(0.50)
+        q75 = km.quantile(0.75)
+        assert q25 <= q50 <= q75
+
+    def test_quantile_real_data(self) -> None:
+        lung = gw.load_dataset("lung", backend="pandas")
+        y = Surv.right(lung["time"], event=(lung["status"] == 2))
+        km = KaplanMeier().fit(y)
+        q25 = km.quantile(0.25)
+        q50 = km.quantile(0.50)
+        q75 = km.quantile(0.75)
+        assert q25 > 0
+        assert q25 <= q50
+        if not np.isnan(q75):
+            assert q50 <= q75
+
+
 def test_km_rmst_equals_area_under_curve() -> None:
     # All events at 1,2,3: S = 2/3, 1/3, 0. Area to tau=3 is
     # 1*(1-0) + (2/3)*(2-1) + (1/3)*(3-2) = 1 + 2/3 + 1/3 = 2.
