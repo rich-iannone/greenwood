@@ -130,6 +130,55 @@ follow-up window (for example, one year or five years) avoids this. The default 
 observed event time, which works well when censoring remains moderate throughout follow-up.
 :::
 
+## The censoring distribution
+
+The IPCW concordance index above works because it knows how likely each subject was to be censored.
+That knowledge comes from a `CensoringDistribution`, which estimates the Kaplan-Meier curve of the
+censoring process. Greenwood uses it internally for all IPCW metrics, but you can also create one
+directly when you need the censoring probabilities or IPC weights for a custom analysis.
+
+```{python}
+lung = gw.load_dataset("lung", backend="polars")
+y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+
+cens = gw.CensoringDistribution(y)
+cens
+```
+
+The `survival()` method evaluates the censoring survival function G(t), which is the probability of
+not being censored by time t, at any set of query times.
+
+```{python}
+cens.survival([180, 365, 540])
+```
+
+The values decrease over follow-up as more subjects are censored. At 180 days about 97% of subjects
+are still under observation, but by 540 days only 57% remain.
+
+The `weights()` method returns the IPC weights that correct for censoring. Each uncensored subject
+receives a weight of 1 / G(t-), where G(t-) is the censoring survival just before their event time.
+Censored subjects receive weight zero (they are excluded from the reweighted analysis). Subjects
+whose events occur when censoring is heavy get larger weights because they represent more unobserved
+individuals.
+
+```{python}
+w = cens.weights()
+w[:10]
+```
+
+You can restrict weights to a time horizon with `tau`. Subjects with events after `tau` receive zero
+weight, which avoids instability from very small censoring probabilities in the tail.
+
+```{python}
+cens.weights(tau=365.0)[:10]
+```
+
+The full censoring curve is available as a DataFrame via `to_frame()`.
+
+```{python}
+cens.to_frame()
+```
+
 ## Accuracy: the Brier score
 
 The Brier score is the mean squared error between predicted survival probabilities and actual
