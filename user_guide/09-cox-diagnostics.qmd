@@ -319,6 +319,32 @@ observation is unusual in covariate space, a large deviance residual means the o
 unexpected given the model, and a large likelihood displacement means the observation actually
 pulled the coefficients.
 
+### Visualizing influence
+
+Scanning a table for outliers is tedious when you have hundreds of observations.
+`plot_influence()` turns the same diagnostics into a row of scatter plots, with the most influential
+observations highlighted in red and labeled by observation number.
+
+```{python}
+# Default: deviance, leverage, and likelihood displacement panels
+gw.plot_influence(cox)
+```
+
+Each panel plots one diagnostic against the linear predictor. Observations in the upper corners of
+the likelihood displacement panel deserve the closest attention, since removing them would shift the
+fitted coefficients the most.
+
+You can choose which panels to show and how many observations to highlight.
+
+```{python}
+# Show only deviance and leverage, highlighting the top 5
+gw.plot_influence(cox, panels=["deviance", "leverage"], highlight=5)
+```
+
+When no observations stand out, the model fit is stable across the dataset. When a few points
+dominate the likelihood displacement, investigate whether they reflect data-entry errors, a
+subpopulation the model handles poorly, or genuinely extreme cases that should remain.
+
 ## Baseline hazard and predicted survival
 
 Although the Cox model does not assume a shape for the baseline hazard, it can estimate one after
