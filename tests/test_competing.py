@@ -396,6 +396,75 @@ def test_multistate_infers_states() -> None:
     assert list(ms.to_frame(format="pandas").columns) == ["time", "a", "b"]
 
 
+# -- MultiState tidy / glance ----------------------------------------------------
+
+
+def _simple_multistate_model():  # type: ignore[no-untyped-def]
+    from greenwood import MultiState
+
+    return MultiState().fit(
+        start=[0, 5, 0],
+        stop=[5, 8, 6],
+        state=["mgus", "pcm", "mgus"],
+        event=["pcm", "death", "death"],
+        states=("mgus", "pcm", "death"),
+    )
+
+
+class TestMultiStateTidy:
+    def test_tidy_columns(self) -> None:
+        ms = _simple_multistate_model()
+        t = gw.tidy(ms, format="pandas")
+
+        assert list(t.columns) == ["time", "mgus", "pcm", "death"]
+
+    def test_tidy_matches_to_frame(self) -> None:
+        ms = _simple_multistate_model()
+        t = gw.tidy(ms, format="pandas")
+        f = ms.to_frame(format="pandas")
+
+        assert t.equals(f)
+
+    def test_tidy_format_polars(self) -> None:
+        import polars as pl
+
+        ms = _simple_multistate_model()
+        t = gw.tidy(ms, format="polars")
+
+        assert isinstance(t, pl.DataFrame)
+
+    def test_tidy_occupancy_sums_to_one(self) -> None:
+        ms = _simple_multistate_model()
+        t = gw.tidy(ms, format="pandas")
+        row_sums = t[["mgus", "pcm", "death"]].sum(axis=1).to_numpy()
+        np.testing.assert_allclose(row_sums, 1.0)
+
+
+class TestMultiStateGlance:
+    def test_glance_columns(self) -> None:
+        ms = _simple_multistate_model()
+        g = gw.glance(ms, format="pandas")
+
+        assert list(g.columns) == ["n_states", "states", "n_times"]
+        assert g.shape[0] == 1
+
+    def test_glance_values(self) -> None:
+        ms = _simple_multistate_model()
+        g = gw.glance(ms, format="pandas")
+
+        assert g["n_states"].iloc[0] == 3
+        assert g["states"].iloc[0] == "mgus, pcm, death"
+        assert g["n_times"].iloc[0] == ms.time_.shape[0]
+
+    def test_glance_format_polars(self) -> None:
+        import polars as pl
+
+        ms = _simple_multistate_model()
+        g = gw.glance(ms, format="polars")
+
+        assert isinstance(g, pl.DataFrame)
+
+
 # -- Gray's test -----------------------------------------------------------------
 
 
