@@ -114,3 +114,72 @@ def test_standalone_risk_table(km_grouped: gw.KaplanMeier) -> None:
 
     table = gw.risk_table(km_grouped, times=[0, 250, 500])
     assert isinstance(table, gt.GT)
+
+
+# ---------------------------------------------------------------------------
+# risk_table() GT content tests
+# ---------------------------------------------------------------------------
+
+
+class TestRiskTableContent:
+    @pytest.fixture(autouse=True)
+    def _require_gt(self) -> None:
+        pytest.importorskip("great_tables")
+
+    def test_grouped_row_count(self, km_grouped: gw.KaplanMeier) -> None:
+        table = gw.risk_table(km_grouped, times=[0, 250, 500])
+        assert table._tbl_data.shape[0] == 2
+
+    def test_unstratified_row_count(self, km_overall: gw.KaplanMeier) -> None:
+        table = gw.risk_table(km_overall, times=[0, 250, 500])
+        assert table._tbl_data.shape[0] == 1
+
+    def test_columns_match_times(self, km_grouped: gw.KaplanMeier) -> None:
+        table = gw.risk_table(km_grouped, times=[0, 250, 500])
+        assert table._tbl_data.columns == ["strata", "0.0", "250.0", "500.0"]
+
+    def test_custom_times_columns(self, km_overall: gw.KaplanMeier) -> None:
+        table = gw.risk_table(km_overall, times=[0, 100, 200, 400])
+        expected = ["strata", "0.0", "100.0", "200.0", "400.0"]
+        assert table._tbl_data.columns == expected
+
+    def test_default_times_six_columns(self, km_overall: gw.KaplanMeier) -> None:
+        table = gw.risk_table(km_overall)
+        n_time_cols = len([c for c in table._tbl_data.columns if c != "strata"])
+        assert n_time_cols == 6
+
+    def test_header_title(self, km_grouped: gw.KaplanMeier) -> None:
+        table = gw.risk_table(km_grouped, times=[0, 250, 500])
+        assert table._heading.title == "Numbers at Risk"
+
+    def test_header_subtitle(self, km_grouped: gw.KaplanMeier) -> None:
+        table = gw.risk_table(km_grouped, times=[0, 250, 500])
+        assert table._heading.subtitle == "Count of subjects at risk at each time point"
+
+    def test_unstratified_strata_label(self, km_overall: gw.KaplanMeier) -> None:
+        table = gw.risk_table(km_overall, times=[0, 250, 500])
+        assert table._tbl_data["strata"][0] == "Overall"
+
+    def test_grouped_strata_labels(self, km_grouped: gw.KaplanMeier) -> None:
+        table = gw.risk_table(km_grouped, times=[0, 250, 500])
+        assert set(table._tbl_data["strata"].to_list()) == {"1", "2"}
+
+    def test_risk_values_match_frame(self, km_grouped: gw.KaplanMeier) -> None:
+        import polars as pl
+
+        table = gw.risk_table(km_grouped, times=[0, 250, 500])
+        data = table._tbl_data
+        frame = gw.get_risk_table_frame(km_grouped, times=[0, 250, 500], format="polars")
+        for row_idx in range(data.shape[0]):
+            stratum = data["strata"][row_idx]
+            for col in ["0.0", "250.0", "500.0"]:
+                gt_val = data[col][row_idx]
+                frame_val = frame.filter(
+                    (pl.col("strata") == stratum) & (pl.col("time") == float(col))
+                )["n_risk"][0]
+                assert gt_val == frame_val
+
+    def test_fmt_integer_applied(self, km_grouped: gw.KaplanMeier) -> None:
+        html = gw.risk_table(km_grouped, times=[0, 250, 500]).as_raw_html()
+        assert "138" in html
+        assert "138.0" not in html
