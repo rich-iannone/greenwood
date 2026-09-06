@@ -1088,25 +1088,61 @@ class FineGray:
         return to_dataframe(self._coefficient_columns(exponentiate=exponentiate), format=format)
 
 
-def _register_finegray() -> None:
+def _register_adapters() -> None:
     from .summaries import register_glance, register_tidier
 
-    def _tidy(
+    # -- AalenJohansen ----------------------------------------------------------
+
+    def _tidy_aj(model: AalenJohansen, *, format: str | None = None, **_: Any) -> Any:
+        return model.to_frame(format=format)
+
+    def _glance_aj(model: AalenJohansen, *, format: str | None = None, **_: Any) -> Any:
+        cols: dict[str, list[Any]] = {}
+        if model._grouped:
+            cols["strata"] = list(model._blocks.keys())
+        cols["n_causes"] = [len(model.states_)] * len(model._blocks)
+        cols["causes"] = [", ".join(str(s) for s in model.states_)] * len(model._blocks)
+        return to_dataframe(cols, format=format)
+
+    register_tidier("greenwood._competing.AalenJohansen", _tidy_aj)
+    register_glance("greenwood._competing.AalenJohansen", _glance_aj)
+
+    # -- FineGray ---------------------------------------------------------------
+
+    def _tidy_fg(
         model: FineGray, *, exponentiate: bool = False, format: str | None = None, **_: Any
     ) -> Any:
         return model.to_frame(format=format, exponentiate=exponentiate)
 
-    def _glance(model: FineGray, *, format: str | None = None, **_: Any) -> Any:
+    def _glance_fg(model: FineGray, *, format: str | None = None, **_: Any) -> Any:
         return to_dataframe(
             {"n": [model.n_], "nevent": [model.n_event_], "loglik": [model.loglik_]},
             format=format,
         )
 
-    register_tidier("greenwood._competing.FineGray", _tidy)
-    register_glance("greenwood._competing.FineGray", _glance)
+    register_tidier("greenwood._competing.FineGray", _tidy_fg)
+    register_glance("greenwood._competing.FineGray", _glance_fg)
+
+    # -- MultiState -------------------------------------------------------------
+
+    def _tidy_ms(model: MultiState, *, format: str | None = None, **_: Any) -> Any:
+        return model.to_frame(format=format)
+
+    def _glance_ms(model: MultiState, *, format: str | None = None, **_: Any) -> Any:
+        return to_dataframe(
+            {
+                "n_states": [len(model.states_)],
+                "states": [", ".join(str(s) for s in model.states_)],
+                "n_times": [model.time_.shape[0]],
+            },
+            format=format,
+        )
+
+    register_tidier("greenwood._competing.MultiState", _tidy_ms)
+    register_glance("greenwood._competing.MultiState", _glance_ms)
 
 
-_register_finegray()
+_register_adapters()
 
 
 class MultiState:
