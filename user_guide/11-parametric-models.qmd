@@ -274,6 +274,19 @@ aft.predict(newdata, type="survival", times=[180, 365, 730], format="polars")
 Each column is a subject and each row a requested time, giving the estimated probability of
 surviving past that time.
 
+To compare predicted curves visually, `plot_predicted_survival()` draws one step-function curve per
+subject. This is especially useful for parametric models, where the smooth survival function can be
+evaluated at many time points.
+
+```{python}
+# Visualize predicted survival for the two new subjects
+gw.plot_predicted_survival(aft, newdata)
+```
+
+The older subject's curve drops faster, reflecting the shorter predicted survival. You can pass
+`labels=` to name the curves, or switch to `type="cumulative_hazard"` for the cumulative-hazard
+scale.
+
 ### Median survival time
 
 The `predict_median()` method is a convenient shortcut for the predicted median survival time. For
