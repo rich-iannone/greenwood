@@ -156,6 +156,49 @@ to each covariate, normalized to sum to one):
 gbm.variable_importance()
 ```
 
+## IPC-weighted ridge regression
+
+Not every alternative to Cox needs a tree. `IPCRidge` fits a penalized linear model on log survival
+times, but instead of the Cox partial likelihood it uses inverse-probability-of-censoring (IPC)
+weights to correct for censoring. Only uncensored subjects contribute to the fit, and each is
+weighted by 1 / G(t-) from the Kaplan-Meier censoring estimate so that subjects whose events occur
+when censoring is heavy receive greater influence. The result is a simple linear model that does not
+assume proportional hazards.
+
+```{python}
+ridge = gw.IPCRidge(alpha=1.0).fit(y, lung[covariates])
+ridge
+```
+
+The `alpha` parameter controls the ridge penalty. Setting `alpha=0` gives unpenalized IPC-weighted
+OLS. Larger values shrink the coefficients toward zero, which helps when covariates are correlated
+or numerous.
+
+Predictions are on the log-time scale by default (`type="lp"`). Pass `type="response"` to get
+predicted survival times on the original scale.
+
+```{python}
+ridge.predict(lung[covariates][:5], type="response")
+```
+
+The coefficient table is available via `tidy()`, and model-level summaries via `glance()`.
+
+```{python}
+gw.tidy(ridge)
+```
+
+```{python}
+gw.glance(ridge)
+```
+
+Because the linear predictor is on the log-time scale (higher means longer survival), negate it to
+get a risk score compatible with `concordance_index()`.
+
+```{python}
+risk = -ridge.predict(lung[covariates], type="lp")
+gw.concordance_index(y, risk)
+```
+
 ## Visualizing per-subject curves
 
 Because these models predict an individual survival curve for every subject,
