@@ -440,31 +440,71 @@ may be needed for stability. The `seed=` parameter ensures reproducibility.
 ## Nelson-Aalen cumulative hazard
 
 Closely related to survival is the cumulative hazard, the accumulated risk of the event over time.
-The Nelson-Aalen estimator provides it directly, and it is often preferred for diagnostics because
-it is roughly linear when the hazard is constant.
+The Nelson-Aalen estimator computes it directly as a running sum of events over subjects at risk:
+$H(t) = \sum_{t_i \le t} d_i / n_i$. It is often preferred for diagnostics because the cumulative
+hazard is roughly linear when the underlying hazard is constant, making departures easier to spot.
 
-The estimator follows the same fit-then-inspect pattern as `KaplanMeier`, so we fit it in its own
-step.
+The estimator follows the same fit-then-inspect pattern as `KaplanMeier`.
 
 ```{python}
-# Load data and build the response
-lung = gw.load_dataset("lung", backend="polars")
-y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-
 # Fit the Nelson-Aalen cumulative hazard estimator
 na = gw.NelsonAalen().fit(y)
-
-# Print a summary of the cumulative hazard
 na
 ```
 
-Reading `na` with `to_frame()` gives the same table layout as before, but now the `estimate` column
-holds the cumulative hazard rather than the survival probability. Unlike survival, it starts at 0
-and climbs as events accumulate.
+The summary shows the number of subjects, events, and the maximum cumulative hazard reached. You
+can convert to a survival estimate via $S(t) = \exp(-H(t))$, though `KaplanMeier` is typically
+preferred for direct survival estimation.
+
+### Exporting the cumulative hazard table
+
+Reading the fit with `to_frame()` gives one row per event time. The `estimate` column holds the
+cumulative hazard rather than a survival probability. Unlike survival, it starts near 0 and climbs
+as events accumulate.
 
 ```{python}
 # Export the cumulative hazard curve as a tidy DataFrame
 na.to_frame(format="polars")
+```
+
+Each row includes the risk set size (`n_risk`), the number of events (`n_event`), the cumulative
+hazard estimate, its standard error, and confidence limits. The confidence interval uses a log
+transform by default, which provides better coverage in the tails. Pass `conf_type="plain"` to
+`NelsonAalen()` for Wald-type intervals instead.
+
+### Stratified cumulative hazard
+
+Pass `by=` to fit separate cumulative hazard curves per group, just as with `KaplanMeier`.
+
+```{python}
+# Stratified cumulative hazard by sex
+na_strat = gw.NelsonAalen().fit(y, by=lung["sex"])
+na_strat
+```
+
+The stratified fit reports one curve per group. The `to_frame()` output includes a `strata` column
+so you can filter or plot each group separately.
+
+```{python}
+na_strat.to_frame(format="polars")
+```
+
+### Summarizing with tidy and glance
+
+Like `KaplanMeier`, the Nelson-Aalen estimator works with `tidy()` and `glance()`. Calling
+`tidy()` returns the same table as `to_frame()`, while `glance()` produces a one-row-per-stratum
+summary with the starting risk set, total events, and the maximum cumulative hazard.
+
+```{python}
+# One-row summary of the unstratified fit
+gw.glance(na, format="polars")
+```
+
+For stratified fits, `glance()` returns one row per group.
+
+```{python}
+# Per-group summary
+gw.glance(na_strat, format="polars")
 ```
 
 ## Next steps
