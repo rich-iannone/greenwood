@@ -217,9 +217,7 @@ class TestVariableImportance:
     def test_matches_feature_importances_attr(self, gbm) -> None:  # type: ignore[no-untyped-def]
         vi = gbm.variable_importance(format="pandas")
         order = np.argsort(gbm.feature_importances_)[::-1]
-        np.testing.assert_allclose(
-            vi["importance"].values, gbm.feature_importances_[order]
-        )
+        np.testing.assert_allclose(vi["importance"].values, gbm.feature_importances_[order])
 
     def test_format_polars(self, gbm) -> None:  # type: ignore[no-untyped-def]
         import polars as pl

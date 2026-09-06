@@ -1304,7 +1304,9 @@ def _glance_nelson_aalen(na: NelsonAalen, *, format: str | None = None, **_: Any
         cols["strata"] = [b.label for b in na._blocks]
     cols["n_start"] = [float(b.n_risk[0]) if b.n_risk.size else float("nan") for b in na._blocks]
     cols["events"] = [float(b.n_event.sum()) for b in na._blocks]
-    cols["max_cumhaz"] = [float(b.cumhaz[-1]) if b.cumhaz.size else float("nan") for b in na._blocks]
+    cols["max_cumhaz"] = [
+        float(b.cumhaz[-1]) if b.cumhaz.size else float("nan") for b in na._blocks
+    ]
     return to_dataframe(cols, format=format)
 
 

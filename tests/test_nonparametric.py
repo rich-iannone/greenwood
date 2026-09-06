@@ -114,9 +114,7 @@ class TestNelsonAalenTidy:
         assert t.equals(f)
 
     def test_tidy_stratified_has_strata(self) -> None:
-        na = NelsonAalen().fit(
-            Surv.right([1, 2, 1, 2], [1, 1, 1, 1]), by=["a", "a", "b", "b"]
-        )
+        na = NelsonAalen().fit(Surv.right([1, 2, 1, 2], [1, 1, 1, 1]), by=["a", "a", "b", "b"])
         t = gw.tidy(na, format="pandas")
         assert "strata" in t.columns
         assert set(t["strata"]) == {"a", "b"}
@@ -151,9 +149,7 @@ class TestNelsonAalenGlance:
         np.testing.assert_allclose(g["max_cumhaz"].iloc[0], na.cumhaz_[-1])
 
     def test_glance_stratified(self) -> None:
-        na = NelsonAalen().fit(
-            Surv.right([1, 2, 1, 2], [1, 1, 1, 1]), by=["a", "a", "b", "b"]
-        )
+        na = NelsonAalen().fit(Surv.right([1, 2, 1, 2], [1, 1, 1, 1]), by=["a", "a", "b", "b"])
         g = gw.glance(na, format="pandas")
         assert "strata" in g.columns
         assert g.shape[0] == 2
