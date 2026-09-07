@@ -26,7 +26,7 @@ import greenwood as gw
 # Load the bundled lung dataset as a Polars DataFrame
 lung = gw.load_dataset("lung", backend="polars")
 
-# Build a right-censored response; status == 2 marks a death
+# Build a right-censored response (status == 2 marks a death)
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 
 # Display the response summary
@@ -126,7 +126,7 @@ one. We select those columns to keep the table narrow.
 km_loglog.to_frame(format="polars")[["time", "estimate", "conf_low", "conf_high"]]
 ```
 
-The point estimates are identical across transforms; only the interval limits differ. Choose the
+The point estimates are identical across transforms and only the interval limits differ. Choose the
 transform before fitting, and report which one you used.
 
 ### Customizing the confidence level
@@ -149,7 +149,7 @@ more conservative coverage. The confidence level affects the median and quantile
 
 ### Comparing confidence interval transforms
 
-The three confidence interval transforms give the same point estimates; they differ only in how they
+The three confidence interval transforms give the same point estimates. They differ only in how they
 construct the interval. Here is a comparison to help you choose:
 
 ```{python}
@@ -363,15 +363,17 @@ influences within each cluster before squaring.
 lung = gw.load_dataset("lung", backend="polars")
 y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
 
-# Cluster by institution (inst column); NaN rows are dropped automatically
+# Cluster by institution (inst column) (NaN rows are dropped automatically)
 km_cluster = gw.KaplanMeier().fit(y, cluster=lung["inst"])
 
 # Compare clustered SE to unclustered robust SE at the midpoint
 km_robust = gw.KaplanMeier(robust=True).fit(y)
 idx = len(km_cluster.time_) // 2
 t_mid = km_cluster.time_[idx]
-print(f"Time {t_mid}: Robust SE = {km_robust.std_error_[idx]:.6f}, "
-      f"Clustered SE = {km_cluster.std_error_[idx]:.6f}")
+print(
+    f"Time {t_mid}: Robust SE = {km_robust.std_error_[idx]:.6f}, "
+    f"Clustered SE = {km_cluster.std_error_[idx]:.6f}"
+)
 ```
 
 Passing `cluster=` implies `robust=True`. The survival estimates are unchanged and only the standard
@@ -506,6 +508,115 @@ For stratified fits, `glance()` returns one row per group.
 # Per-group summary
 gw.glance(na_strat, format="polars")
 ```
+
+## Turnbull's algorithm for interval-censored data
+
+Both `KaplanMeier` and `NelsonAalen` assume you know each subject's event time exactly, up to right
+censoring. That assumption breaks down when follow-up is periodic rather than continuous: a clinic
+visit, an equipment inspection, or a survey wave tells you only that the event happened sometime
+between two observations, not exactly when. `Turnbull` handles this directly, and can mix exact,
+left-, right-, and interval-censored observations in the same fit. The example below has six
+subjects: two exact deaths, one right-censored subject with no event observed by the last visit, and
+three whose event is only known to fall somewhere within a window.
+
+```{python}
+# Build an interval-censored response
+y_interval = gw.Surv.interval(
+    lower=[0, 4, 7, 0, 3, 5],
+    upper=[4, float("inf"), 7, 2.5, 6, 5],
+)
+
+# Fit the Turnbull NPMLE
+tb = gw.Turnbull().fit(y_interval)
+tb
+```
+
+Unlike Kaplan-Meier, the estimator's support is not identified everywhere. The data determine a set
+of *maximal intersection intervals*, and only the total probability mass on each one is identified,
+not where within it the mass truly sits. `to_frame()` reports both bounds of every such interval:
+
+```{python}
+# Export one row per maximal intersection interval
+tb.to_frame(format="polars")
+```
+
+Where an interval degenerates to a single point (`interval_low` equals `interval_high`), that's an
+exact death or a region every subject's constraint resolves unambiguously, and survival is known
+exactly there. Elsewhere it genuinely is not identified by the data, so `predict()` and `quantile()`
+return `nan` rather than silently interpolate a point that the data cannot support. Here, `t=1`
+falls strictly inside the ambiguous window between 0 and 2.5, so it comes back `nan`:
+
+```{python}
+# Evaluate the survival curve at specific times
+tb.predict([1, 2.5, 5, 7])
+```
+
+The `quantile()` method follows the same rule, but always returns a 3-tuple
+`(estimate, lower, upper)` regardless of whether the crossing is ambiguous: `estimate` is `nan`
+exactly when it falls inside an unresolved interval, in which case `lower` and `upper` bracket it
+rather than a confidence bound.
+
+```{python}
+# First-quartile survival time, or its ambiguity bracket
+tb.quantile(0.25)
+```
+
+When there is no genuine interval ambiguity in the data (only exact events and right censoring),
+`Turnbull` reduces exactly to `KaplanMeier`, since that is the one case where the NPMLE is fully
+identified everywhere. The comparison below reuses the right-censored response `y` from earlier in
+this page and checks agreement at `KaplanMeier`'s own event times. The raw arrays aren't directly
+comparable, since Turnbull's atom table also carries a few near-zero-mass artifacts from the general
+construction.
+
+```{python}
+tb_right = gw.Turnbull().fit(y)
+km_check = gw.KaplanMeier().fit(y)
+import numpy as np
+
+# Compare survival at KM's own event times
+np.allclose(tb_right.predict(km_check.time_), km_check.survival_, atol=1e-8)
+```
+
+That equivalence is a useful check on your own data: if `predict()` and `quantile()` never return
+`nan` for a fit, `Turnbull` and `KaplanMeier` will agree everywhere, and you could have used
+`KaplanMeier` directly. The three methods above cover the whole contract: `to_frame()` for the
+fitted atoms, `predict()` to evaluate the curve, and `quantile()` to invert it, all while keeping
+identifiability limits visible rather than papering over them.
+
+### Restricted mean survival and residual life
+
+`rmst()` and `rmrl()` need a single number, so unlike `predict()` and `quantile()` they do not
+return `nan` for ambiguous regions. Instead they fall back to Turnbull's own convention for
+reporting a plottable curve: every atom's probability mass, ambiguous or not, is treated as
+resolving at that atom's *right* endpoint. This is the most conservative choice available: placing
+mass as late as possible maximizes the area under the curve, so `rmst()`/`rmrl()` report the
+*largest* value consistent with the data, not an unbiased point estimate. There is no variance
+estimator for either, so no confidence interval is available.
+
+```{python}
+# Restricted mean survival time up to t=7
+tb.rmst(7)
+```
+
+Use `rmst()`/`rmrl()` when you need one reportable number, but check `to_frame()` first to see how
+much of the mass over your chosen horizon actually sits in non-degenerate intervals: the more
+ambiguity there is, the further the right-endpoint value can drift from an unbiased estimate.
+
+### Stratified fits
+
+Pass `by=` to fit separate curves per group, just as with `KaplanMeier` and `NelsonAalen`.
+
+```{python}
+# Fit separate curves for two groups
+tb_strat = gw.Turnbull().fit(y_interval, by=[0, 1, 0, 1, 0, 1])
+tb_strat.median()
+```
+
+Turnbull's algorithm is a specialized tool: use it only when your data are genuinely
+interval-censored, since it costs more to fit than Kaplan-Meier and its answer is honestly partial
+where the data are. The alternative, rounding each observation to an interval endpoint and calling
+`KaplanMeier`, is faster but silently biased. When your follow-up is truly periodic, the `nan`s and
+ambiguity brackets you see above are the estimator doing its job.
 
 ## Next steps
 

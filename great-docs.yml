@@ -58,11 +58,14 @@ reference:
       - CensoringType
 
   - title: Non-parametric estimators
-    desc: Kaplan-Meier survival and Nelson-Aalen cumulative hazard.
+    desc: Kaplan-Meier survival, Nelson-Aalen cumulative hazard, and Turnbull's NPMLE for
+      interval-censored data.
     contents:
       - name: KaplanMeier
         members: true
       - name: NelsonAalen
+        members: true
+      - name: Turnbull
         members: true
 
   - title: Univariate parametric models

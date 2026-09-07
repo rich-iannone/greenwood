@@ -62,6 +62,20 @@ write_json_fixture(
   "veteran_km_overall"
 )
 
+# -- Turnbull NPMLE reduces to Kaplan-Meier when there is no genuine interval ambiguity ---
+#
+# survival::survfit dispatches Surv(time1, time2, type = "interval2") responses to its own
+# internal Turnbull EM (survival:::survfitTurnbull). With only exact events and right-censoring
+# (time2 = NA for censored, time2 = time1 for events), this must reduce exactly to ordinary KM,
+# which is the one regime where Greenwood's Turnbull and R's independent implementation are
+# both computing the same, uniquely-identified NPMLE and so must agree to numerical precision.
+veteran_time2 <- ifelse(veteran$status == 1, veteran$time, NA)
+sf_turnbull <- survfit(Surv(veteran$time, veteran_time2, type = "interval2") ~ 1)
+write_json_fixture(
+  list(time = sf_turnbull$time, surv = sf_turnbull$surv),
+  "turnbull_veteran_km_equivalence"
+)
+
 # Left truncation / counting-process case, to validate the entry-aware risk set.
 trunc <- data.frame(
   start = c(0, 2, 1, 3, 0, 4, 1, 2),
