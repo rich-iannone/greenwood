@@ -1,19 +1,19 @@
 r"""Turnbull's self-consistent NPMLE for interval-censored survival data.
 
-Kaplan-Meier and Nelson-Aalen (`_nonparametric.py`) assume the event time is either exactly
-observed or right-censored. Neither is valid when the event is only known to lie in a window
-`(lower, upper]` (periodic follow-up, inspection data). Turnbull (1976) showed that the
-nonparametric maximum-likelihood estimator (NPMLE) for that setting places its probability mass
-on a specific, data-determined set of intervals, the *maximal intersection intervals*, computed
-here via the equivalent "identical coverage" construction of Gentleman & Geyer (1994): the finest
-partition induced by the data's endpoints is grouped into runs of consecutive atoms that every
-subject's `(lower, upper]` constraint either fully includes or fully excludes, since only the
-total mass on such a run is identified.
+Kaplan-Meier and Nelson-Aalen (`_nonparametric.py`) assume the event time is either exactly observed
+or right-censored. Neither is valid when the event is only known to lie in a window `(lower, upper]`
+(periodic follow-up, inspection data). Turnbull showed that the nonparametric maximum-likelihood
+estimator (NPMLE) for that setting places its probability mass on a specific, data-determined set of
+intervals, the *maximal intersection intervals*, computed here via the equivalent
+"identical coverage" construction of Gentleman & Geyer (1994): the finest partition induced by the
+data's endpoints is grouped into runs of consecutive atoms that every subject's `(lower, upper]`
+constraint either fully includes or fully excludes, since only the total mass on such a run is
+identified.
 
-Outside these intervals the survival curve is exactly known (flat). Inside a non-degenerate one
-it is not identified by the data. `Turnbull` reports both bounds of every such interval rather
-than picking an arbitrary representative point, and `predict()`/`quantile()` propagate that
-ambiguity as `nan` instead of silently interpolating.
+Outside these intervals the survival curve is exactly known (flat). Inside a non-degenerate one it
+is not identified by the data. `Turnbull` reports both bounds of every such interval rather than
+picking an arbitrary representative point, and `predict()`/`quantile()` propagate that ambiguity as
+`nan` instead of silently interpolating.
 """
 
 from __future__ import annotations
@@ -38,10 +38,10 @@ def _candidate_atoms(lower: Array, upper: Array) -> tuple[Array, Array]:
     """Alternating point/open-interval atoms spanning the data's breakpoints.
 
     Returns `(atom_low, atom_high)`. For a point atom (a candidate exact-time mass point)
-    `atom_low[k] == atom_high[k]`. For an open-interval atom (a candidate ambiguous region
-    strictly between two consecutive breakpoints) `atom_low[k] < atom_high[k]`. Every atom
-    from every subject's true event time must fall on one of these candidates, since the
-    breakpoints are exactly the observed lower/upper bounds.
+    `atom_low[k] == atom_high[k]`. For an open-interval atom (a candidate ambiguous region strictly
+    between two consecutive breakpoints) `atom_low[k] < atom_high[k]`. Every atom from every
+    subject's true event time must fall on one of these candidates, since the breakpoints are
+    exactly the observed lower/upper bounds.
     """
     finite_upper = upper[np.isfinite(upper)]
     bp = np.unique(np.concatenate([lower, finite_upper]))
@@ -61,20 +61,18 @@ def _build_alpha(lower: Array, upper: Array) -> tuple[Array, Array, Array]:
     """Maximal intersection intervals and the `(n, m)` containment indicator matrix.
 
     `alpha[i, j]` is `True` when Turnbull interval `j` is fully contained in subject `i`'s
-    `(lower[i], upper[i]]`. Candidate atoms with no subject overlapping them at all are
-    dropped (regions no observation touches can never carry mass). Adjacent atoms that every
-    subject treats identically are merged, since the likelihood only depends on their combined
-    mass. An exact observation (`lower[i] == upper[i]`) is a degenerate `(t, t]` interval, so it
-    is matched to its own point atom by direct equality rather than the general open-closed
-    containment rule.
+    `(lower[i], upper[i]]`. Candidate atoms with no subject overlapping them at all are dropped
+    (regions no observation touches can never carry mass). Adjacent atoms that every subject treats
+    identically are merged, since the likelihood only depends on their combined mass. An exact
+    observation (`lower[i] == upper[i]`) is a degenerate `(t, t]` interval, so it is matched to its
+    own point atom by direct equality rather than the general open-closed containment rule.
 
-    A right-censored subject (`upper[i] == inf`) additionally covers an implicit "never" atom
-    beyond every finite breakpoint, appended as the last column of `alpha` (with no matching
-    entry in `interval_low`/`interval_high`). Without it, the EM would be forced to resolve
-    every censored subject's mass into whatever finite atoms exist, which breaks the classical
-    identity between this estimator and Kaplan-Meier whenever the tail is censored: KM leaves
-    that mass unresolved (the curve plateaus above 0) rather than forcing it onto the last
-    observed atom.
+    A right-censored subject (`upper[i] == inf`) additionally covers an implicit "never" atom beyond
+    every finite breakpoint, appended as the last column of `alpha` (with no matching entry in
+    `interval_low`/`interval_high`). Without it, the EM would be forced to resolve every censored
+    subject's mass into whatever finite atoms exist, which breaks the classical identity between
+    this estimator and Kaplan-Meier whenever the tail is censored: KM leaves that mass unresolved
+    (the curve plateaus above 0) rather than forcing it onto the last observed atom.
     """
     n = lower.shape[0]
     has_inf_atom = bool(np.any(np.isinf(upper)))
@@ -131,7 +129,7 @@ def _em_turnbull(
     s_j \leftarrow \frac{\sum_i w_i \mu_{ij}}{\sum_i w_i}
     $$
 
-    Monotone in the observed-data log-likelihood (Turnbull 1976). Converges to the NPMLE.
+    Monotone in the observed-data log-likelihood. Converges to the NPMLE.
     """
     _, m = alpha.shape
     if m == 0:
@@ -273,14 +271,49 @@ def _crossing(block: _TurnbullBlock, level: float) -> tuple[float, float, float]
     return float("nan"), lo, hi
 
 
+def _rmst_value(interval_high: Array, survival: Array, tau: float) -> float:
+    r"""Area under the right-endpoint-convention curve on $[0, \tau]$.
+
+    Every atom's mass, ambiguous or not, is treated as resolving exactly at
+    `interval_high` (Turnbull's own convention for reporting a plottable curve), so the
+    curve here is a well-defined step function even though `survival_`/`predict()` leave
+    ambiguous regions as `nan`.
+    """
+    t = interval_high
+    s = survival
+    starts = np.concatenate([[0.0], t])
+    heights = np.concatenate([[1.0], s])
+    next_starts = np.concatenate([t, [tau]])
+    widths = np.clip(np.minimum(next_starts, tau) - np.minimum(starts, tau), 0.0, None)
+    return float((heights * widths).sum())
+
+
+def _rmrl_value(interval_high: Array, survival: Array, s_time: float, tau: float) -> float:
+    r"""Right-endpoint-convention restricted mean residual life at `s_time`, over $(s, \tau]$."""
+    t = interval_high
+    surv = survival
+    idx = int(np.searchsorted(t, s_time, side="right")) - 1
+    s_at = float(surv[idx]) if idx >= 0 else 1.0
+    if s_at <= 0.0:
+        return float("nan")
+
+    starts = np.concatenate([[0.0], t])
+    heights = np.concatenate([[1.0], surv])
+    next_starts = np.concatenate([t, [tau]])
+    lo = np.clip(starts, s_time, tau)
+    hi = np.clip(next_starts, s_time, tau)
+    area_window = float((heights * np.clip(hi - lo, 0.0, None)).sum())
+    return area_window / s_at
+
+
 class Turnbull:
     r"""Turnbull's self-consistent NPMLE for interval-censored survival data.
 
     Kaplan-Meier requires knowing each subject's event time exactly (up to right-censoring).
     When follow-up is periodic instead (clinic visits, equipment inspections), all that is known
-    is that the event fell in a window `(lower, upper]`. Turnbull's (1976) nonparametric maximum
-    likelihood estimator handles this directly, together with mixtures of exact, left-, right-,
-    and interval-censored observations in the same fit.
+    is that the event fell in a window `(lower, upper]`. Turnbull's nonparametric maximum likelihood
+    estimator handles this directly, together with mixtures of exact, left-, right-, and
+    interval-censored observations in the same fit.
 
     Unlike Kaplan-Meier, the NPMLE's support is not identified everywhere: the data determine a
     set of *maximal intersection intervals*, and only the total probability mass on each one is
@@ -288,6 +321,9 @@ class Turnbull:
     Where an interval degenerates to a single point (an exact death, or a region every subject's
     constraint resolves unambiguously), survival is known exactly there. Otherwise it is
     genuinely unidentified and `predict()`/`quantile()` return `nan` rather than interpolate.
+    `rmst()`/`rmrl()` need a single number, so they instead fall back to Turnbull's own
+    right-endpoint convention (every atom's mass resolves at `interval_high_`); see their
+    docstrings for the resulting conservative (upper-bound) bias.
 
     To use this estimator, call `fit()` with a `Surv` response built via `Surv.interval()`
     (the general case), or `Surv.right()`/`Surv.left()` (degenerate cases: fitting a
@@ -519,6 +555,96 @@ class Turnbull:
         """
         return self.quantile(0.5)
 
+    # -- restricted mean survival / residual life ------------------------------
+
+    def rmst(self, tau: float) -> Any:
+        r"""Restricted mean survival time up to `tau`, under the right-endpoint convention.
+
+        Parameters
+        ----------
+        tau
+            The upper time limit for the restriction. Must be positive.
+
+        Returns
+        -------
+        float or dict
+            The restricted mean survival time for a single stratum, or a `dict` keyed by stratum
+            label for stratified fits.
+
+        Details
+        -------
+        RMST is the area under the survival curve on $[0, \tau]$. Unlike `predict()` and
+        `quantile()`, which report the genuine identifiability gap as `nan`, RMST needs a single
+        number, so every atom's probability mass, ambiguous or not, is treated as resolving exactly
+        at that atom's *right* endpoint (`interval_high_`). This is Turnbull's own convention for
+        reporting a plottable curve from an otherwise partially-unidentified NPMLE. It is also the
+        most conservative choice for RMST: placing mass as late as possible maximizes the area under
+        the curve, so this systematically reports the *largest* RMST consistent with the data, not
+        an unbiased point estimate. There is no variance estimator for it (no confidence interval is
+        returned).
+
+        Examples
+        --------
+        ```{python}
+        import greenwood as gw
+
+        y = gw.Surv.interval(lower=[0, 4, 7, 0, 3, 5], upper=[4, float("inf"), 7, 2.5, 6, 5])
+        tb = gw.Turnbull().fit(y)
+        tb.rmst(7)
+        ```
+        """
+        if not self._grouped:
+            b = self._blocks[0]
+            return _rmst_value(b.interval_high, b.survival, float(tau))
+        return {b.label: _rmst_value(b.interval_high, b.survival, float(tau)) for b in self._blocks}
+
+    def rmrl(self, s: float, tau: float) -> Any:
+        r"""Restricted mean residual life at `s`, under the right-endpoint convention.
+
+        Parameters
+        ----------
+        s
+            The landmark time. Must be non-negative.
+        tau
+            The upper time limit for the restriction. Must be greater than `s`.
+
+        Returns
+        -------
+        float or dict
+            The restricted mean residual life for a single stratum, or a `dict` keyed by stratum
+            label for stratified fits. `nan` if everyone has resolved (under the same right-endpoint
+            convention) by time `s`.
+
+        Details
+        -------
+        Generalizes `rmst` to a later landmark:
+        $\mathrm{RMRL}(s; \tau) = \int_s^\tau S(u)\,du / S(s)$, under the same right-endpoint
+        convention (every atom's mass is treated as resolving at `interval_high_`); see `rmst` for
+        why, and for the resulting conservative (upper-bound) bias.
+
+        Examples
+        --------
+        ```{python}
+        import greenwood as gw
+
+        y = gw.Surv.interval(lower=[0, 4, 7, 0, 3, 5], upper=[4, float("inf"), 7, 2.5, 6, 5])
+        tb = gw.Turnbull().fit(y)
+        tb.rmrl(4, 7)
+        ```
+        """
+        if tau <= s:
+            raise ValueError(f"tau ({tau}) must be greater than s ({s}).")
+        if s < 0.0:
+            raise ValueError(f"s must be non-negative, got {s}.")
+
+        if not self._grouped:
+            b = self._blocks[0]
+            return _rmrl_value(b.interval_high, b.survival, float(s), float(tau))
+        return {
+            b.label: _rmrl_value(b.interval_high, b.survival, float(s), float(tau))
+            for b in self._blocks
+        }
+
     # -- prediction -----------------------------------------------------------
 
     def predict(self, times: Any) -> Any:
@@ -527,15 +653,14 @@ class Turnbull:
         Parameters
         ----------
         times
-            Query times at which to evaluate the curve. Can be a scalar or array-like of
-            floats.
+            Query times at which to evaluate the curve. Can be a scalar or array-like of floats.
 
         Returns
         -------
         ndarray or dict
-            For a single stratum: an array (matching `times`' shape) of survival estimates,
-            with `nan` at any query time that falls strictly inside a non-degenerate
-            (ambiguous) interval. For stratified fits: a `dict` keyed by stratum label.
+            For a single stratum: an array (matching `times`' shape) of survival estimates, with
+            `nan` at any query time that falls strictly inside a non-degenerate (ambiguous)
+            interval. For stratified fits: a `dict` keyed by stratum label.
 
         Details
         -------
@@ -593,20 +718,20 @@ class Turnbull:
     def to_frame(self, *, format: str | None = None) -> Any:
         """Return the fitted NPMLE as a DataFrame.
 
-        Exports one row per maximal intersection interval, with its bounds, probability mass,
-        and the survival estimate just after it.
+        Exports one row per maximal intersection interval, with its bounds, probability mass, and
+        the survival estimate just after it.
 
         Parameters
         ----------
         format
-            Output format: `None` (default), `"pandas"`, `"polars"`, or `"pyarrow"`. When
-            `None`, a backend is auto-detected (Polars, then Pandas, then PyArrow).
+            Output format: `None` (default), `"pandas"`, `"polars"`, or `"pyarrow"`. When `None`, a
+            backend is auto-detected (Polars, then Pandas, then PyArrow).
 
         Returns
         -------
         pandas.DataFrame, polars.DataFrame, or pyarrow.Table
-            A tidy table with columns `interval_low`, `interval_high`, `prob_mass`, `estimate`,
-            and optionally `strata`.
+            A tidy table with columns `interval_low`, `interval_high`, `prob_mass`, `estimate`, and
+            optionally `strata`.
 
         Raises
         ------
