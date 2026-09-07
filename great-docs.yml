@@ -58,7 +58,8 @@ reference:
       - CensoringType
 
   - title: Non-parametric estimators
-    desc: Kaplan-Meier survival, Nelson-Aalen cumulative hazard, and Turnbull's NPMLE for
+    desc:
+      Kaplan-Meier survival, Nelson-Aalen cumulative hazard, and Turnbull's NPMLE for
       interval-censored data.
     contents:
       - name: KaplanMeier
@@ -100,7 +101,9 @@ reference:
         members: true
 
   - title: Machine learning
-    desc: Tree-based ensemble survival models grown with the log-rank splitting rule, producing per-subject survival and cumulative-hazard functions.
+    desc:
+      Tree-based ensemble survival models grown with the log-rank splitting rule, producing
+      per-subject survival and cumulative-hazard functions.
     contents:
       - name: SurvivalTree
         members: true
@@ -122,7 +125,10 @@ reference:
         members: true
 
   - title: Group comparisons
-    desc: The log-rank test, MaxCombo test for non-proportional hazards, trend tests for ordered groups, the G-rho (Fleming-Harrington) family, Gray's test for cumulative incidence, and restricted mean survival time (RMST) comparisons.
+    desc:
+      The log-rank test, MaxCombo test for non-proportional hazards, trend tests for ordered groups,
+      the G-rho (Fleming-Harrington) family, Gray's test for cumulative incidence, and restricted
+      mean survival time (RMST) comparisons.
     contents:
       - logrank_test
       - maxcombo_test
@@ -160,7 +166,9 @@ reference:
       - calibration
 
   - title: Visualization
-    desc: Interactive survival curves, forest plots, and cumulative incidence visualizations with aligned numbers-at-risk tables.
+    desc:
+      Interactive survival curves, forest plots, and cumulative incidence visualizations with
+      aligned numbers-at-risk tables.
     contents:
       - plot_survival
       - plot_predicted_survival
@@ -194,10 +202,3 @@ reference:
     contents:
       - get_risk_table_frame
       - theme_forest
-
-  - title: Package namespaces
-    desc: Exported subpackages for direct access to grouped functionality.
-    contents:
-      - data
-      - summaries
-      - viz
