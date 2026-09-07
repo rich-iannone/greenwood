@@ -527,8 +527,6 @@ class TestSurvivalTreePredict:
         assert isinstance(ch, pl.DataFrame)
 
     def test_custom_times_respected(self, tree, data) -> None:
-        import pandas as pd
-
         _, x = data
         times = [100.0, 250.0, 500.0]
         surv = tree.predict(x[:1], type="survival", times=times, format="pandas")
