@@ -40,6 +40,7 @@ from ._tests import (
     pairwise_logrank_test,
     trend_test,
 )
+from ._turnbull import Turnbull
 from ._tvc import split_episodes
 from ._univariate import Parametric, compare_distributions
 from .data import available_datasets, load_dataset
@@ -71,6 +72,7 @@ __all__ = [
     "event_table",
     "KaplanMeier",
     "NelsonAalen",
+    "Turnbull",
     "Parametric",
     "CoxPH",
     "CoxNet",
