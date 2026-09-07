@@ -680,6 +680,24 @@ rp_weibull_anchor <- function() {
 }
 write_json_fixture(rp_weibull_anchor(), "rp_weibull_anchor")
 
+# Log-logistic anchor for the proportional-odds Royston-Parmar model: with df=1 (no internal
+# knots) the odds-scale flexible model is a log-logistic AFT model, exactly as df=1 on the
+# hazard scale is a Weibull model above. Store S(t|x) = 1 - plogis((log(t) - lp) / scale).
+rp_loglogistic_anchor <- function() {
+  sr <- survreg(Surv(time, status) ~ age + sex, data = lung, dist = "loglogistic")
+  nd <- data.frame(age = c(50, 70), sex = c(1, 2))
+  lp <- predict(sr, nd, type = "lp")
+  sigma <- sr$scale
+  times <- c(180, 365, 540)
+  surv <- sapply(seq_len(nrow(nd)), function(i) 1 - plogis((log(times) - lp[i]) / sigma))
+  list(
+    loglik = sr$loglik[2],
+    newdata_age = nd$age, newdata_sex = nd$sex, times = times,
+    surv = list(subj1 = surv[, 1], subj2 = surv[, 2])
+  )
+}
+write_json_fixture(rp_loglogistic_anchor(), "rp_loglogistic_anchor")
+
 # -- Competing risks: Aalen-Johansen CIF and Fine-Gray -------------------------------
 
 data(mgus2, package = "survival")

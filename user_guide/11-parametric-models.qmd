@@ -609,6 +609,43 @@ effects), and `n_knots` is the number of interior knots used by the spline. Thes
 useful for building comparison tables across models with different `df` values or different
 covariate sets.
 
+### Proportional odds
+
+Everything above assumes proportional hazards: the ratio of two subjects' hazards stays constant
+over time. That assumption can fail even when the data are otherwise well-behaved, for example
+when survival curves for two groups converge over time instead of staying a fixed multiple apart.
+A proportional-odds model relaxes the assumption by putting the spline on the log odds of failure
+scale instead of the log cumulative hazard, so it is the odds ratio between groups that stays
+constant. Pass `scale="odds"`:
+
+```{python}
+# Fit a proportional-odds Royston-Parmar model
+rp_odds = gw.RoystonParmar(df=3, scale="odds").fit(y, lung[["age", "sex"]])
+rp_odds
+```
+
+The coefficients are on a different scale now: `exp(coef)` is an odds ratio, not a hazard ratio.
+A coefficient of `-0.89` for `sex`, for instance, means the odds of having died by any given time
+are `exp(-0.89) ≈ 0.41` times as high for that group, holding age fixed, rather than the hazard
+being scaled by that factor. Everything else works exactly as before: `predict()`,
+`predict_quantile()`, `predict_expectation()`, `tidy()`, and `glance()` all behave the same way,
+just evaluated on the odds scale internally.
+
+```{python}
+# Predicted survival at 6 months, 1 year, and 2 years from the proportional-odds model
+rp_odds.predict(newdata, type="survival", times=[180, 365, 730], format="polars")
+```
+
+::: {.callout-tip}
+## Choosing hazard vs. odds
+
+Just as `scale="hazard"` with `df=1` is exactly a Weibull model, `scale="odds"` with `df=1` is
+exactly a log-logistic model, so the two scales are directly comparable at every `df` via AIC or
+BIC. There is no substitute for checking the proportional-hazards assumption first (see
+[Cox model diagnostics](09-cox-diagnostics.qmd)); reach for `scale="odds"` when that check fails
+but the data still look well-behaved on the odds scale, not as a default choice.
+:::
+
 ## Survival predictions with confidence intervals
 
 When predicting survival probabilities from an AFT model, you can also compute confidence intervals

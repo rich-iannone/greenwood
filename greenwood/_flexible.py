@@ -1,22 +1,30 @@
 r"""Royston-Parmar flexible parametric survival models.
 
-A Royston-Parmar model puts a restricted cubic spline in $\log(\text{time})$ on the log
-cumulative hazard:
+A Royston-Parmar model puts a restricted cubic spline in $\log(\text{time})$ on a transformed
+survival scale:
 
 $$
-\log H(t \mid x) = s(\log t; \gamma) + x^\top \beta,
+\eta(t \mid x) = s(\log t; \gamma) + x^\top \beta,
 $$
 
-so $S(t \mid x) = \exp\!\big(-\exp(s(\log t) + x^\top \beta)\big)$. The spline $s$ has boundary
-knots at the extreme uncensored log times and internal knots at quantiles in between; its
-flexibility is set by `df` (the number of spline terms, equivalently one more than the number of
-internal knots). With `df=1` the spline is linear in $\log t$, which is exactly a Weibull
-proportional hazards model, so `RoystonParmar(df=1)` reproduces a Weibull fit; larger `df` relaxes
-the parametric shape while keeping smooth, extrapolatable survival and hazard curves.
+with $S(t \mid x) = g(\eta)$ for a scale-specific link $g$. Two scales are available, matching R's
+`flexsurv::flexsurvspline(scale=)`:
 
-Coefficients are fit by maximum likelihood for right-censored data. This is the proportional
-hazards (log cumulative hazard) scale, matching R's `flexsurv::flexsurvspline(scale="hazard")`
-and Stata's `stpm2`.
+- `scale="hazard"` (default): $g(\eta) = \exp(-\exp(\eta))$, so $\eta$ is the log cumulative
+  hazard and $\exp(\beta)$ is a **hazard ratio**, constant over time (proportional hazards).
+- `scale="odds"`: $g(\eta) = 1 / (1 + \exp(\eta))$, so $\eta$ is the log odds of failure and
+  $\exp(\beta)$ is an **odds ratio**, constant over time (proportional odds). Useful when hazards
+  are not proportional but the odds ratio is, which shows up as converging (rather than parallel)
+  survival curves across groups.
+
+The spline $s$ has boundary knots at the extreme uncensored log times and internal knots at
+quantiles in between; its flexibility is set by `df` (the number of spline terms, equivalently one
+more than the number of internal knots). With `df=1` the spline is linear in $\log t$, which makes
+the model exactly a 2-parameter AFT distribution: Weibull under `scale="hazard"`, log-logistic
+under `scale="odds"`. Larger `df` relaxes the parametric shape while keeping smooth,
+extrapolatable survival and hazard curves.
+
+Coefficients are fit by maximum likelihood for right-censored data.
 """
 
 from __future__ import annotations
@@ -76,35 +84,78 @@ def _rcs_basis(u: Array, knots: Array) -> tuple[Array, Array]:
     return basis, deriv
 
 
+_VALID_SCALES = frozenset({"hazard", "odds"})
+
+
+def _link_log_survival(scale: str, eta: Array) -> Array:
+    r"""$g(\eta) = \log S(t \mid \eta)$ for the given scale.
+
+    Every other quantity (log-likelihood, hazard, cumulative hazard, quantile) is defined in
+    terms of this one function and its derivative (`_link_log_neg_dlogS`), so adding a new scale
+    only means adding a branch here and there.
+    """
+    if scale == "hazard":  # complementary log-log (proportional hazards): H(t) = exp(eta)
+        return -np.exp(eta)
+    # "odds" (proportional odds, logit link): S(t) = 1 / (1 + exp(eta))
+    return -np.logaddexp(0.0, eta)
+
+
+def _link_log_neg_dlogS(scale: str, eta: Array) -> Array:
+    r"""$\log(-g'(\eta))$, the log-hazard once multiplied by the spline derivative and $1/t$."""
+    if scale == "hazard":
+        return eta  # g'(eta) = -exp(eta), so -g'(eta) = exp(eta), log(.) = eta
+    # "odds": g'(eta) = -sigmoid(eta), so -g'(eta) = sigmoid(eta) = 1 / (1 + exp(-eta))
+    return -np.logaddexp(0.0, -eta)
+
+
+def _link_eta_target(scale: str, p: float) -> float:
+    r"""Solve $g(\eta) = \log(1 - p)$ for $\eta$: the quantile root-finding target."""
+    if scale == "hazard":
+        return float(np.log(-np.log1p(-p)))
+    return float(np.log(p) - np.log1p(-p))  # logit(p), the "odds" case
+
+
 class RoystonParmar:
-    """Royston-Parmar flexible parametric survival model (proportional hazards scale).
+    """Royston-Parmar flexible parametric survival model (hazard or odds scale).
 
     The Royston-Parmar model offers a middle ground between rigid parametric models (like
-    Weibull) and fully non-parametric methods (like Kaplan-Meier). It models the log baseline
-    cumulative hazard as a smooth spline function on the log-time scale, combined with
-    proportional-hazards covariate effects. This allows flexible baseline shapes while
-    maintaining interpretable proportional-hazards covariate coefficients. It's a key advantage
-    over fully parametric AFT models.
+    Weibull) and fully non-parametric methods (like Kaplan-Meier). It models a transformed
+    baseline survival function as a smooth spline on the log-time scale, combined with covariate
+    effects that are proportional on that transformed scale. This allows flexible baseline
+    shapes while keeping interpretable, constant-over-time covariate effects. It's a key
+    advantage over fully parametric AFT models.
+
+    Two scales are available via `scale=`:
+
+    - `"hazard"` (default): proportional hazards, on the log cumulative hazard scale.
+      `exp(coef)` is a hazard ratio.
+    - `"odds"`: proportional odds, on the log odds of failure scale. `exp(coef)` is an odds
+      ratio. Useful when the proportional-hazards assumption fails but the odds ratio still
+      looks roughly constant over time, which shows up as survival curves that converge rather
+      than stay parallel.
 
     The model uses restricted cubic splines with a fixed number of degrees of freedom (controlled
-    by knots placed at quantiles of event times). A low df value (e.g., df=1) approaches a
-    Weibull fit; higher df values (e.g., df=3 or 4) provide greater flexibility. Call `fit()`
-    with a right-censored `Surv` response and a design matrix. The model reports spline and
-    covariate coefficients, fitted knot locations, log-likelihood, and supports predictions of
-    survival at specified times and covariate values.
+    by knots placed at quantiles of event times). A low df value (e.g., df=1) reproduces a
+    2-parameter AFT distribution exactly (Weibull under `"hazard"`, log-logistic under `"odds"`);
+    higher df values (e.g., df=3 or 4) provide greater flexibility. Call `fit()` with a
+    right-censored `Surv` response and a design matrix. The model reports spline and covariate
+    coefficients, fitted knot locations, log-likelihood, and supports predictions of survival at
+    specified times and covariate values.
 
-    The implementation uses maximum likelihood estimation with constraints that ensure monotone
-    increasing log cumulative hazard (valid hazard functions). The flexible baseline makes this
-    model useful when baseline hazard shape is unknown but important, yet you want interpretable
-    proportional-hazards effects of covariates. Results can be exported to tidy DataFrames or
-    accessed as coefficient arrays.
+    The implementation uses maximum likelihood estimation with constraints that ensure the
+    transformed baseline is monotone increasing in time (required for both scales: cumulative
+    hazard and the odds of failure both increase over time for any valid model). Results can be
+    exported to tidy DataFrames or accessed as coefficient arrays.
 
     Parameters
     ----------
     df
         Spline degrees of freedom: the number of spline terms beyond the intercept, equal to
-        one more than the number of internal knots. `df=1` is a Weibull model; `df=3`
-        (two internal knots) is a common flexible default.
+        one more than the number of internal knots. `df=1` is a 2-parameter AFT model (Weibull or
+        log-logistic, depending on `scale`); `df=3` (two internal knots) is a common flexible
+        default.
+    scale
+        `"hazard"` (default, proportional hazards) or `"odds"` (proportional odds).
     conf_level
         Confidence level for coefficient intervals (default 0.95).
 
@@ -139,19 +190,33 @@ class RoystonParmar:
     rp = gw.RoystonParmar(df=3).fit(y, lung[["age", "sex"]])
     rp
     ```
+
+    Fit on the proportional-odds scale instead, giving odds-ratio coefficients:
+
+    ```{python}
+    # Fit a flexible proportional-odds model
+    rp_odds = gw.RoystonParmar(df=3, scale="odds").fit(y, lung[["age", "sex"]])
+    rp_odds
+    ```
     """
 
-    def __init__(self, df: int = 3, *, conf_level: float = 0.95) -> None:
+    def __init__(self, df: int = 3, *, scale: str = "hazard", conf_level: float = 0.95) -> None:
         if df < 1:
             raise ValueError(f"df must be at least 1, got {df}.")
+        if scale not in _VALID_SCALES:
+            raise ValueError(f"scale must be one of {sorted(_VALID_SCALES)}, got {scale!r}.")
         if not 0.0 < conf_level < 1.0:
             raise ValueError(f"conf_level must be in (0, 1), got {conf_level}.")
         self.df = df
+        self.scale = scale
         self.conf_level = conf_level
 
     def __repr__(self) -> str:
         if getattr(self, "coef_", None) is None:
-            return f"RoystonParmar(df={self.df}, conf_level={self.conf_level}) <unfitted>"
+            return (
+                f"RoystonParmar(df={self.df}, scale={self.scale!r}, "
+                f"conf_level={self.conf_level}) <unfitted>"
+            )
         from ._repr import align_table, fixed, num
 
         rows = [
@@ -159,9 +224,11 @@ class RoystonParmar:
             for c, se, z, p in zip(self.coef_, self.std_error_, self.z_, self.p_value_, strict=True)
         ]
         table = align_table(["coef", "se(coef)", "z", "p"], rows, list(self.term_names_))
+        ratio_kind = "hazard ratio" if self.scale == "hazard" else "odds ratio"
         return "\n".join(
             [
-                f"RoystonParmar (flexible parametric survival, df={self.df})",
+                f"RoystonParmar (flexible parametric survival, df={self.df}, "
+                f"scale={self.scale!r}, exp(coef) = {ratio_kind})",
                 "",
                 table,
                 "",
@@ -247,7 +314,7 @@ class RoystonParmar:
         rp_univariate
         ```
         """
-        from ._nonparametric import NelsonAalen
+        from ._nonparametric import KaplanMeier, NelsonAalen
         from ._surv import CensoringType
 
         if surv.type is not CensoringType.RIGHT:
@@ -283,6 +350,8 @@ class RoystonParmar:
         n_spline = basis.shape[1]
         n_cov = design.shape[1]
 
+        scale = self.scale
+
         def neg_loglik(theta: Array) -> float:
             gamma = theta[:n_spline]
             beta = theta[n_spline:]
@@ -290,15 +359,27 @@ class RoystonParmar:
             sprime = deriv @ gamma
             if np.any(sprime <= 0.0):  # pragma: no cover
                 return 1e12  # pragma: no cover
-            ll = event * (eta + np.log(sprime) - u) - np.exp(eta)
+            log_s = _link_log_survival(scale, eta)
+            log_neg_dlogs = _link_log_neg_dlogS(scale, eta)
+            ll = log_s + event * (log_neg_dlogs + np.log(sprime) - u)
             return -float(ll.sum())
 
-        # Initialize the spline from a least-squares fit of log(Nelson-Aalen) on the basis.
-        na = NelsonAalen().fit(surv)
-        na_time, na_cumhaz = na.time_, na.cumhaz_
-        pos = na_cumhaz > 0
-        b_init, _ = _rcs_basis(np.log(na_time[pos]), knots)
-        gamma0, *_ = np.linalg.lstsq(b_init, np.log(na_cumhaz[pos]), rcond=None)
+        # Initialize the spline by least squares against a non-parametric estimate on the same
+        # transformed scale: log(Nelson-Aalen cumulative hazard) for "hazard", logit(1 - KM
+        # survival) (log odds of failure) for "odds".
+        if scale == "hazard":
+            na = NelsonAalen().fit(surv)
+            init_time = na.time_
+            init_eta = np.log(na.cumhaz_)
+            pos = na.cumhaz_ > 0
+        else:
+            km = KaplanMeier().fit(surv)
+            init_time = km.time_
+            with np.errstate(divide="ignore"):
+                init_eta = np.log((1.0 - km.survival_) / km.survival_)
+            pos = (km.survival_ > 0) & (km.survival_ < 1)
+        b_init, _ = _rcs_basis(np.log(init_time[pos]), knots)
+        gamma0, *_ = np.linalg.lstsq(b_init, init_eta[pos], rcond=None)
         x0 = np.concatenate([gamma0, np.zeros(n_cov)])
 
         result = minimize(neg_loglik, x0, method="BFGS", options={"gtol": 1e-7, "maxiter": 2000})
@@ -462,13 +543,14 @@ class RoystonParmar:
         columns: dict[str, Array] = {"time": query}
         for i in range(x.shape[0]):
             eta, sprime = self._eta(query, x[i])
-            cumhaz = np.exp(eta)
+            log_s = _link_log_survival(self.scale, eta)
             if type == "cumhaz":
-                columns[f"subject_{i + 1}"] = cumhaz
+                columns[f"subject_{i + 1}"] = -log_s
             elif type == "survival":
-                columns[f"subject_{i + 1}"] = np.exp(-cumhaz)
+                columns[f"subject_{i + 1}"] = np.exp(log_s)
             elif type == "hazard":
-                columns[f"subject_{i + 1}"] = cumhaz * sprime / query
+                log_neg_dlogs = _link_log_neg_dlogS(self.scale, eta)
+                columns[f"subject_{i + 1}"] = np.exp(log_neg_dlogs) * sprime / query
             else:
                 raise ValueError(
                     f"Unknown predict type {type!r}; use 'survival', 'hazard', or 'cumhaz'."
@@ -561,7 +643,7 @@ class RoystonParmar:
             lp = float(x[i] @ beta) if beta.size else 0.0
 
             for k, pk in enumerate(p_arr):
-                target = np.log(-np.log(1.0 - pk))
+                target = _link_eta_target(self.scale, float(pk))
 
                 def _root_fn(u: float, _lp: float = lp, _tgt: float = target) -> float:
                     basis, _ = _rcs_basis(np.array([u]), knots)
@@ -742,7 +824,7 @@ class RoystonParmar:
                 u = np.log(t)
                 basis, _ = _rcs_basis(np.array([u]), knots)
                 eta = float((basis @ gamma)[0]) + _lp
-                return float(np.exp(-np.exp(eta)))
+                return float(np.exp(_link_log_survival(self.scale, np.array([eta]))[0]))
 
             val, _ = quad(_sf, 0.0, tau_val, limit=200)
             rmst[i] = val
@@ -773,10 +855,10 @@ class RoystonParmar:
                     grad[: self._n_spline] = basis.ravel()
                     if beta.size:
                         grad[self._n_spline :] = x[i]
-                    eta = float((basis @ gamma)[0]) + lp
-                    cumhaz = np.exp(eta)
-                    s_val = np.exp(-cumhaz)
-                    ds_deta = -cumhaz * s_val
+                    eta_arr = np.array([float((basis @ gamma)[0]) + lp])
+                    s_val = float(np.exp(_link_log_survival(self.scale, eta_arr)[0]))
+                    neg_dlogs = float(np.exp(_link_log_neg_dlogS(self.scale, eta_arr)[0]))
+                    ds_deta = -s_val * neg_dlogs
                     var_eta = float(grad @ self.vcov_ @ grad)
                     var_sum += (ds_deta**2 * var_eta) * dt**2
 
@@ -862,6 +944,7 @@ def _glance_rp(model: RoystonParmar, *, format: str | None = None, **_: Any) -> 
     n_params = len(model.coef_)
     return to_dataframe(
         {
+            "scale": [model.scale],
             "n": [model.n_],
             "nevent": [model.n_event_],
             "loglik": [model.loglik_],

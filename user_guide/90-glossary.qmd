@@ -777,6 +777,17 @@ Proportional hazards assumption
   formally with the **Schoenfeld residual** correlation test, available via
   `CoxPH.zph()` which returns a `ZPHResult`.
 
+Proportional odds model
+: An alternative to proportional hazards in which the odds ratio of failure by time $t$,
+  $\big[(1 - S(t \mid x)) / S(t \mid x)\big]$, rather than the hazard ratio, is assumed constant
+  over time. Useful when survival curves for two groups converge (or diverge) over time instead
+  of staying a fixed multiple apart, which violates proportional hazards but can still be
+  proportional on the odds scale. In Greenwood, available as `RoystonParmar(scale="odds")`: the
+  restricted cubic spline is placed on the log odds of failure instead of the log cumulative
+  hazard, and `exp(coef)` is an odds ratio rather than a hazard ratio. With `df=1` (no internal
+  knots), the proportional-odds Royston-Parmar model is exactly a log-logistic **accelerated
+  failure time** model, the same identity `scale="hazard"` has with the Weibull model.
+
 Random survival forest (RSF)
 : A **bagging** ensemble of **survival trees**, each grown on a bootstrap sample and considering a
   random subset of covariates at every split, following Ishwaran et al. (2008). Predictions average
@@ -792,9 +803,11 @@ Restricted cubic spline
   second derivative) and flexible. Internal knots are typically placed at quantiles of the
   event-time distribution, and the number of knots controls the smoothness–flexibility
   trade-off. Restricted cubic splines are the basis expansion used by the **Royston-Parmar**
-  model to represent the log cumulative hazard as a smooth function of $\log(t)$: with $k$
-  internal knots, $k - 1$ spline basis terms enter the linear predictor. The number of knots
-  is controlled by the `n_knots=` argument to `RoystonParmar` in Greenwood.
+  model to represent its transformed baseline survival function (log cumulative hazard or log
+  odds of failure, depending on `scale=`) as a smooth function of $\log(t)$: with $k$ internal
+  knots, $k - 1$ spline basis terms enter the linear predictor. The number of knots is
+  controlled by the `df=` argument to `RoystonParmar` in Greenwood (`df` equals the number of
+  spline terms, one more than the number of internal knots).
 
 Reference category
 : The baseline level of a categorical covariate against which all other levels are compared
@@ -863,12 +876,13 @@ ROC curve (receiver operating characteristic curve)
   `time_dependent_auc()` in Greenwood.
 
 Royston-Parmar model
-: A flexible parametric survival model that uses restricted cubic splines to represent the
-  log cumulative hazard (or log cumulative odds of the event), allowing smooth, data-driven
-  hazard shapes rather than the rigid forms imposed by exponential or Weibull models. It
-  bridges the gap between fully parametric models and the non-parametric Cox approach:
-  parameters are fully estimated so extrapolation and smooth hazard curves are possible.
-  Available via `RoystonParmar`.
+: A flexible parametric survival model that uses restricted cubic splines to represent a
+  transformed baseline survival function, allowing smooth, data-driven shapes rather than the
+  rigid forms imposed by exponential or Weibull models. It bridges the gap between fully
+  parametric models and the non-parametric Cox approach: parameters are fully estimated so
+  extrapolation and smooth hazard curves are possible. Two scales are available via `scale=`:
+  the log cumulative hazard (`scale="hazard"`, proportional hazards, the default) or the log
+  odds of failure (`scale="odds"`, **proportional odds model**). Available via `RoystonParmar`.
 
 Schoenfeld power formula
 : A result due to Schoenfeld (1981) that links the power of the **log-rank test** to the

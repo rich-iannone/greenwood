@@ -42,6 +42,69 @@ def test_df1_matches_r_weibull(lung, y) -> None:
     )
 
 
+def test_df1_odds_matches_r_loglogistic(lung, y) -> None:
+    # scale="odds" with df=1 is exactly a log-logistic AFT model, the same identity as
+    # scale="hazard" with df=1 being exactly Weibull (test_df1_matches_r_weibull above).
+    fixture = load_fixture("rp_loglogistic_anchor")
+    rp = RoystonParmar(df=1, scale="odds").fit(y, lung[["age", "sex"]])
+    assert_allclose_to_r(rp.loglik_, fixture["loglik"], atol=1e-3, what="df=1 odds loglik")
+    newdata = pd.DataFrame({"age": fixture["newdata_age"], "sex": fixture["newdata_sex"]})
+    surv = rp.predict(newdata, type="survival", times=fixture["times"])
+    assert_allclose_to_r(
+        surv["subject_1"].to_numpy(),
+        fixture["surv"]["subj1"],
+        atol=1e-4,
+        what="df=1 odds surv subj1",
+    )
+    assert_allclose_to_r(
+        surv["subject_2"].to_numpy(),
+        fixture["surv"]["subj2"],
+        atol=1e-4,
+        what="df=1 odds surv subj2",
+    )
+
+
+def test_df1_odds_matches_aft_loglogistic(lung, y) -> None:
+    rp = RoystonParmar(df=1, scale="odds").fit(y, lung[["age", "sex"]])
+    aft = gw.AFT("loglogistic").fit(y, lung[["age", "sex"]])
+    assert rp.loglik_ == pytest.approx(aft.loglik_, abs=1e-3)
+
+
+def test_invalid_scale() -> None:
+    with pytest.raises(ValueError, match="scale"):
+        RoystonParmar(scale="bogus")
+
+
+def test_odds_scale_survival_monotonic(lung, y) -> None:
+    rp = RoystonParmar(df=3, scale="odds").fit(y, lung[["age", "sex"]])
+    times = np.linspace(10, 900, 50)
+    surv = rp.predict(lung[["age", "sex"]][:1], type="survival", times=times)
+    s = surv["subject_1"].to_numpy()
+    assert np.all(np.diff(s) <= 1e-9)
+    assert np.all((s >= 0.0) & (s <= 1.0))
+
+
+def test_odds_scale_hazard_positive(lung, y) -> None:
+    rp = RoystonParmar(df=3, scale="odds").fit(y, lung[["age", "sex"]])
+    times = np.linspace(10, 900, 50)
+    hazard = rp.predict(lung[["age", "sex"]][:1], type="hazard", times=times)
+    assert np.all(hazard["subject_1"].to_numpy() > 0.0)
+
+
+def test_odds_scale_quantile_inverts_survival(lung, y) -> None:
+    rp = RoystonParmar(df=3, scale="odds").fit(y, lung[["age", "sex"]])
+    q = rp.predict_quantile(lung[["age", "sex"]][:1], p=0.4)
+    t_q = float(q["subject_1"][0])
+    surv_at_q = rp.predict(lung[["age", "sex"]][:1], type="survival", times=[t_q])
+    assert float(surv_at_q["subject_1"][0]) == pytest.approx(0.6, abs=1e-3)
+
+
+def test_odds_scale_glance_reports_scale(lung, y) -> None:
+    rp = RoystonParmar(df=3, scale="odds").fit(y, lung[["age", "sex"]])
+    g = gw.glance(rp, format="pandas")
+    assert g["scale"][0] == "odds"
+
+
 def test_more_df_fits_at_least_as_well(lung, y) -> None:
     logliks = [RoystonParmar(df=d).fit(y, lung[["age", "sex"]]).loglik_ for d in (1, 2, 3, 4)]
     for lo, hi in zip(logliks, logliks[1:], strict=False):
