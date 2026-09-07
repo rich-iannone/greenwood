@@ -22,7 +22,7 @@ Unlike many statistical libraries, Greenwood is built on [Narwhals](https://narw
 Every Greenwood analysis follows a consistent workflow:
 
 1. **Represent the data** with `Surv`: capture survival outcomes and censoring (right, left, interval, or counting-process form) in a validated response object.
-2. **Estimate and summarize**: use `KaplanMeier` or `NelsonAalen` to describe the data, then compare groups with `logrank_test`, trend tests, or RMST comparisons.
+2. **Estimate and summarize**: use `KaplanMeier`, `NelsonAalen`, or `Turnbull` (for interval-censored data) to describe the data, then compare groups with `logrank_test`, trend tests, or RMST comparisons.
 3. **Build and fit models**: fit Cox proportional hazards, parametric AFT models, or competing-risks models to examine covariate effects.
 4. **Visualize and evaluate**: create publication-quality plots with `plot_survival`, `forest_plot`, or `cif_plot`, and assess model performance with concordance, Brier scores, or cross-validation.
 5. **Report results**: tidy model summaries and publication tables are built in via broom-compatible `tidy()` functions and Great Tables.
@@ -80,7 +80,7 @@ gw.tidy(cox, exponentiate=True, format="polars")
 
 ## What's inside
 
-**Descriptive statistics**: Kaplan-Meier curves with Greenwood confidence intervals, restricted mean survival time (RMST), quantiles, and medians. Nelson-Aalen cumulative hazard. Event tables and risk sets.
+**Descriptive statistics**: Kaplan-Meier curves with Greenwood confidence intervals, restricted mean survival time (RMST), quantiles, and medians. Nelson-Aalen cumulative hazard. Turnbull's NPMLE for interval-censored data. Event tables and risk sets.
 
 **Group comparisons**: Log-rank and Peto-Peto tests, Fleming-Harrington tests for weighted comparisons, linear trend tests across ordered groups, and RMST hypothesis tests with pairwise comparisons.
 
