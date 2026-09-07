@@ -501,7 +501,7 @@ Interval censoring
 : A censoring mechanism in which the event is known only to have occurred within a time
   interval $[\ell_i, u_i]$, rather than at an exact time. Built with
   `Surv.interval(lower, upper)`. Use `numpy.inf` as the upper bound to represent right
-  censoring within this form.
+  censoring within this form. Estimated non-parametrically by **Turnbull's algorithm**.
 
 IPCW (inverse probability of censoring weighting)
 : A technique for correcting for informative censoring in prediction metrics. Observations
@@ -1015,6 +1015,17 @@ Truncation
   the event before they could enter the study are not observed at all, biasing estimates if
   not accounted for. The **counting-process form** corrects for left truncation by having
   subjects enter the risk set only at their entry time.
+
+Turnbull's algorithm (NPMLE for interval-censored data)
+: The nonparametric maximum likelihood estimator (NPMLE) of the survival function under
+  **interval censoring** (Turnbull, 1976), computed by an EM self-consistency algorithm. Unlike
+  Kaplan-Meier, the estimator's support is not identified everywhere: the data determine a set of
+  *maximal intersection intervals* (via the Gentleman & Geyer 1994 construction), and only the total
+  probability mass on each one is identified, not where within it the mass truly sits. Where an
+  interval degenerates to a single point, survival is known exactly there; elsewhere it is reported
+  as an explicit ambiguity bracket rather than an interpolated guess. Reduces exactly to the
+  Kaplan-Meier estimator when there is no genuine interval ambiguity (only exact events and right
+  censoring). Available via `Turnbull`.
 
 Weibull plot
 : A diagnostic visualization that plots Kaplan-Meier survival estimates on transformed axes where a
