@@ -114,6 +114,69 @@ def test_turnbull_predict_before_first_atom_is_one() -> None:
     np.testing.assert_allclose(tb.predict([0.0]), [1.0])
 
 
+def test_turnbull_rmst_reduces_to_km() -> None:
+    y = Surv.right([1, 2, 3, 4, 5], [1, 1, 0, 1, 0])
+    tb = Turnbull().fit(y)
+    km = KaplanMeier().fit(y)
+
+    assert tb.rmst(4) == pytest.approx(km.rmst(4), abs=1e-8)
+
+
+def test_turnbull_rmrl_reduces_to_km() -> None:
+    y = Surv.right([1, 2, 3, 4, 5], [1, 1, 0, 1, 0])
+    tb = Turnbull().fit(y)
+    km = KaplanMeier().fit(y)
+
+    assert tb.rmrl(2, 4) == pytest.approx(km.rmrl(2, 4), abs=1e-8)
+
+
+def test_turnbull_rmst_right_endpoint_convention() -> None:
+    # A single wide ambiguous atom (0, 10]: the right-endpoint convention treats all of its
+    # mass as resolving exactly at t=10, so S=1 throughout [0, 10) and RMST(tau) == tau for
+    # any tau <= 10.
+    y = Surv.interval(lower=[0, 0], upper=[10, 10])
+    tb = Turnbull().fit(y)
+
+    assert tb.rmst(10) == pytest.approx(10.0)
+    assert tb.rmst(5) == pytest.approx(5.0)
+
+
+def test_turnbull_rmrl_equals_rmst_at_zero() -> None:
+    y = Surv.interval(lower=[0, 4, 7, 0, 3, 5], upper=[4, float("inf"), 7, 2.5, 6, 5])
+    tb = Turnbull().fit(y)
+
+    assert tb.rmrl(0.0, 7.0) == pytest.approx(tb.rmst(7.0))
+
+
+def test_turnbull_rmrl_nan_when_fully_resolved() -> None:
+    y = Surv.right([1, 2], [1, 1])
+    tb = Turnbull().fit(y)
+
+    assert np.isnan(tb.rmrl(2.0, 5.0))
+
+
+def test_turnbull_rmrl_invalid_tau() -> None:
+    y = Surv.right([1, 2], [1, 1])
+    tb = Turnbull().fit(y)
+    with pytest.raises(ValueError, match="tau"):
+        tb.rmrl(5.0, 4.0)
+
+
+def test_turnbull_rmrl_invalid_s() -> None:
+    y = Surv.right([1, 2], [1, 1])
+    tb = Turnbull().fit(y)
+    with pytest.raises(ValueError, match="non-negative"):
+        tb.rmrl(-1.0, 4.0)
+
+
+def test_turnbull_rmst_grouped_returns_dict() -> None:
+    y = Surv.right([1, 2, 1, 2], [1, 1, 1, 1])
+    tb = Turnbull().fit(y, by=["a", "a", "b", "b"])
+    result = tb.rmst(2)
+
+    assert set(result) == {"a", "b"}
+
+
 def test_turnbull_grouped_returns_dict() -> None:
     y = Surv.right([1, 2, 1, 2], [1, 1, 1, 1])
     tb = Turnbull().fit(y, by=["a", "a", "b", "b"])
