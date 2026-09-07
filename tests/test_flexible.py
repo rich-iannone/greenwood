@@ -338,6 +338,113 @@ class TestToFrame:
         assert len(df) == 6
 
 
+# ---------------------------------------------------------------------------
+# to_frame / predict format and error-path tests
+# ---------------------------------------------------------------------------
+
+
+class TestToFrameContent:
+    def test_columns(self, rp3) -> None:
+        df = rp3.to_frame(format="pandas")
+        assert list(df.columns) == [
+            "term",
+            "estimate",
+            "std_error",
+            "statistic",
+            "p_value",
+            "conf_low",
+            "conf_high",
+        ]
+
+    def test_terms_match(self, rp3) -> None:
+        df = rp3.to_frame(format="pandas")
+        assert list(df["term"]) == rp3.term_names_
+
+    def test_estimates_match_coef(self, rp3) -> None:
+        df = rp3.to_frame(format="pandas")
+        np.testing.assert_allclose(df["estimate"].to_numpy(), rp3.coef_)
+
+    def test_std_errors_match(self, rp3) -> None:
+        df = rp3.to_frame(format="pandas")
+        np.testing.assert_allclose(df["std_error"].to_numpy(), rp3.std_error_)
+
+    def test_ci_brackets_estimate(self, rp3) -> None:
+        df = rp3.to_frame(format="pandas")
+        assert (df["conf_low"] <= df["estimate"]).all()
+        assert (df["conf_high"] >= df["estimate"]).all()
+
+    def test_format_pandas(self, rp3) -> None:
+        df = rp3.to_frame(format="pandas")
+        assert isinstance(df, pd.DataFrame)
+
+    def test_matches_tidy(self, rp3) -> None:
+        tf = rp3.to_frame(format="pandas")
+        tidy = gw.tidy(rp3, format="pandas")
+        pd.testing.assert_frame_equal(tf, tidy)
+
+
+class TestPredictFormats:
+    def test_predict_pandas(self, rp3) -> None:
+        nd = pd.DataFrame({"age": [60], "sex": [1]})
+        surv = rp3.predict(nd, type="survival", times=[180, 365], format="pandas")
+        assert isinstance(surv, pd.DataFrame)
+        assert list(surv.columns) == ["time", "subject_1"]
+
+    def test_predict_columns_multi_subject(self, rp3) -> None:
+        nd = pd.DataFrame({"age": [50, 70], "sex": [1, 2]})
+        surv = rp3.predict(nd, type="survival", times=[180], format="pandas")
+        assert list(surv.columns) == ["time", "subject_1", "subject_2"]
+
+    def test_predict_quantile_pandas(self, rp3) -> None:
+        nd = pd.DataFrame({"age": [60], "sex": [1]})
+        q = rp3.predict_quantile(nd, p=0.5, format="pandas")
+        assert isinstance(q, pd.DataFrame)
+
+    def test_predict_quantile_multi_subject(self, rp3) -> None:
+        nd = pd.DataFrame({"age": [50, 60, 70], "sex": [1, 1, 2]})
+        q = rp3.predict_quantile(nd, p=[0.25, 0.5, 0.75], format="pandas")
+        assert q.shape == (3, 4)  # 3 p-values × (p + 3 subjects)
+        assert list(q.columns) == ["p", "subject_1", "subject_2", "subject_3"]
+
+    def test_predict_median_pandas(self, rp3) -> None:
+        nd = pd.DataFrame({"age": [60], "sex": [1]})
+        med = rp3.predict_median(nd, format="pandas")
+        assert isinstance(med, pd.DataFrame)
+
+    def test_predict_expectation_pandas(self, rp3) -> None:
+        nd = pd.DataFrame({"age": [60], "sex": [1]})
+        rmst = rp3.predict_expectation(nd, tau=365, format="pandas")
+        assert isinstance(rmst, pd.DataFrame)
+
+
+class TestRoystonParmarErrorPaths:
+    def test_rejects_non_right_censored(self) -> None:
+        yc = Surv.counting([0, 1, 2], [5, 6, 7], [1, 0, 1])
+        x = np.array([[1.0], [2.0], [3.0]])
+        with pytest.raises(NotImplementedError, match="right-censored"):
+            RoystonParmar(df=1).fit(yc, x)
+
+    def test_row_mismatch_raises(self, y) -> None:
+        x = np.array([[1.0], [2.0]])
+        with pytest.raises(ValueError, match="same number of rows"):
+            RoystonParmar(df=1).fit(y, x)
+
+    def test_predict_quantile_invalid_p_zero(self, rp3) -> None:
+        nd = pd.DataFrame({"age": [60], "sex": [1]})
+        with pytest.raises(ValueError, match="p must be in"):
+            rp3.predict_quantile(nd, p=0.0)
+
+    def test_predict_quantile_invalid_p_one(self, rp3) -> None:
+        nd = pd.DataFrame({"age": [60], "sex": [1]})
+        with pytest.raises(ValueError, match="p must be in"):
+            rp3.predict_quantile(nd, p=1.0)
+
+    def test_predict_expectation_invalid_tau(self, rp3) -> None:
+        nd = pd.DataFrame({"age": [60], "sex": [1]})
+        with pytest.raises(ValueError, match="tau must be positive"):
+            rp3.predict_expectation(nd, tau=-1)
+
+
 def test_tidy_columns(lung, y) -> None:  # type: ignore[no-untyped-def]
     rp = RoystonParmar(df=3).fit(y, lung[["age", "sex"]])
     tidy = gw.tidy(rp, format="pandas")

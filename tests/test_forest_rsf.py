@@ -493,6 +493,73 @@ def test_survival_tree_predict_rejects_unknown_type(data) -> None:
         tree.predict(x, type="lp")
 
 
+# -- SurvivalTree predict format and structure tests ----------------------------------------
+
+
+@pytest.fixture(scope="module")
+def tree(data):  # type: ignore[no-untyped-def]
+    y, x = data
+    return SurvivalTree(max_depth=3, random_state=0).fit(y, x)
+
+
+class TestSurvivalTreePredict:
+
+    def test_survival_format_polars(self, tree, data) -> None:
+        import polars as pl
+
+        _, x = data
+        surv = tree.predict(x[:2], type="survival", times=[180, 365], format="polars")
+        assert isinstance(surv, pl.DataFrame)
+        assert "time" in surv.columns
+
+    def test_survival_format_pandas(self, tree, data) -> None:
+        import pandas as pd
+
+        _, x = data
+        surv = tree.predict(x[:2], type="survival", times=[180, 365], format="pandas")
+        assert isinstance(surv, pd.DataFrame)
+        assert list(surv.columns) == ["time", "subject_1", "subject_2"]
+
+    def test_cumhaz_format_polars(self, tree, data) -> None:
+        import polars as pl
+
+        _, x = data
+        ch = tree.predict(x[:1], type="cumulative_hazard", times=[100, 300], format="polars")
+        assert isinstance(ch, pl.DataFrame)
+
+    def test_custom_times_respected(self, tree, data) -> None:
+        import pandas as pd
+
+        _, x = data
+        times = [100.0, 250.0, 500.0]
+        surv = tree.predict(x[:1], type="survival", times=times, format="pandas")
+        assert list(surv["time"]) == times
+
+    def test_survival_and_cumhaz_consistent(self, tree, data) -> None:
+        _, x = data
+        times = [100, 200, 400]
+        surv = tree.predict(x[:2], type="survival", times=times, format="pandas")
+        ch = tree.predict(x[:2], type="cumulative_hazard", times=times, format="pandas")
+        for col in ["subject_1", "subject_2"]:
+            s = surv[col].to_numpy()
+            h = ch[col].to_numpy()
+            assert np.all(s <= 1.0) and np.all(s >= 0.0)
+            assert np.all(h >= 0.0)
+            assert np.all(np.diff(s) <= 1e-12)
+            assert np.all(np.diff(h) >= -1e-12)
+
+    def test_risk_is_scalar_per_subject(self, tree, data) -> None:
+        _, x = data
+        risk = tree.predict(x[:5], type="risk")
+        assert risk.shape == (5,)
+        assert risk.dtype == np.float64
+
+    def test_default_times_uses_event_times(self, tree, data) -> None:
+        _, x = data
+        surv = tree.predict(x[:1], type="survival", format="pandas")
+        assert surv.shape[0] == len(tree.event_times_)
+
+
 # -- forest constructor, repr, and fit validation -------------------------------------------
 
 
