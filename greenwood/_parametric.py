@@ -566,8 +566,8 @@ class AFT:
 
         def _unpack(params: Array) -> tuple[Array, float, float, float, float]:
             beta = params[:n_coef]
-            log_sigma = params[n_coef] if has_scale else 0.0
-            sigma = np.exp(log_sigma)
+            log_sigma = float(params[n_coef]) if has_scale else 0.0
+            sigma = float(np.exp(log_sigma))
             q_val = float(params[n_coef + 1]) if has_Q else 0.0
             gamma = float(params[-1]) if has_threshold else 0.0
             return beta, sigma, log_sigma, q_val, gamma
