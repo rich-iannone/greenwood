@@ -620,9 +620,7 @@ class AFT:
                 sigma_w = np.exp(params_w[n_coef])
                 z_w = (log_t_plain - x @ beta_w) / sigma_w
                 log_f_w, log_s_w = _log_density_survival("weibull", z_w)
-                ll_w = (
-                    event * (log_f_w - params_w[n_coef] - log_t_plain) + (1.0 - event) * log_s_w
-                )
+                ll_w = event * (log_f_w - params_w[n_coef] - log_t_plain) + (1.0 - event) * log_s_w
                 return -float(ll_w.sum())
 
             x0_w = np.zeros(n_coef + 1)
@@ -687,9 +685,7 @@ class AFT:
                     options={"maxiter": 2000, "ftol": 1e-12, "gtol": 1e-10},
                 )
         else:
-            result = minimize(
-                objective, x0, method="BFGS", options={"gtol": 1e-8, "maxiter": 1000}
-            )
+            result = minimize(objective, x0, method="BFGS", options={"gtol": 1e-8, "maxiter": 1000})
         params = result.x
         vcov = np.linalg.inv(_num_hessian(objective, params))
 
@@ -1459,14 +1455,22 @@ class AFT:
 
                 rmst_lo = float(
                     _rmst_value(
-                        self.dist, np.array([mu_lo]), self.scale_, tau_val,
-                        threshold=self.threshold_, Q=self._q,
+                        self.dist,
+                        np.array([mu_lo]),
+                        self.scale_,
+                        tau_val,
+                        threshold=self.threshold_,
+                        Q=self._q,
                     )[0]
                 )
                 rmst_hi = float(
                     _rmst_value(
-                        self.dist, np.array([mu_hi]), self.scale_, tau_val,
-                        threshold=self.threshold_, Q=self._q,
+                        self.dist,
+                        np.array([mu_hi]),
+                        self.scale_,
+                        tau_val,
+                        threshold=self.threshold_,
+                        Q=self._q,
                     )[0]
                 )
 
