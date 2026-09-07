@@ -11,7 +11,8 @@ Accelerated failure time (AFT)
   as a linear function of covariates. Covariates "accelerate" or "decelerate" time to the
   event rather than scaling the hazard. The coefficient $e^\beta$ is an acceleration factor.
   Greenwood provides AFT with Weibull, exponential, log-normal, and log-logistic distributions
-  via `AFT`.
+  via `AFT`, including an optional **threshold** (location) parameter fit by ordinary maximum
+  likelihood or **maximum product of spacings**.
 
 Aalen-Johansen estimator
 : A non-parametric estimator of the cumulative incidence function (CIF) in a competing-risks
@@ -622,6 +623,19 @@ Martingale residuals
   long-surviving censored subjects. **Deviance residuals** symmetrize them. Available from
   `CoxPH` and `AFT` via `residuals(type="martingale")`.
 
+Maximum product of spacings (MPS)
+: An alternative to maximum likelihood for fitting a parametric distribution (Cheng & Amin,
+  1983), used by `AFT(method="mps")`. Each exact observation's density contribution is replaced
+  by the gap between consecutive order statistics on the CDF scale (in the **location-scale
+  parameterization**'s standardized $\varepsilon$), and right-censored observations keep the
+  ordinary log-survival contribution (Cheng & Stephens, 1989). Because a CDF gap is bounded in
+  $[0, 1]$, this objective cannot diverge to infinity the way a raw density can, which matters
+  specifically for a **threshold parameter**: the ordinary likelihood can be unbounded as the
+  threshold approaches the smallest observed time (for some distributions), while MPS stays
+  well-behaved there. Asymptotically equivalent to maximum likelihood under regularity
+  conditions, so standard errors are still obtained from the numeric Hessian of the objective
+  actually optimized.
+
 Model-based standard error
 : The default standard error reported for a Cox model's coefficients, computed from the
   inverse of the observed information matrix (the negative Hessian of the partial
@@ -967,6 +981,17 @@ Surv object
   validates them eagerly. Every estimator and model in Greenwood consumes a `Surv` object.
   Built with `Surv.right()`, `Surv.counting()`, `Surv.left()`, `Surv.interval()`, or
   `Surv.multistate()` depending on the censoring and event structure of the data.
+
+Threshold parameter (location parameter)
+: A three-parameter extension of a 2-parameter accelerated failure time distribution: $T =
+  \gamma + T'$, where $\gamma \ge 0$ is a guaranteed minimum survival time and $T'$ follows the
+  ordinary **location-scale parameterization**. Useful when a failure process has a genuine
+  floor, a burn-in period in reliability engineering, or an incubation time before an event
+  becomes possible. Not to be confused with the **Location-scale parameterization**'s own
+  location $\mu$, which shifts log-time rather than time itself and carries no such floor.
+  Enabled via `AFT(threshold=True)`; not supported for `dist="gengamma"`. Best fit with
+  `method="mps"` (**maximum product of spacings**) rather than ordinary maximum likelihood,
+  which can drive $\gamma$ toward the smallest observed time.
 
 Time-dependent AUC
 : The area under the ROC curve at a specific time horizon, measuring a model's ability to
