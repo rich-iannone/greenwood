@@ -88,9 +88,14 @@ def _parametric_line_columns(
     mu = float(np.mean(aft._x @ aft.coef_))
     sigma = aft.scale_
     Q = getattr(aft, "Q_", None) or 0.0
+    threshold = getattr(aft, "threshold_", 0.0)
 
     lt = np.linspace(log_time_range[0], log_time_range[1], n_points)
-    z = (lt - mu) / sigma
+    t = np.exp(lt)
+    resolvable = t > threshold
+    shifted = np.where(resolvable, t - threshold, 1.0)
+    log_t_shifted = np.where(resolvable, np.log(shifted), -np.inf)
+    z = (log_t_shifted - mu) / sigma
     _, log_s = _log_density_survival(aft.dist, z, Q=Q)
     s = np.exp(log_s)
 

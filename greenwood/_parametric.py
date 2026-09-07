@@ -14,6 +14,7 @@ log-likelihood are validated to tolerance against `survreg`.
 
 from __future__ import annotations
 
+import warnings
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -49,6 +50,17 @@ def _log_density_survival(dist: str, z: Array, *, Q: float = 0.0) -> tuple[Array
         return _gengamma_log_density_survival(z, Q)
     # loglogistic
     return logistic.logpdf(z), logistic.logsf(z)
+
+
+def _cdf(dist: str, z: Array, *, Q: float = 0.0) -> Array:
+    """Standardized CDF of the error term at `z`, derived from the log-survival.
+
+    Used by the maximum-product-of-spacings objective, which needs $F(z) = 1 - S(z)$ rather
+    than $S(z)$ itself. `-expm1(log_s)` is numerically stable for `log_s` close to 0 (i.e. `S`
+    close to 1, where a naive `1 - exp(log_s)` would lose precision to cancellation).
+    """
+    _, log_s = _log_density_survival(dist, z, Q=Q)
+    return -np.expm1(log_s)
 
 
 def _dlogf_dz(dist: str, z: Array, *, Q: float = 0.0) -> Array:
@@ -249,6 +261,43 @@ def _tail_partial_moment(dist: str, mu: Array, sigma: float, t0: Array, *, Q: fl
     return out
 
 
+def _rmst_value(
+    dist: str, mu: Array, sigma: float, tau: float, *, threshold: float = 0.0, Q: float = 0.0
+) -> Array:
+    r"""$E[\min(T, \tau)]$ per subject, under an optional threshold shift.
+
+    With a threshold $\gamma$, $T = \gamma + T'$ where $T'$ follows the 2-parameter error
+    distribution. If $\tau \le \gamma$, $T > \gamma \ge \tau$ almost surely, so
+    $E[\min(T, \tau)] = \tau$ trivially. Otherwise $E[\min(T, \tau)] = \gamma +
+    E[\min(T', \tau - \gamma)] = \gamma + E[T'] - \text{tail}'(\tau - \gamma)$, reusing the
+    2-parameter closed forms on the shifted horizon.
+    """
+    if tau <= threshold:
+        return np.full_like(mu, tau)
+    tau_shifted = tau - threshold
+    if dist == "loglogistic" and sigma >= 1.0:
+        # E[T'] = inf when sigma >= 1; integrate S' from 0 to tau_shifted directly.
+        from scipy.integrate import quad
+
+        out = np.empty_like(mu)
+        for i in range(mu.shape[0]):
+            mu_i = float(mu[i])
+
+            def _sf(t: float, _mu: float = mu_i) -> float:
+                z = (np.log(t) - _mu) / sigma
+                return float(logistic.sf(z))
+
+            val, _ = quad(_sf, 0.0, tau_shifted, limit=200)
+            out[i] = val
+        return threshold + out
+    tau_arr = np.full_like(mu, tau_shifted)
+    return (
+        threshold
+        + _mean_survival_aft(dist, mu, sigma, Q=Q)
+        - _tail_partial_moment(dist, mu, sigma, tau_arr, Q=Q)
+    )
+
+
 def _num_hessian(fn: Any, x: Array, rel_step: float = 1e-5) -> Array:
     """Central-difference Hessian of a scalar function at `x`."""
     n = x.shape[0]
@@ -303,13 +352,24 @@ class AFT:
         ratio tests (see `test_distributions()`).
     conf_level
         Confidence level for coefficient intervals (the default is `0.95`).
+    method
+        Estimation method: `"mle"` (default, ordinary maximum likelihood) or `"mps"` (maximum
+        product of spacings). MPS replaces each exact observation's density contribution with
+        the gap between consecutive order statistics on the CDF scale, which stays bounded where
+        MLE's density can diverge; see `threshold` for when this matters.
+    threshold
+        If `True`, fit a three-parameter model with a location/threshold parameter $\gamma$: $T =
+        \gamma + T'$, where $T'$ follows the ordinary 2-parameter `dist`. Not supported for
+        `dist="gengamma"`. `method="mle"` with `threshold=True` can drive $\gamma$ toward the
+        smallest observed time, where the likelihood is unbounded for some distributions;
+        `method="mps"` is recommended in that case (a warning is raised otherwise).
 
     Returns
     -------
     Fitted estimator
         Call `fit()` to produce a fitted estimator with cached results (`coef_`, `scale_`,
-        `std_error_`, `z_`, `p_value_`, `conf_low_`, `conf_high_`, `loglik_`, `aic_`, `bic_`),
-        accessible as arrays or exported to DataFrames.
+        `threshold_`, `std_error_`, `z_`, `p_value_`, `conf_low_`, `conf_high_`, `loglik_`,
+        `aic_`, `bic_`), accessible as arrays or exported to DataFrames.
 
     Details
     -------
@@ -337,17 +397,40 @@ class AFT:
     ```
     """
 
-    def __init__(self, dist: str = "weibull", *, conf_level: float = 0.95) -> None:
+    def __init__(
+        self,
+        dist: str = "weibull",
+        *,
+        conf_level: float = 0.95,
+        method: str = "mle",
+        threshold: bool = False,
+    ) -> None:
         if dist not in _DISTS:
             raise ValueError(f"dist must be one of {sorted(_DISTS)}, got {dist!r}.")
         if not 0.0 < conf_level < 1.0:
             raise ValueError(f"conf_level must be in (0, 1), got {conf_level}.")
+        if method not in ("mle", "mps"):
+            raise ValueError(f"method must be 'mle' or 'mps', got {method!r}.")
+        if threshold and dist == "gengamma":
+            raise ValueError("threshold=True is not supported for dist='gengamma'.")
+        if threshold and method == "mle":
+            warnings.warn(
+                "threshold=True with method='mle' can drive the threshold toward the smallest "
+                "observed time, where the likelihood is unbounded for some distributions. "
+                "method='mps' is recommended instead.",
+                stacklevel=2,
+            )
         self.dist = dist
         self.conf_level = conf_level
+        self.method = method
+        self.threshold = threshold
 
     def __repr__(self) -> str:
         if getattr(self, "coef_", None) is None:
-            return f"AFT(dist={self.dist!r}, conf_level={self.conf_level}) <unfitted>"
+            return (
+                f"AFT(dist={self.dist!r}, conf_level={self.conf_level}, "
+                f"method={self.method!r}, threshold={self.threshold}) <unfitted>"
+            )
         from ._repr import align_table, fixed, num
 
         rows = [
@@ -355,8 +438,12 @@ class AFT:
             for c, se, z, p in zip(self.coef_, self.std_error_, self.z_, self.p_value_, strict=True)
         ]
         table = align_table(["coef", "se(coef)", "z", "p"], rows, list(self.term_names_))
+        header = f"AFT (accelerated failure time model, dist={self.dist!r}"
+        if self.method != "mle":
+            header += f", method={self.method!r}"
+        header += ")"
         lines = [
-            f"AFT (accelerated failure time model, dist={self.dist!r})",
+            header,
             "",
             table,
             "",
@@ -364,6 +451,8 @@ class AFT:
         ]
         if self.Q_ is not None:
             lines.append(f"Q = {num(self.Q_)}")
+        if self.threshold:
+            lines.append(f"Threshold = {num(self.threshold_)}")
         lines.extend(
             [
                 f"n = {self.n_}, events = {self.n_event_}",
@@ -402,8 +491,8 @@ class AFT:
         -------
         AFT
             The fitted estimator object itself (for method chaining) with cached coefficient arrays
-            (`coef_`, `std_error_`, `z_`, `p_value_`), scale parameter (`scale_`), and
-            log-likelihood (`loglik_`).
+            (`coef_`, `std_error_`, `z_`, `p_value_`), scale parameter (`scale_`), threshold
+            (`threshold_`, `0.0` unless `threshold=True`), and log-likelihood (`loglik_`).
 
         Details
         -------
@@ -413,8 +502,13 @@ class AFT:
         $S(t \mid X) = P(T > t \mid X) = G((\log(t) - X\beta) / \sigma)$, where $G$ is the survival
         function of the error distribution.
 
-        Estimation uses maximum likelihood via numerical optimization. Exponential and Weibull
-        models are nested special cases; log-normal and log-logistic offer different tail behaviors.
+        Estimation uses maximum likelihood via numerical optimization by default (`method="mle"`).
+        Exponential and Weibull models are nested special cases; log-normal and log-logistic offer
+        different tail behaviors. With `threshold=True`, $T = \gamma + T'$ for a location parameter
+        $\gamma \ge 0$ and 2-parameter `dist` $T'$; `method="mps"` (maximum product of spacings)
+        replaces each exact observation's density with the gap between consecutive order
+        statistics on the CDF scale, which stays bounded where the ordinary likelihood can diverge
+        as $\gamma$ approaches the smallest observed time.
 
         Examples
         --------
@@ -458,45 +552,142 @@ class AFT:
 
         x = np.column_stack([np.ones(design.shape[0]), design])
         names = ["(Intercept)", *cov_names]
-        log_t = np.log(time)
         n_coef = x.shape[1]
         has_scale = self.dist != "exponential"
         has_Q = self.dist == "gengamma"
+        has_threshold = self.threshold
+        t_min = float(time.min())
+        # Keep the threshold strictly below every observed time (censored or exact): the
+        # likelihood/spacings need log(time - threshold) to be defined for all of them.
+        gamma_bound = t_min - 1e-6 * max(t_min, 1.0)
+
+        def _shifted_log_time(gamma: float) -> Array:
+            return np.log(np.clip(time - gamma, 1e-300, None))
+
+        def _unpack(params: Array) -> tuple[Array, float, float, float, float]:
+            beta = params[:n_coef]
+            log_sigma = float(params[n_coef]) if has_scale else 0.0
+            sigma = float(np.exp(log_sigma))
+            q_val = float(params[n_coef + 1]) if has_Q else 0.0
+            gamma = float(params[-1]) if has_threshold else 0.0
+            return beta, sigma, log_sigma, q_val, gamma
 
         def neg_loglik(params: Array) -> float:
-            beta = params[:n_coef]
-            log_sigma = params[n_coef] if has_scale else 0.0
-            sigma = np.exp(log_sigma)
-            q_val = float(params[n_coef + 1]) if has_Q else 0.0
+            beta, sigma, log_sigma, q_val, gamma = _unpack(params)
+            log_t = _shifted_log_time(gamma)
             z = (log_t - x @ beta) / sigma
             log_f, log_s = _log_density_survival(self.dist, z, Q=q_val)
             ll = event * (log_f - log_sigma - log_t) + (1.0 - event) * log_s
             return -float(ll.sum())
 
+        def neg_mps(params: Array) -> float:
+            r"""Negative maximum-product-of-spacings objective (Cheng & Amin 1983).
+
+            Exact observations contribute consecutive gaps between sorted CDF values (bounded,
+            unlike a raw density, so a threshold parameter cannot drive this to $-\infty$);
+            censored observations keep the ordinary $\log S$ contribution (Cheng & Stephens 1989).
+            Every subject's error is standardized to the same distribution regardless of
+            covariates, so sorting by $z$ generalizes the univariate spacing construction to
+            the regression setting.
+            """
+            beta, sigma, _log_sigma, q_val, gamma = _unpack(params)
+            log_t = _shifted_log_time(gamma)
+            z = (log_t - x @ beta) / sigma
+            exact = event.astype(bool)
+            obj = 0.0
+            if (~exact).any():
+                _, log_s_c = _log_density_survival(self.dist, z[~exact], Q=q_val)
+                obj += float(log_s_c.sum())
+            if exact.any():
+                z_exact = np.sort(z[exact])
+                cdf = _cdf(self.dist, z_exact, Q=q_val)
+                u = np.concatenate(([0.0], cdf, [1.0]))
+                spacing = np.clip(np.diff(u), 1e-300, None)
+                obj += float(np.log(spacing).sum())
+            return -obj
+
+        objective = neg_mps if self.method == "mps" else neg_loglik
+
         n_extra = (1 if has_scale else 0) + (1 if has_Q else 0)
         x0 = np.zeros(n_coef + n_extra)
-        x0[0] = float(log_t.mean())
+        x0[0] = float(np.log(time).mean())
         if has_Q:
             # Initialize from a Weibull fit for a better starting point
+            log_t_plain = np.log(time)
+
             def _weibull_nll(params_w: Array) -> float:
                 beta_w = params_w[:n_coef]
                 sigma_w = np.exp(params_w[n_coef])
-                z_w = (log_t - x @ beta_w) / sigma_w
+                z_w = (log_t_plain - x @ beta_w) / sigma_w
                 log_f_w, log_s_w = _log_density_survival("weibull", z_w)
-                ll_w = event * (log_f_w - params_w[n_coef] - log_t) + (1.0 - event) * log_s_w
+                ll_w = event * (log_f_w - params_w[n_coef] - log_t_plain) + (1.0 - event) * log_s_w
                 return -float(ll_w.sum())
 
             x0_w = np.zeros(n_coef + 1)
-            x0_w[0] = float(log_t.mean())
+            x0_w[0] = float(log_t_plain.mean())
             res_w = minimize(
                 _weibull_nll, x0_w, method="BFGS", options={"gtol": 1e-8, "maxiter": 1000}
             )
             x0[:n_coef] = res_w.x[:n_coef]
             x0[n_coef] = res_w.x[n_coef]
             x0[n_coef + 1] = 1.0  # Q = 1 (Weibull starting point)
-        result = minimize(neg_loglik, x0, method="BFGS", options={"gtol": 1e-8, "maxiter": 1000})
+
+        if self.method == "mps":
+            # MPS and MLE are asymptotically equivalent estimators, and the MPS objective's
+            # sort-induced kinks make it harder for BFGS's numerical gradient to navigate from a
+            # naive start; the (fast, reliable) MLE optimum is a much better starting point.
+            res_mle_warm = minimize(
+                neg_loglik, x0, method="BFGS", options={"gtol": 1e-8, "maxiter": 1000}
+            )
+            x0 = res_mle_warm.x
+
+        if has_threshold:
+            # The threshold parameter is bounded (0 <= gamma < t_min), which BFGS cannot express,
+            # and its objective can be poorly behaved near the boundary (that's the whole reason
+            # method="mps" exists), so a bounded optimizer with a few restarts is used instead of
+            # plain BFGS.
+            bounds = [(None, None)] * (n_coef + n_extra) + [(0.0, gamma_bound)]
+
+            def _fit_bounded(obj_fn: Any, x0_base: Array) -> Any:
+                best_fit = None
+                for frac in (0.0, 0.3, 0.6, 0.9):
+                    gamma0 = frac * gamma_bound
+                    x0_t = x0_base.copy()
+                    x0_t[0] = float(np.log(np.clip(time - gamma0, 1e-6, None)).mean())
+                    x0_t = np.concatenate([x0_t, [gamma0]])
+                    res_t = minimize(
+                        obj_fn,
+                        x0_t,
+                        method="L-BFGS-B",
+                        bounds=bounds,
+                        options={"maxiter": 2000, "ftol": 1e-12, "gtol": 1e-10},
+                    )
+                    if best_fit is None or res_t.fun < best_fit.fun:
+                        best_fit = res_t
+                return best_fit
+
+            # Joint (covariates, threshold) estimation can have more than one near-tied local
+            # optimum, and picking whichever has the lowest raw objective across a generic grid
+            # can land on a degenerate one (coefficients collapsed toward 0, threshold absorbing
+            # their explanatory power). The MLE fit's own multi-start grid is trusted as the
+            # sensible region; method="mps" only refines *from* it rather than re-searching the
+            # grid under its own objective, so it inherits MLE's answer everywhere except where
+            # MPS is specifically meant to correct it (the threshold hugging the boundary).
+            mle_threshold_fit = _fit_bounded(neg_loglik, x0)
+            if self.method == "mle":
+                result = mle_threshold_fit
+            else:
+                result = minimize(
+                    objective,
+                    mle_threshold_fit.x,
+                    method="L-BFGS-B",
+                    bounds=bounds,
+                    options={"maxiter": 2000, "ftol": 1e-12, "gtol": 1e-10},
+                )
+        else:
+            result = minimize(objective, x0, method="BFGS", options={"gtol": 1e-8, "maxiter": 1000})
         params = result.x
-        vcov = np.linalg.inv(_num_hessian(neg_loglik, params))
+        vcov = np.linalg.inv(_num_hessian(objective, params))
 
         self._x = x
         self.term_names_ = names
@@ -517,10 +708,13 @@ class AFT:
         else:
             self.Q_: float | None = None  # type: ignore[no-redef]
             self.Q_se_: float | None = None  # type: ignore[no-redef]
-        self.loglik_ = -float(result.fun)
+        self.threshold_ = float(params[-1]) if has_threshold else 0.0
+        # loglik_ is always the ordinary AFT log-likelihood at the final estimates, even when
+        # method="mps" optimized a different objective, so AIC/BIC stay comparable across methods.
+        self.loglik_ = -neg_loglik(params)
         self.n_ = int(keep.sum())
         self.n_event_ = int(event.sum())
-        self._log_t = log_t
+        self._log_t = _shifted_log_time(self.threshold_)
         self._event = event
 
         z = float(norm.ppf(1.0 - (1.0 - self.conf_level) / 2.0))
@@ -590,11 +784,15 @@ class AFT:
         """
         mu = x @ self.coef_  # (n_subjects,)
         sigma = self.scale_
-        z = (np.log(times)[:, None] - mu[None, :]) / sigma  # (n_times, n_subjects)
+        # For times <= threshold_, S(t) = 1 identically regardless of mu, so dS/dmu = 0 there.
+        shifted = times - self.threshold_
+        resolvable = shifted > 0.0
+        log_shifted = np.where(resolvable, np.log(np.where(resolvable, shifted, 1.0)), 0.0)
+        z = (log_shifted[:, None] - mu[None, :]) / sigma  # (n_times, n_subjects)
 
         # Derivative of survival w.r.t. mu: dS/dmu = -f(z) / sigma
         pdf_z = self._survival_pdf(z)
-        ds_dmu = -pdf_z / sigma  # (n_times, n_subjects)
+        ds_dmu = np.where(resolvable[:, None], -pdf_z / sigma, 0.0)  # (n_times, n_subjects)
 
         # SE(mu) for each subject: sqrt(diag(x @ vcov @ x.T))
         # vcov_ includes scale parameter; extract only the coefficient part
@@ -840,7 +1038,10 @@ class AFT:
         The AFT model assumes $\log(T) = X\beta + \sigma\varepsilon$, where $\varepsilon$
         follows a parametric error distribution (Weibull, lognormal, etc.). Predictions are made
         by evaluating the CDF/survival function of this distribution at covariate-adjusted
-        locations. All predictions respect the fitted distribution and scale parameter.
+        locations. All predictions respect the fitted distribution and scale parameter. If the
+        model was fit with `threshold=True`, every time-scale prediction (quantiles, survival
+        times, means) is shifted by `threshold_`, and query times at or below `threshold_` report
+        $S(t) = 1$ exactly (the event cannot yet have occurred).
 
         Predictions assume the model is well-specified. For flexible models, consider
         parametric bootstrap to quantify uncertainty.
@@ -921,23 +1122,30 @@ class AFT:
         x = self._design(newdata)
         mu = x @ self.coef_
         sigma = self.scale_
+        gamma = self.threshold_
+
+        def _log_shifted(t: Array) -> Array:
+            """log(t - gamma), with S(t) := 1 (encoded as z = -inf) for t <= gamma."""
+            resolvable = t > gamma
+            shifted = np.where(resolvable, t - gamma, 1.0)
+            return np.where(resolvable, np.log(shifted), -np.inf)
 
         if type == "lp":
             return mu
         if type == "quantile":
             p_arr = np.atleast_1d(np.asarray(p, dtype=float))
             w = _error_quantile(self.dist, p_arr, Q=self._q)
-            quantiles = np.exp(mu[:, None] + sigma * w[None, :])  # (n_subjects, n_p)
+            quantiles = gamma + np.exp(mu[:, None] + sigma * w[None, :])  # (n_subjects, n_p)
             cols: dict[str, Any] = {"p": p_arr}
             cols.update({f"subject_{i + 1}": quantiles[i] for i in range(quantiles.shape[0])})
             return to_dataframe(cols, format=format)
         if type == "survival":
             if times is None:
                 w = _error_quantile(self.dist, np.linspace(0.01, 0.99, 50), Q=self._q)
-                query = np.unique(np.round(np.exp(mu.mean() + sigma * w), 6))
+                query = np.unique(np.round(gamma + np.exp(mu.mean() + sigma * w), 6))
             else:
                 query = np.atleast_1d(np.asarray(times, dtype=float))
-            z = (np.log(query)[:, None] - mu[None, :]) / sigma  # (n_times, n_subjects)
+            z = (_log_shifted(query)[:, None] - mu[None, :]) / sigma  # (n_times, n_subjects)
             _, log_s = _log_density_survival(self.dist, z, Q=self._q)
             if conditional_after is None:
                 surv = np.exp(log_s)
@@ -952,9 +1160,9 @@ class AFT:
                 if c.shape[0] != mu.shape[0]:
                     raise ValueError("conditional_after must be a scalar or one value per subject.")
                 with np.errstate(divide="ignore"):
-                    zc = (np.log(c) - mu) / sigma
+                    zc = (_log_shifted(c) - mu) / sigma
                 _, log_s_c = _log_density_survival(self.dist, zc, Q=self._q)
-                log_s_c = np.where(c > 0, log_s_c, 0.0)  # S(c) = 1 for c <= 0
+                log_s_c = np.where(c > gamma, log_s_c, 0.0)  # S(c) = 1 for c <= gamma
                 surv = np.exp(np.minimum(log_s - log_s_c[None, :], 0.0))  # ratio capped at 1
             cols = {"time": query}
             if ci:
@@ -988,17 +1196,18 @@ class AFT:
             return to_dataframe(cols, format=format)
         if type == "mean":
             if conditional_after is None:
-                return _mean_survival_aft(self.dist, mu, sigma, Q=self._q)
+                return gamma + _mean_survival_aft(self.dist, mu, sigma, Q=self._q)
             c = np.asarray(conditional_after, dtype=float)
             if c.ndim == 0:
                 c = np.full(mu.shape[0], float(c))
             if c.shape[0] != mu.shape[0]:
                 raise ValueError("conditional_after must be a scalar or one value per subject.")
+            c_eff = np.clip(c - gamma, 0.0, None)
             with np.errstate(divide="ignore"):
-                zc = (np.log(np.where(c > 0.0, c, 1.0)) - mu) / sigma
+                zc = (np.log(np.where(c_eff > 0.0, c_eff, 1.0)) - mu) / sigma
             _, log_s_c = _log_density_survival(self.dist, zc, Q=self._q)
-            s_c = np.where(c > 0.0, np.exp(log_s_c), 1.0)
-            tail = _tail_partial_moment(self.dist, mu, sigma, c, Q=self._q)
+            s_c = np.where(c_eff > 0.0, np.exp(log_s_c), 1.0)
+            tail = _tail_partial_moment(self.dist, mu, sigma, c_eff, Q=self._q)
             return c + tail / s_c
         if type == "mean_remaining":
             if conditional_after is None:
@@ -1008,11 +1217,12 @@ class AFT:
                 c = np.full(mu.shape[0], float(c))
             if c.shape[0] != mu.shape[0]:
                 raise ValueError("conditional_after must be a scalar or one value per subject.")
+            c_eff = np.clip(c - gamma, 0.0, None)
             with np.errstate(divide="ignore"):
-                zc = (np.log(np.where(c > 0.0, c, 1.0)) - mu) / sigma
+                zc = (np.log(np.where(c_eff > 0.0, c_eff, 1.0)) - mu) / sigma
             _, log_s_c = _log_density_survival(self.dist, zc, Q=self._q)
-            s_c = np.where(c > 0.0, np.exp(log_s_c), 1.0)
-            tail = _tail_partial_moment(self.dist, mu, sigma, c, Q=self._q)
+            s_c = np.where(c_eff > 0.0, np.exp(log_s_c), 1.0)
+            tail = _tail_partial_moment(self.dist, mu, sigma, c_eff, Q=self._q)
             return tail / s_c
         if type == "rmst":
             if tau is None:
@@ -1020,24 +1230,7 @@ class AFT:
             tau_val = float(tau)
             if tau_val <= 0.0:
                 raise ValueError(f"tau must be positive, got {tau_val}.")
-            tau_arr = np.full_like(mu, tau_val)
-            if self.dist == "loglogistic" and sigma >= 1.0:
-                # E[T] = inf when sigma >= 1; integrate S from 0 to tau directly
-                from scipy.integrate import quad
-
-                out = np.empty_like(mu)
-                for i in range(mu.shape[0]):
-                    mu_i = float(mu[i])
-
-                    def _sf(t: float, _mu: float = mu_i) -> float:
-                        z = (np.log(t) - _mu) / sigma
-                        return float(logistic.sf(z))
-
-                    out[i], _ = quad(_sf, 0.0, tau_val, limit=200)
-                return out
-            return _mean_survival_aft(self.dist, mu, sigma, Q=self._q) - _tail_partial_moment(
-                self.dist, mu, sigma, tau_arr, Q=self._q
-            )
+            return _rmst_value(self.dist, mu, sigma, tau_val, threshold=gamma, Q=self._q)
         raise ValueError(
             f"Unknown predict type {type!r}; use "
             "'lp', 'quantile', 'survival', 'mean', 'mean_remaining', or 'rmst'."
@@ -1109,10 +1302,11 @@ class AFT:
         x = self._design(newdata)
         mu = x @ self.coef_
         sigma = self.scale_
+        gamma = self.threshold_
 
         w = _error_quantile(self.dist, p_arr, Q=self._q)
         log_q = mu[:, None] + sigma * w[None, :]  # (n_subjects, n_p)
-        quantiles = np.exp(log_q)
+        quantiles = gamma + np.exp(log_q)
 
         columns: dict[str, Any] = {"p": p_arr}
 
@@ -1123,8 +1317,8 @@ class AFT:
             se_mu = np.sqrt(np.clip(np.diag(x @ vcov_coef @ x.T), 0.0, None))
 
             for i in range(quantiles.shape[0]):
-                lo = np.exp(log_q[i] - z_val * se_mu[i])
-                hi = np.exp(log_q[i] + z_val * se_mu[i])
+                lo = gamma + np.exp(log_q[i] - z_val * se_mu[i])
+                hi = gamma + np.exp(log_q[i] + z_val * se_mu[i])
                 columns[f"subject_{i + 1}"] = quantiles[i]
                 columns[f"subject_{i + 1}_lower"] = lo
                 columns[f"subject_{i + 1}_upper"] = hi
@@ -1259,8 +1453,26 @@ class AFT:
                 mu_lo = x[i] @ self.coef_ - z_val * se_mu[i]
                 mu_hi = x[i] @ self.coef_ + z_val * se_mu[i]
 
-                rmst_lo = self._rmst_at_mu(mu_lo, tau_val)
-                rmst_hi = self._rmst_at_mu(mu_hi, tau_val)
+                rmst_lo = float(
+                    _rmst_value(
+                        self.dist,
+                        np.array([mu_lo]),
+                        self.scale_,
+                        tau_val,
+                        threshold=self.threshold_,
+                        Q=self._q,
+                    )[0]
+                )
+                rmst_hi = float(
+                    _rmst_value(
+                        self.dist,
+                        np.array([mu_hi]),
+                        self.scale_,
+                        tau_val,
+                        threshold=self.threshold_,
+                        Q=self._q,
+                    )[0]
+                )
 
                 columns[f"subject_{i + 1}"] = np.array([rmst_vals[i]])
                 columns[f"subject_{i + 1}_lower"] = np.array([min(rmst_lo, rmst_hi)])
@@ -1270,26 +1482,6 @@ class AFT:
                 columns[f"subject_{i + 1}"] = np.array([rmst_vals[i]])
 
         return to_dataframe(columns, format=format)
-
-    def _rmst_at_mu(self, mu: float, tau: float) -> float:
-        """Compute RMST for a single linear predictor value."""
-        mu_arr = np.array([mu])
-        sigma = self.scale_
-        if self.dist == "loglogistic" and sigma >= 1.0:
-            from scipy.integrate import quad
-            from scipy.stats import logistic
-
-            def _sf(t: float) -> float:
-                z = (np.log(t) - mu) / sigma
-                return float(logistic.sf(z))
-
-            val, _ = quad(_sf, 0.0, tau, limit=200)
-            return float(val)
-        tau_arr = np.array([tau])
-        result = _mean_survival_aft(self.dist, mu_arr, sigma, Q=self._q) - _tail_partial_moment(
-            self.dist, mu_arr, sigma, tau_arr, Q=self._q
-        )
-        return float(result[0])
 
     def test_distributions(self, *, format: str | None = None) -> Any:
         """Compare the generalized gamma fit against nested sub-models.
@@ -1457,14 +1649,19 @@ def _glance_aft(model: AFT, *, format: str | None = None, **_: Any) -> Any:
     n_params = len(model.term_names_) + (0 if model.dist == "exponential" else 1)
     if model.dist == "gengamma":
         n_params += 1
+    if model.threshold:
+        n_params += 1
     cols: dict[str, Any] = {
         "dist": [model.dist],
+        "method": [model.method],
         "n": [model.n_],
         "nevent": [model.n_event_],
         "scale": [model.scale_],
     }
     if model.Q_ is not None:
         cols["Q"] = [model.Q_]
+    if model.threshold:
+        cols["threshold"] = [model.threshold_]
     cols["loglik"] = [model.loglik_]
     cols["aic"] = [-2.0 * model.loglik_ + 2.0 * n_params]
     return to_dataframe(cols, format=format)

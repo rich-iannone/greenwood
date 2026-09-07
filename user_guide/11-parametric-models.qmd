@@ -401,6 +401,67 @@ than comparing AICs across separate fits. If `test_distributions()` shows that W
 adequate, the generalized gamma itself may be the right choice.
 :::
 
+## Three-parameter (threshold) distributions
+
+The Weibull, exponential, log-normal, and log-logistic distributions all put positive density
+arbitrarily close to time zero. Some failure processes have a genuine minimum lifetime instead: a
+component with a guaranteed burn-in period, or a disease with an incubation time before death is
+even possible. A three-parameter model captures this with a location (threshold) parameter $\gamma$:
+$T = \gamma + T'$, where $T'$ follows the ordinary 2-parameter distribution. Pass `threshold=True`
+to add it.
+
+```{python}
+# Fit a Weibull AFT model with a threshold parameter
+lung = gw.load_dataset("lung", backend="polars")
+y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+
+aft_threshold = gw.AFT("weibull", method="mps", threshold=True).fit(y, lung[["age", "sex"]])
+aft_threshold
+```
+
+The fitted `threshold_` is the estimated minimum survival time before which no death can occur, here
+just over two days.
+
+### Why `method="mps"`
+
+Ordinary maximum likelihood can behave badly with a threshold parameter: as $\gamma$ approaches the
+smallest observed follow-up time, the likelihood can grow without bound for some distributions,
+pushing the estimate toward a meaningless boundary value. `method="mps"` (maximum product of
+spacings) replaces each observation's density contribution with the gap between consecutive order
+statistics on the CDF scale, which stays bounded where the ordinary likelihood does not. Combining
+`threshold=True` with the default `method="mle"` raises a warning for exactly this reason:
+
+```{python}
+import warnings
+
+with warnings.catch_warnings(record=True) as caught:
+    warnings.simplefilter("always")
+    gw.AFT("weibull", threshold=True).fit(y, lung[["age", "sex"]])
+print(caught[0].message)
+```
+
+::: {.callout-tip}
+## When to use a threshold
+
+Use `threshold=True` only when there is a substantive reason to believe survival time has a genuine
+floor. Reliability engineering with a burn-in guarantee is the classic case. Always pass
+`method="mps"` alongside it: `method="mle"` stays the default for backward compatibility with
+ordinary 2-parameter fits, not because it is the right choice once a threshold is added.
+:::
+
+### Predictions with a threshold
+
+Every prediction type accounts for the threshold automatically: `threshold_` is added back onto
+every time-scale prediction, and survival is exactly 1 for any query time at or before it.
+
+```{python}
+# Survival at times before, at, and after the fitted threshold
+query_times = [aft_threshold.threshold_ * 0.5, aft_threshold.threshold_, 100, 365]
+aft_threshold.predict(
+    lung[["age", "sex"]][:2], type="survival", times=query_times, format="polars"
+)
+```
+
 ## Flexible parametric (Royston-Parmar) models
 
 The AFT distributions impose a fixed hazard shape. When none of them fits well but you still want
