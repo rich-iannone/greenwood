@@ -1004,4 +1004,43 @@ cox_conditional_ci_fixture <- function() {
 }
 write_json_fixture(cox_conditional_ci_fixture(), "cox_conditional_ci")
 
+# -- Three-parameter (threshold) Weibull via fitdistrplus --------------------------
+#
+# Validates AFT(dist="weibull", threshold=True)'s location/threshold reparameterization and
+# likelihood against an independently-implemented three-parameter Weibull MLE fit
+# (fitdistrplus::fitdist with custom dweibull3/pweibull3 density/CDF). fitdistrplus in this
+# environment does not expose a maximum-product-of-spacings method (no "mps" method and no
+# "MPS" gof option in mgedist), so method="mps" is validated only by internal consistency
+# properties in the Python test suite, not against this fixture.
+if (requireNamespace("fitdistrplus", quietly = TRUE)) {
+  dweibull3 <- function(x, shape, scale, thres) dweibull(x - thres, shape, scale)
+  pweibull3 <- function(q, shape, scale, thres) pweibull(q - thres, shape, scale)
+
+  set.seed(7)
+  gamma_true <- 5
+  shape_true <- 1.8
+  scale_true <- 10
+  weibull3_data <- gamma_true + rweibull(200, shape = shape_true, scale = scale_true)
+
+  fit_mle <- fitdistrplus::fitdist(
+    weibull3_data, "weibull3",
+    method = "mle",
+    start = list(shape = 1, scale = median(weibull3_data), thres = min(weibull3_data) * 0.5),
+    lower = c(1e-6, 1e-6, 0), upper = c(Inf, Inf, min(weibull3_data) * 0.999)
+  )
+  write_json_fixture(
+    list(
+      data = weibull3_data,
+      shape = unname(fit_mle$estimate["shape"]),
+      scale = unname(fit_mle$estimate["scale"]),
+      thres = unname(fit_mle$estimate["thres"]),
+      loglik = fit_mle$loglik
+    ),
+    "aft_threshold_weibull3"
+  )
+  cat("Threshold-Weibull fixture written (fitdistrplus available)\n")
+} else {
+  cat("fitdistrplus not installed; skipping threshold-Weibull fixture\n")
+}
+
 cat("done\n")
