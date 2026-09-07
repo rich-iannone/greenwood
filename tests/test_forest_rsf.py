@@ -503,7 +503,6 @@ def tree(data):  # type: ignore[no-untyped-def]
 
 
 class TestSurvivalTreePredict:
-
     def test_survival_format_polars(self, tree, data) -> None:
         import polars as pl
 
