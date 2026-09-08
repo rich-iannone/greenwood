@@ -96,6 +96,19 @@ B-spline basis
   model the baseline log cumulative hazard. The `df=` argument controls the number of basis
   functions and therefore how wiggly the fitted curve can be.
 
+Buckley-James estimator
+: A rank-based, semiparametric alternative to **accelerated failure time** regression that fits
+  $\log(T) = X\beta + \varepsilon$ without assuming a distribution for $\varepsilon$ (Buckley &
+  James, 1979). It alternates two steps until $\beta$ stabilizes: censored log-times are imputed
+  by their conditional mean under the Kaplan-Meier estimate of the current residual distribution
+  (the same self-consistent redistribution principle behind Kaplan-Meier itself), then $\beta$ is
+  refit by ordinary least squares on the imputed values. With no censoring, every residual is
+  exact and the algorithm converges in one step to plain least squares. Largely superseded in
+  practice by the maximum-likelihood `AFT`, which is more efficient under a correct distributional
+  assumption and has closed-form standard errors; Buckley-James has none, so standard errors are
+  available in Greenwood only via bootstrap resampling (`n_boot=`). Available via
+  `BuckleyJames`.
+
 C-statistic
 : See **concordance index**.
 
