@@ -8,6 +8,7 @@ from . import data, summaries, viz
 from ._aalen import AalenAdditive
 from ._boosting import GradientBoostingSurvivalAnalysis
 from ._bootstrap import BootstrapResult, bootstrap
+from ._buckley_james import BuckleyJames
 from ._competing import AalenJohansen, FineGray, MultiState, grays_test
 from ._core import EventTable, event_table
 from ._cox import CoxPH, SmoothHRResult, ZPHResult, ZPHWindowResult
@@ -91,6 +92,7 @@ __all__ = [
     "ZPHWindowResult",
     "SmoothHRResult",
     "AFT",
+    "BuckleyJames",
     "PiecewiseExponential",
     "AalenJohansen",
     "FineGray",
