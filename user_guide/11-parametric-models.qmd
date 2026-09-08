@@ -646,6 +646,62 @@ BIC. There is no substitute for checking the proportional-hazards assumption fir
 but the data still look well-behaved on the odds scale, not as a default choice.
 :::
 
+## Rank-based regression (Buckley-James)
+
+Every model so far still commits to a distributional family (or, for `RoystonParmar`, a smooth
+spline shape). `BuckleyJames` fits the same log-linear form, $\log(T) = X\beta + \varepsilon$, but
+makes no assumption about $\varepsilon$ at all. It alternates two steps until the coefficients
+stabilize: impute each censored observation's log-time using the Kaplan-Meier curve of the current
+residuals, then refit by ordinary least squares.
+
+```{python}
+# Fit a Buckley-James rank-based AFT model
+bj = gw.BuckleyJames().fit(y, lung[["age", "sex"]])
+bj
+```
+
+The `iterations` and `converged` lines report the iterative fit's status. This is a genuinely
+different estimation strategy from everything else on this page, worth sanity-checking against: on
+data with no censoring at all, every residual is already exact, so there is nothing to impute and
+the fit converges in a single iteration to plain ordinary least squares of `log(time)` on the
+covariates.
+
+### Standard errors via bootstrap
+
+Buckley-James has no closed-form variance formula, so by default `std_error_`, `p_value`, and the
+confidence limits are `nan`. Pass `n_boot=` to estimate them by case-resampling bootstrap instead
+(refitting the whole iterative algorithm on each resample, so larger values of `n_boot` cost
+proportionally more time):
+
+```{python}
+# Bootstrap standard errors (200 resamples)
+bj_boot = gw.BuckleyJames(n_boot=200, seed=0).fit(y, lung[["age", "sex"]])
+bj_boot.to_frame(format="polars")
+```
+
+### Predicting survival
+
+`predict()` supports the linear predictor (`type="lp"`) and survival probabilities
+(`type="survival"`). Since there is no fitted distribution to evaluate, survival predictions reuse
+the empirical Kaplan-Meier curve of the fitted residuals, shifted by each subject's linear
+predictor, rather than a smooth closed-form curve.
+
+```{python}
+# Predicted survival at 6 months, 1 year, and 2 years
+bj.predict(newdata, type="survival", times=[180, 365, 730], format="polars")
+```
+
+::: {.callout-tip}
+## When to reach for Buckley-James
+
+Buckley-James predates the maximum-likelihood `AFT` and is largely superseded by it in modern
+practice: `AFT` is more efficient when its distributional assumption is reasonable, has closed-form
+standard errors, and converges directly rather than iteratively. Reach for `BuckleyJames` only when
+you specifically want to avoid committing to *any* distributional family and can tolerate the
+computational cost of bootstrap inference, not as a default alternative to `AFT` or
+`RoystonParmar`.
+:::
+
 ## Survival predictions with confidence intervals
 
 When predicting survival probabilities from an AFT model, you can also compute confidence intervals
