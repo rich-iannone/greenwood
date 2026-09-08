@@ -77,7 +77,9 @@ reference:
       - compare_distributions
 
   - title: Regression
-    desc: Cox proportional hazards, parametric AFT models, and time-varying covariate utilities.
+    desc:
+      Cox proportional hazards, parametric AFT models, rank-based Buckley-James regression, and
+      time-varying covariate utilities.
     contents:
       - split_episodes
       - name: CoxPH
@@ -94,6 +96,8 @@ reference:
       - name: SmoothHRResult
         members: true
       - name: AFT
+        members: true
+      - name: BuckleyJames
         members: true
       - name: PiecewiseExponential
         members: true
