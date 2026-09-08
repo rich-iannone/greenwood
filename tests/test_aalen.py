@@ -25,12 +25,14 @@ def fitted_model(lung_data):
 class TestInit:
     def test_defaults(self) -> None:
         m = AalenAdditive()
+
         assert m.nmin is None
         assert m.test == "aalen"
         assert m.qrtol == 1e-7
 
     def test_custom_params(self) -> None:
         m = AalenAdditive(nmin=10, test="nrisk", qrtol=1e-5)
+
         assert m.nmin == 10
         assert m.test == "nrisk"
         assert m.qrtol == 1e-5
@@ -43,6 +45,7 @@ class TestInit:
 class TestFit:
     def test_basic_attributes(self, fitted_model) -> None:
         m = fitted_model
+
         assert m.n_ == 228
         assert m.n_event_ == 165
         assert m.n_event_times_used_ > 0
@@ -51,6 +54,7 @@ class TestFit:
 
     def test_coef_increments_shape(self, fitted_model) -> None:
         m = fitted_model
+
         assert m.coef_increments_.shape == (m.n_event_times_used_, 3)
 
     def test_cumulative_is_cumsum(self, fitted_model) -> None:
@@ -59,23 +63,27 @@ class TestFit:
 
     def test_event_times_sorted(self, fitted_model) -> None:
         m = fitted_model
+
         assert np.all(np.diff(m.event_times_) >= 0)
 
     def test_nmin_default_is_3p(self, lung_data) -> None:
         y, lung = lung_data
         m6 = AalenAdditive(nmin=6).fit(y, lung[["age", "sex"]])
         m_default = AalenAdditive().fit(y, lung[["age", "sex"]])
+
         assert m_default.n_event_times_used_ == m6.n_event_times_used_
 
     def test_custom_nmin_reduces_events(self, lung_data) -> None:
         y, lung = lung_data
         m_large = AalenAdditive(nmin=100).fit(y, lung[["age", "sex"]])
         m_default = AalenAdditive().fit(y, lung[["age", "sex"]])
+
         assert m_large.n_event_times_used_ <= m_default.n_event_times_used_
 
     def test_nrisk_test(self, lung_data) -> None:
         y, lung = lung_data
         m = AalenAdditive(test="nrisk").fit(y, lung[["age", "sex"]])
+
         assert m.test == "nrisk"
         assert len(m.summary_z_) == 3
 
@@ -105,6 +113,7 @@ class TestFit:
 
     def test_tweight_stored(self, fitted_model) -> None:
         m = fitted_model
+
         assert m.tweight_.shape == (m.n_event_times_used_, 3)
         assert np.all(m.tweight_ > 0)
 
@@ -112,6 +121,7 @@ class TestFit:
 class TestOutputMethods:
     def test_cumulative_coefficients_default(self, fitted_model) -> None:
         df = fitted_model.cumulative_coefficients()
+
         assert "time" in str(type(df)) or hasattr(df, "columns")
 
     def test_cumulative_coefficients_polars(self, fitted_model) -> None:
@@ -125,6 +135,7 @@ class TestOutputMethods:
 
     def test_to_frame_default(self, fitted_model) -> None:
         df = fitted_model.to_frame()
+
         assert hasattr(df, "columns") or hasattr(df, "schema")
 
     def test_to_frame_polars(self, fitted_model) -> None:
@@ -139,10 +150,12 @@ class TestOutputMethods:
 class TestRepr:
     def test_unfitted_repr(self) -> None:
         m = AalenAdditive()
+
         assert "unfitted" in repr(m)
 
     def test_fitted_repr(self, fitted_model) -> None:
         r = repr(fitted_model)
+
         assert "AalenAdditive" in r
         assert "Intercept" in r
         assert "age" in r
@@ -154,11 +167,13 @@ class TestPredict:
     def test_survival_shape(self, fitted_model, lung_data) -> None:
         _, lung = lung_data
         surv = fitted_model.predict(lung[["age", "sex"]][:3], times=[180, 365])
+
         assert surv.shape == (2, 4)
 
     def test_cumhaz_shape(self, fitted_model, lung_data) -> None:
         _, lung = lung_data
         ch = fitted_model.predict(lung[["age", "sex"]][:3], type="cumhaz", times=[180, 365])
+
         assert ch.shape == (2, 4)
 
     def test_survival_in_unit_interval(self, fitted_model, lung_data) -> None:
@@ -178,6 +193,7 @@ class TestPredict:
         _, lung = lung_data
         surv = fitted_model.predict(lung[["age", "sex"]][:1], times=[50, 100, 200, 365, 500])
         vals = surv["subject_1"].to_numpy()
+
         assert np.all(np.diff(vals) <= 1e-12)
 
     def test_cumhaz_increasing(self, fitted_model, lung_data) -> None:
@@ -186,6 +202,7 @@ class TestPredict:
             lung[["age", "sex"]][:1], type="cumhaz", times=[50, 100, 200, 365, 500]
         )
         vals = ch["subject_1"].to_numpy()
+
         assert np.all(np.diff(vals) >= -1e-12)
 
     def test_survival_exp_neg_cumhaz(self, fitted_model, lung_data) -> None:
@@ -200,16 +217,19 @@ class TestPredict:
 
     def test_newdata_none_uses_training(self, fitted_model) -> None:
         surv = fitted_model.predict(times=[180, 365])
+
         assert surv.shape[1] == 228 + 1
 
     def test_default_times_uses_event_times(self, fitted_model, lung_data) -> None:
         _, lung = lung_data
         surv = fitted_model.predict(lung[["age", "sex"]][:1])
+
         assert len(surv) == len(fitted_model.event_times_)
 
     def test_before_first_event_time(self, fitted_model, lung_data) -> None:
         _, lung = lung_data
         surv = fitted_model.predict(lung[["age", "sex"]][:1], times=[1.0])
+
         assert surv["subject_1"].to_numpy()[0] == pytest.approx(1.0)
 
     def test_invalid_type_raises(self, fitted_model, lung_data) -> None:
@@ -222,21 +242,66 @@ class TestPredict:
         import polars as pl
 
         surv = fitted_model.predict(lung[["age", "sex"]][:2], times=[180], format="polars")
+
         assert isinstance(surv, pl.DataFrame)
 
 
 class TestTidyGlance:
-    def test_tidy(self, fitted_model) -> None:
-        df = gw.tidy(fitted_model, format="polars")
+    def test_tidy_columns(self, fitted_model) -> None:
+        df = gw.tidy(fitted_model, format="pandas")
+
+        assert list(df.columns) == ["term", "slope", "coef", "se", "z", "p"]
+
+    def test_tidy_terms(self, fitted_model) -> None:
+        df = gw.tidy(fitted_model, format="pandas")
+
+        assert list(df["term"]) == ["Intercept", "age", "sex"]
+
+    def test_tidy_matches_to_frame(self, fitted_model) -> None:
+        t = gw.tidy(fitted_model, format="pandas")
+        tf = fitted_model.to_frame(format="pandas")
+        np.testing.assert_allclose(t["coef"].to_numpy(), tf["coef"].to_numpy())
+
+        assert list(t["term"]) == list(tf["term"])
+
+    def test_tidy_format_polars(self, fitted_model) -> None:
         import polars as pl
+
+        df = gw.tidy(fitted_model, format="polars")
 
         assert isinstance(df, pl.DataFrame)
         assert len(df) == 3
 
-    def test_glance(self, fitted_model) -> None:
-        df = gw.glance(fitted_model, format="polars")
+    def test_tidy_coef_finite(self, fitted_model) -> None:
+        df = gw.tidy(fitted_model, format="pandas")
+
+        assert np.all(np.isfinite(df["coef"].to_numpy()))
+        assert np.all(np.isfinite(df["se"].to_numpy()))
+
+    def test_glance_columns(self, fitted_model) -> None:
+        df = gw.glance(fitted_model, format="pandas")
+
+        assert list(df.columns) == ["n", "nevent", "n_event_times_used", "test"]
+
+    def test_glance_values(self, fitted_model) -> None:
+        df = gw.glance(fitted_model, format="pandas")
+
+        assert df["n"].iloc[0] == 228
+        assert df["nevent"].iloc[0] == 165
+        assert df["n_event_times_used"].iloc[0] == fitted_model.n_event_times_used_
+        assert df["test"].iloc[0] == "aalen"
+
+    def test_glance_nrisk_test(self, lung_data) -> None:
+        y, lung = lung_data
+        m = AalenAdditive(test="nrisk").fit(y, lung[["age", "sex"]])
+        df = gw.glance(m, format="pandas")
+
+        assert df["test"].iloc[0] == "nrisk"
+
+    def test_glance_format_polars(self, fitted_model) -> None:
         import polars as pl
+
+        df = gw.glance(fitted_model, format="polars")
 
         assert isinstance(df, pl.DataFrame)
         assert len(df) == 1
-        assert df["n"][0] == 228

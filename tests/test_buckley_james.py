@@ -1,11 +1,4 @@
-"""Unit tests for the Buckley-James rank-based AFT estimator.
-
-There is no R package for Buckley-James available in this environment (`rms::bj` is not
-installable for this R version), so correctness is validated internally: the algorithm must
-reduce exactly to ordinary least squares when there is no censoring (every residual is exact,
-so no Kaplan-Meier imputation ever happens), and should land close to a parametric `AFT` fit on
-data reasonably well described by that distribution.
-"""
+"""Unit tests for the Buckley-James rank-based AFT estimator."""
 
 from __future__ import annotations
 
@@ -75,6 +68,7 @@ def test_no_censoring_matches_ols_exactly(uncensored_data) -> None:
 
 def test_converges_on_lung(lung, y) -> None:
     bj = BuckleyJames().fit(y, lung[["age", "sex"]])
+
     assert bj.converged_
     assert bj.n_iter_ >= 1
 
@@ -82,11 +76,13 @@ def test_converges_on_lung(lung, y) -> None:
 def test_close_to_aft_lognormal(lung, y) -> None:
     bj = BuckleyJames().fit(y, lung[["age", "sex"]])
     aft = AFT("lognormal").fit(y, lung[["age", "sex"]])
+
     np.testing.assert_allclose(bj.coef_, aft.coef_, atol=0.1)
 
 
 def test_no_bootstrap_gives_nan_se(lung, y) -> None:
     bj = BuckleyJames().fit(y, lung[["age", "sex"]])
+
     assert np.all(np.isnan(bj.std_error_))
     assert np.all(np.isnan(bj.p_value_))
     assert np.all(np.isnan(bj.conf_low_))
@@ -95,6 +91,7 @@ def test_no_bootstrap_gives_nan_se(lung, y) -> None:
 
 def test_bootstrap_gives_finite_se(lung, y) -> None:
     bj = BuckleyJames(n_boot=50, seed=0).fit(y, lung[["age", "sex"]])
+
     assert np.all(np.isfinite(bj.std_error_))
     assert np.all(bj.std_error_ > 0.0)
     assert np.all(bj.conf_low_ < bj.coef_)
@@ -104,6 +101,7 @@ def test_bootstrap_gives_finite_se(lung, y) -> None:
 def test_non_convergence_warns(lung, y) -> None:
     with pytest.warns(UserWarning, match="did not converge"):
         bj = BuckleyJames(max_iter=1).fit(y, lung[["age", "sex"]])
+
     assert not bj.converged_
 
 
@@ -111,6 +109,7 @@ def test_predict_lp(lung, y) -> None:
     bj = BuckleyJames().fit(y, lung[["age", "sex"]])
     lp = bj.predict(lung[["age", "sex"]][:3], type="lp")
     x = np.column_stack([np.ones(3), lung[["age", "sex"]][:3].to_numpy()])
+
     np.testing.assert_allclose(lp, x @ bj.coef_)
 
 
@@ -120,6 +119,7 @@ def test_predict_survival_monotonic_and_bounded(lung, y) -> None:
     surv = bj.predict(lung[["age", "sex"]][:1], type="survival", times=times, format="pandas")
     s = surv["subject_1"].to_numpy()
     finite = s[~np.isnan(s)]
+
     assert np.all(np.diff(finite) <= 1e-9)
     assert np.all((finite >= 0.0) & (finite <= 1.0))
 
@@ -139,6 +139,7 @@ def test_predict_invalid_type(lung, y) -> None:
 def test_to_frame_columns(lung, y) -> None:
     bj = BuckleyJames().fit(y, lung[["age", "sex"]])
     df = bj.to_frame(format="pandas")
+
     assert list(df["term"]) == ["(Intercept)", "age", "sex"]
     assert list(df.columns) == [
         "term",
@@ -154,20 +155,132 @@ def test_to_frame_columns(lung, y) -> None:
 def test_glance_and_tidy(lung, y) -> None:
     bj = BuckleyJames().fit(y, lung[["age", "sex"]])
     g = gw.glance(bj, format="pandas")
+
     assert list(g.columns) == ["n", "nevent", "n_iter", "converged", "n_boot"]
+
     t = gw.tidy(bj, format="pandas")
+
     assert list(t["term"]) == ["(Intercept)", "age", "sex"]
+
+
+# ---------------------------------------------------------------------------
+# tidy / glance value tests
+# ---------------------------------------------------------------------------
+
+
+class TestBuckleyJamesTidy:
+    def test_columns(self, lung, y) -> None:
+        bj = BuckleyJames().fit(y, lung[["age", "sex"]])
+        t = gw.tidy(bj, format="pandas")
+
+        assert list(t.columns) == [
+            "term",
+            "estimate",
+            "std_error",
+            "statistic",
+            "p_value",
+            "conf_low",
+            "conf_high",
+        ]
+
+    def test_terms(self, lung, y) -> None:
+        bj = BuckleyJames().fit(y, lung[["age", "sex"]])
+        t = gw.tidy(bj, format="pandas")
+
+        assert list(t["term"]) == ["(Intercept)", "age", "sex"]
+
+    def test_estimates_match_coef(self, lung, y) -> None:
+        bj = BuckleyJames().fit(y, lung[["age", "sex"]])
+        t = gw.tidy(bj, format="pandas")
+
+        np.testing.assert_allclose(t["estimate"].to_numpy(), bj.coef_)
+
+    def test_matches_to_frame(self, lung, y) -> None:
+        bj = BuckleyJames().fit(y, lung[["age", "sex"]])
+        t = gw.tidy(bj, format="pandas")
+        tf = bj.to_frame(format="pandas")
+
+        np.testing.assert_allclose(t["estimate"].to_numpy(), tf["estimate"].to_numpy())
+
+    def test_no_boot_gives_nan_se(self, lung, y) -> None:
+        bj = BuckleyJames().fit(y, lung[["age", "sex"]])
+        t = gw.tidy(bj, format="pandas")
+
+        assert t["std_error"].isna().all()
+        assert t["conf_low"].isna().all()
+        assert t["conf_high"].isna().all()
+
+    def test_with_boot_gives_finite_se(self, lung, y) -> None:
+        bj = BuckleyJames(n_boot=50, seed=0).fit(y, lung[["age", "sex"]])
+        t = gw.tidy(bj, format="pandas")
+
+        assert t["std_error"].notna().all()
+        assert (t["std_error"] > 0).all()
+        assert (t["conf_low"] <= t["estimate"]).all()
+        assert (t["conf_high"] >= t["estimate"]).all()
+
+    def test_format_polars(self, lung, y) -> None:
+        import polars as pl
+
+        bj = BuckleyJames().fit(y, lung[["age", "sex"]])
+        t = gw.tidy(bj, format="polars")
+
+        assert isinstance(t, pl.DataFrame)
+        assert t.columns == [
+            "term",
+            "estimate",
+            "std_error",
+            "statistic",
+            "p_value",
+            "conf_low",
+            "conf_high",
+        ]
+
+
+class TestBuckleyJamesGlance:
+    def test_columns(self, lung, y) -> None:
+        bj = BuckleyJames().fit(y, lung[["age", "sex"]])
+        g = gw.glance(bj, format="pandas")
+
+        assert list(g.columns) == ["n", "nevent", "n_iter", "converged", "n_boot"]
+
+    def test_values(self, lung, y) -> None:
+        bj = BuckleyJames().fit(y, lung[["age", "sex"]])
+        g = gw.glance(bj, format="pandas")
+
+        assert g["n"].iloc[0] == 228
+        assert g["nevent"].iloc[0] == 165
+        assert g["converged"].iloc[0] is True or g["converged"].iloc[0] == True  # noqa: E712
+        assert g["n_boot"].iloc[0] == 0
+
+    def test_with_boot(self, lung, y) -> None:
+        bj = BuckleyJames(n_boot=50, seed=0).fit(y, lung[["age", "sex"]])
+        g = gw.glance(bj, format="pandas")
+
+        assert g["n_boot"].iloc[0] == 50
+
+    def test_format_polars(self, lung, y) -> None:
+        import polars as pl
+
+        bj = BuckleyJames().fit(y, lung[["age", "sex"]])
+        g = gw.glance(bj, format="polars")
+
+        assert isinstance(g, pl.DataFrame)
+        assert len(g) == 1
 
 
 def test_repr_unfit_and_fit() -> None:
     bj = BuckleyJames()
+
     assert "unfitted" in repr(bj)
+
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         bj_fit = BuckleyJames().fit(
             Surv.right([1.0, 2.0, 3.0, 4.0], event=[1, 0, 1, 1]),
             np.array([[1.0], [2.0], [3.0], [4.0]]),
         )
+
     assert "BuckleyJames" in repr(bj_fit)
 
 
