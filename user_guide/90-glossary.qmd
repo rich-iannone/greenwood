@@ -28,6 +28,17 @@ Aalen-Johansen estimator
   as an event. Software such as SAS `PROC LIFETEST` uses the Kalbfleisch-Prentice label for
   what Greenwood exposes as `AalenJohansen`.
 
+Aalen additive hazards model
+: An alternative to Cox regression that models the hazard itself as a linear combination of
+  time-varying covariate effects:
+  $h(t \mid x) = \beta_0(t) + \sum_{j=1}^{p} \beta_j(t)\,x_j$. Unlike the Cox model, which
+  assumes proportional hazards (constant log-hazard ratios), the Aalen model lets each
+  covariate's effect vary freely over time. Estimation proceeds by ordinary least squares at
+  each event time, producing cumulative coefficient functions $\hat{B}(t)$ that can be plotted
+  to visualize how effects evolve. The trade-off is higher variance (especially in the tail
+  where risk sets are small) and no single summary coefficient per covariate. Available via
+  `AalenAdditive`.
+
 At-risk / risk set
 : The set of subjects who are still under observation and have not yet experienced an event or
   been censored just before a given time $t$. The size of the risk set, $n(t)$, is the
@@ -82,7 +93,7 @@ BCa bootstrap (bias-corrected and accelerated bootstrap)
   jackknife. BCa intervals achieve better coverage than the **percentile bootstrap** (raw
   empirical quantiles) or the **normal bootstrap** (bootstrap standard error with a normal
   approximation) when the estimator's sampling distribution is skewed or asymmetric. In
-  Greenwood, `bootstrap_ci()` supports `method="bca"` (default), `method="percentile"`, and
+  Greenwood, `bootstrap()` supports `method="bca"` (default), `method="percentile"`, and
   `method="normal"`.
 
 B-spline basis
@@ -112,6 +123,15 @@ Buckley-James estimator
 C-statistic
 : See **concordance index**.
 
+Calibration
+: A measure of how closely a model's predicted survival probabilities match observed outcomes.
+  Subjects are binned by their predicted survival probability at a fixed time horizon, and the
+  mean prediction in each bin is compared against the Kaplan-Meier estimate for that bin's
+  subjects. A well-calibrated model has points near the diagonal on a predicted-vs-observed
+  plot. Good discrimination (high **concordance index**) does not guarantee good calibration:
+  a model can rank subjects correctly but still overestimate or underestimate absolute
+  probabilities. Available via `calibration()`.
+
 Complementary log-log (cloglog) transform
 : The transformation $g(S) = \log(-\log(S(t)))$ applied to survival probabilities. On a plot of
   $\log(-\log(S(t)))$ vs $\log(t)$, data from a **Weibull distribution** fall on a straight line
@@ -139,6 +159,15 @@ Censoring
   **interval censoring**, and the **counting-process form** for left truncation and
   time-varying covariates.
 
+Censoring distribution
+: The probability of remaining uncensored up to time $t$: $\hat{G}(t) = P(\text{not censored
+  by time } t)$, estimated by applying the **Kaplan-Meier estimator** to the censoring process
+  (where censoring is treated as the "event" and true events are treated as censoring). The
+  censoring distribution is the foundation of all **IPCW** methods: the IPC weight for subject
+  $i$ is $w_i = 1 / \hat{G}(t_i^-)$, which reweights observed subjects to represent the full
+  population. Subjects at times with heavy censoring receive larger weights, correcting for
+  information lost to censoring. Available via `CensoringDistribution`.
+
 Complete-case analysis
 : The default missing-data strategy in Greenwood's regression models: any row with a missing
   value in the response, a covariate, or an auxiliary column such as `strata=`, `cluster=`,
@@ -155,7 +184,8 @@ Concordance index (C-statistic, Harrell's C)
   of all comparable pairs of subjects (one who had an event before the other) for which the
   model assigns a higher risk score to the subject who had the event first. A value of 0.5
   corresponds to random ranking, whereas 1.0 is perfect discrimination. Available via
-  `concordance_index()`.
+  `concordance_index()`. An IPCW variant (`concordance_index_ipcw()`) corrects for censoring
+  bias and is more robust when censoring is heavy or differs across risk groups.
 
 Competing risks
 : A study setting in which subjects can experience one of several mutually exclusive events.
@@ -230,7 +260,8 @@ Cross-validation (k-fold)
   preserve the event rate across folds so that no fold is dominated by censored observations.
   In Greenwood, `cv_coxnet()` uses k-fold cross-validation to select the optimal
   **penalizer** for `CoxNet` by maximising concordance or minimising the integrated Brier
-  score.
+  score. The general-purpose `cross_validate()` evaluates any survival model with
+  user-specified scoring functions and fold counts.
 
 Cumulative hazard function
 : The integral of the hazard function over time: $H(t) = \int_0^t h(u)\,du$. It is related
@@ -517,11 +548,21 @@ Interval censoring
   `Surv.interval(lower, upper)`. Use `numpy.inf` as the upper bound to represent right
   censoring within this form. Estimated non-parametrically by **Turnbull's algorithm**.
 
+IPC-weighted ridge regression
+: A linear survival model that corrects for censoring bias via **IPCW** reweighting rather
+  than the Cox partial likelihood. The model fits a weighted ridge regression on the observed
+  (uncensored) log-times, where each subject's weight is $1 / \hat{G}(t_i^-)$ from the
+  **censoring distribution**. This eliminates censoring bias from the least-squares objective
+  without assuming proportional hazards. IPC-weighted regression is useful as a fast,
+  assumption-light baseline for comparing against more structured models. Available via
+  `IPCRidge`.
+
 IPCW (inverse probability of censoring weighting)
 : A technique for correcting for informative censoring in prediction metrics. Observations
   that are censored before the evaluation time are upweighted by the inverse of their
-  probability of remaining uncensored, estimated by a censoring Kaplan-Meier curve. Brier
-  scores, time-dependent AUC, and concordance index in Greenwood use IPCW by default.
+  probability of remaining uncensored, estimated by a censoring Kaplan-Meier curve (see
+  **censoring distribution**). Brier scores, time-dependent AUC, and concordance index in
+  Greenwood use IPCW by default.
 
 Kaplan-Meier estimator (product-limit estimator)
 : The standard non-parametric estimator of the survival function. It is a step function that
@@ -648,6 +689,27 @@ Maximum product of spacings (MPS)
   well-behaved there. Asymptotically equivalent to maximum likelihood under regularity
   conditions, so standard errors are still obtained from the numeric Hessian of the objective
   actually optimized.
+
+MaxCombo test
+: A hypothesis test for comparing survival curves that evaluates multiple **Fleming-Harrington**
+  weight functions simultaneously and takes the largest absolute Z-statistic as the test
+  statistic. This makes it robust to unknown treatment-effect timing: when the effect is
+  immediate, the standard log-rank weight dominates; when the effect is delayed, the
+  late-emphasis weight dominates. The MaxCombo adapts automatically, making it well suited to
+  immunotherapy and oncology trials where delayed effects are expected but not guaranteed. The
+  $p$-value is computed from the joint multivariate normal distribution of the weighted
+  Z-statistics. Available via `maxcombo_test()`.
+
+Mixture cure model
+: A survival model for populations in which a fraction of subjects will never experience the
+  event (the "cured" or "long-term survivor" subgroup). The population survival is decomposed
+  as $S_{\text{pop}}(t \mid x, z) = 1 - \pi(x) + \pi(x)\,S_u(t \mid z)$, where
+  $\pi(x)$ is the cure probability modeled by logistic regression (the incidence component)
+  and $S_u(t \mid z)$ is the survival function for susceptible subjects modeled by Cox
+  proportional hazards (the latency component). The EM algorithm alternates between estimating
+  each subject's posterior probability of being cured and updating the incidence and latency
+  parameters. The model is identified when the Kaplan-Meier curve levels off to a non-zero
+  plateau, suggesting a cured fraction. Available via `MixtureCure`.
 
 Model-based standard error
 : The default standard error reported for a Cox model's coefficients, computed from the
@@ -777,6 +839,17 @@ Piecewise exponential model (PEM)
   piecewise-constant baseline hazard that can be plotted and extrapolated. Available via
   `PiecewiseExponential` in Greenwood. Interval boundaries can be selected automatically by
   AIC or BIC.
+
+Power analysis (survival trials)
+: The statistical planning step that determines how many events, subjects, or how much
+  follow-up a trial needs to detect a specified treatment effect with a given probability
+  (power). In the survival context, the **Schoenfeld power formula** links power directly to
+  the total number of observed events rather than the sample size alone, so trial planning
+  separates into two steps: first determine the required event count from the target hazard
+  ratio, significance level, and desired power; then determine the sample size needed to
+  observe that many events given expected censoring and accrual. Greenwood provides
+  `logrank_n_events()` (required events), `logrank_power()` (power for a given design), and
+  `logrank_sample_size()` (required sample size accounting for censoring).
 
 Probit transform (survival)
 : The transformation $g(S) = \Phi^{-1}(1 - S(t))$ applied to survival probabilities, where
