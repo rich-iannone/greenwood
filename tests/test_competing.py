@@ -548,3 +548,97 @@ def test_grays_test_three_groups() -> None:
 
     assert result.df == 2
     assert len(result.observed) == 3
+
+
+# ---------------------------------------------------------------------------
+# AalenJohansen to_frame expanded tests
+# ---------------------------------------------------------------------------
+
+
+class TestAalenJohansenToFrame:
+    def test_format_polars(self) -> None:
+        import polars as pl
+
+        aj = AalenJohansen().fit(_simple_multistate())
+        df = aj.to_frame(format="polars")
+        assert isinstance(df, pl.DataFrame)
+        assert "cause" in df.columns
+        assert "estimate" in df.columns
+
+    def test_cif_monotone_per_cause(self) -> None:
+        aj = AalenJohansen().fit(_simple_multistate())
+        df = aj.to_frame(format="pandas")
+        for cause in df["cause"].unique():
+            cif = df.loc[df["cause"] == cause, "estimate"].to_numpy()
+            assert np.all(np.diff(cif) >= -1e-12)
+
+    def test_cif_bounded_zero_one(self) -> None:
+        aj = AalenJohansen().fit(_simple_multistate())
+        df = aj.to_frame(format="pandas")
+        assert (df["estimate"] >= -1e-12).all()
+        assert (df["estimate"] <= 1.0 + 1e-12).all()
+
+    def test_n_risk_positive(self) -> None:
+        aj = AalenJohansen().fit(_simple_multistate())
+        df = aj.to_frame(format="pandas")
+        assert (df["n_risk"] > 0).all()
+
+    def test_std_error_nonnegative(self) -> None:
+        aj = AalenJohansen().fit(_simple_multistate())
+        df = aj.to_frame(format="pandas")
+        assert (df["std_error"] >= 0).all()
+
+    def test_real_data_cifs_sum_bounded(self) -> None:
+        _, y = _mgus2_cr()
+        aj = AalenJohansen().fit(y)
+        df = aj.to_frame(format="pandas")
+        for t in df["time"].unique():
+            total = df.loc[df["time"] == t, "estimate"].sum()
+            assert total <= 1.0 + 1e-12
+
+
+# ---------------------------------------------------------------------------
+# MultiState predict expanded tests
+# ---------------------------------------------------------------------------
+
+
+class TestMultiStatePredict:
+    @pytest.fixture(scope="class")
+    def ms(self):  # type: ignore[no-untyped-def]
+        from greenwood import MultiState
+
+        return MultiState().fit(
+            start=[0, 5, 0],
+            stop=[5, 8, 6],
+            state=["mgus", "pcm", "mgus"],
+            event=["pcm", "death", "death"],
+            states=("mgus", "pcm", "death"),
+        )
+
+    def test_predict_format_polars(self, ms) -> None:  # type: ignore[no-untyped-def]
+        import polars as pl
+
+        pred = ms.predict([0.0, 3.0, 5.0], format="polars")
+        assert isinstance(pred, pl.DataFrame)
+        assert "time" in pred.columns
+
+    def test_predict_occupancy_sums_to_one(self, ms) -> None:  # type: ignore[no-untyped-def]
+        pred = ms.predict([0.0, 3.0, 5.0, 8.0], format="pandas")
+        state_cols = [c for c in pred.columns if c != "time"]
+        row_sums = pred[state_cols].sum(axis=1).to_numpy()
+        np.testing.assert_allclose(row_sums, 1.0)
+
+    def test_predict_at_time_zero(self, ms) -> None:  # type: ignore[no-untyped-def]
+        pred = ms.predict([0.0], format="pandas")
+        assert pred["mgus"].iloc[0] == pytest.approx(1.0)
+        assert pred["pcm"].iloc[0] == pytest.approx(0.0)
+        assert pred["death"].iloc[0] == pytest.approx(0.0)
+
+    def test_predict_absorbing_state_nondecreasing(self, ms) -> None:  # type: ignore[no-untyped-def]
+        pred = ms.predict([0.0, 3.0, 5.0, 6.0, 8.0], format="pandas")
+        death_vals = pred["death"].to_numpy()
+        assert np.all(np.diff(death_vals) >= -1e-12)
+
+    def test_predict_columns_match_states(self, ms) -> None:  # type: ignore[no-untyped-def]
+        pred = ms.predict([1.0], format="pandas")
+        assert list(pred.columns) == ["time", "mgus", "pcm", "death"]
