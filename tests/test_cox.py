@@ -467,6 +467,113 @@ def test_smooth_hr_adjustment(lung_surv) -> None:  # type: ignore[no-untyped-def
     assert "age" not in shr.adjustment
 
 
+# ---------------------------------------------------------------------------
+# ZPHWindowResult / SmoothHRResult expanded tests
+# ---------------------------------------------------------------------------
+
+
+class TestZPHWindowExpanded:
+    def test_to_frame_format_polars(self, lung_surv) -> None:  # type: ignore[no-untyped-def]
+        import polars as pl
+
+        df, y = lung_surv
+        cox = CoxPH().fit(y, df[["age", "sex"]])
+        zph = cox.cox_zph(breaks=[300])
+        table = zph.to_frame(detail="windows", format="polars")
+        assert isinstance(table, pl.DataFrame)
+        assert "window" in table.columns
+
+    def test_global_to_frame_format_polars(self, lung_surv) -> None:  # type: ignore[no-untyped-def]
+        import polars as pl
+
+        df, y = lung_surv
+        cox = CoxPH().fit(y, df[["age", "sex"]])
+        zph = cox.cox_zph()
+        table = zph.to_frame(format="polars")
+        assert isinstance(table, pl.DataFrame)
+
+    def test_window_p_values_in_unit_interval(self, lung_surv) -> None:  # type: ignore[no-untyped-def]
+        df, y = lung_surv
+        cox = CoxPH().fit(y, df[["age", "sex"]])
+        zph = cox.cox_zph(breaks=[180, 365])
+        for w in zph.windows:
+            assert 0.0 <= w.global_test["p_value"] <= 1.0
+            for v in w.per_term.values():
+                assert 0.0 <= v["p_value"] <= 1.0
+                assert v["chisq"] >= 0.0
+
+    def test_window_chi_sq_nonnegative(self, lung_surv) -> None:  # type: ignore[no-untyped-def]
+        df, y = lung_surv
+        cox = CoxPH().fit(y, df[["age", "sex"]])
+        zph = cox.cox_zph(breaks=[300])
+        for w in zph.windows:
+            assert w.global_test["chisq"] >= 0.0
+
+
+class TestSmoothHRExpanded:
+    def test_to_frame_format_polars(self, lung_surv) -> None:  # type: ignore[no-untyped-def]
+        import polars as pl
+
+        df, y = lung_surv
+        cox = CoxPH().fit(y, df[["age", "sex"]])
+        shr = cox.smooth_hr("age", n_grid=50)
+        table = shr.to_frame(format="polars")
+        assert isinstance(table, pl.DataFrame)
+        assert len(table) == 50
+
+    def test_to_frame_hr_scale_polars(self, lung_surv) -> None:  # type: ignore[no-untyped-def]
+        import polars as pl
+
+        df, y = lung_surv
+        cox = CoxPH().fit(y, df[["age", "sex"]])
+        shr = cox.smooth_hr("age", n_grid=50)
+        table = shr.to_frame(scale="hr", format="polars")
+        assert isinstance(table, pl.DataFrame)
+        assert "hr" in table.columns
+
+    def test_ci_lower_upper_attributes(self, lung_surv) -> None:  # type: ignore[no-untyped-def]
+        df, y = lung_surv
+        cox = CoxPH().fit(y, df[["age", "sex"]])
+        shr = cox.smooth_hr("age")
+        assert shr.log_hr_lower.shape == shr.log_hr.shape
+        assert shr.log_hr_upper.shape == shr.log_hr.shape
+        assert np.all(shr.log_hr_lower <= shr.log_hr + 1e-12)
+        assert np.all(shr.log_hr <= shr.log_hr_upper + 1e-12)
+
+    def test_hr_ci_is_exp_log_hr_ci(self, lung_surv) -> None:  # type: ignore[no-untyped-def]
+        df, y = lung_surv
+        cox = CoxPH().fit(y, df[["age", "sex"]])
+        shr = cox.smooth_hr("age")
+        np.testing.assert_allclose(shr.hr, np.exp(shr.log_hr))
+        np.testing.assert_allclose(shr.hr_lower, np.exp(shr.log_hr_lower))
+        np.testing.assert_allclose(shr.hr_upper, np.exp(shr.log_hr_upper))
+
+    def test_hr_ci_brackets_hr(self, lung_surv) -> None:  # type: ignore[no-untyped-def]
+        df, y = lung_surv
+        cox = CoxPH().fit(y, df[["age", "sex"]])
+        shr = cox.smooth_hr("age")
+        assert np.all(shr.hr_lower <= shr.hr + 1e-12)
+        assert np.all(shr.hr <= shr.hr_upper + 1e-12)
+
+    def test_to_frame_columns_log_hr_scale(self, lung_surv) -> None:  # type: ignore[no-untyped-def]
+        df, y = lung_surv
+        cox = CoxPH().fit(y, df[["age", "sex"]])
+        shr = cox.smooth_hr("age", n_grid=20)
+        table = shr.to_frame(format="pandas")
+        assert "log_hr" in table.columns
+        assert "log_hr_lower" in table.columns
+        assert "log_hr_upper" in table.columns
+
+    def test_to_frame_columns_hr_scale(self, lung_surv) -> None:  # type: ignore[no-untyped-def]
+        df, y = lung_surv
+        cox = CoxPH().fit(y, df[["age", "sex"]])
+        shr = cox.smooth_hr("age", n_grid=20)
+        table = shr.to_frame(scale="hr", format="pandas")
+        assert "hr" in table.columns
+        assert "hr_lower" in table.columns
+        assert "hr_upper" in table.columns
+
+
 def test_concordance_in_unit_interval(lung_surv) -> None:  # type: ignore[no-untyped-def]
     df, y = lung_surv
     c = CoxPH().fit(y, df[["age", "sex"]]).concordance()
