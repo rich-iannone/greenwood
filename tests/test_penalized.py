@@ -519,3 +519,98 @@ def test_glance_fields(data) -> None:  # type: ignore[no-untyped-def]
     assert row["penalizer"] == 0.05
     assert row["l1_ratio"] == 0.5
     assert row["n_nonzero"] == int(np.count_nonzero(model.coef_))
+
+
+# ---------------------------------------------------------------------------
+# CoxNet tidy / glance expanded tests
+# ---------------------------------------------------------------------------
+
+
+class TestCoxNetGlance:
+    def test_columns(self, data) -> None:  # type: ignore[no-untyped-def]
+        y, x = data
+        model = CoxNet(penalizer=0.05, l1_ratio=0.5).fit(y, x)
+        g = gw.glance(model, format="pandas")
+        assert list(g.columns) == [
+            "n",
+            "nevent",
+            "loglik",
+            "aic",
+            "bic",
+            "effective_df",
+            "penalizer",
+            "l1_ratio",
+            "n_nonzero",
+        ]
+
+    def test_n_and_nevent(self, data) -> None:  # type: ignore[no-untyped-def]
+        y, x = data
+        model = CoxNet(penalizer=0.05).fit(y, x)
+        g = gw.glance(model, format="pandas")
+        assert g["n"].iloc[0] == model.n_
+        assert g["nevent"].iloc[0] == model.n_event_
+
+    def test_loglik(self, data) -> None:  # type: ignore[no-untyped-def]
+        y, x = data
+        model = CoxNet(penalizer=0.05).fit(y, x)
+        g = gw.glance(model, format="pandas")
+        assert g["loglik"].iloc[0] == pytest.approx(model.loglik_)
+
+    def test_effective_df_positive(self, data) -> None:  # type: ignore[no-untyped-def]
+        y, x = data
+        model = CoxNet(penalizer=0.05).fit(y, x)
+        g = gw.glance(model, format="pandas")
+        assert g["effective_df"].iloc[0] > 0
+
+    def test_format_polars(self, data) -> None:  # type: ignore[no-untyped-def]
+        import polars as pl
+
+        y, x = data
+        model = CoxNet(penalizer=0.05).fit(y, x)
+        g = gw.glance(model, format="polars")
+        assert isinstance(g, pl.DataFrame)
+        assert len(g) == 1
+
+
+class TestCoxNetTidyExpanded:
+    def test_tidy_terms_match_columns(self, data) -> None:  # type: ignore[no-untyped-def]
+        y, x = data
+        model = CoxNet(penalizer=0.01).fit(y, x)
+        t = gw.tidy(model, format="pandas")
+        assert list(t["term"]) == list(model.term_names_)
+
+    def test_tidy_estimates_match_coef(self, data) -> None:  # type: ignore[no-untyped-def]
+        y, x = data
+        model = CoxNet(penalizer=0.01).fit(y, x)
+        t = gw.tidy(model, format="pandas")
+        np.testing.assert_allclose(t["estimate"].to_numpy(), model.coef_)
+
+    def test_tidy_hazard_ratio_is_exp_coef(self, data) -> None:  # type: ignore[no-untyped-def]
+        y, x = data
+        model = CoxNet(penalizer=0.01).fit(y, x)
+        t = gw.tidy(model, format="pandas")
+        np.testing.assert_allclose(t["hazard_ratio"].to_numpy(), np.exp(model.coef_))
+
+    def test_tidy_format_polars(self, data) -> None:  # type: ignore[no-untyped-def]
+        import polars as pl
+
+        y, x = data
+        model = CoxNet(penalizer=0.01).fit(y, x)
+        t = gw.tidy(model, format="polars")
+        assert isinstance(t, pl.DataFrame)
+        assert t.columns == ["term", "estimate", "hazard_ratio"]
+
+    def test_to_frame_format_polars(self, data) -> None:  # type: ignore[no-untyped-def]
+        import polars as pl
+
+        y, x = data
+        model = CoxNet(penalizer=0.01).fit(y, x)
+        f = model.to_frame(format="polars")
+        assert isinstance(f, pl.DataFrame)
+
+    def test_tidy_matches_to_frame(self, data) -> None:  # type: ignore[no-untyped-def]
+        y, x = data
+        model = CoxNet(penalizer=0.01).fit(y, x)
+        t = gw.tidy(model, format="pandas")
+        f = model.to_frame(format="pandas")
+        np.testing.assert_allclose(t["estimate"].to_numpy(), f["estimate"].to_numpy())
