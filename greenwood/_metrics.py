@@ -22,11 +22,14 @@ if TYPE_CHECKING:
 __all__ = [
     "concordance_index",
     "concordance_index_ipcw",
+    "concordance_index_incidence",
     "brier_score",
     "brier_score_incidence",
     "integrated_brier_score",
     "integrated_brier_score_incidence",
     "calibration",
+    "calibration_incidence",
+    "accuracy_in_time",
     "time_dependent_auc",
     "integrated_auc",
 ]
@@ -41,7 +44,7 @@ def concordance_index(surv: Surv, risk: Any) -> float:
     subjects who experience early events and those who survive longer. The concordance index
     compares all comparable pairs of subjects: those with an observed event are compared to
     those still under observation at the same time or later. Higher risk should correspond to
-    earlier failure; if predictions match reality better than chance, the index exceeds 0.5.
+    earlier failure. If predictions match reality better than chance, the index exceeds 0.5.
 
     **Interpretation**:
 
@@ -458,7 +461,7 @@ def integrated_brier_score(surv: Surv, survival_prob: Any, times: Any) -> float:
     a single "calibration quality" metric.
 
     **Interpretation**: Same scale as Brier score (0 = perfect, 1 = worst). Values of
-    0.15-0.25 are typical for reasonable survival models; values > 0.30 suggest poor
+    0.15-0.25 are typical for reasonable survival models. Values > 0.30 suggest poor
     calibration.
 
     Parameters
@@ -1116,3 +1119,428 @@ def integrated_brier_score_incidence(
     scores = brier_score_incidence(surv, incidence_prob, query, cause=cause)
     area = float(np.sum(np.diff(query) * (scores[:-1] + scores[1:]) / 2.0))
     return area / float(query[-1] - query[0])
+
+
+def concordance_index_incidence(
+    surv: Surv,
+    incidence_prob: Any,
+    *,
+    cause: int,
+    tau: float | None = None,
+) -> float:
+    r"""IPCW concordance index for cause-specific cumulative incidence.
+
+    Measures how well predicted cumulative incidence probabilities for a specific cause discriminate
+    between subjects who experience that cause and those who do not. This extends the IPCW
+    concordance to competing risks by considering two types of comparable pairs: standard pairs
+    (event-of-interest vs. still-at-risk) and competing-event pairs (event-of-interest vs. competing
+    event).
+
+    **Interpretation**:
+
+    - 0.5: Random discrimination (predicted CIF carries no information about cause ordering).
+    - > 0.5: Better-than-random. Subjects who experience the cause tend to have higher
+      predicted CIF.
+    - 1.0: Perfect discrimination.
+
+    Parameters
+    ----------
+    surv
+        A multi-state `Surv` response (from `Surv.multistate()`).
+    incidence_prob
+        Predicted cumulative incidence probability for the cause of interest at the evaluation time
+        `tau`, one value per subject. Higher values should indicate a higher predicted probability
+        of experiencing the cause. Accepts a 1-D array, Pandas/Polars Series, or Python sequence.
+    cause
+        The cause of interest, as an integer event code from the `Surv` response.
+    tau
+        Truncation time. Only subjects with events before `tau` contribute as cases. Defaults to the
+        largest observed time for the cause of interest.
+
+    Returns
+    -------
+    float
+        Concordance index between 0 and 1.
+
+    Details
+    -------
+    Two types of comparable pairs contribute to the concordance:
+
+    - **Type A** (standard survival pairs): Subject $i$ experienced cause $k$ at $T_i$, and subject
+      $j$ is still at risk at $T_i$ ($T_j > T_i$). Weighted by $1 / \hat{G}(T_i)^2$.
+    - **Type B** (competing-event pairs): Subject $i$ experienced cause $k$ at $T_i$, and subject
+      $j$ experienced a competing event at $T_j \le T_i$. Weighted by
+      $1 / (\hat{G}(T_i) \cdot \hat{G}(T_j))$.
+
+    A pair is concordant if the subject with the cause of interest has a higher predicted CIF than
+    the comparator. IPCW weights correct for censoring bias by reweighting pairs according to the
+    inverse censoring probability.
+
+    Examples
+    --------
+    Build a competing-risks response from the `mgus2` dataset and evaluate the concordance of a
+    marginal Aalen-Johansen CIF as a naive baseline:
+
+    ```{python}
+    import greenwood as gw
+    import numpy as np
+
+    mgus2 = gw.load_dataset("mgus2", backend="polars")
+    event = np.where(
+        mgus2["pstat"].to_numpy() == 1, 1,
+        np.where(mgus2["death"].to_numpy() == 1, 2, 0),
+    )
+    y = gw.Surv.multistate(mgus2["futime"].to_numpy(), event, states=("pcm", "death"))
+
+    # Fit Aalen-Johansen for the marginal CIF
+    aj = gw.AalenJohansen().fit(y)
+    cif_df = aj.to_frame(format="polars")
+    pcm_cif = cif_df.filter(cif_df["cause"] == "pcm")
+
+    # Marginal CIF at tau=240 months as a naive predictor (same value for everyone)
+    tau = 240.0
+    marginal_at_tau = float(
+        np.interp(tau, pcm_cif["time"].to_numpy(), pcm_cif["estimate"].to_numpy())
+    )
+    pred = np.full(y.n, marginal_at_tau)
+
+    c = gw.concordance_index_incidence(y, pred, cause=1, tau=tau)
+    c
+    ```
+    """
+    from ._surv import _to_1d_array
+
+    scores = _to_1d_array(incidence_prob)
+    T = surv.stop
+    status = surv.status
+    n = surv.n
+    if scores.shape[0] != n:
+        raise ValueError("`incidence_prob` must have the same length as the response.")
+
+    cause_int = int(cause)
+    unique_causes = np.unique(status[status > 0])
+    if cause_int not in unique_causes:
+        raise ValueError(
+            f"cause={cause_int} not found in the event codes. "
+            f"Observed causes: {unique_causes.tolist()}."
+        )
+
+    if tau is None:
+        event_k_times = T[status == cause_int]
+        if event_k_times.shape[0] == 0:
+            raise ValueError(f"No events of cause {cause_int} in the data.")
+        tau = float(event_k_times.max())
+
+    g_times, g_surv = _censoring_survival_multistate(surv)
+
+    def _g_left(t_arr: Array) -> Array:
+        if g_times.shape[0] == 0:
+            return np.ones(len(t_arr))
+        idx = np.searchsorted(g_times, t_arr, side="left") - 1
+        return np.where(idx >= 0, g_surv[idx.clip(min=0)], 1.0)
+
+    case_mask = (status == cause_int) & (tau >= T)
+    if not case_mask.any():
+        raise ValueError(f"No events of cause {cause_int} before tau={tau}.")
+
+    T_case = T[case_mask]
+    eta_case = scores[case_mask]
+    g_case = _g_left(T_case)
+
+    numerator = 0.0
+    denominator = 0.0
+
+    for i in range(T_case.shape[0]):
+        if g_case[i] <= 0:
+            continue
+
+        # Type A: j still at risk after T_case[i]
+        type_a = T_case[i] < T
+        if type_a.any():
+            w_a = 1.0 / g_case[i] ** 2
+            conc_a = float(np.sum(eta_case[i] > scores[type_a]))
+            conc_a += 0.5 * float(np.sum(eta_case[i] == scores[type_a]))
+            n_a = int(type_a.sum())
+            numerator += w_a * conc_a
+            denominator += w_a * n_a
+
+        # Type B: j had a competing event at T_j <= T_case[i]
+        type_b = (status > 0) & (status != cause_int) & (T_case[i] >= T)
+        if type_b.any():
+            g_b = _g_left(T[type_b])
+            valid_b = g_b > 0
+            if valid_b.any():
+                w_b = 1.0 / (g_case[i] * g_b[valid_b])
+                eta_b = scores[type_b][valid_b]
+                conc_b = (eta_case[i] > eta_b).astype(float) + 0.5 * (eta_case[i] == eta_b).astype(
+                    float
+                )
+                numerator += float(np.dot(w_b, conc_b))
+                denominator += float(w_b.sum())
+
+    if denominator == 0.0:
+        raise ValueError("No comparable pairs found.")
+    return numerator / denominator
+
+
+def calibration_incidence(
+    surv: Surv,
+    incidence_prob: Any,
+    times: Any,
+    *,
+    cause: int,
+) -> Array:
+    r"""Aalen-Johansen calibration error for cause-specific cumulative incidence predictions.
+
+    At each evaluation time, compares the mean predicted CIF across all subjects against the
+    marginal Aalen-Johansen CIF estimate (the observed reference). Returns the absolute calibration
+    error at each time. A well-calibrated model has errors close to zero.
+
+    This implements a marginal calibration check: for a given cause, the average predicted CIF
+    should match the nonparametric Aalen-Johansen estimate at every time point.
+
+    **Interpretation**:
+
+    - 0.0: Perfect marginal calibration (mean predictions match the AJ reference exactly).
+    - Positive values indicate miscalibration. Large errors at early times suggest the model over-
+      or under-predicts the initial incidence. Large errors at late times suggest drift in the tail.
+
+    Parameters
+    ----------
+    surv
+        A multi-state `Surv` response (from `Surv.multistate()`).
+    incidence_prob
+        Predicted cumulative incidence probabilities for the cause of interest, shape
+        `(n_subjects, n_times)`. Each entry is a predicted probability that cause `cause` has
+        occurred by the corresponding time.
+    times
+        Evaluation times where calibration is assessed. 1-D array-like. Must have length equal to
+        the second dimension of `incidence_prob`.
+    cause
+        The cause of interest, as an integer event code from the `Surv` response.
+
+    Returns
+    -------
+    ndarray
+        Absolute calibration error at each time, shape `(len(times),)`. Lower is better.
+
+    Details
+    -------
+    The calibration error at time $t$ for cause $k$ is:
+
+    $$
+    \mathrm{CalErr}_k(t) = \left|\bar{\hat{F}}_k(t) - \hat{F}_k^{\mathrm{AJ}}(t)\right|
+    $$
+
+    where $\bar{\hat{F}}_k(t) = \frac{1}{n}\sum_{i=1}^n \hat{F}_k(t \mid \mathbf{x}_i)$ is
+    the mean predicted CIF and $\hat{F}_k^{\mathrm{AJ}}(t)$ is the marginal Aalen-Johansen
+    CIF. The AJ estimator is fit internally from the supplied `surv` response.
+
+    Examples
+    --------
+    Build a competing-risks response from the `mgus2` dataset and check calibration of a marginal
+    baseline model (which should be perfectly calibrated by construction):
+
+    ```{python}
+    import greenwood as gw
+    import numpy as np
+
+    mgus2 = gw.load_dataset("mgus2", backend="polars")
+    event = np.where(
+        mgus2["pstat"].to_numpy() == 1, 1,
+        np.where(mgus2["death"].to_numpy() == 1, 2, 0),
+    )
+    y = gw.Surv.multistate(mgus2["futime"].to_numpy(), event, states=("pcm", "death"))
+
+    # Fit Aalen-Johansen for the marginal CIF
+    aj = gw.AalenJohansen().fit(y)
+    cif_df = aj.to_frame(format="polars")
+    pcm_cif = cif_df.filter(cif_df["cause"] == "pcm")
+
+    # Naive model: same marginal CIF for every subject
+    times = np.array([60, 120, 240])
+    marginal = np.array(
+        [float(np.interp(t, pcm_cif["time"].to_numpy(), pcm_cif["estimate"].to_numpy()))
+         for t in times]
+    )
+    probs = np.tile(marginal, (y.n, 1))
+
+    # Calibration error should be near zero for the marginal model
+    cal_err = gw.calibration_incidence(y, probs, times, cause=1)
+    cal_err
+    ```
+    """
+    query = np.atleast_1d(np.asarray(times, dtype=float))
+    probs = np.asarray(incidence_prob, dtype=float)
+    if probs.shape != (surv.n, query.shape[0]):
+        raise ValueError(
+            f"incidence_prob must have shape (n_obs, len(times)) = "
+            f"({surv.n}, {query.shape[0]}), got {probs.shape}."
+        )
+
+    cause_int = int(cause)
+    unique_causes = np.unique(surv.status[surv.status > 0])
+    if cause_int not in unique_causes:
+        raise ValueError(
+            f"cause={cause_int} not found in the event codes. "
+            f"Observed causes: {unique_causes.tolist()}."
+        )
+
+    from ._competing import AalenJohansen
+
+    aj = AalenJohansen().fit(surv)
+    block = next(iter(aj._blocks.values()))
+    cause_data = block[cause_int]
+    aj_time = cause_data["time"]
+    aj_estimate = cause_data["estimate"]
+
+    out = np.empty(query.shape[0])
+    for j, t in enumerate(query):
+        mean_pred = float(probs[:, j].mean())
+        aj_ref = float(np.interp(t, aj_time, aj_estimate, left=0.0))
+        out[j] = abs(mean_pred - aj_ref)
+    return out
+
+
+def accuracy_in_time(
+    surv: Surv,
+    incidence_probs: Any,
+    times: Any,
+) -> Array:
+    r"""Time-dependent classification accuracy for competing-risks predictions.
+
+    At each evaluation time, predicts each subject's most likely outcome (survival or one of the
+    competing events) by taking the argmax of predicted cumulative incidence functions, then
+    compares against the observed outcome. Subjects censored before the evaluation time are
+    excluded.
+
+    This metric answers: "At a given time horizon, does the model correctly identify which event a
+    subject will experience?" It complements the concordance index, which measures relative ranking
+    rather than absolute classification.
+
+    **Interpretation**:
+
+    - 1.0: Every uncensored subject's most likely predicted event matches the observed event.
+    - Higher is better.
+    - Early times tend to have high accuracy because most subjects have survived and the model
+      predicts survival. The metric becomes more informative at later times, when the model must
+      discriminate between competing events.
+
+    Parameters
+    ----------
+    surv
+        A multi-state `Surv` response (from `Surv.multistate()`).
+    incidence_probs
+        Predicted cumulative incidence probabilities, shape
+        `(n_subjects, n_causes, n_times)`. Axis 1 indexes causes in the same order as the states in
+        the `Surv` response (cause 1 first, cause 2 second, etc.). The survival probability (no
+        event) is computed internally as `1 - sum(CIFs)` and used as class 0 in the argmax.
+    times
+        Evaluation times. 1-D array-like. Must have length equal to the third dimension of
+        `incidence_probs`.
+
+    Returns
+    -------
+    ndarray
+        Classification accuracy at each time, shape `(len(times),)`. Values are in [0, 1].
+
+    Details
+    -------
+    At each time horizon $\zeta$:
+
+    1. Subjects censored before $\zeta$ (status = 0 and $T_i \le \zeta$) are excluded.
+    2. The predicted class is $\hat{y}_i = \arg\max_{k \in \{0,\dots,K\}}
+       \hat{F}_k(\zeta \mid \mathbf{x}_i)$, where $\hat{F}_0 = \hat{S}$ is the predicted
+       survival probability.
+    3. The observed class is $y_{i,\zeta} = \delta_i \cdot \mathbb{1}(T_i \le \zeta)$,
+       which is 0 (survived) if the subject has not yet experienced any event by $\zeta$,
+       and $\delta_i$ if an event occurred.
+    4. Accuracy is the proportion of uncensored subjects whose predicted class matches the
+       observed class.
+
+    Examples
+    --------
+    Build a competing-risks response from the `mgus2` dataset and evaluate the accuracy of a
+    marginal Aalen-Johansen model:
+
+    ```{python}
+    import greenwood as gw
+    import numpy as np
+
+    mgus2 = gw.load_dataset("mgus2", backend="polars")
+    event = np.where(
+        mgus2["pstat"].to_numpy() == 1, 1,
+        np.where(mgus2["death"].to_numpy() == 1, 2, 0),
+    )
+    y = gw.Surv.multistate(mgus2["futime"].to_numpy(), event, states=("pcm", "death"))
+
+    # Fit Aalen-Johansen for marginal CIFs
+    aj = gw.AalenJohansen().fit(y)
+    cif_df = aj.to_frame(format="polars")
+    pcm_cif = cif_df.filter(cif_df["cause"] == "pcm")
+    death_cif = cif_df.filter(cif_df["cause"] == "death")
+
+    # Build (n_subjects, n_causes, n_times) prediction array
+    times = np.array([60, 120, 240])
+    pcm_vals = np.array(
+        [float(np.interp(t, pcm_cif["time"].to_numpy(), pcm_cif["estimate"].to_numpy()))
+         for t in times]
+    )
+    death_vals = np.array(
+        [float(np.interp(t, death_cif["time"].to_numpy(), death_cif["estimate"].to_numpy()))
+         for t in times]
+    )
+    probs = np.stack(
+        [np.tile(pcm_vals, (y.n, 1)), np.tile(death_vals, (y.n, 1))], axis=1
+    )
+
+    acc = gw.accuracy_in_time(y, probs, times)
+    acc
+    ```
+    """
+    query = np.atleast_1d(np.asarray(times, dtype=float))
+    preds = np.asarray(incidence_probs, dtype=float)
+
+    if preds.ndim != 3:
+        raise ValueError(
+            f"incidence_probs must be a 3-D array with shape "
+            f"(n_subjects, n_causes, n_times), got shape {preds.shape}."
+        )
+
+    n_causes_expected = len(np.unique(surv.status[surv.status > 0]))
+    if preds.shape[0] != surv.n:
+        raise ValueError(
+            f"incidence_probs must have {surv.n} subjects (axis 0), got {preds.shape[0]}."
+        )
+    if preds.shape[1] != n_causes_expected:
+        raise ValueError(
+            f"incidence_probs must have {n_causes_expected} causes (axis 1), got {preds.shape[1]}."
+        )
+    if preds.shape[2] != query.shape[0]:
+        raise ValueError(
+            f"incidence_probs must have {query.shape[0]} times (axis 2), got {preds.shape[2]}."
+        )
+
+    T = surv.stop
+    status = surv.status
+
+    out = np.empty(query.shape[0])
+    for j, t in enumerate(query):
+        # Exclude subjects censored before t
+        censored_before_t = (status == 0) & (t >= T)
+        mask = ~censored_before_t
+
+        if not mask.any():
+            out[j] = np.nan
+            continue
+
+        # Predicted class: argmax over [survival, cause_1, ..., cause_K]
+        surv_prob = 1.0 - preds[mask, :, j].sum(axis=1, keepdims=True)
+        all_probs = np.concatenate([surv_prob, preds[mask, :, j]], axis=1)
+        y_pred_class = all_probs.argmax(axis=1)
+
+        # Observed class: 0 if survived past t, else the cause code
+        y_true_class = np.where(T[mask] <= t, status[mask], 0)
+
+        out[j] = float((y_pred_class == y_true_class).mean())
+    return out
