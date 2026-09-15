@@ -1053,6 +1053,15 @@ Semi-parametric model
   retaining interpretable covariate effects, at the cost of not being able to compute
   quantities (such as mean survival time) that require integrating the full hazard function.
 
+Simulated competing risks
+: A synthetic data generator for **competing risks** analysis. Draws latent event times from
+  independent Weibull distributions (one per cause) and selects the cause with the shortest
+  latent time as the observed event. Independent exponential censoring is applied on top.
+  Optionally generates standard-normal covariates with cause-specific proportional-hazards
+  effects. The generator returns a ``Surv.multistate`` response, the covariate matrix, and
+  the latent times (useful for constructing oracle predictions in benchmarks). Available via
+  `simulate_competing_risks()`.
+
 Shared frailty
 : A Cox model extension that adds a cluster-level random effect to the hazard to account for
   unmeasured heterogeneity shared by subjects in the same group (hospital, family,
