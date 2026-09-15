@@ -57,7 +57,7 @@ etime[:8]
 ```
 
 The `cause` array records which event that time refers to, using the coding noted in the comment
-above. Where a subject progressed it is `1` (`pcm`); otherwise it is `2 * death`, which is `2` when
+above. Where a subject progressed it is `1` (`pcm`). Otherwise it is `2 * death`, which is `2` when
 the subject died without progressing and `0` when the subject was censored. Reading `etime` and
 `cause` position by position gives each subject's (time, cause) pair.
 
@@ -188,8 +188,8 @@ aj_loglog.to_frame(format="polars").filter(pl.col("cause") == "pcm").head(5)[
 ]
 ```
 
-The point estimates are identical across transforms; only the interval limits differ. At `time = 0`
-(before any events), `conf_low` and `conf_high` are `NaN` for the `"log"` and `"log-log"`
+The point estimates are identical across transforms and only the interval limits differ. At
+`time = 0` (before any events), `conf_low` and `conf_high` are `NaN` for the `"log"` and `"log-log"`
 transforms, since `log(0)` is undefined.
 
 ### Comparing confidence interval transforms
@@ -222,8 +222,7 @@ pl.concat(rows)
 - **plain** (default): symmetric interval on the probability scale. Can stray outside `[0, 1]` at
 very early or late times, but is clipped.
 - **log**: interval on the log-CIF scale (bounds stay positive).
-- **log-log**: interval on the `log(-log(F))` scale; matches R's `conf.type = "log-log"`. Produces
-`NaN` at `F = 0`.
+- **log-log**: interval on the `log(-log(F))` scale. Produces `NaN` at `F = 0`.
 
 Choose the transform before fitting and report which one you used. The `"plain"` option is easiest
 to explain to a non-statistical audience. The `"log"` and `"log-log"` options give more reliable
@@ -374,6 +373,10 @@ move between several states over time.
 `concordance_index_incidence()`, `calibration_incidence()`, and `accuracy_in_time()` from
 [Prediction performance](15-prediction-performance.qmd), which provide discrimination,
 calibration, and accuracy metrics for cause-specific cumulative incidence.
+- **Machine-learning predictions** with `SurvivalBoost` from
+[Machine learning](16-machine-learning.qmd). Where Fine-Gray assumes log-linear effects and models
+one cause at a time, `SurvivalBoost` estimates all CIFs jointly using gradient-boosted trees,
+capturing non-linear effects and interactions automatically.
 - **Generate synthetic data** with `simulate_competing_risks()` for testing, benchmarking, or
 teaching. It produces latent-Weibull competing risks with optional covariates and censoring.
 - Revisit [Survival data](03-survival-data.qmd) for the details of the multi-state response.
