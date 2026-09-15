@@ -18,11 +18,13 @@ from ._forest import ExtraSurvivalTrees, RandomSurvivalForest, SurvivalTree
 from ._ipcw import CensoringDistribution, IPCRidge
 from ._metrics import (
     brier_score,
+    brier_score_incidence,
     calibration,
     concordance_index,
     concordance_index_ipcw,
     integrated_auc,
     integrated_brier_score,
+    integrated_brier_score_incidence,
     time_dependent_auc,
 )
 from ._nonparametric import KaplanMeier, NelsonAalen
@@ -109,8 +111,10 @@ __all__ = [
     "bootstrap",
     "BootstrapResult",
     "brier_score",
+    "brier_score_incidence",
     "integrated_auc",
     "integrated_brier_score",
+    "integrated_brier_score_incidence",
     "time_dependent_auc",
     "logrank_test",
     "maxcombo_test",
