@@ -374,4 +374,6 @@ move between several states over time.
 `concordance_index_incidence()`, `calibration_incidence()`, and `accuracy_in_time()` from
 [Prediction performance](15-prediction-performance.qmd), which provide discrimination,
 calibration, and accuracy metrics for cause-specific cumulative incidence.
+- **Generate synthetic data** with `simulate_competing_risks()` for testing, benchmarking, or
+teaching. It produces latent-Weibull competing risks with optional covariates and censoring.
 - Revisit [Survival data](03-survival-data.qmd) for the details of the multi-state response.
