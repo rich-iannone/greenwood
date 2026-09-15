@@ -39,6 +39,7 @@ from ._resample import cross_validate
 from ._rmst import RMSTResult, pairwise_rmst_test, rmst_diff, rmst_test
 from ._simulate import SimulatedCompetingRisks, simulate_competing_risks
 from ._surv import CensoringType, Surv
+from ._survival_boost import SurvivalBoost
 from ._tests import (
     MaxComboResult,
     TestResult,
@@ -148,6 +149,7 @@ __all__ = [
     "available_datasets",
     "simulate_competing_risks",
     "SimulatedCompetingRisks",
+    "SurvivalBoost",
     "split_episodes",
     "tidy",
     "glance",
