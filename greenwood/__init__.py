@@ -17,10 +17,13 @@ from ._flexible import RoystonParmar
 from ._forest import ExtraSurvivalTrees, RandomSurvivalForest, SurvivalTree
 from ._ipcw import CensoringDistribution, IPCRidge
 from ._metrics import (
+    accuracy_in_time,
     brier_score,
     brier_score_incidence,
     calibration,
+    calibration_incidence,
     concordance_index,
+    concordance_index_incidence,
     concordance_index_ipcw,
     integrated_auc,
     integrated_brier_score,
@@ -100,10 +103,13 @@ __all__ = [
     "FineGray",
     "MultiState",
     "grays_test",
+    "accuracy_in_time",
     "calibration",
+    "calibration_incidence",
     "compare_distributions",
     "concordance_index",
     "concordance_index_ipcw",
+    "concordance_index_incidence",
     "cross_validate",
     "logrank_n_events",
     "logrank_power",
