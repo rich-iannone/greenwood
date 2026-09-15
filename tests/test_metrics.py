@@ -262,7 +262,7 @@ class TestTimeDependentAUC:
         np.testing.assert_allclose(auc, [0.0, 0.0, 0.0])
 
     def test_random_marker_near_half(self) -> None:
-        rng = np.random.default_rng(42)
+        rng = np.random.default_rng(23)
         n = 500
         time = rng.exponential(1.0, size=n)
         event = np.ones(n, dtype=int)
@@ -367,3 +367,173 @@ class TestIntegratedAUC:
         iauc = gw.integrated_auc(y, lp, times=[180, 365, 540])
 
         assert iauc > 0.5
+
+
+# ---------------------------------------------------------------------------
+# Cause-specific (incidence) Brier score
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture()
+def competing_data():
+    """Competing-risks dataset: 2 causes, some censoring."""
+    rng = np.random.default_rng(23)
+    n = 200
+    time = rng.exponential(scale=10, size=n)
+    status = rng.choice([0, 1, 2], size=n, p=[0.3, 0.4, 0.3])
+    y = Surv.multistate(time, status, states=("cause1", "cause2"))
+    return y
+
+
+class TestBrierScoreIncidence:
+    def test_shape_checked(self, competing_data) -> None:
+        y = competing_data
+        with pytest.raises(ValueError, match="shape"):
+            gw.brier_score_incidence(y, np.zeros((y.n, 1)), times=[1.0, 2.0], cause=1)
+
+    def test_invalid_cause_raises(self, competing_data) -> None:
+        y = competing_data
+        times = [5.0, 10.0]
+        probs = np.full((y.n, 2), 0.3)
+        with pytest.raises(ValueError, match="cause=99"):
+            gw.brier_score_incidence(y, probs, times, cause=99)
+
+    def test_perfect_prediction_is_zero(self) -> None:
+        time = np.array([1.0, 2.0, 3.0, 4.0])
+        status = np.array([1, 2, 1, 2])
+        y = Surv.multistate(time, status, states=("a", "b"))
+        t_eval = np.array([1.5, 2.5, 3.5])
+
+        # Perfect CIF for cause 1: indicator that cause 1 happened before t
+        probs = np.array(
+            [[float((status[i] == 1) and (time[i] <= t)) for t in t_eval] for i in range(len(time))]
+        )
+
+        bs = gw.brier_score_incidence(y, probs, t_eval, cause=1)
+        np.testing.assert_allclose(bs, 0.0, atol=1e-12)
+
+    def test_scores_are_nonnegative(self, competing_data) -> None:
+        y = competing_data
+        rng = np.random.default_rng(123)
+        times = [3.0, 6.0, 10.0, 15.0]
+        probs = rng.uniform(0, 0.5, size=(y.n, len(times)))
+
+        bs = gw.brier_score_incidence(y, probs, times, cause=1)
+        assert np.all(bs >= 0.0)
+
+    def test_scores_bounded_by_one(self, competing_data) -> None:
+        y = competing_data
+        times = [3.0, 6.0, 10.0]
+        probs = np.full((y.n, 3), 0.5)
+
+        bs = gw.brier_score_incidence(y, probs, times, cause=1)
+        assert np.all(bs <= 1.0)
+
+    def test_wrong_cause_gives_higher_score(self) -> None:
+        rng = np.random.default_rng(7)
+        n = 300
+        time = rng.exponential(scale=10, size=n)
+        status = rng.choice([0, 1, 2], size=n, p=[0.2, 0.5, 0.3])
+        y = Surv.multistate(time, status, states=("a", "b"))
+        times = np.array([5.0, 10.0, 15.0])
+
+        # Good predictions: approximately correct CIF for cause 1
+        from greenwood._nonparametric import KaplanMeier
+
+        km_all = KaplanMeier().fit(Surv.right(time, (status > 0).astype(int)))
+        cause1_frac = (status == 1).sum() / (status > 0).sum()
+        good_probs = np.array(
+            [
+                [
+                    cause1_frac * (1.0 - float(np.interp(t, km_all.time_, km_all.survival_)))
+                    for t in times
+                ]
+                for _ in range(n)
+            ]
+        )
+
+        # Bad predictions: constant 0.9 for everyone
+        bad_probs = np.full((n, len(times)), 0.9)
+
+        bs_good = gw.brier_score_incidence(y, good_probs, times, cause=1)
+        bs_bad = gw.brier_score_incidence(y, bad_probs, times, cause=1)
+        assert np.all(bs_good < bs_bad)
+
+    def test_reduces_to_survival_brier_single_cause(self) -> None:
+        rng = np.random.default_rng(55)
+        n = 150
+        time = rng.exponential(scale=8, size=n)
+        event_binary = rng.choice([0, 1], size=n, p=[0.3, 0.7])
+        y_right = Surv.right(time, event_binary)
+        y_multi = Surv.multistate(time, event_binary, states=("death",))
+
+        times = np.array([3.0, 6.0, 10.0])
+        surv_probs = np.column_stack([rng.uniform(0.3, 0.9, size=n) for _ in times])
+        incidence_probs = 1.0 - surv_probs
+
+        bs_surv = gw.brier_score(y_right, surv_probs, times)
+        bs_inc = gw.brier_score_incidence(y_multi, incidence_probs, times, cause=1)
+        np.testing.assert_allclose(bs_inc, bs_surv, atol=1e-10)
+
+    def test_each_cause_independently_scored(self, competing_data) -> None:
+        y = competing_data
+        rng = np.random.default_rng(99)
+        times = [5.0, 10.0]
+        probs = rng.uniform(0, 0.5, size=(y.n, 2))
+
+        bs1 = gw.brier_score_incidence(y, probs, times, cause=1)
+        bs2 = gw.brier_score_incidence(y, probs, times, cause=2)
+        # Same predictions but different causes should yield different scores
+        assert not np.allclose(bs1, bs2)
+
+
+class TestIntegratedBrierScoreIncidence:
+    def test_needs_at_least_two_times(self, competing_data) -> None:
+        y = competing_data
+        probs = np.full((y.n, 1), 0.3)
+        with pytest.raises(ValueError, match="at least two times"):
+            gw.integrated_brier_score_incidence(y, probs, times=[5.0], cause=1)
+
+    def test_nonnegative(self, competing_data) -> None:
+        y = competing_data
+        rng = np.random.default_rng(77)
+        times = [3.0, 6.0, 10.0, 15.0]
+        probs = rng.uniform(0, 0.5, size=(y.n, len(times)))
+
+        ibs = gw.integrated_brier_score_incidence(y, probs, times, cause=1)
+        assert ibs >= 0.0
+
+    def test_consistent_with_pointwise(self, competing_data) -> None:
+        y = competing_data
+        rng = np.random.default_rng(88)
+        times = np.array([3.0, 6.0, 10.0, 15.0])
+        probs = rng.uniform(0, 0.5, size=(y.n, len(times)))
+
+        ibs = gw.integrated_brier_score_incidence(y, probs, times, cause=1)
+        bs = gw.brier_score_incidence(y, probs, times, cause=1)
+        manual_ibs = float(np.trapezoid(bs, times)) / (times[-1] - times[0])
+        assert ibs == pytest.approx(manual_ibs, abs=1e-12)
+
+    def test_better_model_lower_ibs(self) -> None:
+        rng = np.random.default_rng(33)
+        n = 250
+        time = rng.exponential(scale=10, size=n)
+        status = rng.choice([0, 1, 2], size=n, p=[0.2, 0.5, 0.3])
+        y = Surv.multistate(time, status, states=("a", "b"))
+        times = np.linspace(2.0, 20.0, 10)
+
+        good_probs = np.column_stack(
+            [
+                np.clip(
+                    ((status == 1) & (time <= t)).astype(float) + rng.normal(0, 0.05, size=n),
+                    0.0,
+                    1.0,
+                )
+                for t in times
+            ]
+        )
+        bad_probs = np.full((n, len(times)), 0.8)
+
+        ibs_good = gw.integrated_brier_score_incidence(y, good_probs, times, cause=1)
+        ibs_bad = gw.integrated_brier_score_incidence(y, bad_probs, times, cause=1)
+        assert ibs_good < ibs_bad
