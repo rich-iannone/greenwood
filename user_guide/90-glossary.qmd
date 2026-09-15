@@ -84,6 +84,16 @@ Brier score
   unobserved event times. Lower is better, and a naive constant-survival model gives an upper
   benchmark. Available via `brier_score()`.
 
+Brier score (incidence)
+: The cause-specific extension of the **Brier score** to **competing risks**, measuring how
+  accurately predicted **cumulative incidence function** probabilities for a specific cause
+  match observed outcomes (Graf 1999, extended by Kretowska 2018). The binary target is 1 if
+  cause $k$ occurred before time $t$ and 0 otherwise (including competing events at any time,
+  censored subjects, or cause $k$ after $t$). IPCW weights correct for censoring: subjects
+  with any observed event before $t$ are weighted by $1 / \hat{G}(T_i)$, subjects still at
+  risk after $t$ by $1 / \hat{G}(t)$, and censored subjects before $t$ receive zero weight.
+  Available via `brier_score_incidence()` and `integrated_brier_score_incidence()`.
+
 BCa bootstrap (bias-corrected and accelerated bootstrap)
 : A bootstrap confidence interval method that applies two corrections to the percentile
   bootstrap to account for bias and skewness in the bootstrap distribution. The
@@ -540,7 +550,9 @@ Information criteria (AIC, BIC)
 Integrated Brier score (IBS)
 : The **Brier score** averaged over a range of evaluation times, providing a single summary
   of overall predictive accuracy across the follow-up period. Available via
-  `integrated_brier_score()`.
+  `integrated_brier_score()` for survival predictions and
+  `integrated_brier_score_incidence()` for cause-specific **cumulative incidence function**
+  predictions in a **competing risks** setting.
 
 Interval censoring
 : A censoring mechanism in which the event is known only to have occurred within a time
