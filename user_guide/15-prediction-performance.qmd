@@ -235,6 +235,71 @@ honest assessment, evaluate on a held-out test set or use cross-validation, fitt
 the data and scoring predictions on another.
 :::
 
+## Brier score for competing risks
+
+The standard Brier score evaluates predicted survival probabilities. In a competing-risks setting,
+the quantity of interest is instead the cumulative incidence function (CIF) for a specific cause.
+`brier_score_incidence()` extends the IPCW Brier score to this setting: it compares predicted CIF
+probabilities against observed cause-specific outcomes.
+
+The weighting scheme accounts for competing events. Subjects who experienced *any* event (including
+a competing cause) before the evaluation time are weighted by the inverse censoring probability at
+their event time. Subjects still at risk contribute at the inverse censoring probability at the
+evaluation time. Subjects censored before the evaluation time receive zero weight.
+
+To illustrate, we build a competing-risks response from the `mgus2` dataset, where subjects may
+progress to plasma cell malignancy (PCM) or die without progression.
+
+```{python}
+import numpy as np
+
+mgus2 = gw.load_dataset("mgus2", backend="polars")
+
+event = np.where(
+    mgus2["pstat"].to_numpy() == 1, 1,
+    np.where(mgus2["death"].to_numpy() == 1, 2, 0),
+)
+y_cr = gw.Surv.multistate(mgus2["futime"].to_numpy(), event, states=("pcm", "death"))
+y_cr
+```
+
+As a baseline, we use the marginal Aalen-Johansen CIF as a naive model that predicts the same CIF
+for every subject.
+
+```{python}
+aj = gw.AalenJohansen().fit(y_cr)
+cif_df = aj.to_frame(format="polars")
+pcm_cif = cif_df.filter(cif_df["cause"] == "pcm")
+
+times_cr = np.array([60, 120, 240])
+marginal = np.array(
+    [float(np.interp(t, pcm_cif["time"].to_numpy(), pcm_cif["estimate"].to_numpy()))
+     for t in times_cr]
+)
+
+probs_cr = np.tile(marginal, (y_cr.n, 1))
+gw.brier_score_incidence(y_cr, probs_cr, times_cr, cause=1)
+```
+
+The `cause=` argument selects which event code to evaluate. Here `cause=1` corresponds to
+progression (the first element of `states`). To evaluate death predictions instead, pass `cause=2`.
+
+As with the survival Brier score, you can summarize accuracy over a range of times in a single
+number with the integrated version.
+
+```{python}
+times_fine = np.linspace(30, 360, 12)
+marginal_fine = np.array(
+    [float(np.interp(t, pcm_cif["time"].to_numpy(), pcm_cif["estimate"].to_numpy()))
+     for t in times_fine]
+)
+probs_fine = np.tile(marginal_fine, (y_cr.n, 1))
+gw.integrated_brier_score_incidence(y_cr, probs_fine, times_fine, cause=1)
+```
+
+A model that uses covariates to produce subject-specific CIF predictions should yield a lower
+integrated Brier score than this marginal baseline.
+
 ## Time-dependent discrimination: AUC over time
 
 The concordance index summarises discrimination with a single number across all event times. But a
@@ -404,9 +469,8 @@ miscalibration even when discrimination is good.
 ::: {.callout-tip}
 ## Assess calibration out of sample too
 
-Like the other metrics, calibration is optimistic on the training data. For a fair picture,
-compute it on held-out predictions, for instance the test-fold predictions from a
-cross-validation split.
+Like the other metrics, calibration is optimistic on the training data. For a fair picture, compute
+it on held-out predictions, for instance the test-fold predictions from a cross-validation split.
 :::
 
 ## Next steps
