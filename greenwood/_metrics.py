@@ -23,7 +23,9 @@ __all__ = [
     "concordance_index",
     "concordance_index_ipcw",
     "brier_score",
+    "brier_score_incidence",
     "integrated_brier_score",
+    "integrated_brier_score_incidence",
     "calibration",
     "time_dependent_auc",
     "integrated_auc",
@@ -81,10 +83,9 @@ def concordance_index(surv: Surv, risk: Any) -> float:
     - Pairs with tied risk scores are counted as 0.5 (half-concordant).
     - Pairs with the same event time are excluded.
 
-    **Censoring handling**: Censored subjects are handled through the comparable pairs
-    definition. A censored subject at time t can only be compared to subjects with events at
-    times strictly greater than t. This avoids artificial inflation of concordance from
-    censored subjects and matches R's `survival::concordance`.
+    **Censoring handling**: Censored subjects are handled through the comparable pairs definition. A
+    censored subject at time t can only be compared to subjects with events at times strictly
+    greater than t. This avoids artificial inflation of concordance from censored subjects.
 
     **Relationship to other metrics**: The concordance index is related to the rank correlation
     between risk and observed survival. It's invariant to monotonic transformations of risk
@@ -92,8 +93,8 @@ def concordance_index(surv: Surv, risk: Any) -> float:
 
     Examples
     --------
-    Fit a Cox model on the `lung` dataset and evaluate its discrimination. Higher linear
-    predictor values should correspond to earlier deaths.
+    Fit a Cox model on the `lung` dataset and evaluate its discrimination. Higher linear predictor
+    values should correspond to earlier deaths.
 
     ```{python}
     import greenwood as gw
@@ -109,8 +110,8 @@ def concordance_index(surv: Surv, risk: Any) -> float:
     c_index
     ```
 
-    A concordance index of ~0.6 indicates moderate discrimination. Compare with baseline
-    (naive model assuming all subjects are at equal risk):
+    A concordance index of ~0.6 indicates moderate discrimination. Compare with baseline (naive
+    model assuming all subjects are at equal risk):
 
     ```{python}
     import numpy as np
@@ -122,8 +123,8 @@ def concordance_index(surv: Surv, risk: Any) -> float:
     print(f"Improvement: {c_index - baseline_c:.3f}")
     ```
 
-    Evaluate on hold-out test data to assess generalization (use Cox model fit on training
-    data, predict on test data):
+    Evaluate on hold-out test data to assess generalization (use Cox model fit on training data,
+    predict on test data):
 
     ```{python}
     # cox = CoxPH().fit(y_train, x_train)
@@ -168,9 +169,9 @@ def concordance_index_ipcw(
 
     **When to use this instead of** `concordance_index` (Harrell's C):
 
-    - When censoring exceeds 30-40% of subjects.
-    - When censoring patterns differ across risk groups (informative censoring).
-    - When comparing models across datasets with different censoring rates.
+    - when censoring exceeds 30-40% of subjects.
+    - when censoring patterns differ across risk groups (informative censoring).
+    - when comparing models across datasets with different censoring rates.
 
     **Interpretation**: Same scale as Harrell's C (0.5 = random, 1.0 = perfect discrimination).
     Values are comparable to Harrell's C under light censoring and diverge when censoring is heavy.
@@ -211,12 +212,6 @@ def concordance_index_ipcw(
     **Truncation**: Restricting to events before $\tau$ avoids instability from dividing by very
     small censoring probabilities in the tail. The default $\tau$ is the largest event time. Set it
     explicitly to the maximum follow-up of interest.
-
-    References
-    ----------
-    Uno H., Cai T., Pencina M.J., D'Agostino R.B., Wei L.J. (2011). On the C-statistics for
-    evaluating overall adequacy of risk prediction procedures with censored survival data.
-    *Statistics in Medicine*, 30(10), 1105-1117.
 
     Examples
     --------
@@ -740,12 +735,6 @@ def time_dependent_auc(surv: Surv, marker: Any, times: Any) -> Array:
     time-averaged AUC across all event times. Use `integrated_auc()` to obtain a single
     time-averaged summary that is directly comparable to the C-index.
 
-    References
-    ----------
-    Uno H., Cai T., Pencina M.J., D'Agostino R.B., Wei L.J. (2011). On the C-statistics
-    for evaluating overall adequacy of risk prediction procedures with censored survival
-    data. *Statistics in Medicine*, 30(10), 1105-1117.
-
     Examples
     --------
     Fit a Cox model on the `lung` dataset and compute its time-dependent AUC using the
@@ -887,3 +876,243 @@ def integrated_auc(surv: Surv, marker: Any, times: Any) -> float:
     a_v = auc[valid]
     area = float(np.sum(np.diff(t_v) * (a_v[:-1] + a_v[1:]) / 2.0))
     return area / float(t_v[-1] - t_v[0])
+
+
+def _censoring_survival_multistate(surv: Surv) -> tuple[Array, Array]:
+    """Censoring KM for a multistate Surv: any event (status > 0) counts as 'event'."""
+    from ._competing import _censoring_km
+
+    status = np.where(surv.status > 0, 1, 0)
+    return _censoring_km(surv.stop, status)
+
+
+def brier_score_incidence(
+    surv: Surv,
+    incidence_prob: Any,
+    times: Any,
+    *,
+    cause: int,
+) -> Array:
+    r"""IPCW Brier score for a cause-specific cumulative incidence function at specified times.
+
+    Extends the Graf (1999) IPCW Brier score to competing risks following Kretowska (2018). Measures
+    how accurately predicted cumulative incidence probabilities for a specific cause match the
+    observed cause-specific outcomes, correcting for censoring bias.
+
+    This is suitable for use after fitting a competing-risks model (`FineGray`, `AalenJohansen`,
+    `MultiState`) that produces predicted CIF curves, evaluate whether the predicted cause-specific
+    probabilities are well-calibrated.
+
+    **Interpretation**:
+
+    - Ranges from 0 (perfect predictions) to 1 (worst possible).
+    - Lower is better. Compare to a null model that predicts the marginal CIF at each time.
+    - Score typically increases with time (longer horizons are harder to predict).
+
+    Parameters
+    ----------
+    surv
+        A multi-state `Surv` response (from `Surv.multistate()`). The `status` column encodes
+        0 = censored, 1 = first cause, 2 = second cause, etc.
+    incidence_prob
+        Predicted cumulative incidence probabilities for the cause of interest, shape
+        `(n_subjects, n_times)`. Each entry is a predicted probability that cause `cause` has
+        occurred by the corresponding time. Values should be in [0, 1].
+    times
+        Evaluation times where Brier scores are computed. 1-D array-like. Must have length equal to
+        the second dimension of `incidence_prob`.
+    cause
+        The cause of interest, as an integer event code from the `Surv` response. For example, if
+        `states=("relapse", "death")` then `cause=1` evaluates predictions for relapse and `cause=2`
+        evaluates predictions for death.
+
+    Returns
+    -------
+    ndarray
+        Brier score at each time, shape `(len(times),)`. Lower is better.
+
+    Details
+    -------
+    The cause-specific IPCW Brier score at time $t$ for cause $k$ is:
+
+    $$
+    BS_k(t) = \frac{1}{n} \sum_{i=1}^{n} \hat{\omega}_i(t)
+    \bigl(\mathbb{1}(T_i \le t,\, \Delta_i = k) - \hat{F}_k(t \mid \mathbf{x}_i)\bigr)^2
+    $$
+
+    where $\hat{F}_k(t \mid \mathbf{x}_i)$ is the predicted CIF for cause $k$, and the IPCW
+    weights are:
+
+    $$
+    \hat{\omega}_i(t) = \frac{\mathbb{1}(T_i \le t,\, \Delta_i > 0)}{\hat{G}(T_i)}
+    + \frac{\mathbb{1}(T_i > t)}{\hat{G}(t)}
+    $$
+
+    Subjects censored before $t$ receive zero weight. Subjects who experienced any event (including
+    competing causes) before $t$ are weighted by the inverse censoring probability at their event
+    time. Subjects still at risk after $t$ are weighted by the inverse censoring probability at $t$.
+
+    Examples
+    --------
+    Build a competing-risks response from the `mgus2` dataset (progression to PCM vs. death)
+    and evaluate a marginal Aalen-Johansen CIF as a naive baseline model:
+
+    ```{python}
+    import greenwood as gw
+    import numpy as np
+
+    mgus2 = gw.load_dataset("mgus2", backend="polars")
+    event = np.where(
+        mgus2["pstat"].to_numpy() == 1, 1,
+        np.where(mgus2["death"].to_numpy() == 1, 2, 0),
+    )
+    y = gw.Surv.multistate(mgus2["futime"].to_numpy(), event, states=("pcm", "death"))
+
+    # Fit Aalen-Johansen for the marginal CIF
+    aj = gw.AalenJohansen().fit(y)
+    cif_df = aj.to_frame(format="polars")
+    pcm_cif = cif_df.filter(cif_df["cause"] == "pcm")
+
+    # Interpolate the marginal CIF at evaluation times
+    times = np.array([60, 120, 240])
+    marginal = np.array(
+        [float(np.interp(t, pcm_cif["time"].to_numpy(), pcm_cif["estimate"].to_numpy()))
+         for t in times]
+    )
+
+    # Naive model: same marginal CIF for every subject
+    probs = np.tile(marginal, (y.n, 1))
+    bs = gw.brier_score_incidence(y, probs, times, cause=1)
+    bs
+    ```
+    """
+    query = np.atleast_1d(np.asarray(times, dtype=float))
+    probs = np.asarray(incidence_prob, dtype=float)
+    if probs.shape != (surv.n, query.shape[0]):
+        raise ValueError(
+            f"incidence_prob must have shape (n_obs, len(times)) = "
+            f"({surv.n}, {query.shape[0]}), got {probs.shape}."
+        )
+
+    cause_int = int(cause)
+    unique_causes = np.unique(surv.status[surv.status > 0])
+    if cause_int not in unique_causes:
+        raise ValueError(
+            f"cause={cause_int} not found in the event codes. "
+            f"Observed causes: {unique_causes.tolist()}."
+        )
+
+    exit_ = surv.stop
+    status = surv.status
+    any_event = status > 0
+
+    drop_times, drop_surv = _censoring_survival_multistate(surv)
+
+    def g_left(t: Array) -> Array:
+        if drop_times.shape[0] == 0:
+            return np.ones_like(np.atleast_1d(t), dtype=float)
+        idx = np.searchsorted(drop_times, t, side="left") - 1
+        return np.where(idx >= 0, drop_surv[idx.clip(min=0)], 1.0)
+
+    g_at_exit = g_left(exit_)
+    out = np.empty(query.shape[0])
+    with np.errstate(divide="ignore", invalid="ignore"):
+        for j, t in enumerate(query):
+            f_hat = probs[:, j]
+            # Binary target: 1 if cause k occurred before t, 0 otherwise
+            y_binary = ((status == cause_int) & (exit_ <= t)).astype(float)
+
+            # IPCW weights
+            # - Any observed event before t: weight by 1/G(T_i)
+            # - Still at risk after t: weight by 1/G(t)
+            # - Censored before t: weight = 0
+            event_before_t = any_event & (exit_ <= t)
+            at_risk_after_t = exit_ > t
+            g_t = float(g_left(np.array([t]))[0])
+            weights = np.where(
+                event_before_t,
+                np.where(g_at_exit > 0, 1.0 / g_at_exit, 0.0),
+                np.where(at_risk_after_t, 1.0 / g_t if g_t > 0 else 0.0, 0.0),
+            )
+
+            squared_error = (y_binary - f_hat) ** 2
+            out[j] = float((weights * squared_error).mean())
+    return out
+
+
+def integrated_brier_score_incidence(
+    surv: Surv,
+    incidence_prob: Any,
+    times: Any,
+    *,
+    cause: int,
+) -> float:
+    r"""Integrated (time-averaged) Brier score for a cause-specific cumulative incidence.
+
+    Summarizes cause-specific Brier scores computed at multiple time horizons into a single
+    metric via trapezoidal integration. This provides an overall calibration measure for
+    a competing-risks model's predictions for a specific cause.
+
+    **Use this to**: Reduce multiple cause-specific Brier scores (one per time point) to a
+    single number for model comparison. Especially useful when comparing Fine-Gray models
+    for the same cause with different covariate sets.
+
+    **Interpretation**: Same scale as `brier_score_incidence()` (0 = perfect, 1 = worst).
+
+    Parameters
+    ----------
+    surv
+        A multi-state `Surv` response (from `Surv.multistate()`).
+    incidence_prob
+        Predicted cumulative incidence probabilities for the cause of interest, shape
+        `(n_subjects, n_times)`.
+    times
+        Evaluation times (at least 2). The integrated Brier score is computed as the area
+        under the Brier-score curve from `times[0]` to `times[-1]`, normalized by the
+        time span.
+    cause
+        The cause of interest (integer event code from the `Surv` response).
+
+    Returns
+    -------
+    float
+        Integrated Brier score (time-averaged). Lower is better.
+
+    Examples
+    --------
+    Summarize CIF calibration for progression (cause 1) into a single score using the
+    `mgus2` dataset:
+
+    ```{python}
+    import greenwood as gw
+    import numpy as np
+
+    mgus2 = gw.load_dataset("mgus2", backend="polars")
+    event = np.where(
+        mgus2["pstat"].to_numpy() == 1, 1,
+        np.where(mgus2["death"].to_numpy() == 1, 2, 0),
+    )
+    y = gw.Surv.multistate(mgus2["futime"].to_numpy(), event, states=("pcm", "death"))
+
+    # Marginal CIF from Aalen-Johansen as a naive baseline
+    aj = gw.AalenJohansen().fit(y)
+    cif_df = aj.to_frame(format="polars")
+    pcm_cif = cif_df.filter(cif_df["cause"] == "pcm")
+
+    # Evaluate over a fine time grid
+    times = np.linspace(30, 360, 12)
+    marginal = np.array(
+        [float(np.interp(t, pcm_cif["time"].to_numpy(), pcm_cif["estimate"].to_numpy()))
+         for t in times]
+    )
+    probs = np.tile(marginal, (y.n, 1))
+    ibs = gw.integrated_brier_score_incidence(y, probs, times, cause=1)
+    ibs
+    ```
+    """
+    query = np.atleast_1d(np.asarray(times, dtype=float))
+    if query.shape[0] < 2:
+        raise ValueError("integrated_brier_score_incidence needs at least two times.")
+    scores = brier_score_incidence(surv, incidence_prob, query, cause=cause)
+    area = float(np.sum(np.diff(query) * (scores[:-1] + scores[1:]) / 2.0))
+    return area / float(query[-1] - query[0])
