@@ -537,3 +537,212 @@ class TestIntegratedBrierScoreIncidence:
         ibs_good = gw.integrated_brier_score_incidence(y, good_probs, times, cause=1)
         ibs_bad = gw.integrated_brier_score_incidence(y, bad_probs, times, cause=1)
         assert ibs_good < ibs_bad
+
+
+# ---------------------------------------------------------------------------
+# Concordance index for incidence
+# ---------------------------------------------------------------------------
+
+
+class TestConcordanceIndexIncidence:
+    def test_length_checked(self, competing_data) -> None:
+        y = competing_data
+        with pytest.raises(ValueError, match="same length"):
+            gw.concordance_index_incidence(y, np.zeros(5), cause=1)
+
+    def test_invalid_cause_raises(self, competing_data) -> None:
+        y = competing_data
+        with pytest.raises(ValueError, match="cause=99"):
+            gw.concordance_index_incidence(y, np.zeros(y.n), cause=99)
+
+    def test_no_events_before_tau_raises(self) -> None:
+        time = np.array([10.0, 20.0, 30.0])
+        status = np.array([1, 2, 1])
+        y = Surv.multistate(time, status, states=("a", "b"))
+        with pytest.raises(ValueError, match="No events of cause 1 before tau"):
+            gw.concordance_index_incidence(y, np.zeros(3), cause=1, tau=5.0)
+
+    def test_in_unit_range(self, competing_data) -> None:
+        y = competing_data
+        rng = np.random.default_rng(23)
+        pred = rng.uniform(0, 1, size=y.n)
+        c = gw.concordance_index_incidence(y, pred, cause=1)
+        assert 0.0 <= c <= 1.0
+
+    def test_perfect_discrimination(self) -> None:
+        time = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+        status = np.array([1, 1, 2, 2, 0, 0])
+        y = Surv.multistate(time, status, states=("a", "b"))
+        # Subjects with cause 1 (times 1, 2) get highest predicted CIF
+        pred = np.array([0.9, 0.8, 0.3, 0.2, 0.1, 0.05])
+        c = gw.concordance_index_incidence(y, pred, cause=1)
+        assert c == pytest.approx(1.0)
+
+    def test_constant_prediction_near_half(self, competing_data) -> None:
+        y = competing_data
+        pred = np.full(y.n, 0.5)
+        c = gw.concordance_index_incidence(y, pred, cause=1)
+        assert c == pytest.approx(0.5)
+
+    def test_tau_restricts_events(self, competing_data) -> None:
+        y = competing_data
+        rng = np.random.default_rng(11)
+        pred = rng.uniform(0, 1, size=y.n)
+        c_full = gw.concordance_index_incidence(y, pred, cause=1)
+        tau = float(np.median(y.stop))
+        c_tau = gw.concordance_index_incidence(y, pred, cause=1, tau=tau)
+        assert 0.0 <= c_tau <= 1.0
+        assert c_full != pytest.approx(c_tau, abs=1e-6)
+
+
+# ---------------------------------------------------------------------------
+# Calibration for incidence (AJ calibration)
+# ---------------------------------------------------------------------------
+
+
+class TestCalibrationIncidence:
+    def test_shape_checked(self, competing_data) -> None:
+        y = competing_data
+        with pytest.raises(ValueError, match="shape"):
+            gw.calibration_incidence(y, np.zeros((y.n, 1)), times=[1.0, 2.0], cause=1)
+
+    def test_invalid_cause_raises(self, competing_data) -> None:
+        y = competing_data
+        probs = np.full((y.n, 2), 0.3)
+        with pytest.raises(ValueError, match="cause=99"):
+            gw.calibration_incidence(y, probs, times=[5.0, 10.0], cause=99)
+
+    def test_marginal_model_perfectly_calibrated(self, competing_data) -> None:
+        y = competing_data
+        aj = gw.AalenJohansen().fit(y)
+        cif_df = aj.to_frame(format="polars")
+        c1_cif = cif_df.filter(cif_df["cause"] == "cause1")
+
+        times = np.array([3.0, 6.0, 10.0])
+        marginal = np.array(
+            [
+                float(np.interp(t, c1_cif["time"].to_numpy(), c1_cif["estimate"].to_numpy()))
+                for t in times
+            ]
+        )
+        probs = np.tile(marginal, (y.n, 1))
+
+        cal_err = gw.calibration_incidence(y, probs, times, cause=1)
+        np.testing.assert_allclose(cal_err, 0.0, atol=1e-12)
+
+    def test_errors_nonnegative(self, competing_data) -> None:
+        y = competing_data
+        rng = np.random.default_rng(55)
+        times = [3.0, 6.0, 10.0]
+        probs = rng.uniform(0, 0.5, size=(y.n, len(times)))
+        cal_err = gw.calibration_incidence(y, probs, times, cause=1)
+        assert np.all(cal_err >= 0.0)
+
+    def test_biased_model_has_large_error(self, competing_data) -> None:
+        y = competing_data
+        times = np.array([3.0, 6.0, 10.0])
+        # Predict 0.9 for everyone (highly biased)
+        probs = np.full((y.n, len(times)), 0.9)
+        cal_err = gw.calibration_incidence(y, probs, times, cause=1)
+        assert np.all(cal_err > 0.1)
+
+    def test_returns_correct_shape(self, competing_data) -> None:
+        y = competing_data
+        times = [3.0, 6.0, 10.0, 15.0]
+        probs = np.full((y.n, len(times)), 0.3)
+        cal_err = gw.calibration_incidence(y, probs, times, cause=1)
+        assert cal_err.shape == (4,)
+
+
+# ---------------------------------------------------------------------------
+# Accuracy in time
+# ---------------------------------------------------------------------------
+
+
+class TestAccuracyInTime:
+    def test_3d_required(self, competing_data) -> None:
+        y = competing_data
+        with pytest.raises(ValueError, match="3-D"):
+            gw.accuracy_in_time(y, np.zeros((y.n, 2)), times=[5.0])
+
+    def test_wrong_n_subjects_raises(self, competing_data) -> None:
+        y = competing_data
+        with pytest.raises(ValueError, match="subjects"):
+            gw.accuracy_in_time(y, np.zeros((5, 2, 1)), times=[5.0])
+
+    def test_wrong_n_causes_raises(self, competing_data) -> None:
+        y = competing_data
+        with pytest.raises(ValueError, match="causes"):
+            gw.accuracy_in_time(y, np.zeros((y.n, 5, 1)), times=[5.0])
+
+    def test_wrong_n_times_raises(self, competing_data) -> None:
+        y = competing_data
+        with pytest.raises(ValueError, match="times"):
+            gw.accuracy_in_time(y, np.zeros((y.n, 2, 3)), times=[5.0])
+
+    def test_in_unit_range(self, competing_data) -> None:
+        y = competing_data
+        rng = np.random.default_rng(23)
+        times = [3.0, 6.0, 10.0]
+        probs = rng.uniform(0, 0.3, size=(y.n, 2, len(times)))
+        acc = gw.accuracy_in_time(y, probs, times)
+        assert np.all((acc >= 0.0) & (acc <= 1.0))
+
+    def test_perfect_prediction_is_one(self) -> None:
+        time = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+        status = np.array([1, 2, 1, 0, 2, 1])
+        y = Surv.multistate(time, status, states=("a", "b"))
+        t_eval = np.array([3.5])
+
+        # At t=3.5: subject 0 (cause 1 at 1.0), 1 (cause 2 at 2.0), 2 (cause 1 at 3.0),
+        # 3 (censored at 4.0 > 3.5, excluded=no, survived), 4 (cause 2 at 5.0 > 3.5, survived),
+        # 5 (cause 1 at 6.0 > 3.5, survived)
+        # Wait, subject 3 is censored at 4.0 > 3.5, so not censored before t. Included.
+        # Observed classes at t=3.5: [1, 2, 1, 0, 0, 0]
+        # Perfect predictions: CIF_1, CIF_2 that give correct argmax
+        probs = np.zeros((6, 2, 1))
+        # Subject 0: cause 1 -> CIF_1 high
+        probs[0, 0, 0] = 0.8
+        probs[0, 1, 0] = 0.1
+        # Subject 1: cause 2 -> CIF_2 high
+        probs[1, 0, 0] = 0.1
+        probs[1, 1, 0] = 0.8
+        # Subject 2: cause 1 -> CIF_1 high
+        probs[2, 0, 0] = 0.8
+        probs[2, 1, 0] = 0.1
+        # Subject 3: survived -> survival = 1 - sum(CIFs) should be highest
+        probs[3, 0, 0] = 0.1
+        probs[3, 1, 0] = 0.1
+        # Subject 4: survived
+        probs[4, 0, 0] = 0.1
+        probs[4, 1, 0] = 0.1
+        # Subject 5: survived
+        probs[5, 0, 0] = 0.1
+        probs[5, 1, 0] = 0.1
+
+        acc = gw.accuracy_in_time(y, probs, t_eval)
+
+        assert acc[0] == pytest.approx(1.0)
+
+    def test_returns_correct_shape(self, competing_data) -> None:
+        y = competing_data
+        times = [3.0, 6.0, 10.0, 15.0]
+        probs = np.full((y.n, 2, len(times)), 0.1)
+        acc = gw.accuracy_in_time(y, probs, times)
+
+        assert acc.shape == (4,)
+
+    def test_early_times_high_accuracy(self) -> None:
+        rng = np.random.default_rng(77)
+        n = 300
+        time = rng.exponential(scale=50, size=n)
+        status = rng.choice([0, 1, 2], size=n, p=[0.3, 0.4, 0.3])
+        y = Surv.multistate(time, status, states=("a", "b"))
+
+        # At very early times, most subjects survived; predicting low CIF = survival
+        times = np.array([0.5, 1.0])
+        probs = np.full((n, 2, len(times)), 0.01)
+        acc = gw.accuracy_in_time(y, probs, times)
+
+        # Most subjects survived at early times, so accuracy should be high
+        assert np.all(acc > 0.5)
