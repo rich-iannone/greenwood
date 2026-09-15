@@ -300,6 +300,78 @@ gw.integrated_brier_score_incidence(y_cr, probs_fine, times_fine, cause=1)
 A model that uses covariates to produce subject-specific CIF predictions should yield a lower
 integrated Brier score than this marginal baseline.
 
+## Concordance for competing risks
+
+The standard concordance index evaluates discrimination for a single event type. In a
+competing-risks setting, `concordance_index_incidence()` extends the IPCW concordance to
+cause-specific cumulative incidence predictions (Wolbers et al., 2014). It compares two types of
+pairs: standard pairs (a subject who experienced the cause of interest vs. a subject still at risk)
+and competing-event pairs (a subject who experienced the cause vs. one who experienced a competing
+event). Each pair type receives its own IPCW weight.
+
+Using the same `mgus2` competing-risks data from above, we evaluate the concordance of the marginal
+Aalen-Johansen CIF at 240 months. Because the marginal model predicts the same value for every
+subject, its concordance is 0.5 (no discrimination).
+
+```{python}
+# Marginal CIF at tau=240 months: same prediction for everyone
+tau = 240.0
+marginal_at_tau = float(
+    np.interp(tau, pcm_cif["time"].to_numpy(), pcm_cif["estimate"].to_numpy())
+)
+pred_flat = np.full(y_cr.n, marginal_at_tau)
+
+gw.concordance_index_incidence(y_cr, pred_flat, cause=1, tau=tau)
+```
+
+A model that produces subject-specific CIF predictions should achieve a concordance above 0.5.
+
+## Calibration for competing risks
+
+Beyond discrimination, a model's predicted CIF values should match the observed incidence on
+average. `calibration_incidence()` checks marginal calibration by comparing the mean predicted CIF
+at each time against the nonparametric Aalen-Johansen reference. The result is the absolute
+calibration error at each time point.
+
+```{python}
+# Calibration check: mean predicted CIF vs. AJ reference
+cal_err = gw.calibration_incidence(y_cr, probs_cr, times_cr, cause=1)
+cal_err
+```
+
+Because the marginal model *is* the AJ reference, its calibration error is essentially zero. A
+subject-specific model will typically show nonzero errors, especially in the tails.
+
+## Accuracy in time for competing risks
+
+When the model predicts CIFs for all competing causes, `accuracy_in_time()` evaluates whether the
+model correctly identifies the most likely outcome at each time horizon. At time $\zeta$, each
+subject's predicted outcome is the argmax of the predicted CIFs plus the implied survival
+probability. The metric reports the proportion of uncensored subjects whose predicted class matches
+the observed outcome.
+
+```{python}
+# Build prediction array: (n_subjects, n_causes, n_times)
+death_cif = cif_df.filter(cif_df["cause"] == "death")
+pcm_vals = np.array(
+    [float(np.interp(t, pcm_cif["time"].to_numpy(), pcm_cif["estimate"].to_numpy()))
+     for t in times_cr]
+)
+death_vals = np.array(
+    [float(np.interp(t, death_cif["time"].to_numpy(), death_cif["estimate"].to_numpy()))
+     for t in times_cr]
+)
+probs_3d = np.stack(
+    [np.tile(pcm_vals, (y_cr.n, 1)), np.tile(death_vals, (y_cr.n, 1))], axis=1
+)
+
+gw.accuracy_in_time(y_cr, probs_3d, times_cr)
+```
+
+Early times tend to show high accuracy because most subjects have survived and the model predicts
+survival. The metric becomes most informative at later times, when discriminating between competing
+events matters.
+
 ## Time-dependent discrimination: AUC over time
 
 The concordance index summarises discrimination with a single number across all event times. But a
