@@ -1117,18 +1117,30 @@ Survival function
   **Nelson-Aalen** cumulative hazard as $\exp(-\hat{H}(t))$.
 
 Survival tree
-: A decision tree for time-to-event data that recursively splits subjects into groups whose
-  survival differs as much as possible, choosing each split to maximize the two-sample
-  **log-rank** statistic between the child groups. Each leaf stores a Kaplan-Meier survival
-  curve and a Nelson-Aalen cumulative hazard from its subjects. A single tree is interpretable
-  but high-variance (it is the base learner of the **random survival forest**). Available via
-  `SurvivalTree`.
+: A decision tree for time-to-event data that recursively splits subjects into groups whose survival
+  differs as much as possible, choosing each split to maximize the two-sample **log-rank** statistic
+  between the child groups. Each leaf stores a Kaplan-Meier survival curve and a Nelson-Aalen
+  cumulative hazard from its subjects. A single tree is interpretable but high-variance (it is the
+  base learner of the **random survival forest**). Available via `SurvivalTree`.
 
 Surv object
-: The response type in Greenwood that bundles event times with their status codes and
-  validates them eagerly. Every estimator and model in Greenwood consumes a `Surv` object.
-  Built with `Surv.right()`, `Surv.counting()`, `Surv.left()`, `Surv.interval()`, or
-  `Surv.multistate()` depending on the censoring and event structure of the data.
+: The response type in Greenwood that bundles event times with their status codes and validates them
+  eagerly. Every estimator and model in Greenwood consumes a `Surv` object. Built with
+  `Surv.right()`, `Surv.counting()`, `Surv.left()`, `Surv.interval()`, or `Surv.multistate()`
+  depending on the censoring and event structure of the data.
+
+SurvivalBoost
+: A gradient-boosted model for **competing risks** that directly estimates cause-specific
+  **cumulative incidence functions** (CIFs) and the any-event survival function. It uses multi-class
+  softmax gradient boosting with **IPCW**-weighted targets and stochastic time-horizon sampling,
+  following the approach of Alberge et al. (2025). At each boosting iteration, random time
+  horizons are drawn and appended as an extra input feature, and one regression tree per class is
+  fit to the softmax gradient residuals of the current ensemble. Subjects censored before the
+  sampled horizon are excluded; uncensored subjects are reweighted by the inverse probability of
+  censoring. Predictions are probability-calibrated by construction (softmax output sums to 1 at
+  every time point). Unlike **Fine-Gray**, which models one cause at a time under a log-linear
+  assumption, SurvivalBoost estimates all causes jointly and captures non-linear effects and
+  interactions automatically. Available via `SurvivalBoost`.
 
 Threshold parameter (location parameter)
 : A three-parameter extension of a 2-parameter accelerated failure time distribution: $T =
