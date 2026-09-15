@@ -486,8 +486,8 @@ terms are the covariate effects on that scale.
 
 ### Choosing the degrees of freedom
 
-The `df=` parameter controls spline flexibility. `df=1` is exactly a Weibull model (no spline);
-higher values let the hazard adapt to the data shape. More flexibility fits the observed data better
+The `df=` parameter controls spline flexibility. `df=1` is exactly a Weibull model (no spline).
+Higher values let the hazard adapt to the data shape. More flexibility fits the observed data better
 but risks overfitting and unstable extrapolation.
 
 ```{python}
