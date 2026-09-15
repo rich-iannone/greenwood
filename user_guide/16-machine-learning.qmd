@@ -98,11 +98,11 @@ rsf.variable_importance()
 
 ## Extra survival trees
 
-`ExtraSurvivalTrees` is an extremely-randomized variant: in addition to sampling covariates, it draws
-the split *threshold* at random for each candidate rather than optimizing it. The extra randomness
-further decorrelates the trees, often lowering variance and speeding up fitting. Following the
-extra-trees convention, it grows each tree on the whole sample by default; set `bootstrap=True` when
-you want out-of-bag scoring or variable importance.
+`ExtraSurvivalTrees` is an extremely-randomized variant: in addition to sampling covariates, it
+draws the split *threshold* at random for each candidate rather than optimizing it. The extra
+randomness further decorrelates the trees, often lowering variance and speeding up fitting.
+Following the extra-trees convention, it grows each tree on the whole sample by default; set
+`bootstrap=True` when you want out-of-bag scoring or variable importance.
 
 ```{python}
 # Extremely-randomized survival trees with out-of-bag scoring enabled
@@ -232,3 +232,207 @@ scores
 
 See [Prediction performance](15-prediction-performance.qmd) for concordance on held-out data, the
 Brier score, and time-dependent AUC (the right way to compare these models).
+
+## SurvivalBoost: competing-risks gradient boosting
+
+The models above apply to single-event survival data. When you have **competing risks**, where
+subjects can experience one of several mutually exclusive event types, `SurvivalBoost` is the
+machine-learning counterpart. It estimates cause-specific cumulative incidence functions (CIFs) and
+the any-event survival function directly, using multi-class softmax gradient boosting with
+IPCW-weighted targets. The approach follows Alberge et al. (2025).
+
+### How it works
+
+At each boosting iteration, `SurvivalBoost` samples random time horizons and appends them as an
+extra feature column alongside the original covariates. For every subject-horizon pair, it computes
+a multi-class target: event type $k$ if cause $k$ occurred before the horizon, or "event-free" if
+the subject was still at risk. Subjects censored before the horizon receive zero weight and are
+excluded. Uncensored subjects are reweighted by the inverse probability of censoring (IPCW) to
+correct for informative dropout.
+
+The model then fits one regression tree per class to the softmax gradient residuals of the current
+ensemble, exactly as in multi-class gradient boosting for tabular data. Because the time horizon
+varies from iteration to iteration, the ensemble learns how the class probabilities evolve over time
+without being tied to a fixed grid. Predictions are probability-calibrated by construction: the
+softmax output sums to one at every time point.
+
+The `hard_zero_fraction` parameter forces a fraction of time horizons to exactly zero each iteration.
+This teaches the model that no events have occurred at $t = 0$, preventing CIFs from starting at a
+nonzero value.
+
+### Fitting the model
+
+`SurvivalBoost` consumes a multi-state `Surv` response (from `Surv.multistate()`) and a covariate
+matrix. We use `simulate_competing_risks()` to generate synthetic data with known properties, but
+the model works with any competing-risks dataset.
+
+```{python}
+import numpy as np
+
+# Generate competing-risks data: 2 causes, 3 covariates
+sim = gw.simulate_competing_risks(n=500, n_causes=2, n_covariates=3, seed=42)
+
+# Fit SurvivalBoost
+sb = gw.SurvivalBoost(
+    n_estimators=50, learning_rate=0.1, max_depth=3, random_state=0
+)
+sb.fit(sim.surv, sim.covariates)
+sb
+```
+
+The fitted model reports the number of subjects, events, causes, and features. Internally it stores
+one set of trees per class per boosting round.
+
+### Predicting CIFs and survival
+
+`predict_cumulative_incidence` returns a 3-D array of shape `(n_subjects, n_classes, n_times)`.
+Index 0 along the class axis is the survival probability (the probability that no event has occurred
+by time $t$). Indices 1 through $K$ are the cause-specific CIFs.
+
+```{python}
+times = np.array([2.0, 5.0, 10.0, 15.0])
+cif = sb.predict_cumulative_incidence(sim.covariates, times=times)
+cif.shape
+```
+
+Because the predictions pass through a softmax, the probabilities always sum to one across classes
+at every time point. That means the survival probability is exactly `1 - sum(CIFs)`, which is the
+correct accounting for competing risks.
+
+```{python}
+# Verify: probabilities sum to 1 at each time for every subject
+cif.sum(axis=1)[:3, :]
+```
+
+The survival function alone is available via `predict_survival_function`, which returns a 2-D array
+of shape `(n_subjects, n_times)`.
+
+```{python}
+surv_pred = sb.predict_survival_function(sim.covariates, times=times)
+surv_pred[:3, :]  # first three subjects
+```
+
+For a classifier-style interface at a single time horizon, `predict_proba` returns a 2-D array where
+each row sums to one.
+
+```{python}
+# Class probabilities at t = 8 for the first five subjects
+sb.predict_proba(sim.covariates[:5], time_horizon=8.0)
+```
+
+### DataFrame output
+
+Both prediction methods accept a `format=` parameter for DataFrame output. For
+`predict_cumulative_incidence`, the result is a long-format table with columns `time`, `cause`,
+`subject`, and `probability`.
+
+```{python}
+sb.predict_cumulative_incidence(
+    sim.covariates[:3], times=np.array([5.0, 10.0]), format="polars"
+).head(6)
+```
+
+For `predict_survival_function`, the result is a wide-format table with one column per subject,
+matching the format used by `GradientBoostingSurvivalAnalysis`.
+
+```{python}
+sb.predict_survival_function(
+    sim.covariates[:3], times=np.array([5.0, 10.0]), format="polars"
+)
+```
+
+### Evaluating predictions
+
+Because `SurvivalBoost` produces CIF estimates, you can evaluate them with the competing-risks
+metrics from [Prediction performance](15-prediction-performance.qmd). The cause-specific Brier score
+measures calibration at each time horizon. Lower values mean the predicted probabilities are closer
+to the observed outcomes.
+
+```{python}
+# Brier score for cause 1 at several time horizons
+eval_times = np.array([3.0, 6.0, 10.0])
+cif_eval = sb.predict_cumulative_incidence(sim.covariates, times=eval_times)
+bs = gw.brier_score_incidence(sim.surv, cif_eval[:, 1, :], eval_times, cause=1)
+dict(zip(eval_times, bs))
+```
+
+The concordance index for incidence measures discrimination: how well the model ranks subjects by
+their predicted CIF at a given time horizon. Values above 0.5 indicate better-than-random ranking.
+
+```{python}
+# Concordance for cause 1 at median follow-up
+tau = float(np.median(sim.surv.stop))
+cif_tau = sb.predict_cumulative_incidence(sim.covariates, times=np.array([tau]))
+c_index = gw.concordance_index_incidence(sim.surv, cif_tau[:, 1, 0], cause=1, tau=tau)
+c_index
+```
+
+You can also check calibration (how close the predicted CIFs are to the Aalen-Johansen reference)
+and accuracy in time (classification accuracy at each horizon). See
+[Prediction performance](15-prediction-performance.qmd) for details on all four metrics.
+
+### Model summaries
+
+`SurvivalBoost` supports the broom-style `tidy()` and `glance()` interface. `glance()` returns a
+one-row summary with the model's key parameters and counts.
+
+```{python}
+gw.glance(sb)
+```
+
+### Tuning
+
+The main hyperparameters to tune are:
+
+- `n_estimators`: More boosting iterations improve fit up to a point, after which the model
+overfits. Typical values range from 50 to 500.
+- `learning_rate`: Smaller rates (0.01 to 0.1) need more iterations but generalize better. Together,
+`n_estimators` and `learning_rate` control the bias-variance tradeoff.
+- `max_depth`: Controls the interaction depth of each tree. Depth 2 to 4 is typical. Deeper trees
+capture higher-order interactions but are more prone to overfitting.
+- `subsample`: Setting this below 1.0 gives stochastic gradient boosting, where each iteration uses
+a random fraction of the training data. Values around 0.8 often improve generalization.
+- `n_horizons_per_observation`: The number of time horizons sampled per subject per iteration.
+Higher values (3 to 5) give more stable gradients at the cost of proportionally slower training.
+- `hard_zero_fraction`: Ensures the model learns zero incidence at $t = 0$. The default of 0.1 works
+well in most settings. Increase it if predicted CIFs at $t = 0$ are not close to zero.
+
+Use held-out data or `cross_validate` to select these. Because the model is non-parametric, it can
+capture complex covariate effects that Fine-Gray would miss, but it also needs enough data and
+regularization (depth limits, learning-rate shrinkage) to avoid overfitting.
+
+::: {.callout-note}
+## SurvivalBoost vs. Fine-Gray
+
+Fine-Gray fits a single cause at a time and assumes a log-linear effect on the subdistribution
+hazard. `SurvivalBoost` estimates all causes jointly, captures non-linear effects and interactions
+automatically, and produces probability-calibrated predictions without post-processing. The tradeoff
+is interpretability: Fine-Gray gives a coefficient per covariate with a clear hazard-ratio
+interpretation, while `SurvivalBoost` is a black-box ensemble. When prediction accuracy matters more
+than interpretability, `SurvivalBoost` is the stronger choice.
+:::
+
+### More than two causes
+
+`SurvivalBoost` handles any number of competing event types. The number of output classes is always
+$K + 1$ (one per cause, plus the survival class).
+
+```{python}
+# Three competing causes
+sim3 = gw.simulate_competing_risks(n=400, n_causes=3, n_covariates=2, seed=7)
+sb3 = gw.SurvivalBoost(n_estimators=30, learning_rate=0.1, max_depth=2, random_state=0)
+sb3.fit(sim3.surv, sim3.covariates)
+
+# CIF at t = 5: shape is (400, 4, 1) because there are 4 classes (survival + 3 causes)
+cif3 = sb3.predict_cumulative_incidence(sim3.covariates, times=np.array([5.0]))
+cif3.shape
+```
+
+The model scales naturally: each additional cause adds one class to the softmax and one tree per
+boosting round. The probabilities still sum to one across all classes at every time point, so the
+survival function and CIFs remain mutually consistent regardless of how many causes are present.
+
+For background on how competing risks are represented and why the cumulative incidence function is
+the right estimand, see [Competing risks](13-competing-risks.qmd). For evaluating CIF predictions
+with discrimination, calibration, and classification metrics, see
+[Prediction performance](15-prediction-performance.qmd).
