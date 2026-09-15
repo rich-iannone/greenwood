@@ -6,6 +6,16 @@ guide-section: "Reference"
 Terms used throughout the Greenwood documentation, listed alphabetically. Where a term has
 a direct counterpart in Greenwood's API, the relevant class or function is noted.
 
+Accuracy in time
+: A time-dependent classification metric for **competing risks** models. At each time horizon
+  $\zeta$, each subject's most likely predicted outcome (survival or one of the competing
+  events) is determined by taking the argmax of the predicted **cumulative incidence functions**
+  plus the survival probability. Subjects censored before $\zeta$ are excluded. The metric
+  reports the proportion of uncensored subjects whose predicted class matches the observed
+  outcome. Early times tend to have high accuracy (most subjects survived and the model
+  predicts survival). The metric becomes informative at later times, when the model must
+  discriminate between competing events. Available via `accuracy_in_time()`.
+
 Accelerated failure time (AFT)
 : A parametric regression model for survival data that represents the log of the event time
   as a linear function of covariates. Covariates "accelerate" or "decelerate" time to the
@@ -126,7 +136,7 @@ Buckley-James estimator
   refit by ordinary least squares on the imputed values. With no censoring, every residual is
   exact and the algorithm converges in one step to plain least squares. Largely superseded in
   practice by the maximum-likelihood `AFT`, which is more efficient under a correct distributional
-  assumption and has closed-form standard errors; Buckley-James has none, so standard errors are
+  assumption and has closed-form standard errors. Buckley-James has none, so standard errors are
   available in Greenwood only via bootstrap resampling (`n_boot=`). Available via
   `BuckleyJames`.
 
@@ -141,6 +151,14 @@ Calibration
   plot. Good discrimination (high **concordance index**) does not guarantee good calibration:
   a model can rank subjects correctly but still overestimate or underestimate absolute
   probabilities. Available via `calibration()`.
+
+Calibration (incidence)
+: A marginal calibration check for **competing risks** predictions. At each evaluation time,
+  compares the mean predicted **cumulative incidence function** across all subjects against the
+  nonparametric **Aalen-Johansen** CIF estimate. Returns the absolute calibration error at each
+  time. A well-calibrated model has errors close to zero. Large errors at early times suggest
+  the model over- or under-predicts the initial incidence. Large errors in the tail suggest
+  drift. Available via `calibration_incidence()`.
 
 Complementary log-log (cloglog) transform
 : The transformation $g(S) = \log(-\log(S(t)))$ applied to survival probabilities. On a plot of
@@ -196,6 +214,15 @@ Concordance index (C-statistic, Harrell's C)
   corresponds to random ranking, whereas 1.0 is perfect discrimination. Available via
   `concordance_index()`. An IPCW variant (`concordance_index_ipcw()`) corrects for censoring
   bias and is more robust when censoring is heavy or differs across risk groups.
+
+Concordance index for incidence
+: An extension of the **concordance index** to **competing risks** (Wolbers et al., 2014).
+  Measures how well predicted **cumulative incidence function** probabilities for a specific
+  cause discriminate between subjects who experience that cause and those who do not. Two types
+  of comparable pairs contribute: standard pairs (event-of-interest vs. still-at-risk) and
+  competing-event pairs (event-of-interest vs. competing event). IPCW weights correct for
+  censoring bias, with different weight formulas for each pair type. Available via
+  `concordance_index_incidence()`.
 
 Competing risks
 : A study setting in which subjects can experience one of several mutually exclusive events.
@@ -706,7 +733,7 @@ MaxCombo test
 : A hypothesis test for comparing survival curves that evaluates multiple **Fleming-Harrington**
   weight functions simultaneously and takes the largest absolute Z-statistic as the test
   statistic. This makes it robust to unknown treatment-effect timing: when the effect is
-  immediate, the standard log-rank weight dominates; when the effect is delayed, the
+  immediate, the standard log-rank weight dominates. When the effect is delayed, the
   late-emphasis weight dominates. The MaxCombo adapts automatically, making it well suited to
   immunotherapy and oncology trials where delayed effects are expected but not guaranteed. The
   $p$-value is computed from the joint multivariate normal distribution of the weighted
@@ -858,7 +885,7 @@ Power analysis (survival trials)
   (power). In the survival context, the **Schoenfeld power formula** links power directly to
   the total number of observed events rather than the sample size alone, so trial planning
   separates into two steps: first determine the required event count from the target hazard
-  ratio, significance level, and desired power; then determine the sample size needed to
+  ratio, significance level, and desired power. Then, determine the sample size needed to
   observe that many events given expected censoring and accrual. Greenwood provides
   `logrank_n_events()` (required events), `logrank_power()` (power for a given design), and
   `logrank_sample_size()` (required sample size accounting for censoring).
@@ -1101,7 +1128,7 @@ Threshold parameter (location parameter)
   floor, a burn-in period in reliability engineering, or an incubation time before an event
   becomes possible. Not to be confused with the **Location-scale parameterization**'s own
   location $\mu$, which shifts log-time rather than time itself and carries no such floor.
-  Enabled via `AFT(threshold=True)`; not supported for `dist="gengamma"`. Best fit with
+  Enabled via `AFT(threshold=True)`. Not supported for `dist="gengamma"`. Best fit with
   `method="mps"` (**maximum product of spacings**) rather than ordinary maximum likelihood,
   which can drive $\gamma$ toward the smallest observed time.
 
@@ -1159,7 +1186,7 @@ Turnbull's algorithm (NPMLE for interval-censored data)
   Kaplan-Meier, the estimator's support is not identified everywhere: the data determine a set of
   *maximal intersection intervals* (via the Gentleman & Geyer 1994 construction), and only the total
   probability mass on each one is identified, not where within it the mass truly sits. Where an
-  interval degenerates to a single point, survival is known exactly there; elsewhere it is reported
+  interval degenerates to a single point, survival is known exactly there. Elsewhere it is reported
   as an explicit ambiguity bracket rather than an interpolated guess. Reduces exactly to the
   Kaplan-Meier estimator when there is no genuine interval ambiguity (only exact events and right
   censoring). Available via `Turnbull`.
