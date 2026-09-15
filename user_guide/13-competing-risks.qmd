@@ -370,8 +370,8 @@ It accepts a fitted `AalenJohansen` directly and facets by cause, with optional 
 covariate and an aligned numbers-at-risk table.
 - [Multi-state models](14-multi-state.qmd) generalize competing risks to settings where subjects
 move between several states over time.
-- **Evaluate CIF predictions** with `brier_score_incidence()` and
-`integrated_brier_score_incidence()` from
-[Prediction performance](15-prediction-performance.qmd), which extend the Brier score to
-cause-specific cumulative incidence.
+- **Evaluate CIF predictions** with `brier_score_incidence()`,
+`concordance_index_incidence()`, `calibration_incidence()`, and `accuracy_in_time()` from
+[Prediction performance](15-prediction-performance.qmd), which provide discrimination,
+calibration, and accuracy metrics for cause-specific cumulative incidence.
 - Revisit [Survival data](03-survival-data.qmd) for the details of the multi-state response.
