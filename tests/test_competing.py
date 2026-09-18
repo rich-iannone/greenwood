@@ -642,3 +642,298 @@ class TestMultiStatePredict:
     def test_predict_columns_match_states(self, ms) -> None:  # type: ignore[no-untyped-def]
         pred = ms.predict([1.0], format="pandas")
         assert list(pred.columns) == ["time", "mgus", "pcm", "death"]
+
+
+# -- FineGray predict_cumulative_incidence --------------------------------------
+
+
+class TestFineGrayPredict:
+    @pytest.fixture(scope="class")
+    def fg(self):  # type: ignore[no-untyped-def]
+        from greenwood import FineGray
+
+        df, y = _mgus2_cr()
+        return FineGray("pcm").fit(y, df[["age", "sex"]])
+
+    @pytest.fixture(scope="class")
+    def df_y(self):  # type: ignore[no-untyped-def]
+        return _mgus2_cr()
+
+    def test_predict_lp_shape(self, fg, df_y) -> None:  # type: ignore[no-untyped-def]
+        df, _ = df_y
+        lp = fg.predict(df[["age", "sex"]], type="lp")
+        assert lp.shape[0] == len(df)
+
+    def test_predict_risk_positive(self, fg, df_y) -> None:  # type: ignore[no-untyped-def]
+        df, _ = df_y
+        risk = fg.predict(df[["age", "sex"]], type="risk")
+        assert np.all(risk > 0)
+
+    def test_predict_lp_default_uses_training(self, fg) -> None:  # type: ignore[no-untyped-def]
+        lp = fg.predict()
+        assert lp.shape[0] == fg.n_
+
+    def test_predict_invalid_type(self, fg) -> None:  # type: ignore[no-untyped-def]
+        with pytest.raises(ValueError, match="Unknown predict type"):
+            fg.predict(type="bogus")
+
+    def test_predict_cif_columns(self, fg, df_y) -> None:  # type: ignore[no-untyped-def]
+        df, _ = df_y
+        cif = fg.predict_cumulative_incidence(df[["age", "sex"]][:3], format="pandas")
+        assert "time" in cif.columns
+        assert "subject_1" in cif.columns
+        assert "subject_3" in cif.columns
+
+    def test_predict_cif_bounded(self, fg, df_y) -> None:  # type: ignore[no-untyped-def]
+        df, _ = df_y
+        cif = fg.predict_cumulative_incidence(df[["age", "sex"]][:5], format="pandas")
+        vals = cif.drop(columns="time").to_numpy()
+        assert np.all(vals >= -1e-12)
+        assert np.all(vals <= 1.0 + 1e-12)
+
+    def test_predict_cif_monotone(self, fg, df_y) -> None:  # type: ignore[no-untyped-def]
+        df, _ = df_y
+        cif = fg.predict_cumulative_incidence(df[["age", "sex"]][:3], format="pandas")
+        for col in ["subject_1", "subject_2", "subject_3"]:
+            assert np.all(np.diff(cif[col].to_numpy()) >= -1e-12)
+
+    def test_predict_cif_at_specific_times(self, fg, df_y) -> None:  # type: ignore[no-untyped-def]
+        df, _ = df_y
+        cif = fg.predict_cumulative_incidence(
+            df[["age", "sex"]][:2], times=[100, 200, 300], format="pandas"
+        )
+        assert list(cif["time"]) == [100.0, 200.0, 300.0]
+        assert cif.shape[0] == 3
+
+    def test_predict_cif_time_zero(self, fg, df_y) -> None:  # type: ignore[no-untyped-def]
+        df, _ = df_y
+        cif = fg.predict_cumulative_incidence(df[["age", "sex"]][:2], times=[0.0], format="pandas")
+        vals = cif.drop(columns="time").to_numpy()
+        np.testing.assert_allclose(vals, 0.0)
+
+    def test_predict_cif_default_training_data(self, fg) -> None:  # type: ignore[no-untyped-def]
+        cif = fg.predict_cumulative_incidence(format="pandas")
+        assert cif.shape[1] == fg.n_ + 1  # time + one col per subject
+
+    def test_predict_cif_higher_risk_higher_cif(self, fg) -> None:  # type: ignore[no-untyped-def]
+        lp = fg.predict()
+        high_idx = int(np.argmax(lp))
+        low_idx = int(np.argmin(lp))
+        cif = fg.predict_cumulative_incidence(format="pandas")
+        cif_high = cif[f"subject_{high_idx + 1}"].iloc[-1]
+        cif_low = cif[f"subject_{low_idx + 1}"].iloc[-1]
+        assert cif_high > cif_low
+
+    def test_predict_cif_polars(self, fg, df_y) -> None:  # type: ignore[no-untyped-def]
+        import polars as pl
+
+        df, _ = df_y
+        cif = fg.predict_cumulative_incidence(df[["age", "sex"]][:2], times=[100], format="polars")
+        assert isinstance(cif, pl.DataFrame)
+
+
+# -- PenalizedFineGray ---------------------------------------------------------
+
+
+class TestPenalizedFineGray:
+    @pytest.fixture(scope="class")
+    def df_y(self):  # type: ignore[no-untyped-def]
+        return _mgus2_cr()
+
+    @pytest.fixture(scope="class")
+    def pfg(self, df_y):  # type: ignore[no-untyped-def]
+        df, y = df_y
+        return gw.PenalizedFineGray("pcm", penalizer=0.01, l1_ratio=1.0).fit(y, df[["age", "sex"]])
+
+    def test_coef_shape(self, pfg) -> None:  # type: ignore[no-untyped-def]
+        assert pfg.coef_.shape == (2,)
+
+    def test_n_event_positive(self, pfg) -> None:  # type: ignore[no-untyped-def]
+        assert pfg.n_event_ > 0
+
+    def test_repr_fitted(self, pfg) -> None:  # type: ignore[no-untyped-def]
+        r = repr(pfg)
+        assert "PenalizedFineGray" in r
+        assert "nonzero" in r
+
+    def test_repr_unfitted(self) -> None:
+        r = repr(gw.PenalizedFineGray("pcm"))
+        assert "unfitted" in r
+
+    def test_requires_multistate(self) -> None:
+        with pytest.raises(ValueError, match="multi-state"):
+            gw.PenalizedFineGray("pcm").fit(gw.Surv.right([1, 2, 3], [1, 1, 1]), np.zeros((3, 1)))
+
+    def test_unknown_cause(self, df_y) -> None:  # type: ignore[no-untyped-def]
+        df, y = df_y
+        with pytest.raises(ValueError, match="not one of the states"):
+            gw.PenalizedFineGray("relapse").fit(y, df[["age"]])
+
+    def test_length_mismatch(self, df_y) -> None:  # type: ignore[no-untyped-def]
+        df, y = df_y
+        with pytest.raises(ValueError, match="same number of rows"):
+            gw.PenalizedFineGray("pcm").fit(y, df[["age"]].iloc[:-1])
+
+    def test_invalid_penalizer(self) -> None:
+        with pytest.raises(ValueError, match="non-negative"):
+            gw.PenalizedFineGray("pcm", penalizer=-1.0)
+
+    def test_invalid_l1_ratio(self) -> None:
+        with pytest.raises(ValueError, match=r"\[0, 1\]"):
+            gw.PenalizedFineGray("pcm", l1_ratio=2.0)
+
+    def test_to_frame_columns(self, pfg) -> None:  # type: ignore[no-untyped-def]
+        df = pfg.to_frame(format="pandas")
+        assert list(df.columns) == ["term", "estimate", "hazard_ratio"]
+
+    def test_tidy_and_glance(self, pfg) -> None:  # type: ignore[no-untyped-def]
+        t = gw.tidy(pfg, format="pandas")
+        assert t.shape[0] == 2
+        g = gw.glance(pfg, format="pandas")
+        assert "n_nonzero" in g.columns
+
+    def test_predict_lp(self, pfg, df_y) -> None:  # type: ignore[no-untyped-def]
+        df, _ = df_y
+        lp = pfg.predict(df[["age", "sex"]], type="lp")
+        assert lp.shape[0] == len(df)
+
+    def test_predict_risk(self, pfg, df_y) -> None:  # type: ignore[no-untyped-def]
+        df, _ = df_y
+        risk = pfg.predict(df[["age", "sex"]], type="risk")
+        assert np.all(risk > 0)
+
+    def test_predict_cif_bounded(self, pfg, df_y) -> None:  # type: ignore[no-untyped-def]
+        df, _ = df_y
+        cif = pfg.predict_cumulative_incidence(df[["age", "sex"]][:5], format="pandas")
+        vals = cif.drop(columns="time").to_numpy()
+        assert np.all(vals >= -1e-12)
+        assert np.all(vals <= 1.0 + 1e-12)
+
+    def test_predict_cif_monotone(self, pfg, df_y) -> None:  # type: ignore[no-untyped-def]
+        df, _ = df_y
+        cif = pfg.predict_cumulative_incidence(df[["age", "sex"]][:3], format="pandas")
+        for col in ["subject_1", "subject_2", "subject_3"]:
+            assert np.all(np.diff(cif[col].to_numpy()) >= -1e-12)
+
+    def test_predict_cif_at_specific_times(self, pfg, df_y) -> None:  # type: ignore[no-untyped-def]
+        df, _ = df_y
+        cif = pfg.predict_cumulative_incidence(
+            df[["age", "sex"]][:2], times=[100, 200], format="pandas"
+        )
+        assert list(cif["time"]) == [100.0, 200.0]
+
+    def test_heavy_penalty_shrinks_to_zero(self, df_y) -> None:  # type: ignore[no-untyped-def]
+        df, y = df_y
+        pfg_heavy = gw.PenalizedFineGray("pcm", penalizer=10.0, l1_ratio=1.0).fit(
+            y, df[["age", "sex"]]
+        )
+        assert np.allclose(pfg_heavy.coef_, 0.0, atol=1e-3)
+
+    def test_zero_penalty_matches_unpenalized(self, df_y) -> None:  # type: ignore[no-untyped-def]
+        df, y = df_y
+        pfg0 = gw.PenalizedFineGray("pcm", penalizer=0.0, l1_ratio=0.5).fit(y, df[["age", "sex"]])
+        fg = gw.FineGray("pcm").fit(y, df[["age", "sex"]])
+        np.testing.assert_allclose(pfg0.coef_, fg.coef_, atol=1e-4)
+
+    def test_ridge_vs_lasso_sparsity(self, df_y) -> None:  # type: ignore[no-untyped-def]
+        df, y = df_y
+        ridge = gw.PenalizedFineGray("pcm", penalizer=0.05, l1_ratio=0.0).fit(y, df[["age", "sex"]])
+        lasso = gw.PenalizedFineGray("pcm", penalizer=0.05, l1_ratio=1.0).fit(y, df[["age", "sex"]])
+        # Ridge should keep all nonzero; lasso may zero some
+        assert np.count_nonzero(ridge.coef_) >= np.count_nonzero(lasso.coef_)
+
+    def test_cause_by_integer(self, df_y) -> None:  # type: ignore[no-untyped-def]
+        df, y = df_y
+        by_label = gw.PenalizedFineGray("pcm", penalizer=0.01).fit(y, df[["age", "sex"]]).coef_
+        by_code = gw.PenalizedFineGray(1, penalizer=0.01).fit(y, df[["age", "sex"]]).coef_
+        np.testing.assert_allclose(by_label, by_code)
+
+
+# -- CauseSpecificCox ----------------------------------------------------------
+
+
+class TestCauseSpecificCox:
+    @pytest.fixture(scope="class")
+    def df_y(self):  # type: ignore[no-untyped-def]
+        return _mgus2_cr()
+
+    @pytest.fixture(scope="class")
+    def csc(self, df_y):  # type: ignore[no-untyped-def]
+        df, y = df_y
+        return gw.CauseSpecificCox("pcm").fit(y, df[["age", "sex"]])
+
+    def test_matches_manual_recode(self, df_y) -> None:  # type: ignore[no-untyped-def]
+        df, y = df_y
+        csc = gw.CauseSpecificCox("pcm").fit(y, df[["age", "sex"]])
+        manual_event = (y.status == 1).astype(int)
+        manual = gw.CoxPH().fit(gw.Surv.right(y.stop, event=manual_event), df[["age", "sex"]])
+        np.testing.assert_allclose(csc.coef_, manual.coef_)
+
+    def test_repr_fitted(self, csc) -> None:  # type: ignore[no-untyped-def]
+        r = repr(csc)
+        assert "CauseSpecificCox" in r
+        assert "pcm" in r
+
+    def test_repr_unfitted(self) -> None:
+        r = repr(gw.CauseSpecificCox("pcm"))
+        assert "unfitted" in r
+
+    def test_requires_multistate(self) -> None:
+        with pytest.raises(ValueError, match="multi-state"):
+            gw.CauseSpecificCox("pcm").fit(gw.Surv.right([1, 2, 3], [1, 1, 1]), np.zeros((3, 1)))
+
+    def test_unknown_cause(self, df_y) -> None:  # type: ignore[no-untyped-def]
+        df, y = df_y
+        with pytest.raises(ValueError, match="not one of the states"):
+            gw.CauseSpecificCox("relapse").fit(y, df[["age"]])
+
+    def test_cause_by_integer(self, df_y) -> None:  # type: ignore[no-untyped-def]
+        df, y = df_y
+        by_label = gw.CauseSpecificCox("pcm").fit(y, df[["age", "sex"]]).coef_
+        by_code = gw.CauseSpecificCox(1).fit(y, df[["age", "sex"]]).coef_
+        np.testing.assert_allclose(by_label, by_code)
+
+    def test_tidy_and_glance(self, csc) -> None:  # type: ignore[no-untyped-def]
+        t = gw.tidy(csc, exponentiate=True, format="pandas")
+        np.testing.assert_allclose(t["estimate"].to_numpy(), csc.hazard_ratio_)
+        g = gw.glance(csc, format="pandas")
+        assert g.iloc[0]["nevent"] > 0
+
+    def test_predict_lp(self, csc, df_y) -> None:  # type: ignore[no-untyped-def]
+        df, _ = df_y
+        lp = csc.predict(df[["age", "sex"]][:5], type="lp")
+        assert lp.shape == (5,)
+
+    def test_predict_survival(self, df_y) -> None:  # type: ignore[no-untyped-def]
+        df, y = df_y
+        x = df[["age"]].copy()
+        x["male"] = (df["sex"] == "M").astype(int)
+        csc = gw.CauseSpecificCox("pcm").fit(y, x)
+        surv = csc.predict(x[:2], type="survival", times=[100, 200], format="pandas")
+        assert "time" in surv.columns
+        assert surv.shape[0] == 2
+        vals = surv.drop(columns="time").to_numpy()
+        assert np.all((vals >= 0) & (vals <= 1))
+
+    def test_n_event_matches_target_cause(self, df_y) -> None:  # type: ignore[no-untyped-def]
+        df, y = df_y
+        csc = gw.CauseSpecificCox("pcm").fit(y, df[["age", "sex"]])
+        assert csc.n_event_ == int((y.status == 1).sum())
+
+    def test_death_cause(self, df_y) -> None:  # type: ignore[no-untyped-def]
+        df, y = df_y
+        csc = gw.CauseSpecificCox("death").fit(y, df[["age", "sex"]])
+        assert csc.n_event_ == int((y.status == 2).sum())
+        assert "death" in repr(csc)
+
+    def test_delegates_to_frame(self, csc) -> None:  # type: ignore[no-untyped-def]
+        df = csc.to_frame(format="pandas")
+        assert "term" in df.columns
+
+    def test_attribute_error_unfitted(self) -> None:
+        csc = gw.CauseSpecificCox("pcm")
+        with pytest.raises(AttributeError):
+            _ = csc.coef_
+
+    def test_concordance(self, csc) -> None:  # type: ignore[no-untyped-def]
+        assert 0.0 <= csc.concordance() <= 1.0
