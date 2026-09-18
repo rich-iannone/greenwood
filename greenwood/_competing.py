@@ -26,7 +26,14 @@ if TYPE_CHECKING:
     from ._surv import Surv
     from ._tests import TestResult
 
-__all__ = ["AalenJohansen", "FineGray", "MultiState", "grays_test"]
+__all__ = [
+    "AalenJohansen",
+    "CauseSpecificCox",
+    "FineGray",
+    "MultiState",
+    "PenalizedFineGray",
+    "grays_test",
+]
 
 Array = npt.NDArray[Any]
 
@@ -981,7 +988,124 @@ class FineGray:
         self.loglik_ = float(loglik)
         self.n_ = int(keep.sum())
         self.n_event_ = int((cause == target).sum())
+
+        # Store training data for prediction.
+        self._x = x
+        self._center = x.mean(axis=0)
+        self._target_times = target_times
+        self._baseline_cumhaz = self._breslow_baseline(
+            beta, x, time, cause, target, target_times, _weights
+        )
         return self
+
+    @staticmethod
+    def _breslow_baseline(
+        beta: Array,
+        x: Array,
+        time: Array,
+        cause: Array,
+        target: int,
+        target_times: Array,
+        weights_fn: Any,
+    ) -> Array:
+        """Breslow-type baseline subdistribution cumulative hazard at target event times."""
+        r = np.exp(x @ beta)
+        cumhaz = np.empty(target_times.shape[0])
+        total = 0.0
+        for i, tj in enumerate(target_times):
+            w = weights_fn(float(tj))
+            s0 = float((w * r).sum())
+            d = float(((time == tj) & (cause == target)).sum())
+            total += d / s0
+            cumhaz[i] = total
+        return cumhaz
+
+    def predict(
+        self,
+        newdata: Any = None,
+        *,
+        type: str = "lp",
+        format: str | None = None,
+    ) -> Any:
+        r"""Predict linear predictor or risk from the fitted Fine-Gray model.
+
+        Parameters
+        ----------
+        newdata
+            Covariate values for prediction. A dataframe or 2-D array with the same columns as the
+            training data. If `None`, uses the training data.
+        type
+            `"lp"` (default) returns the centered linear predictor $X\beta$. `"risk"` returns the
+            relative subdistribution hazard $\exp(X\beta)$.
+        format
+            Ignored (present for API consistency).
+
+        Returns
+        -------
+        ndarray
+            Array of shape `(n_subjects,)`.
+        """
+        from ._cox import _design_matrix
+
+        x = self._x if newdata is None else _design_matrix(newdata)[0]
+        lp = (x - self._center) @ self.coef_
+        if type == "lp":
+            return lp
+        if type == "risk":
+            return np.exp(lp)
+        raise ValueError(f"Unknown predict type {type!r}; use 'lp' or 'risk'.")
+
+    def predict_cumulative_incidence(
+        self,
+        newdata: Any = None,
+        *,
+        times: Any = None,
+        format: str | None = None,
+    ) -> Any:
+        r"""Predict cumulative incidence $F(t \mid x)$ for new subjects.
+
+        Uses the baseline subdistribution cumulative hazard from the training data and the fitted
+        coefficients to compute the predicted cumulative incidence function:
+        $F(t \mid x) = 1 - \exp\bigl(-H_0(t)\,\exp(x\beta)\bigr)$.
+
+        Parameters
+        ----------
+        newdata
+            Covariate values for prediction. A dataframe or 2-D array with the same columns
+            as the training data. If `None`, uses the training data.
+        times
+            Time points at which to evaluate the cumulative incidence. If `None`, uses the
+            target-event times from the training data.
+        format
+            Output format: `None` (default), `"pandas"`, `"polars"`, or `"pyarrow"`.
+
+        Returns
+        -------
+        DataFrame
+            A table with a `time` column and one column per subject (`subject_1`,
+            `subject_2`, ...) containing cumulative incidence probabilities.
+        """
+        from ._cox import _design_matrix
+
+        x = self._x if newdata is None else _design_matrix(newdata)[0]
+        lp = (x - self._center) @ self.coef_
+        risk = np.exp(lp)
+
+        base_times = self._target_times
+        base_cumhaz = self._baseline_cumhaz
+
+        if times is None:
+            query = base_times
+            h0 = base_cumhaz
+        else:
+            query = np.atleast_1d(np.asarray(times, dtype=float))
+            idx = np.searchsorted(base_times, query, side="right") - 1
+            h0 = np.where(idx >= 0, base_cumhaz[idx.clip(min=0)], 0.0)
+
+        cif = 1.0 - np.exp(-np.outer(h0, risk))
+        columns: dict[str, Any] = {"time": query}
+        columns.update({f"subject_{i + 1}": cif[:, i] for i in range(x.shape[0])})
+        return to_dataframe(columns, format=format)
 
     def _score_residuals(
         self,
@@ -1010,8 +1134,10 @@ class FineGray:
             dy = (time == tj) & (cause == target)
             d = float(dy.sum())
             dlambda = d / s0
+
             # Event term for the subjects failing (target) at tj.
             scores[dy] += x[dy] - xbar
+
             # Compensator for every weighted member of the risk set.
             member = w > 0
             scores[member] -= w[member, None] * (x[member] - xbar) * (r[member] * dlambda)[:, None]
@@ -1088,6 +1214,479 @@ class FineGray:
         return to_dataframe(self._coefficient_columns(exponentiate=exponentiate), format=format)
 
 
+def _soft_threshold(v: Array, thr: float) -> Array:
+    """Elementwise soft-thresholding, the proximal operator of the L1 norm."""
+    return np.sign(v) * np.maximum(np.abs(v) - thr, 0.0)
+
+
+class PenalizedFineGray:
+    r"""Elastic-net penalized Fine-Gray subdistribution hazard model.
+
+    Extends the Fine-Gray competing-risks regression with an elastic-net penalty
+    $\lambda\bigl(\alpha\|\beta\|_1 + \tfrac{1-\alpha}{2}\|\beta\|_2^2\bigr)$
+    on the subdistribution-hazard partial likelihood. This enables variable selection
+    and coefficient shrinkage when the number of covariates is large relative to the
+    number of target-cause events.
+
+    `l1_ratio=1` is lasso (sparse), `l1_ratio=0` is ridge (smooth shrinkage), and
+    values in between blend the two. Covariates are standardized before penalizing (for
+    fair penalty comparison across features) and coefficients are returned on the original
+    scale. Because coefficients are biased by design, the model reports point estimates
+    but not standard errors or p-values.
+
+    Parameters
+    ----------
+    cause
+        The target cause-of-interest label from the multi-state `Surv` response.
+    penalizer
+        Overall penalty strength ($\lambda$). `0` recovers the unpenalized Fine-Gray fit.
+    l1_ratio
+        Elastic-net mixing in `[0, 1]`: `1` is lasso, `0` is ridge.
+    standardize
+        Standardize covariates to unit variance before penalizing (default `True`).
+    max_iter, tol
+        Maximum FISTA iterations and the relative-change convergence tolerance.
+
+    Examples
+    --------
+    Fit a lasso-penalized Fine-Gray model on the `mgus2` competing-risks data:
+
+    ```{python}
+    import greenwood as gw
+
+    mg = gw.load_dataset("mgus2", backend="pandas")
+    etime = mg["ptime"].where(mg["pstat"] == 1, mg["futime"])
+    cause = mg["pstat"].where(mg["pstat"] == 1, 2 * mg["death"])
+    cr = gw.Surv.multistate(etime, event=cause, states=("pcm", "death"))
+
+    pfg = gw.PenalizedFineGray("pcm", penalizer=0.01, l1_ratio=1.0)
+    pfg.fit(cr, mg[["age", "sex"]])
+    pfg
+    ```
+    """
+
+    def __init__(
+        self,
+        cause: Any,
+        penalizer: float = 0.1,
+        l1_ratio: float = 0.5,
+        *,
+        standardize: bool = True,
+        max_iter: int = 1000,
+        tol: float = 1e-7,
+    ) -> None:
+        if penalizer < 0.0:
+            raise ValueError(f"penalizer must be non-negative, got {penalizer}.")
+        if not 0.0 <= l1_ratio <= 1.0:
+            raise ValueError(f"l1_ratio must be in [0, 1], got {l1_ratio}.")
+        self.cause = cause
+        self.penalizer = penalizer
+        self.l1_ratio = l1_ratio
+        self.standardize = standardize
+        self.max_iter = max_iter
+        self.tol = tol
+
+    def __repr__(self) -> str:
+        if getattr(self, "coef_", None) is None:
+            return (
+                f"PenalizedFineGray(cause={self.cause!r}, "
+                f"penalizer={self.penalizer}, l1_ratio={self.l1_ratio}) <unfitted>"
+            )
+        from ._repr import align_table, num
+
+        rows = [[num(c)] for c in self.coef_]
+        table = align_table(["coef"], rows, list(self.term_names_))
+        n_nonzero = int(np.count_nonzero(self.coef_))
+        return "\n".join(
+            [
+                f"PenalizedFineGray (elastic-net Fine-Gray, cause={self.cause!r}, "
+                f"penalizer={self.penalizer}, l1_ratio={self.l1_ratio})",
+                "",
+                table,
+                "",
+                f"n = {self.n_}, events = {self.n_event_}, nonzero coefficients = {n_nonzero}",
+            ]
+        )
+
+    def fit(self, surv: Surv, covariates: Any) -> PenalizedFineGray:
+        r"""Fit the penalized Fine-Gray model.
+
+        Parameters
+        ----------
+        surv
+            A multi-state `Surv` response built with `Surv.multistate()`.
+        covariates
+            A dataframe or 2-D array of covariates.
+
+        Returns
+        -------
+        PenalizedFineGray
+            The fitted estimator with penalized coefficients in `coef_`.
+        """
+        from ._cox import _design_matrix
+
+        if not surv.is_multistate:
+            raise ValueError(
+                "PenalizedFineGray needs a multi-state response; build it with Surv.multistate."
+            )
+        assert surv.states is not None
+        if self.cause in surv.states:
+            target = surv.states.index(self.cause) + 1
+        elif isinstance(self.cause, int) and 1 <= self.cause <= len(surv.states):
+            target = self.cause
+        else:
+            raise ValueError(f"cause {self.cause!r} is not one of the states {surv.states}.")
+
+        x, names = _design_matrix(covariates)
+        if x.shape[0] != surv.n:
+            raise ValueError("Covariates and response must have the same number of rows.")
+
+        time = surv.stop
+        cause = surv.status
+        keep = ~np.isnan(x).any(axis=1)
+        x, time, cause = x[keep], time[keep], cause[keep]
+
+        n, p = x.shape
+        center = x.mean(axis=0)
+        scale = x.std(axis=0) if self.standardize else np.ones(p)
+        scale = np.where(scale > 0, scale, 1.0)
+        xs = (x - center) / scale
+
+        drop_times, drop_surv = _censoring_km(time, cause)
+
+        def g_before(t: Array) -> Array:
+            idx = np.searchsorted(drop_times, t, side="left") - 1
+            return np.where(idx >= 0, drop_surv[idx.clip(min=0)], 1.0)
+
+        competing = (cause != target) & (cause != 0)
+        g_before_i = g_before(time)
+        target_times = np.unique(time[cause == target])
+
+        def _weights(tj: float) -> Array:
+            w = np.zeros(n)
+            w[time >= tj] = 1.0
+            mask = competing & (time < tj)
+            w[mask] = float(g_before(np.array([tj]))[0]) / g_before_i[mask]
+            return w
+
+        lam, alpha = self.penalizer, self.l1_ratio
+
+        def smooth(b: Array) -> tuple[float, Array]:
+            r = np.exp(xs @ b)
+            neg_loglik = 0.0
+            grad = np.zeros(p)
+            for tj in target_times:
+                w = _weights(float(tj))
+                rw = w * r
+                s0 = rw.sum()
+                s1 = (xs * rw[:, None]).sum(axis=0)
+                dy = (time == tj) & (cause == target)
+                d = float(dy.sum())
+                neg_loglik -= float((xs[dy] @ b).sum()) - d * np.log(s0)
+                grad -= xs[dy].sum(axis=0) - d * s1 / s0
+            h = neg_loglik / n + 0.5 * lam * (1.0 - alpha) * float(b @ b)
+            grad_h = grad / n + lam * (1.0 - alpha) * b
+            return h, grad_h
+
+        beta = np.zeros(p)
+        momentum = beta.copy()
+        t_acc = 1.0
+        step_size = 1.0
+        for _ in range(self.max_iter):
+            h_z, grad_z = smooth(momentum)
+            while True:
+                candidate = _soft_threshold(momentum - step_size * grad_z, step_size * lam * alpha)
+                diff = candidate - momentum
+                h_c, _ = smooth(candidate)
+                if h_c <= h_z + float(grad_z @ diff) + float(diff @ diff) / (2.0 * step_size):
+                    break
+                step_size *= 0.5
+                if step_size < 1e-12:
+                    break
+            t_next = (1.0 + np.sqrt(1.0 + 4.0 * t_acc**2)) / 2.0
+            momentum = candidate + ((t_acc - 1.0) / t_next) * (candidate - beta)
+            change = np.linalg.norm(candidate - beta) / (np.linalg.norm(beta) + self.tol)
+            beta, t_acc = candidate, t_next
+            if change < self.tol:
+                break
+
+        self.term_names_ = names
+        self._beta_standardized = beta
+        self.coef_ = beta / scale
+        self.hazard_ratio_ = np.exp(self.coef_)
+        self.n_ = int(keep.sum())
+        self.n_event_ = int((cause == target).sum())
+
+        # Store training data for prediction.
+        self._x = x
+        self._center = center
+        self._scale = scale
+        self._target_times = target_times
+        self._baseline_cumhaz = FineGray._breslow_baseline(
+            beta, xs, time, cause, target, target_times, _weights
+        )
+        return self
+
+    def predict(
+        self,
+        newdata: Any = None,
+        *,
+        type: str = "lp",
+        format: str | None = None,
+    ) -> Any:
+        r"""Predict linear predictor or risk from the penalized Fine-Gray model.
+
+        Parameters
+        ----------
+        newdata
+            Covariate values for prediction. If `None`, uses the training data.
+        type
+            `"lp"` (default) or `"risk"` ($\exp(\text{lp})$).
+        format
+            Ignored (present for API consistency).
+
+        Returns
+        -------
+        ndarray
+            Array of shape `(n_subjects,)`.
+        """
+        from ._cox import _design_matrix
+
+        x = self._x if newdata is None else _design_matrix(newdata)[0]
+        lp = (x - self._center) @ self.coef_
+        if type == "lp":
+            return lp
+        if type == "risk":
+            return np.exp(lp)
+        raise ValueError(f"Unknown predict type {type!r}; use 'lp' or 'risk'.")
+
+    def predict_cumulative_incidence(
+        self,
+        newdata: Any = None,
+        *,
+        times: Any = None,
+        format: str | None = None,
+    ) -> Any:
+        r"""Predict cumulative incidence $F(t \mid x)$ for new subjects.
+
+        Parameters
+        ----------
+        newdata
+            Covariate values. If `None`, uses the training data.
+        times
+            Time points at which to evaluate the CIF. If `None`, uses the target-event
+            times from the training data.
+        format
+            Output format: `None`, `"pandas"`, `"polars"`, or `"pyarrow"`.
+
+        Returns
+        -------
+        DataFrame
+            A table with a `time` column and one `subject_N` column per subject.
+        """
+        from ._cox import _design_matrix
+
+        x = self._x if newdata is None else _design_matrix(newdata)[0]
+        lp = (x - self._center) @ self.coef_
+        risk = np.exp(lp)
+
+        base_times = self._target_times
+        base_cumhaz = self._baseline_cumhaz
+
+        if times is None:
+            query = base_times
+            h0 = base_cumhaz
+        else:
+            query = np.atleast_1d(np.asarray(times, dtype=float))
+            idx = np.searchsorted(base_times, query, side="right") - 1
+            h0 = np.where(idx >= 0, base_cumhaz[idx.clip(min=0)], 0.0)
+
+        cif = 1.0 - np.exp(-np.outer(h0, risk))
+        columns: dict[str, Any] = {"time": query}
+        columns.update({f"subject_{i + 1}": cif[:, i] for i in range(x.shape[0])})
+        return to_dataframe(columns, format=format)
+
+    def _coefficient_columns(self) -> dict[str, Any]:
+        return {
+            "term": self.term_names_,
+            "estimate": self.coef_,
+            "hazard_ratio": self.hazard_ratio_,
+        }
+
+    def to_frame(self, *, format: str | None = None) -> Any:
+        """Return the penalized coefficient table as a DataFrame.
+
+        Parameters
+        ----------
+        format
+            Output format: `None` (default), `"pandas"`, `"polars"`, or `"pyarrow"`.
+
+        Returns
+        -------
+        DataFrame
+            A tidy table with columns `term`, `estimate`, and `hazard_ratio`.
+        """
+        return to_dataframe(self._coefficient_columns(), format=format)
+
+
+class CauseSpecificCox:
+    r"""Cause-specific Cox proportional-hazards model for competing risks.
+
+    In a competing-risks setting, a cause-specific hazard model answers "among subjects still
+    event-free, what drives the rate of this particular event?" It does so by treating competing
+    events as censoring: subjects who experience a different cause are removed from the risk set
+    at the time of their competing event, and a standard Cox model is fitted on the re-coded
+    data.
+
+    This wrapper takes a multi-state `Surv` response and a target cause, automatically
+    re-codes the competing events as censored, and delegates to `CoxPH`. All `CoxPH`
+    features (stratification, frailty, robust standard errors, diagnostics, prediction) are
+    available on the fitted object.
+
+    Parameters
+    ----------
+    cause
+        The cause of interest. Can be a state label (string) matching one of the `states`
+        in the `Surv` response, or an integer cause code (1-indexed).
+    ties
+        Tie-handling method passed to `CoxPH`: `"efron"` (default) or `"breslow"`.
+    conf_level
+        Confidence level for coefficient intervals (default 0.95).
+
+    Examples
+    --------
+    Fit a cause-specific Cox model for PCM progression in the `mgus2` dataset:
+
+    ```{python}
+    import numpy as np
+    import greenwood as gw
+
+    mg = gw.load_dataset("mgus2", backend="polars")
+    etime = np.where(mg["pstat"] == 1, mg["ptime"], mg["futime"])
+    cause = np.where(mg["pstat"] == 1, 1, 2 * mg["death"])
+    cr = gw.Surv.multistate(etime, event=cause, states=("pcm", "death"))
+
+    csc = gw.CauseSpecificCox("pcm").fit(cr, mg[["age", "sex"]])
+    csc
+    ```
+
+    Compare cause-specific hazard ratios for both causes side by side:
+
+    ```{python}
+    csc_death = gw.CauseSpecificCox("death").fit(cr, mg[["age", "sex"]])
+    gw.tidy(csc, exponentiate=True, format="polars")
+    ```
+    """
+
+    def __init__(self, cause: Any, *, ties: str = "efron", conf_level: float = 0.95) -> None:
+        self.cause = cause
+        self.ties = ties
+        self.conf_level = conf_level
+
+    def __repr__(self) -> str:
+        if getattr(self, "cox_", None) is None:
+            return f"CauseSpecificCox(cause={self.cause!r}) <unfitted>"
+        cause_label = self._cause_label
+        lines = repr(self.cox_).split("\n", 1)
+        lines[0] = (
+            f"CauseSpecificCox (cause-specific Cox model, cause={cause_label!r}, "
+            f"ties={self.ties!r})"
+        )
+        return "\n".join(lines)
+
+    def fit(
+        self,
+        surv: Surv,
+        covariates: Any,
+        *,
+        data: Any = None,
+        strata: Any = None,
+        robust: bool = False,
+        cluster: Any = None,
+        frailty: str | None = None,
+        frailty_cluster: Any = None,
+        frailty_theta: float = 0.5,
+        frailty_max_iter: int = 30,
+        max_iter: int = 30,
+        tol: float = 1e-9,
+    ) -> CauseSpecificCox:
+        """Fit the cause-specific Cox model.
+
+        Re-codes the multi-state response so that the target cause is treated as the event
+        and all competing causes are treated as censored, then fits a standard `CoxPH`
+        model on the re-coded data.
+
+        Parameters
+        ----------
+        surv
+            A multi-state `Surv` response built with `Surv.multistate()`.
+        covariates
+            A dataframe or 2-D array of covariates.
+        data
+            A dataframe to evaluate a formula `covariates` string against.
+        strata, robust, cluster, frailty, frailty_cluster, frailty_theta, frailty_max_iter
+            Passed through to `CoxPH.fit()`.
+        max_iter, tol
+            Newton-Raphson iteration control passed through to `CoxPH.fit()`.
+
+        Returns
+        -------
+        CauseSpecificCox
+            The fitted estimator.
+        """
+        from ._cox import CoxPH
+
+        if not surv.is_multistate:
+            raise ValueError(
+                "CauseSpecificCox needs a multi-state response; "
+                "build it with Surv.multistate (use CoxPH directly for a single event type)."
+            )
+        assert surv.states is not None
+
+        if self.cause in surv.states:
+            target = surv.states.index(self.cause) + 1
+            self._cause_label = self.cause
+        elif isinstance(self.cause, int) and 1 <= self.cause <= len(surv.states):
+            target = self.cause
+            self._cause_label = surv.states[self.cause - 1]
+        else:
+            raise ValueError(f"cause {self.cause!r} is not one of the states {surv.states}.")
+
+        from ._surv import Surv as SurvCls
+
+        cs_event = (surv.status == target).astype(int)
+        cs_surv = SurvCls.right(surv.stop, event=cs_event, weights=surv.weights)
+
+        cox = CoxPH(ties=self.ties, conf_level=self.conf_level)
+        cox.fit(
+            cs_surv,
+            covariates,
+            data=data,
+            strata=strata,
+            robust=robust,
+            cluster=cluster,
+            frailty=frailty,
+            frailty_cluster=frailty_cluster,
+            frailty_theta=frailty_theta,
+            frailty_max_iter=frailty_max_iter,
+            max_iter=max_iter,
+            tol=tol,
+        )
+        self.cox_ = cox
+        self.states_ = surv.states
+        return self
+
+    def __getattr__(self, name: str) -> Any:
+        if name.startswith("_") or name in ("cause", "ties", "conf_level", "cox_", "states_"):
+            raise AttributeError(name)
+        cox = self.__dict__.get("cox_")
+        if cox is not None:
+            return getattr(cox, name)
+        raise AttributeError(
+            f"'{type(self).__name__}' object has no attribute {name!r} (model not yet fitted)"
+        )
+
+
 def _register_adapters() -> None:
     from .summaries import register_glance, register_tidier
 
@@ -1122,6 +1721,52 @@ def _register_adapters() -> None:
 
     register_tidier("greenwood._competing.FineGray", _tidy_fg)
     register_glance("greenwood._competing.FineGray", _glance_fg)
+
+    # -- PenalizedFineGray ------------------------------------------------------
+
+    def _tidy_pfg(
+        model: PenalizedFineGray, *, exponentiate: bool = False, format: str | None = None, **_: Any
+    ) -> Any:
+        cols = model._coefficient_columns()
+        if exponentiate:
+            cols["estimate"] = np.exp(cols["estimate"])
+        return to_dataframe(cols, format=format)
+
+    def _glance_pfg(model: PenalizedFineGray, *, format: str | None = None, **_: Any) -> Any:
+        return to_dataframe(
+            {
+                "n": [model.n_],
+                "nevent": [model.n_event_],
+                "penalizer": [model.penalizer],
+                "l1_ratio": [model.l1_ratio],
+                "n_nonzero": [int(np.count_nonzero(model.coef_))],
+            },
+            format=format,
+        )
+
+    register_tidier("greenwood._competing.PenalizedFineGray", _tidy_pfg)
+    register_glance("greenwood._competing.PenalizedFineGray", _glance_pfg)
+
+    # -- CauseSpecificCox -------------------------------------------------------
+
+    def _tidy_csc(
+        model: CauseSpecificCox,
+        *,
+        exponentiate: bool = False,
+        format: str | None = None,
+        **kw: Any,
+    ) -> Any:
+        from .summaries import tidy
+
+        return tidy(model.cox_, exponentiate=exponentiate, format=format, **kw)
+
+    def _glance_csc(model: CauseSpecificCox, *, format: str | None = None, **kw: Any) -> Any:
+        from .summaries import glance
+
+        return glance(model.cox_, format=format, **kw)
+
+    register_tidier("greenwood._competing.CauseSpecificCox", _tidy_csc)
+    register_glance("greenwood._competing.CauseSpecificCox", _glance_csc)
 
     # -- MultiState -------------------------------------------------------------
 
