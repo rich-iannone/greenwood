@@ -9,7 +9,14 @@ from ._aalen import AalenAdditive
 from ._boosting import GradientBoostingSurvivalAnalysis
 from ._bootstrap import BootstrapResult, bootstrap
 from ._buckley_james import BuckleyJames
-from ._competing import AalenJohansen, FineGray, MultiState, grays_test
+from ._competing import (
+    AalenJohansen,
+    CauseSpecificCox,
+    FineGray,
+    MultiState,
+    PenalizedFineGray,
+    grays_test,
+)
 from ._core import EventTable, event_table
 from ._cox import CoxPH, SmoothHRResult, ZPHResult, ZPHWindowResult
 from ._cure import MixtureCure
@@ -102,8 +109,10 @@ __all__ = [
     "BuckleyJames",
     "PiecewiseExponential",
     "AalenJohansen",
+    "CauseSpecificCox",
     "FineGray",
     "MultiState",
+    "PenalizedFineGray",
     "grays_test",
     "accuracy_in_time",
     "calibration",
