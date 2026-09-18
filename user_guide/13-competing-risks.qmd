@@ -360,6 +360,143 @@ event?". They can point in different directions for the same covariate, and both
 correct. Decide which question you are asking before choosing the model.
 :::
 
+## Cause-specific Cox regression
+
+The Fine-Gray model targets the cumulative incidence directly, which is useful for prediction and
+policy questions. But sometimes the scientific question is about the rate at which an event occurs
+among those still at risk, not the marginal probability of the event. A cause-specific Cox model
+answers that by treating competing events as censoring: subjects who experience a different cause
+leave the risk set, and a standard Cox model is fitted on the remaining data.
+
+`CauseSpecificCox` is a convenience wrapper that automates this re-coding. You pass a multi-state
+response and name the target cause. Internally it creates a right-censored response where only the
+target cause counts as an event.
+
+```{python}
+# Fit a cause-specific Cox model for the pcm cause
+csc_pcm = gw.CauseSpecificCox("pcm").fit(y, mg[["age", "sex"]])
+csc_pcm
+```
+
+The fitted object delegates to a standard `CoxPH`, so all its features are available: hazard ratios,
+global tests, predictions, Schoenfeld residuals, and `cox_zph()` diagnostics.
+
+```{python}
+# Hazard ratios for the pcm-specific model
+gw.tidy(csc_pcm, exponentiate=True, format="polars")
+```
+
+You can fit a second model for the competing cause and compare the two side by side.
+
+```{python}
+# Fit a cause-specific Cox model for death
+csc_death = gw.CauseSpecificCox("death").fit(y, mg[["age", "sex"]])
+gw.tidy(csc_death, exponentiate=True, format="polars")
+```
+
+This is the standard analysis layout in competing-risks studies: one Fine-Gray model (for cumulative
+incidence and prediction) and one or two cause-specific Cox models (for etiological insight). When
+the two model types disagree on the direction of an effect, both are usually reported because they
+answer different questions.
+
+### Predicting cumulative incidence from a Fine-Gray model
+
+Fitting a Fine-Gray model tells you which covariates matter, but the clinical question is often
+"what is this patient's predicted probability of experiencing the event by time $t$?" The
+`predict_cumulative_incidence()` method answers that. It uses the baseline subdistribution
+cumulative hazard from the training data together with the fitted coefficients to compute
+$F(t \mid x) = 1 - \exp\bigl(-H_0(t)\,\exp(x\beta)\bigr)$ for each subject.
+
+```{python}
+# Rebuild the dataset and fit the Fine-Gray model
+mg = gw.load_dataset("mgus2", backend="polars")
+
+etime = np.where(mg["pstat"] == 1, mg["ptime"], mg["futime"])
+cause = np.where(mg["pstat"] == 1, 1, 2 * mg["death"])
+y = gw.Surv.multistate(etime, event=cause, states=("pcm", "death"))
+
+fg = gw.FineGray("pcm").fit(y, mg[["age", "sex"]])
+
+# Predict cumulative incidence at 10, 20, and 30 years for three subjects
+fg.predict_cumulative_incidence(mg[["age", "sex"]][:3], times=[120, 240, 360], format="polars")
+```
+
+Each column is one subject and each row is a time point. The values are the predicted probability of
+PCM progression by that time, accounting for the competing risk of death. A subject with higher risk
+covariates accumulates incidence faster.
+
+You can also call `predict()` for the raw linear predictor or relative subdistribution hazard, which
+are useful for model evaluation with `concordance_index_incidence()` and `brier_score_incidence()`.
+
+```{python}
+# Linear predictor (centered) for the first five subjects
+fg.predict(mg[["age", "sex"]][:5], type="lp")
+```
+
+## Penalized Fine-Gray for high-dimensional covariates
+
+When the number of covariates is large relative to the number of target-cause events, the
+unpenalized Fine-Gray model may overfit or fail to converge. `PenalizedFineGray` adds an elastic-net
+penalty to the subdistribution-hazard partial likelihood, enabling variable selection and
+coefficient shrinkage. It is the competing-risks analogue of `CoxNet`.
+
+The penalty is $\lambda\bigl(\alpha\|\beta\|_1 + \tfrac{1-\alpha}{2}\|\beta\|_2^2\bigr)$, where
+`penalizer` is $\lambda$ and `l1_ratio` is $\alpha$. Setting `l1_ratio=1` gives lasso (sparse),
+`l1_ratio=0` gives ridge (smooth shrinkage), and values in between blend the two.
+
+```{python}
+# Rebuild the dataset and response
+mg = gw.load_dataset("mgus2", backend="polars")
+
+etime = np.where(mg["pstat"] == 1, mg["ptime"], mg["futime"])
+cause = np.where(mg["pstat"] == 1, 1, 2 * mg["death"])
+y = gw.Surv.multistate(etime, event=cause, states=("pcm", "death"))
+
+# Fit a lasso-penalized Fine-Gray model
+pfg = gw.PenalizedFineGray("pcm", penalizer=0.01, l1_ratio=1.0).fit(y, mg[["age", "sex"]])
+pfg
+```
+
+The fitted object shows the penalized coefficients and how many survived shrinkage. Just like the
+unpenalized `FineGray`, you can predict cumulative incidence for new subjects.
+
+```{python}
+# Predict cumulative incidence at landmark times
+pfg.predict_cumulative_incidence(mg[["age", "sex"]][:3], times=[120, 240, 360], format="polars")
+```
+
+To examine the penalized coefficients as a tidy frame, call `to_frame()`. Because penalized
+coefficients are biased by design, the table reports point estimates and hazard ratios but not
+standard errors or p-values.
+
+```{python}
+# Export penalized coefficients
+pfg.to_frame(format="polars")
+```
+
+### Choosing the penalty strength
+
+A stronger penalty shrinks more coefficients toward (or exactly to) zero, improving generalizability
+at the cost of bias. To find the right balance, fit models at several penalty values and evaluate
+with `concordance_index_incidence()` or `brier_score_incidence()` on held-out data.
+
+```{python}
+# Compare penalized models at different strengths
+for lam in [0.001, 0.01, 0.1]:
+    m = gw.PenalizedFineGray("pcm", penalizer=lam, l1_ratio=1.0).fit(y, mg[["age", "sex"]])
+    n_nz = int(np.count_nonzero(m.coef_))
+    print(f"  penalizer={lam:.3f}  nonzero={n_nz}  coef={np.round(m.coef_, 4)}")
+```
+
+::: {.callout-tip}
+## Ridge vs. lasso for competing risks
+
+Use lasso (`l1_ratio=1`) when you want automatic variable selection, driving irrelevant coefficients
+to exactly zero. Use ridge (`l1_ratio=0`) when all covariates are expected to contribute but you
+want to stabilize estimates against multicollinearity. Elastic net (`0 < l1_ratio < 1`) blends both
+behaviors.
+:::
+
 ## Next steps
 
 You can now estimate and model competing-risks data correctly.
