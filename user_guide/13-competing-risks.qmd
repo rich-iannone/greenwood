@@ -497,6 +497,51 @@ want to stabilize estimates against multicollinearity. Elastic net (`0 < l1_rati
 behaviors.
 :::
 
+## Competing-risk random forest
+
+The parametric and semiparametric models above all assume log-linear covariate effects. When the
+relationship between covariates and cumulative incidence is non-linear or involves interactions, a
+tree-based model can capture these patterns automatically.
+
+`CompetingRiskForest` grows an ensemble of survival trees that split nodes using the log-rank CR
+statistic. Unlike a standard random survival forest, the splitting criterion uses a Lau-inclusive
+risk set: subjects who experienced a competing event remain at risk under the subdistribution
+framework, so each split directly targets separation of the cumulative incidence functions. At each
+leaf the Aalen-Johansen CIF is estimated for every cause, and the forest prediction averages these
+across all trees.
+
+```{python}
+# Fit a competing-risk forest
+crf = gw.CompetingRiskForest(
+    n_estimators=100, max_depth=5, oob_score=True, random_state=0
+).fit(y, mg[["age", "sex"]])
+crf
+```
+
+Predict the cumulative incidence for a specific cause.
+
+```{python}
+# Predict CIF for the pcm cause at landmark times
+crf.predict(mg[["age", "sex"]][:5], cause="pcm", times=[365, 730, 1095], format="polars")
+```
+
+Because the forest uses bootstrap aggregation, you can inspect out-of-bag variable importance to
+understand which covariates drive the CIF.
+
+```{python}
+# Permutation variable importance for the death cause
+crf.variable_importance(cause="death", n_repeats=3, format="polars")
+```
+
+The `predict_risk()` method returns a scalar summary (summed CIF over the event-time grid) that can
+be used for ranking or as input to `concordance_index_incidence()`.
+
+```{python}
+# Scalar risk scores
+risk = crf.predict_risk(mg[["age", "sex"]][:5], cause="pcm")
+risk
+```
+
 ## Next steps
 
 You can now estimate and model competing-risks data correctly.
