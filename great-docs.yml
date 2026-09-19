@@ -121,7 +121,8 @@ reference:
   - title: Competing risks & multi-state
     desc:
       Cumulative incidence, the Fine-Gray subdistribution hazard model (with elastic-net
-      penalization), cause-specific Cox regression, and multi-state transition probabilities.
+      penalization), cause-specific Cox regression, a competing-risk random forest, and
+      multi-state transition probabilities.
     contents:
       - name: AalenJohansen
         members: true
@@ -130,6 +131,8 @@ reference:
       - name: PenalizedFineGray
         members: true
       - name: CauseSpecificCox
+        members: true
+      - name: CompetingRiskForest
         members: true
       - name: MultiState
         members: true
