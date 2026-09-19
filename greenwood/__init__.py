@@ -19,6 +19,7 @@ from ._competing import (
 )
 from ._core import EventTable, event_table
 from ._cox import CoxPH, SmoothHRResult, ZPHResult, ZPHWindowResult
+from ._cr_forest import CompetingRiskForest
 from ._cure import MixtureCure
 from ._flexible import RoystonParmar
 from ._forest import ExtraSurvivalTrees, RandomSurvivalForest, SurvivalTree
@@ -110,6 +111,7 @@ __all__ = [
     "PiecewiseExponential",
     "AalenJohansen",
     "CauseSpecificCox",
+    "CompetingRiskForest",
     "FineGray",
     "MultiState",
     "PenalizedFineGray",
