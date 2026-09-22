@@ -25,17 +25,22 @@ from ._flexible import RoystonParmar
 from ._forest import ExtraSurvivalTrees, RandomSurvivalForest, SurvivalTree
 from ._ipcw import CensoringDistribution, IPCRidge
 from ._metrics import (
+    ConcordanceCompareResult,
+    ConcordanceResult,
     accuracy_in_time,
     brier_score,
     brier_score_incidence,
     calibration,
     calibration_incidence,
     concordance_index,
+    concordance_index_ci,
+    concordance_index_compare,
     concordance_index_incidence,
     concordance_index_ipcw,
     integrated_auc,
     integrated_brier_score,
     integrated_brier_score_incidence,
+    score_cr,
     time_dependent_auc,
 )
 from ._nonparametric import KaplanMeier, NelsonAalen
@@ -120,9 +125,14 @@ __all__ = [
     "calibration",
     "calibration_incidence",
     "compare_distributions",
+    "ConcordanceResult",
+    "ConcordanceCompareResult",
     "concordance_index",
+    "concordance_index_ci",
+    "concordance_index_compare",
     "concordance_index_ipcw",
     "concordance_index_incidence",
+    "score_cr",
     "cross_validate",
     "logrank_n_events",
     "logrank_power",
