@@ -130,6 +130,103 @@ follow-up window (for example, one year or five years) avoids this. The default 
 observed event time, which works well when censoring remains moderate throughout follow-up.
 :::
 
+## Concordance confidence intervals
+
+A point estimate of the concordance is not enough for a formal comparison. You also need a standard
+error and a confidence interval. `concordance_index_ci()` computes the IPCW concordance and derives
+the standard error from the influence function decomposition, which avoids the cost of
+bootstrapping. The confidence interval is constructed on the logit scale (the default), which
+respects the [0, 1] bounds and provides better coverage when the estimate is near either extreme.
+
+```{python}
+lung = gw.load_dataset("lung", backend="polars")
+
+y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+
+risk = cox.predict(type="lp")
+gw.concordance_index_ci(y, risk)
+```
+
+The result is a `ConcordanceResult` with the point estimate, standard error, and confidence limits.
+You can convert it to a one-row DataFrame with `to_frame()`.
+
+```{python}
+gw.concordance_index_ci(y, risk).to_frame()
+```
+
+The `transform` parameter controls the scale on which the CI is constructed. The default `"logit"`
+is recommended because it keeps the interval inside [0, 1] even when the estimate is close to the
+boundary. The `"log"` and `"identity"` options are available for comparison.
+
+```{python}
+gw.concordance_index_ci(y, risk, transform="identity")
+```
+
+For competing-risks data, pass `cause=` and `tau=` to get the cause-specific concordance with its
+CI. This uses the incidence-weighted influence function, which accounts for both standard and
+competing-event pairs.
+
+```{python}
+import numpy as np
+
+mgus2 = gw.load_dataset("mgus2", backend="polars")
+
+event = np.where(
+    mgus2["pstat"].to_numpy() == 1, 1,
+    np.where(mgus2["death"].to_numpy() == 1, 2, 0),
+)
+y_cr = gw.Surv.multistate(mgus2["futime"].to_numpy(), event, states=("pcm", "death"))
+
+fg = gw.FineGray("pcm").fit(y_cr, mgus2[["age", "sex"]])
+cif_at_tau = fg.predict_cumulative_incidence(
+    mgus2[["age", "sex"]], times=np.array([240.0]), format="pandas"
+).drop(columns="time").values.flatten()
+
+gw.concordance_index_ci(y_cr, cif_at_tau, cause=1, tau=240.0)
+```
+
+## Comparing two concordance indices
+
+When two models are fit on the same subjects, their concordance estimates are correlated. A naive
+comparison that treats them as independent underestimates uncertainty and inflates the Type I error
+rate. The `concordance_index_compare()` function uses the paired influence-function delta method:
+it computes the difference in concordance indices and derives the standard error from the joint
+influence function, which properly accounts for the shared subjects.
+
+```{python}
+lung = gw.load_dataset("lung", backend="polars")
+
+y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+
+cox_full = gw.CoxPH().fit(y, lung[["age", "sex"]])
+cox_age = gw.CoxPH().fit(y, lung[["age"]])
+
+lp_full = cox_full.predict(type="lp")
+lp_age = cox_age.predict(type="lp")
+
+gw.concordance_index_compare(y, lp_full, lp_age)
+```
+
+The result reports the difference (model A minus model B), its standard error, a confidence
+interval, a z-statistic, and a two-sided p-value. A small p-value means the two models have
+detectably different discrimination on this data. The result also has a `to_frame()` method for
+tabular output.
+
+```{python}
+gw.concordance_index_compare(y, lp_full, lp_age).to_frame()
+```
+
+::: {.callout-tip}
+## When to use paired comparison vs. cross-validation
+
+`concordance_index_compare()` gives you a formal hypothesis test on a single dataset. Cross-
+validation with `cross_validate()` gives you an estimate of out-of-sample performance. They answer
+different questions. Use the paired test when you want a p-value for the difference on the observed
+data. Use cross-validation when you want to estimate how much better one model will perform on new
+subjects.
+:::
+
 ## The censoring distribution
 
 The IPCW concordance index above works because it knows how likely each subject was to be censored.
@@ -372,6 +469,44 @@ Early times tend to show high accuracy because most subjects have survived and t
 survival. The metric becomes most informative at later times, when discriminating between competing
 events matters.
 
+## Bundled competing-risks scoring
+
+When evaluating a competing-risks model you typically want concordance, per-time Brier scores, and
+the integrated Brier score all at once. `score_cr()` computes them in a single call and returns a
+tidy summary table. The concordance row includes a confidence interval from the influence function.
+The Brier rows report point estimates only.
+
+```{python}
+import numpy as np
+
+mgus2 = gw.load_dataset("mgus2", backend="polars")
+
+event = np.where(
+    mgus2["pstat"].to_numpy() == 1, 1,
+    np.where(mgus2["death"].to_numpy() == 1, 2, 0),
+)
+y_cr = gw.Surv.multistate(mgus2["futime"].to_numpy(), event, states=("pcm", "death"))
+
+fg = gw.FineGray("pcm").fit(y_cr, mgus2[["age", "sex"]])
+
+eval_times = np.array([120, 240, 360])
+cif_pred = fg.predict_cumulative_incidence(
+    mgus2[["age", "sex"]], times=eval_times, format="pandas"
+).drop(columns="time").values.T
+
+gw.score_cr(y_cr, cif_pred, cause=1, times=eval_times)
+```
+
+The `incidence_prob` argument expects a matrix with shape `(n_subjects, n_times)`, where each column
+holds the predicted CIF at the corresponding evaluation time. The `cause` argument selects the event
+code and the `tau` parameter (defaulting to the last evaluation time) truncates the concordance
+calculation.
+
+This is the competing-risks counterpart of running `concordance_index_ci()`,
+`brier_score_incidence()`, and `integrated_brier_score_incidence()` separately. When you only need
+one of those metrics, calling them individually is fine. The `score_cr()` function saves repetitive
+setup when you want the full picture.
+
 ## Time-dependent discrimination: AUC over time
 
 The concordance index summarises discrimination with a single number across all event times. But a
@@ -514,9 +649,9 @@ enough information to reliably distinguish the two models on this metric alone.
 
 Discrimination and the Brier score both summarize a model in a single number. Calibration asks a
 more detailed question: at a chosen time, do the predicted survival probabilities match what
-actually happens? `calibration()` groups subjects into bins by their predicted survival at a
-horizon, then compares the mean prediction in each bin against the observed survival, a Kaplan-Meier
-estimate for that bin.
+actually happens? The `calibration()` function groups subjects into bins by their predicted survival
+at a horizon, then compares the mean prediction in each bin against the observed survival, a
+Kaplan-Meier estimate for that bin.
 
 ```{python}
 lung = gw.load_dataset("lung", backend="polars")
