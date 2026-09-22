@@ -23,6 +23,8 @@ __all__ = [
     "concordance_index",
     "concordance_index_ipcw",
     "concordance_index_incidence",
+    "concordance_index_ci",
+    "concordance_index_compare",
     "brier_score",
     "brier_score_incidence",
     "integrated_brier_score",
@@ -32,6 +34,7 @@ __all__ = [
     "accuracy_in_time",
     "time_dependent_auc",
     "integrated_auc",
+    "score_cr",
 ]
 
 Array = npt.NDArray[Any]
@@ -1544,3 +1547,637 @@ def accuracy_in_time(
 
         out[j] = float((y_pred_class == y_true_class).mean())
     return out
+
+
+# ---------------------------------------------------------------------------
+# Concordance CIs and comparison
+# ---------------------------------------------------------------------------
+
+
+class ConcordanceResult:
+    """Result of a concordance index with confidence interval.
+
+    Attributes
+    ----------
+    estimate : float
+        Point estimate of the concordance index.
+    se : float
+        Standard error (on the original scale).
+    ci_low : float
+        Lower confidence limit.
+    ci_high : float
+        Upper confidence limit.
+    conf_level : float
+        Confidence level used.
+    n : int
+        Number of subjects.
+    """
+
+    __slots__ = ("estimate", "se", "ci_low", "ci_high", "conf_level", "n")
+
+    def __init__(
+        self,
+        estimate: float,
+        se: float,
+        ci_low: float,
+        ci_high: float,
+        conf_level: float,
+        n: int,
+    ) -> None:
+        self.estimate = estimate
+        self.se = se
+        self.ci_low = ci_low
+        self.ci_high = ci_high
+        self.conf_level = conf_level
+        self.n = n
+
+    def __repr__(self) -> str:
+        return (
+            f"ConcordanceResult(estimate={self.estimate:.4f}, "
+            f"se={self.se:.4f}, "
+            f"CI=[{self.ci_low:.4f}, {self.ci_high:.4f}], "
+            f"conf_level={self.conf_level})"
+        )
+
+    def to_frame(self, *, format: str | None = None) -> Any:
+        """Export as a single-row DataFrame."""
+        from ._backends import to_dataframe
+
+        return to_dataframe(
+            {
+                "estimate": [self.estimate],
+                "se": [self.se],
+                "conf_low": [self.ci_low],
+                "conf_high": [self.ci_high],
+                "n": [self.n],
+            },
+            format=format,
+        )
+
+
+class ConcordanceCompareResult:
+    """Result of comparing two concordance indices.
+
+    Attributes
+    ----------
+    delta : float
+        Difference in concordance (model_a - model_b).
+    se : float
+        Standard error of the difference.
+    ci_low : float
+        Lower confidence limit for the difference.
+    ci_high : float
+        Upper confidence limit for the difference.
+    z : float
+        Wald z-statistic.
+    pvalue : float
+        Two-sided p-value for H0: delta = 0.
+    conf_level : float
+        Confidence level used.
+    """
+
+    __slots__ = ("delta", "se", "ci_low", "ci_high", "z", "pvalue", "conf_level")
+
+    def __init__(
+        self,
+        delta: float,
+        se: float,
+        ci_low: float,
+        ci_high: float,
+        z: float,
+        pvalue: float,
+        conf_level: float,
+    ) -> None:
+        self.delta = delta
+        self.se = se
+        self.ci_low = ci_low
+        self.ci_high = ci_high
+        self.z = z
+        self.pvalue = pvalue
+        self.conf_level = conf_level
+
+    def __repr__(self) -> str:
+        return (
+            f"ConcordanceCompareResult(delta={self.delta:.4f}, "
+            f"se={self.se:.4f}, "
+            f"CI=[{self.ci_low:.4f}, {self.ci_high:.4f}], "
+            f"z={self.z:.3f}, p={self.pvalue:.4f})"
+        )
+
+    def to_frame(self, *, format: str | None = None) -> Any:
+        """Export as a single-row DataFrame."""
+        from ._backends import to_dataframe
+
+        return to_dataframe(
+            {
+                "delta": [self.delta],
+                "se": [self.se],
+                "conf_low": [self.ci_low],
+                "conf_high": [self.ci_high],
+                "z": [self.z],
+                "pvalue": [self.pvalue],
+            },
+            format=format,
+        )
+
+
+def _ipcw_concordance_influence(
+    surv: Any, scores: Array, *, tau: float | None = None
+) -> tuple[float, Array]:
+    """Compute IPCW concordance and per-subject influence function values.
+
+    Returns `(c_hat, phi)` where `phi` is an array of length `n` such that
+    `Var(c_hat) ≈ sum(phi**2) / n**2`.
+    """
+    T = surv.stop
+    evt = surv.event.astype(bool)
+    n = surv.n
+
+    if tau is None:
+        event_times = T[evt]
+        if event_times.shape[0] == 0:
+            raise ValueError("No events in the data.")
+        tau = float(event_times.max())
+
+    g_times, g_surv = _censoring_survival(surv)
+
+    def _g_left(t_arr: Array) -> Array:
+        if g_times.shape[0] == 0:
+            return np.ones(len(t_arr))
+        idx = np.searchsorted(g_times, t_arr, side="left") - 1
+        return np.where(idx >= 0, g_surv[idx.clip(min=0)], 1.0)
+
+    case_mask = evt & (tau >= T)
+    if not case_mask.any():
+        raise ValueError(f"No events before tau={tau}.")
+
+    T_case = T[case_mask]
+    eta_case = scores[case_mask]
+    g_case = _g_left(T_case)
+
+    with np.errstate(divide="ignore", invalid="ignore"):
+        w = np.where(g_case > 0, 1.0 / g_case**2, 0.0)
+
+    # Compute concordance and per-subject influence
+    numerator = 0.0
+    denominator = 0.0
+    # phi_i = sum over all pairs involving subject i of the IPCW contribution
+    phi = np.zeros(n)
+
+    for ci in range(T_case.shape[0]):
+        later = T_case[ci] < T
+        n_later = int(later.sum())
+        if n_later == 0 or w[ci] == 0:
+            continue
+        # Concordance contributions
+        conc_j = (eta_case[ci] > scores[later]).astype(float) + 0.5 * (
+            eta_case[ci] == scores[later]
+        ).astype(float)
+        conc_total = float(conc_j.sum())
+        numerator += w[ci] * conc_total
+        denominator += w[ci] * n_later
+
+    if denominator == 0.0:
+        raise ValueError("No comparable pairs found.")
+    c_hat = numerator / denominator
+
+    # Influence function: for each subject i, compute its contribution to the
+    # concordance. Recompute per-subject contributions.
+    for ci in range(T_case.shape[0]):
+        i_global = np.where(case_mask)[0][ci]
+        later = T_case[ci] < T
+        n_later = int(later.sum())
+        if n_later == 0 or w[ci] == 0:
+            continue
+
+        conc_j = (eta_case[ci] > scores[later]).astype(float) + 0.5 * (
+            eta_case[ci] == scores[later]
+        ).astype(float)
+        # Subject i is the "case" in this set of pairs
+        pair_contrib = w[ci] * (conc_j - c_hat) / denominator
+        phi[i_global] += float(pair_contrib.sum())
+        # Each j in the "later" set also gets influence
+        j_indices = np.where(later)[0]
+        phi[j_indices] += w[ci] * (conc_j - c_hat) / denominator * (-1.0)
+
+    return c_hat, phi
+
+
+def _ipcw_concordance_influence_incidence(
+    surv: Any, scores: Array, *, cause: int, tau: float | None = None
+) -> tuple[float, Array]:
+    """IPCW concordance for cumulative incidence with per-subject influence values.
+
+    Handles both Type A (still-at-risk) and Type B (competing-event) pairs.
+    """
+    T = surv.stop
+    status = surv.status
+    n = surv.n
+    cause_int = int(cause)
+
+    if tau is None:
+        event_k_times = T[status == cause_int]
+        if event_k_times.shape[0] == 0:
+            raise ValueError(f"No events of cause {cause_int} in the data.")
+        tau = float(event_k_times.max())
+
+    g_times, g_surv = _censoring_survival_multistate(surv)
+
+    def _g_left(t_arr: Array) -> Array:
+        if g_times.shape[0] == 0:
+            return np.ones(len(t_arr))
+        idx = np.searchsorted(g_times, t_arr, side="left") - 1
+        return np.where(idx >= 0, g_surv[idx.clip(min=0)], 1.0)
+
+    case_mask = (status == cause_int) & (tau >= T)
+    if not case_mask.any():
+        raise ValueError(f"No events of cause {cause_int} before tau={tau}.")
+
+    T_case = T[case_mask]
+    eta_case = scores[case_mask]
+    g_case = _g_left(T_case)
+
+    numerator = 0.0
+    denominator = 0.0
+
+    for i in range(T_case.shape[0]):
+        if g_case[i] <= 0:
+            continue
+        type_a = T_case[i] < T
+        if type_a.any():
+            w_a = 1.0 / g_case[i] ** 2
+            conc_a = float(np.sum(eta_case[i] > scores[type_a]))
+            conc_a += 0.5 * float(np.sum(eta_case[i] == scores[type_a]))
+            n_a = int(type_a.sum())
+            numerator += w_a * conc_a
+            denominator += w_a * n_a
+        type_b = (status > 0) & (status != cause_int) & (T_case[i] >= T)
+        if type_b.any():
+            g_b = _g_left(T[type_b])
+            valid_b = g_b > 0
+            if valid_b.any():
+                w_b = 1.0 / (g_case[i] * g_b[valid_b])
+                eta_b = scores[type_b][valid_b]
+                conc_b = (eta_case[i] > eta_b).astype(float) + 0.5 * (eta_case[i] == eta_b).astype(
+                    float
+                )
+                numerator += float(np.dot(w_b, conc_b))
+                denominator += float(w_b.sum())
+
+    if denominator == 0.0:
+        raise ValueError("No comparable pairs found.")
+    c_hat = numerator / denominator
+
+    # Influence via perturbation: for each subject, compute the leave-one-out
+    # change in concordance. This is the infinitesimal jackknife approach.
+    phi = np.zeros(n)
+    case_indices = np.where(case_mask)[0]
+
+    for ci_idx in range(T_case.shape[0]):
+        i_global = case_indices[ci_idx]
+        if g_case[ci_idx] <= 0:
+            continue
+
+        type_a = T_case[ci_idx] < T
+        if type_a.any():
+            w_a = 1.0 / g_case[ci_idx] ** 2
+            conc_j = (eta_case[ci_idx] > scores[type_a]).astype(float) + 0.5 * (
+                eta_case[ci_idx] == scores[type_a]
+            ).astype(float)
+            pair_val = w_a * (conc_j - c_hat) / denominator
+            phi[i_global] += float(pair_val.sum())
+            j_indices = np.where(type_a)[0]
+            phi[j_indices] -= pair_val
+
+        type_b = (status > 0) & (status != cause_int) & (T_case[ci_idx] >= T)
+        if type_b.any():
+            g_b = _g_left(T[type_b])
+            valid_b = g_b > 0
+            if valid_b.any():
+                w_b = 1.0 / (g_case[ci_idx] * g_b[valid_b])
+                eta_b = scores[type_b][valid_b]
+                conc_b = (eta_case[ci_idx] > eta_b).astype(float) + 0.5 * (
+                    eta_case[ci_idx] == eta_b
+                ).astype(float)
+                pair_val_b = w_b * (conc_b - c_hat) / denominator
+                phi[i_global] += float(pair_val_b.sum())
+                j_b = np.where(type_b)[0][valid_b]
+                phi[j_b] -= pair_val_b
+
+    return c_hat, phi
+
+
+def concordance_index_ci(
+    surv: Surv,
+    risk: Any,
+    *,
+    cause: int | None = None,
+    tau: float | None = None,
+    conf_level: float = 0.95,
+    transform: str = "logit",
+) -> ConcordanceResult:
+    r"""IPCW concordance index with a confidence interval.
+
+    Computes the Uno-style IPCW concordance and derives the standard error from the influence
+    function decomposition. The confidence interval is constructed on the logit (default), log, or
+    identity scale and back-transformed.
+
+    Parameters
+    ----------
+    surv
+        A `Surv` response. If `cause` is given, must be multistate (`Surv.multistate`). Otherwise it
+        must be right-censored (`Surv.right`).
+    risk
+        Risk score or predicted cumulative incidence, one per subject.
+    cause
+        Integer cause code for the competing-risks concordance. `None` (default) uses the standard
+        right-censored concordance.
+    tau
+        Truncation time. Defaults to the largest observed (cause-specific) event time.
+    conf_level
+        Confidence level for the interval (default 0.95).
+    transform
+        Scale for the CI: `"logit"` (default, recommended), `"log"`, or `"identity"`.
+
+    Returns
+    -------
+    ConcordanceResult
+        Point estimate, standard error, and confidence limits.
+
+    Examples
+    --------
+    ```{python}
+    import greenwood as gw
+
+    lung = gw.load_dataset("lung", backend="polars")
+    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+    cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+    lp = cox.predict(type="lp")
+
+    gw.concordance_index_ci(y, lp)
+    ```
+    """
+    from scipy.stats import norm as sp_norm
+
+    from ._surv import _to_1d_array
+
+    scores = _to_1d_array(risk)
+    if scores.shape[0] != surv.n:
+        raise ValueError("`risk` must have the same length as the response.")
+    if transform not in ("logit", "log", "identity"):
+        raise ValueError(f"transform must be 'logit', 'log', or 'identity', got {transform!r}.")
+
+    if cause is not None:
+        c_hat, phi = _ipcw_concordance_influence_incidence(surv, scores, cause=cause, tau=tau)
+    else:
+        c_hat, phi = _ipcw_concordance_influence(surv, scores, tau=tau)
+
+    n = surv.n
+    se = float(np.sqrt(np.sum(phi**2)))
+    z_val = sp_norm.ppf((1 + conf_level) / 2)
+
+    if transform == "logit":
+        with np.errstate(divide="ignore", invalid="ignore"):
+            logit_c = np.log(c_hat / (1 - c_hat))
+            se_logit = se / (c_hat * (1 - c_hat))
+        ci_lo = 1.0 / (1.0 + np.exp(-(logit_c - z_val * se_logit)))
+        ci_hi = 1.0 / (1.0 + np.exp(-(logit_c + z_val * se_logit)))
+    elif transform == "log":
+        with np.errstate(divide="ignore", invalid="ignore"):
+            se_log = se / c_hat
+        ci_lo = c_hat * np.exp(-z_val * se_log)
+        ci_hi = c_hat * np.exp(z_val * se_log)
+    else:
+        ci_lo = c_hat - z_val * se
+        ci_hi = c_hat + z_val * se
+
+    ci_lo = float(np.clip(ci_lo, 0.0, 1.0))
+    ci_hi = float(np.clip(ci_hi, 0.0, 1.0))
+
+    return ConcordanceResult(
+        estimate=c_hat,
+        se=se,
+        ci_low=ci_lo,
+        ci_high=ci_hi,
+        conf_level=conf_level,
+        n=n,
+    )
+
+
+def concordance_index_compare(
+    surv: Surv,
+    risk_a: Any,
+    risk_b: Any,
+    *,
+    cause: int | None = None,
+    tau: float | None = None,
+    conf_level: float = 0.95,
+) -> ConcordanceCompareResult:
+    r"""Compare two concordance indices via the paired influence-function delta method.
+
+    Tests whether two risk scores (from different models) have different concordance indices on the
+    same data. The standard error of the difference is derived from the joint influence function,
+    which properly accounts for the correlation between the two estimates (they share the same
+    subjects).
+
+    Parameters
+    ----------
+    surv
+        A `Surv` response (right-censored or multistate).
+    risk_a
+        Risk scores from the first model.
+    risk_b
+        Risk scores from the second model.
+    cause
+        Integer cause code for competing-risks concordance. `None` for standard.
+    tau
+        Truncation time.
+    conf_level
+        Confidence level.
+
+    Returns
+    -------
+    ConcordanceCompareResult
+        Difference, standard error, CI, z-statistic, and p-value.
+
+    Examples
+    --------
+    ```{python}
+    import greenwood as gw
+
+    lung = gw.load_dataset("lung", backend="polars")
+    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+    cox1 = gw.CoxPH().fit(y, lung[["age"]])
+    cox2 = gw.CoxPH().fit(y, lung[["age", "sex"]])
+    lp1 = cox1.predict(type="lp")
+    lp2 = cox2.predict(type="lp")
+
+    gw.concordance_index_compare(y, lp1, lp2)
+    ```
+    """
+    from scipy.stats import norm as sp_norm
+
+    from ._surv import _to_1d_array
+
+    scores_a = _to_1d_array(risk_a)
+    scores_b = _to_1d_array(risk_b)
+    if scores_a.shape[0] != surv.n or scores_b.shape[0] != surv.n:
+        raise ValueError("Both risk scores must have the same length as the response.")
+
+    if cause is not None:
+        c_a, phi_a = _ipcw_concordance_influence_incidence(surv, scores_a, cause=cause, tau=tau)
+        c_b, phi_b = _ipcw_concordance_influence_incidence(surv, scores_b, cause=cause, tau=tau)
+    else:
+        c_a, phi_a = _ipcw_concordance_influence(surv, scores_a, tau=tau)
+        c_b, phi_b = _ipcw_concordance_influence(surv, scores_b, tau=tau)
+
+    delta = c_a - c_b
+    phi_diff = phi_a - phi_b
+    se_diff = float(np.sqrt(np.sum(phi_diff**2)))
+
+    z_val = sp_norm.ppf((1 + conf_level) / 2)
+    ci_lo = delta - z_val * se_diff
+    ci_hi = delta + z_val * se_diff
+
+    if se_diff > 0:
+        z_stat = delta / se_diff
+        pvalue = float(2 * sp_norm.sf(abs(z_stat)))
+    else:
+        z_stat = 0.0
+        pvalue = 1.0
+
+    return ConcordanceCompareResult(
+        delta=float(delta),
+        se=se_diff,
+        ci_low=float(ci_lo),
+        ci_high=float(ci_hi),
+        z=float(z_stat),
+        pvalue=float(pvalue),
+        conf_level=conf_level,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Bundled competing-risks scorer
+# ---------------------------------------------------------------------------
+
+
+def score_cr(
+    surv: Surv,
+    incidence_prob: Any,
+    *,
+    cause: int,
+    times: Any,
+    tau: float | None = None,
+    conf_level: float = 0.95,
+    format: str | None = None,
+) -> Any:
+    r"""Bundled competing-risks evaluation: concordance, Brier, and integrated Brier.
+
+    Computes the main prediction-performance metrics for a cause-specific cumulative incidence model
+    in one call, returning a tidy summary frame.
+
+    Parameters
+    ----------
+    surv
+        A multistate `Surv` response.
+    incidence_prob
+        Predicted CIF for the cause of interest, shape `(n_subjects, n_times)`.
+    cause
+        Integer cause code.
+    times
+        Evaluation times (1-D array-like), matching the columns of `incidence_prob`.
+    tau
+        Truncation time for the concordance index. Defaults to the last value in `times`.
+    conf_level
+        Confidence level for the concordance CI.
+    format
+        DataFrame backend for the returned table.
+
+    Returns
+    -------
+    DataFrame
+        One row per metric with columns `metric`, `estimate`, and (for the concordance) `se`,
+        `conf_low`, `conf_high`.
+
+    Examples
+    --------
+    ```{python}
+    import greenwood as gw
+    import numpy as np
+
+    mg = gw.load_dataset("mgus2", backend="polars")
+    etime = np.where(mg["pstat"] == 1, mg["ptime"], mg["futime"])
+    event = np.where(mg["pstat"] == 1, 1, 2 * mg["death"])
+    y = gw.Surv.multistate(etime, event=event, states=("pcm", "death"))
+
+    fg = gw.FineGray("pcm").fit(y, mg[["age", "sex"]])
+    eval_times = np.array([120, 240, 360])
+    cif_pred = fg.predict_cumulative_incidence(
+        mg[["age", "sex"]], times=eval_times, format="pandas"
+    ).drop(columns="time").values.T
+
+    gw.score_cr(y, cif_pred, cause=1, times=eval_times, format="polars")
+    ```
+    """
+    from ._backends import to_dataframe as _to_df
+
+    times_arr = np.atleast_1d(np.asarray(times, dtype=float))
+    prob = np.asarray(incidence_prob, dtype=float)
+    if prob.ndim != 2 or prob.shape[1] != times_arr.shape[0]:
+        raise ValueError(
+            f"incidence_prob must be (n_subjects, n_times) with n_times={times_arr.shape[0]}, "
+            f"got shape {prob.shape}."
+        )
+
+    if tau is None:
+        tau = float(times_arr[-1])
+
+    # CIF at tau for concordance
+    tau_idx = int(np.searchsorted(times_arr, tau, side="right")) - 1
+    tau_idx = max(0, min(tau_idx, times_arr.shape[0] - 1))
+    cif_at_tau = prob[:, tau_idx]
+
+    # Concordance with CI
+    c_result = concordance_index_ci(surv, cif_at_tau, cause=cause, tau=tau, conf_level=conf_level)
+
+    # Brier scores at each time
+    bs = brier_score_incidence(surv, prob, times_arr, cause=cause)
+    ibs = integrated_brier_score_incidence(surv, prob, times_arr, cause=cause)
+
+    # Build result frame
+    metrics: list[str] = []
+    estimates: list[float] = []
+    ses: list[float] = []
+    conf_lows: list[float] = []
+    conf_highs: list[float] = []
+
+    metrics.append("concordance")
+    estimates.append(c_result.estimate)
+    ses.append(c_result.se)
+    conf_lows.append(c_result.ci_low)
+    conf_highs.append(c_result.ci_high)
+
+    for j, t in enumerate(times_arr):
+        metrics.append(f"brier({t:.0f})")
+        estimates.append(float(bs[j]))
+        ses.append(np.nan)
+        conf_lows.append(np.nan)
+        conf_highs.append(np.nan)
+
+    metrics.append("integrated_brier")
+    estimates.append(float(ibs))
+    ses.append(np.nan)
+    conf_lows.append(np.nan)
+    conf_highs.append(np.nan)
+
+    return _to_df(
+        {
+            "metric": metrics,
+            "estimate": np.array(estimates),
+            "se": np.array(ses),
+            "conf_low": np.array(conf_lows),
+            "conf_high": np.array(conf_highs),
+        },
+        format=format,
+    )
