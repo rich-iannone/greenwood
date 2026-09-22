@@ -168,15 +168,29 @@ reference:
       - cross_validate
 
   - title: Prediction performance
-    desc: Concordance, IPCW Brier score, time-dependent AUC, and calibration.
+    desc:
+      Concordance, IPCW Brier score, time-dependent AUC, calibration, concordance
+      confidence intervals with delta-method comparison, and a bundled competing-risks
+      scorer.
     contents:
       - concordance_index
       - concordance_index_ipcw
+      - concordance_index_ci
+      - concordance_index_compare
+      - name: ConcordanceResult
+        members: true
+      - name: ConcordanceCompareResult
+        members: true
+      - concordance_index_incidence
       - brier_score
+      - brier_score_incidence
       - integrated_brier_score
+      - integrated_brier_score_incidence
       - time_dependent_auc
       - integrated_auc
       - calibration
+      - calibration_incidence
+      - score_cr
 
   - title: Visualization
     desc:
