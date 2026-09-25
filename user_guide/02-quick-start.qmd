@@ -29,14 +29,15 @@ import greenwood as gw
 # Load the bundled lung cancer dataset as a Polars DataFrame
 lung = gw.load_dataset("lung", backend="polars")
 
-# Build a right-censored response; status == 2 marks a death
-y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+# Build a right-censored response, where a status of 2 marks a death
+y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 y
 ```
 
-The summary reports 228 patients, of whom 165 died during the study (the rest were censored). One
-detail to note: this dataset codes `status` as `1` for censored and `2` for dead, so we turn it into
-a plain event indicator with `status == 2`.
+The summary reports 228 patients, of whom 165 died during the study (the rest were censored). We
+named the two columns and let `data=` supply them. One detail to note: this dataset codes `status`
+as `1` for censored and `2` for dead (R's convention), so `event_value=2` says which value marks a
+death. The same call works whether `lung` is a Polars, Pandas, PyArrow, or DuckDB table.
 
 ## Estimate the survival curve
 
@@ -46,7 +47,7 @@ past each point in time. Printing the fitted estimator reports the median surviv
 ```{python}
 # Load data and build the right-censored response
 lung = gw.load_dataset("lung", backend="polars")
-y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
 # Fit the Kaplan-Meier estimator
 km = gw.KaplanMeier().fit(y)
@@ -66,7 +67,7 @@ band and a notch wherever a patient was censored.
 ```{python}
 # Load data and build the right-censored response
 lung = gw.load_dataset("lung", backend="polars")
-y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
 # Fit the Kaplan-Meier estimator
 km = gw.KaplanMeier().fit(y)
@@ -86,13 +87,22 @@ include `age` and `sex`. Printing the model shows a coefficient table.
 ```{python}
 # Load data and build the right-censored response
 lung = gw.load_dataset("lung", backend="polars")
-y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
 # Fit a Cox proportional hazards model with age and sex as covariates
-cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
 
 # Print the coefficient table and global test statistics
 cox
+```
+
+If you know R, you can also write the whole model as a formula. The response and the covariates
+are read from the same frame, and any row with a missing value in a column the model uses is
+dropped (the printout says how many).
+
+```{python}
+# The same model, written as an R-style formula
+gw.CoxPH().fit("Surv(time, status == 2) ~ age + sex", data=lung)
 ```
 
 The `exp(coef)` column holds hazard ratios. For `sex` (coded `1` for male, `2` for female) the
@@ -108,9 +118,9 @@ of the shared gamma frailty Cox model.
 # Shared frailty Cox model (clustered by institution)
 cox_frailty = gw.CoxPH(ties="breslow").fit(
     y,
-    lung[["age", "sex"]],
+    covariates=["age", "sex"], data=lung,
     frailty="gamma",
-    frailty_cluster=lung["inst"],
+    frailty_cluster="inst",
 )
 
 # Frailty variance inference (tests theta = 0)
