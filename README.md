@@ -168,10 +168,11 @@ gw.AalenJohansen().fit(cr, data=mg).to_frame(format="polars")
 gw.FineGray(cause="pcm").fit(cr, covariates=["age", "sex"], data=mg).to_frame(format="polars")
 
 # Model performance and prediction
-gw.concordance_index(y, cox.predict(type="lp"))
-S = cox.predict(df[["age", "sex"]], type="survival", times=[180, 365], format="pandas").iloc[:, 1:].to_numpy().T
-gw.brier_score(y, S, times=[180, 365])
-gw.time_dependent_auc(y, cox.predict(type="lp"), times=[180, 365])
+gw.concordance_index(y, risk=cox.predict(type="lp"))
+# One row per time, one column per subject: drop the time column and transpose
+S = cox.predict(df, type="survival", times=[180, 365], format="polars").drop("time").to_numpy().T
+gw.brier_score(y, survival_prob=S, times=[180, 365])
+gw.time_dependent_auc(y, marker=cox.predict(type="lp"), times=[180, 365])
 ```
 
 ## License
