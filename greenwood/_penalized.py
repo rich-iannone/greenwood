@@ -25,7 +25,7 @@ import numpy as np
 import numpy.typing as npt
 
 from ._backends import to_dataframe
-from ._cox import _cox_terms, _design_matrix
+from ._cox import _cox_terms, _design_matrix, _design_matrix_spec
 from ._outcome import bind_fit_inputs
 from ._repr import dropped_note
 
@@ -249,7 +249,7 @@ class CoxNet:
                 f"not {surv.type.value!r}."
             )
 
-        x, names = _design_matrix(covariates, data)
+        x, names, self._design_spec = _design_matrix_spec(covariates, data)
         if x.shape[0] != surv.n:
             raise ValueError("Covariates and response must have the same number of rows.")
 
@@ -364,6 +364,8 @@ class CoxNet:
             `None` (the default). If `None`, uses the training data (design matrix used at fit
             time). Must have the same columns/features as the training data. Covariates are centered
             using the centering from the training data.
+            A data frame may also hold other columns. The covariates are picked out by name and
+            coded as they were at fit time, so the frame the model was fit on can be passed as is.
         type
             Prediction type (default `"lp"`):
 
@@ -439,7 +441,7 @@ class CoxNet:
         coxnet.predict(lung[cols][:2], type="survival", times=[180, 365], format="polars")
         ```
         """
-        x = self._x if newdata is None else _design_matrix(newdata)[0]
+        x = self._x if newdata is None else self._design_spec.transform(newdata)
         lp = (x - self._center) @ self.coef_
         if type == "lp":
             return lp
@@ -951,7 +953,6 @@ def cv_coxnet(
     covariates = bound.designs["covariates"]
     data = bound.data
 
-    from ._cox import _design_matrix
     from ._metrics import concordance_index, integrated_brier_score
     from ._resample import _stratified_kfold_indices, _subset_surv
     from ._surv import CensoringType

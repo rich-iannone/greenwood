@@ -17,7 +17,7 @@ from typing_extensions import Self
 from ._backends import to_dataframe
 from ._boosting import _RegressionTree, _resolve_max_features
 from ._competing import _censoring_km
-from ._cox import _design_matrix
+from ._cox import _design_matrix_spec
 from ._outcome import bind_fit_inputs
 from ._repr import dropped_note
 
@@ -265,7 +265,7 @@ class SurvivalBoost:
                 "SurvivalBoost requires a multi-state response from Surv.multistate()."
             )
 
-        x, names = _design_matrix(covariates, data)
+        x, names, self._design_spec = _design_matrix_spec(covariates, data)
         time = np.asarray(surv.stop, dtype=float)
         status = np.asarray(surv.status, dtype=int)
         if x.shape[0] != surv.n:
@@ -391,6 +391,8 @@ class SurvivalBoost:
         newdata
             Covariates for prediction. A dataframe, 2-D array, or formula string. `None` is not
             supported (training covariates are not cached).
+            A data frame may also hold other columns. The covariates are picked out by name and
+            coded as they were at fit time, so the frame the model was fit on can be passed as is.
         times
             Time points at which to evaluate the CIFs. Defaults to the training-time grid.
         format
@@ -407,7 +409,7 @@ class SurvivalBoost:
         """
         if newdata is None:
             raise ValueError("newdata is required for SurvivalBoost prediction.")
-        x = _design_matrix(newdata)[0]
+        x = self._design_spec.transform(newdata)
         query = self.time_grid_ if times is None else np.atleast_1d(np.asarray(times, dtype=float))
 
         n_subj = x.shape[0]
@@ -452,6 +454,8 @@ class SurvivalBoost:
         ----------
         newdata
             Covariates for prediction.
+            A data frame may also hold other columns. The covariates are picked out by name and
+            coded as they were at fit time, so the frame the model was fit on can be passed as is.
         times
             Time points at which to evaluate. Defaults to the training-time grid.
         format
@@ -489,6 +493,8 @@ class SurvivalBoost:
         ----------
         newdata
             Covariates for prediction.
+            A data frame may also hold other columns. The covariates are picked out by name and
+            coded as they were at fit time, so the frame the model was fit on can be passed as is.
         time_horizon
             The time at which to evaluate probabilities.
 
