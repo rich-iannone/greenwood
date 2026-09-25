@@ -347,7 +347,7 @@ class MixtureCure:
         self._n_input = bound.n_input
         self.n_dropped_ = bound.n_dropped
 
-        from ._cox import _design_matrix
+        from ._cox import _design_matrix_spec
         from ._surv import CensoringType
 
         if surv.type != CensoringType.RIGHT:
@@ -355,8 +355,8 @@ class MixtureCure:
                 f"MixtureCure supports right-censored responses, not {surv.type.value!r}."
             )
 
-        x_raw, latency_names = _design_matrix(latency, data)
-        z_raw, cure_names = _design_matrix(cure, data)
+        x_raw, latency_names, self._latency_spec = _design_matrix_spec(latency, data)
+        z_raw, cure_names, self._cure_spec = _design_matrix_spec(cure, data)
 
         if x_raw.shape[0] != surv.n:
             raise ValueError("Latency covariates and response must have the same number of rows.")
@@ -432,9 +432,8 @@ class MixtureCure:
         numpy.ndarray
             Array of susceptibility probabilities (1 = certainly uncured).
         """
-        from ._cox import _design_matrix
 
-        z_raw, _ = _design_matrix(cure_covariates, data)
+        z_raw = self._cure_spec.transform(cure_covariates, data=data)
         z = np.column_stack([np.ones(z_raw.shape[0]), z_raw])
         return _expit(z @ self.cure_coef_)
 
@@ -464,11 +463,10 @@ class MixtureCure:
         numpy.ndarray
             Array of shape `(n_subjects, n_times)` with population survival probabilities.
         """
-        from ._cox import _design_matrix
 
         t = np.atleast_1d(np.asarray(times, dtype=float))
-        x_raw, _ = _design_matrix(latency_covariates, data)
-        z_raw, _ = _design_matrix(cure_covariates, data)
+        x_raw = self._latency_spec.transform(latency_covariates, data=data)
+        z_raw = self._cure_spec.transform(cure_covariates, data=data)
         z = np.column_stack([np.ones(z_raw.shape[0]), z_raw])
 
         pi_ = _expit(z @ self.cure_coef_)

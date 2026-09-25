@@ -29,7 +29,7 @@ import numpy.typing as npt
 from typing_extensions import Self
 
 from ._backends import to_dataframe
-from ._cox import _design_matrix
+from ._cox import _design_matrix_spec
 from ._outcome import bind_fit_inputs
 from ._repr import dropped_note
 
@@ -498,7 +498,7 @@ class SurvivalTree:
             self._n_input = bound.n_input
             self.n_dropped_ = bound.n_dropped
 
-        x, names = _design_matrix(covariates, data)
+        x, names, self._design_spec = _design_matrix_spec(covariates, data)
         # The forest passes already-aligned time/event arrays (e.g. from a bootstrap sample);
         # otherwise derive them from the response and check row alignment.
         if _time is not None and _event is not None:
@@ -618,6 +618,8 @@ class SurvivalTree:
         ----------
         newdata
             Covariates to predict for. `None` predicts for the training subjects.
+            A data frame may also hold other columns. The covariates are picked out by name and
+            coded as they were at fit time, so the frame the model was fit on can be passed as is.
         type
             One of `"risk"`, `"survival"`, or `"cumulative_hazard"`.
         times
@@ -644,7 +646,7 @@ class SurvivalTree:
     def _design(self, newdata: Any) -> Array:
         if newdata is None:
             raise ValueError("Provide `newdata` to predict; the tree does not retain training X.")
-        return _design_matrix(newdata)[0]
+        return self._design_spec.transform(newdata)
 
     def _curve_frame(self, curves: Array, times: Any, format: str | None, boundary: float) -> Any:
         query = (
@@ -763,7 +765,7 @@ class _BaseSurvivalForest:
         self._n_input = bound.n_input
         self.n_dropped_ = bound.n_dropped
 
-        x, names = _design_matrix(covariates, data)
+        x, names, self._design_spec = _design_matrix_spec(covariates, data)
         time, event = _prepare_response(surv)
         if x.shape[0] != surv.n:
             raise ValueError("Covariates and response must have the same number of rows.")
@@ -863,6 +865,8 @@ class _BaseSurvivalForest:
         ----------
         newdata
             Covariates to predict for. `None` predicts for the training subjects.
+            A data frame may also hold other columns. The covariates are picked out by name and
+            coded as they were at fit time, so the frame the model was fit on can be passed as is.
         type
             One of `"risk"`, `"survival"`, or `"cumulative_hazard"`.
         times
@@ -877,7 +881,7 @@ class _BaseSurvivalForest:
         """
         if type not in _PREDICT_TYPES:
             raise ValueError(f"Unknown predict type {type!r}; use one of {_PREDICT_TYPES}.")
-        x = self._x_train if newdata is None else _design_matrix(newdata)[0]
+        x = self._x_train if newdata is None else self._design_spec.transform(newdata)
         cumhaz, survival = self._ensemble_curves(x)
         if type == "risk":
             return cumhaz.sum(axis=1)

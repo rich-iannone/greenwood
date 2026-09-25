@@ -37,7 +37,7 @@ from scipy.optimize import minimize
 from scipy.stats import norm
 
 from ._backends import to_dataframe
-from ._cox import _design_matrix
+from ._cox import DesignSpec, _design_matrix_spec
 from ._outcome import bind_fit_inputs
 from ._parametric import _num_hessian
 from ._repr import dropped_note
@@ -351,8 +351,9 @@ class RoystonParmar:
         if covariates is None:
             design = np.empty((surv.n, 0))
             cov_names: list[str] = []
+            self._design_spec = DesignSpec(kind="array", names=())
         else:
-            design, cov_names = _design_matrix(covariates, data)
+            design, cov_names, self._design_spec = _design_matrix_spec(covariates, data)
             if design.shape[0] != surv.n:
                 raise ValueError("Covariates and response must have the same number of rows.")
 
@@ -471,6 +472,8 @@ class RoystonParmar:
             Covariate values for prediction. A DataFrame (Pandas or Polars), 2-D array, or
             `None` (the default). If `None`, uses baseline (all covariates `0` or the training
             data mean). Must have the same columns/features as the training data.
+            A data frame may also hold other columns. The covariates are picked out by name and
+            coded as they were at fit time, so the frame the model was fit on can be passed as is.
         type
             Prediction type (default `"survival"`):
 
@@ -562,7 +565,7 @@ class RoystonParmar:
         if newdata is None:
             x = np.zeros((1, max(self.coef_.size - self._n_spline, 0)))
         else:
-            x, _ = _design_matrix(newdata)
+            x = self._design_spec.transform(newdata)
         query = np.atleast_1d(np.asarray(times, dtype=float))
         columns: dict[str, Array] = {"time": query}
         for i in range(x.shape[0]):
@@ -605,6 +608,8 @@ class RoystonParmar:
         newdata
             Covariate values for prediction. A DataFrame (Pandas or Polars), 2-D array, or `None`
             (the default). If `None`, uses baseline (all covariates 0).
+            A data frame may also hold other columns. The covariates are picked out by name and
+            coded as they were at fit time, so the frame the model was fit on can be passed as is.
         p
             Failure probability or probabilities at which to compute quantiles. Can be a scalar
             (e.g., `0.5` for median) or array-like (e.g., `[0.25, 0.5, 0.75]` for quartiles). Must
@@ -650,7 +655,7 @@ class RoystonParmar:
         if newdata is None:
             x = np.zeros((1, max(self.coef_.size - self._n_spline, 0)))
         else:
-            x, _ = _design_matrix(newdata)
+            x = self._design_spec.transform(newdata)
 
         gamma = self.coef_[: self._n_spline]
         beta = self.coef_[self._n_spline :]
@@ -733,6 +738,8 @@ class RoystonParmar:
         newdata
             Covariate values for prediction. A DataFrame (Pandas or Polars), 2-D array,
             or `None` (the default). If `None`, uses baseline (all covariates 0).
+            A data frame may also hold other columns. The covariates are picked out by name and
+            coded as they were at fit time, so the frame the model was fit on can be passed as is.
         ci
             If `True`, include confidence intervals. Default is `False`.
         format
@@ -788,6 +795,8 @@ class RoystonParmar:
         newdata
             Covariate values for prediction. A DataFrame (Pandas or Polars), 2-D array, or `None`
             (the default). If `None`, uses baseline (all covariates 0).
+            A data frame may also hold other columns. The covariates are picked out by name and
+            coded as they were at fit time, so the frame the model was fit on can be passed as is.
         tau
             The restriction time (time horizon). Must be positive.
         ci
@@ -830,7 +839,7 @@ class RoystonParmar:
         if newdata is None:
             x = np.zeros((1, max(self.coef_.size - self._n_spline, 0)))
         else:
-            x, _ = _design_matrix(newdata)
+            x = self._design_spec.transform(newdata)
 
         gamma = self.coef_[: self._n_spline]
         beta = self.coef_[self._n_spline :]

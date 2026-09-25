@@ -322,7 +322,7 @@ class IPCRidge:
         self._n_input = bound.n_input
         self.n_dropped_ = bound.n_dropped
 
-        from ._cox import _design_matrix
+        from ._cox import _design_matrix_spec
         from ._surv import CensoringType
 
         if surv.type != CensoringType.RIGHT:
@@ -330,7 +330,7 @@ class IPCRidge:
                 f"IPCRidge supports right-censored responses, not {surv.type.value!r}."
             )
 
-        x, names = _design_matrix(covariates, data)
+        x, names, self._design_spec = _design_matrix_spec(covariates, data)
         if x.shape[0] != surv.n:
             raise ValueError("Covariates and response must have the same number of rows.")
 
@@ -391,6 +391,8 @@ class IPCRidge:
         ----------
         newdata
             Covariate values for prediction. `None` uses the training data.
+            A data frame may also hold other columns. The covariates are picked out by name and
+            coded as they were at fit time, so the frame the model was fit on can be passed as is.
         type
             Prediction type:
 
@@ -403,12 +405,11 @@ class IPCRidge:
         ndarray
             Predicted values, shape `(n_subjects,)`.
         """
-        from ._cox import _design_matrix
 
         if type not in ("lp", "response"):
             raise ValueError(f"Unknown predict type {type!r}; use 'lp' or 'response'.")
 
-        x = self._x if newdata is None else _design_matrix(newdata)[0]
+        x = self._x if newdata is None else self._design_spec.transform(newdata)
         lp = self.intercept_ + x @ self.coef_
 
         if type == "lp":
