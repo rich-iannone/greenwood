@@ -958,7 +958,7 @@ class FineGray:
         self._n_input = bound.n_input
         self.n_dropped_ = bound.n_dropped
 
-        from ._cox import _design_matrix
+        from ._cox import _design_matrix_spec
 
         if not surv.is_multistate:
             raise ValueError(
@@ -972,7 +972,7 @@ class FineGray:
         else:
             raise ValueError(f"cause {self.cause!r} is not one of the states {surv.states}.")
 
-        x, names = _design_matrix(covariates, data)
+        x, names, self._design_spec = _design_matrix_spec(covariates, data)
         if x.shape[0] != surv.n:
             raise ValueError("Covariates and response must have the same number of rows.")
 
@@ -1106,6 +1106,8 @@ class FineGray:
         newdata
             Covariate values for prediction. A dataframe or 2-D array with the same columns as the
             training data. If `None`, uses the training data.
+            A data frame may also hold other columns. The covariates are picked out by name and
+            coded as they were at fit time, so the frame the model was fit on can be passed as is.
         type
             `"lp"` (default) returns the centered linear predictor $X\beta$. `"risk"` returns the
             relative subdistribution hazard $\exp(X\beta)$.
@@ -1117,9 +1119,8 @@ class FineGray:
         ndarray
             Array of shape `(n_subjects,)`.
         """
-        from ._cox import _design_matrix
 
-        x = self._x if newdata is None else _design_matrix(newdata)[0]
+        x = self._x if newdata is None else self._design_spec.transform(newdata)
         lp = (x - self._center) @ self.coef_
         if type == "lp":
             return lp
@@ -1145,6 +1146,8 @@ class FineGray:
         newdata
             Covariate values for prediction. A dataframe or 2-D array with the same columns
             as the training data. If `None`, uses the training data.
+            A data frame may also hold other columns. The covariates are picked out by name and
+            coded as they were at fit time, so the frame the model was fit on can be passed as is.
         times
             Time points at which to evaluate the cumulative incidence. If `None`, uses the
             target-event times from the training data.
@@ -1157,9 +1160,8 @@ class FineGray:
             A table with a `time` column and one column per subject (`subject_1`,
             `subject_2`, ...) containing cumulative incidence probabilities.
         """
-        from ._cox import _design_matrix
 
-        x = self._x if newdata is None else _design_matrix(newdata)[0]
+        x = self._x if newdata is None else self._design_spec.transform(newdata)
         lp = (x - self._center) @ self.coef_
         risk = np.exp(lp)
 
@@ -1420,7 +1422,7 @@ class PenalizedFineGray:
         self._n_input = bound.n_input
         self.n_dropped_ = bound.n_dropped
 
-        from ._cox import _design_matrix
+        from ._cox import _design_matrix_spec
 
         if not surv.is_multistate:
             raise ValueError(
@@ -1434,7 +1436,7 @@ class PenalizedFineGray:
         else:
             raise ValueError(f"cause {self.cause!r} is not one of the states {surv.states}.")
 
-        x, names = _design_matrix(covariates, data)
+        x, names, self._design_spec = _design_matrix_spec(covariates, data)
         if x.shape[0] != surv.n:
             raise ValueError("Covariates and response must have the same number of rows.")
 
@@ -1538,6 +1540,8 @@ class PenalizedFineGray:
         ----------
         newdata
             Covariate values for prediction. If `None`, uses the training data.
+            A data frame may also hold other columns. The covariates are picked out by name and
+            coded as they were at fit time, so the frame the model was fit on can be passed as is.
         type
             `"lp"` (default) or `"risk"` ($\exp(\text{lp})$).
         format
@@ -1548,9 +1552,8 @@ class PenalizedFineGray:
         ndarray
             Array of shape `(n_subjects,)`.
         """
-        from ._cox import _design_matrix
 
-        x = self._x if newdata is None else _design_matrix(newdata)[0]
+        x = self._x if newdata is None else self._design_spec.transform(newdata)
         lp = (x - self._center) @ self.coef_
         if type == "lp":
             return lp
@@ -1571,6 +1574,8 @@ class PenalizedFineGray:
         ----------
         newdata
             Covariate values. If `None`, uses the training data.
+            A data frame may also hold other columns. The covariates are picked out by name and
+            coded as they were at fit time, so the frame the model was fit on can be passed as is.
         times
             Time points at which to evaluate the CIF. If `None`, uses the target-event
             times from the training data.
@@ -1582,9 +1587,8 @@ class PenalizedFineGray:
         DataFrame
             A table with a `time` column and one `subject_N` column per subject.
         """
-        from ._cox import _design_matrix
 
-        x = self._x if newdata is None else _design_matrix(newdata)[0]
+        x = self._x if newdata is None else self._design_spec.transform(newdata)
         lp = (x - self._center) @ self.coef_
         risk = np.exp(lp)
 
