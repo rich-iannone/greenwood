@@ -1,12 +1,11 @@
 """Prediction-performance metrics for survival models.
 
-- `concordance_index`: Harrell's C-statistic for an arbitrary risk score, validated against
-  R's `survival::concordance`.
+- `concordance_index`: Harrell's C-statistic for an arbitrary risk score, validated against R's
+  `survival::concordance`.
 - `concordance_index_ipcw`: Uno's IPCW-corrected concordance index, more robust under heavy
   censoring than Harrell's C.
-- `brier_score` / `integrated_brier_score`: the inverse-probability-of-censoring-weighted
-  (Graf) Brier score at fixed times and its time integral, validated against R's
-  `survival:::brier`.
+- `brier_score` / `integrated_brier_score`: the inverse-probability-of-censoring-weighted (Graf)
+  Brier score at fixed times and its time integral, validated against R's `survival:::brier`.
 """
 
 from __future__ import annotations
@@ -16,7 +15,10 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import numpy.typing as npt
 
+from ._outcome import bind_fit_inputs
+
 if TYPE_CHECKING:
+    from ._outcome import Outcome
     from ._surv import Surv
 
 __all__ = [
@@ -40,14 +42,14 @@ __all__ = [
 Array = npt.NDArray[Any]
 
 
-def concordance_index(surv: Surv, risk: Any) -> float:
+def concordance_index(surv: Surv | Outcome | str, risk: Any, *, data: Any = None) -> float:
     r"""Harrell's concordance index: discrimination of risk scores against observed survival.
 
     Computes Harrell's C-statistic, a measure of how well a risk score discriminates between
     subjects who experience early events and those who survive longer. The concordance index
-    compares all comparable pairs of subjects: those with an observed event are compared to
-    those still under observation at the same time or later. Higher risk should correspond to
-    earlier failure. If predictions match reality better than chance, the index exceeds 0.5.
+    compares all comparable pairs of subjects: those with an observed event are compared to those
+    still under observation at the same time or later. Higher risk should correspond to earlier
+    failure. If predictions match reality better than chance, the index exceeds 0.5.
 
     **Interpretation**:
 
@@ -56,36 +58,40 @@ def concordance_index(surv: Surv, risk: Any) -> float:
     - 0.7-0.8: Strong discrimination
     - 0.8+: Excellent discrimination (rare in practice)
 
-    **Practical use**: Validates a model's ability to rank subjects by risk. After fitting a
-    Cox model or other survival model, compute the concordance index of its predictions to
-    assess out-of-sample discrimination. A model with high concordance index generalizes well
-    to ranking future subjects by risk.
+    **Practical use**: Validates a model's ability to rank subjects by risk. After fitting a Cox
+    model or other survival model, compute the concordance index of its predictions to assess
+    out-of-sample discrimination. A model with high concordance index generalizes well to ranking
+    future subjects by risk.
 
     Parameters
     ----------
     surv
-        A right-censored `Surv` response (time-to-event data).
+        A right-censored `Surv` response (time-to-event data). An `Outcome` or a formula response
+        such as `'Surv(time, status == 2)'` is also accepted, with its columns read from `data`.
     risk
-        Risk score for each subject, one per observation. Can be a 1-D array, Pandas/Polars
-        series, or Python sequence. Higher values indicate higher risk (earlier expected
-        failure). Examples: Cox model linear predictor, predicted log-hazard, or predicted
-        cumulative incidence.
+        Risk score for each subject, one per observation. Can be a 1-D array, Pandas/Polars series,
+        or Python sequence. Higher values indicate higher risk (earlier expected failure). Examples:
+        Cox model linear predictor, predicted log-hazard, or predicted cumulative incidence.
+    data
+        A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns named
+        by the response and `risk`. When `surv` is an `Outcome` or a formula, rows with a missing
+        value in any column used are dropped first, along with the matching rows of any arrays
+        passed alongside.
 
     Returns
     -------
     float
-        Concordance index between 0 and 1. Values above 0.5 indicate the model discriminates
-        better than random. Below 0.5 indicates worse-than-random discrimination (possibly
-        an inverted risk scale).
+        Concordance index between 0 and 1. Values above 0.5 indicate the model discriminates better
+        than random. Below 0.5 indicates worse-than-random discrimination (possibly an inverted risk
+        scale).
 
     Details
     -------
     **Pair comparison rule**:
 
-    - A subject with an observed event at time t is compared to all subjects still under
-      observation at time t or later (including censored subjects at exactly t).
-    - Pairs are concordant if the subject with the event has higher risk than the subject
-      without.
+    - A subject with an observed event at time t is compared to all subjects still under observation
+      at time t or later (including censored subjects at exactly t).
+    - Pairs are concordant if the subject with the event has higher risk than the subject without.
     - Pairs with tied risk scores are counted as 0.5 (half-concordant).
     - Pairs with the same event time are excluded.
 
@@ -94,8 +100,8 @@ def concordance_index(surv: Surv, risk: Any) -> float:
     greater than t. This avoids artificial inflation of concordance from censored subjects.
 
     **Relationship to other metrics**: The concordance index is related to the rank correlation
-    between risk and observed survival. It's invariant to monotonic transformations of risk
-    (e.g., $\exp(\text{lp})$ vs. $\text{lp}$ both give the same concordance).
+    between risk and observed survival. It's invariant to monotonic transformations of risk (e.g.,
+    $\exp(\text{lp})$ vs. $\text{lp}$ both give the same concordance).
 
     Examples
     --------
@@ -107,12 +113,12 @@ def concordance_index(surv: Surv, risk: Any) -> float:
 
     # Load data and build a right-censored response
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-    cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+    cox = gw.CoxPH().fit(y, covariates=lung[["age", "sex"]])
 
     # Compute the concordance index from the Cox linear predictor
     lp = cox.predict(type="lp")
-    c_index = gw.concordance_index(y, lp)
+    c_index = gw.concordance_index(y, risk=lp)
     c_index
     ```
 
@@ -123,7 +129,7 @@ def concordance_index(surv: Surv, risk: Any) -> float:
     import numpy as np
 
     # Compare model discrimination against a naive baseline
-    baseline_c = gw.concordance_index(y, np.zeros(len(y)))
+    baseline_c = gw.concordance_index(y, risk=np.zeros(len(y)))
     print(f"Baseline: {baseline_c:.3f}")
     print(f"Cox model: {c_index:.3f}")
     print(f"Improvement: {c_index - baseline_c:.3f}")
@@ -133,11 +139,20 @@ def concordance_index(surv: Surv, risk: Any) -> float:
     predict on test data):
 
     ```{python}
-    # cox = CoxPH().fit(y_train, x_train)
+    # cox = CoxPH().fit(y_train, covariates=x_train)
     # lp_test = cox.predict(x_test, type="lp")
     # c_test = gw.concordance_index(y_test, lp_test)
     ```
     """
+    bound = bind_fit_inputs(
+        surv,
+        data=data,
+        labels={"risk": risk},
+        estimator="concordance_index()",
+    )
+    surv = bound.surv
+    risk = bound.labels["risk"]
+
     from ._surv import _to_1d_array
 
     scores = _to_1d_array(risk)
@@ -161,9 +176,10 @@ def concordance_index(surv: Surv, risk: Any) -> float:
 
 
 def concordance_index_ipcw(
-    surv: Surv,
+    surv: Surv | Outcome | str,
     risk: Any,
     *,
+    data: Any = None,
     tau: float | None = None,
 ) -> float:
     r"""IPCW concordance index (Uno et al., 2011) for right-censored survival data.
@@ -185,13 +201,19 @@ def concordance_index_ipcw(
     Parameters
     ----------
     surv
-        A right-censored `Surv` response (time-to-event data).
+        A right-censored `Surv` response (time-to-event data). An `Outcome` or a formula response
+        such as `'Surv(time, status == 2)'` is also accepted, with its columns read from `data`.
     risk
         Risk score for each subject, one per observation. Higher values indicate higher risk
         (earlier expected failure). Accepts a 1-D array, Pandas/Polars Series, or Python sequence.
     tau
         Truncation time. Only pairs with an event before `tau` contribute. This avoids instability
         from low censoring survival in the tail. Defaults to the largest observed event time.
+    data
+        A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns named
+        by the response and `risk`. When `surv` is an `Outcome` or a formula, rows with a missing
+        value in any column used are dropped first, along with the matching rows of any arrays
+        passed alongside.
 
     Returns
     -------
@@ -227,14 +249,14 @@ def concordance_index_ipcw(
     import greenwood as gw
 
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-    cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+    cox = gw.CoxPH().fit(y, covariates=lung[["age", "sex"]])
 
     lp = cox.predict(type="lp")
 
     # Compare Harrell's C with IPCW C
-    c_harrell = gw.concordance_index(y, lp)
-    c_ipcw = gw.concordance_index_ipcw(y, lp)
+    c_harrell = gw.concordance_index(y, risk=lp)
+    c_ipcw = gw.concordance_index_ipcw(y, risk=lp)
     print(f"Harrell C: {c_harrell:.4f}")
     print(f"IPCW C:    {c_ipcw:.4f}")
     ```
@@ -242,10 +264,19 @@ def concordance_index_ipcw(
     Truncate at 1 year to focus on short-term discrimination:
 
     ```{python}
-    c_1yr = gw.concordance_index_ipcw(y, lp, tau=365.0)
+    c_1yr = gw.concordance_index_ipcw(y, risk=lp, tau=365.0)
     print(f"IPCW C (1-year): {c_1yr:.4f}")
     ```
     """
+    bound = bind_fit_inputs(
+        surv,
+        data=data,
+        labels={"risk": risk},
+        estimator="concordance_index_ipcw()",
+    )
+    surv = bound.surv
+    risk = bound.labels["risk"]
+
     from ._surv import _to_1d_array
 
     scores = _to_1d_array(risk)
@@ -304,7 +335,9 @@ def _censoring_survival(surv: Surv) -> tuple[Array, Array]:
     return _censoring_km(surv.stop, status)
 
 
-def brier_score(surv: Surv, survival_prob: Any, times: Any) -> Array:
+def brier_score(
+    surv: Surv | Outcome | str, survival_prob: Any, times: Any, *, data: Any = None
+) -> Array:
     r"""IPCW (Graf) Brier score of predicted survival probabilities at specified times.
 
     Measures calibration and accuracy of predicted survival probabilities at fixed time points using
@@ -328,7 +361,8 @@ def brier_score(surv: Surv, survival_prob: Any, times: Any) -> Array:
     Parameters
     ----------
     surv
-        A right-censored `Surv` response (time-to-event data).
+        A right-censored `Surv` response (time-to-event data). An `Outcome` or a formula response
+        such as `'Surv(time, status == 2)'` is also accepted, with its columns read from `data`.
     survival_prob
         Predicted survival probabilities, shape `(n_subjects, n_times)`. Each entry is a predicted
         probability of surviving beyond the corresponding time. Must be between `0` and `1`.
@@ -337,6 +371,11 @@ def brier_score(surv: Surv, survival_prob: Any, times: Any) -> Array:
     times
         Evaluation times where Brier scores are computed. 1-D array-like. Must have length equal to
         the second dimension of `survival_prob`.
+    data
+        A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns named
+        by the response and `survival_prob`. When `surv` is an `Outcome` or a formula, rows with a
+        missing value in any column used are dropped first, along with the matching rows of any
+        arrays passed alongside.
 
     Returns
     -------
@@ -386,14 +425,14 @@ def brier_score(surv: Surv, survival_prob: Any, times: Any) -> Array:
 
     # Load data and build a right-censored response
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-    cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+    cox = gw.CoxPH().fit(y, covariates=lung[["age", "sex"]])
 
     # Compute Brier scores at three clinically relevant horizons
     times = [180, 365, 540]
     surv_pred = cox.predict(lung[["age", "sex"]], type="survival", times=times, format="pandas")
     probs = surv_pred.iloc[:, 1:].to_numpy().T
-    brier = gw.brier_score(y, probs, times)
+    brier = gw.brier_score(y, survival_prob=probs, times=times)
     brier
     ```
 
@@ -403,7 +442,7 @@ def brier_score(surv: Surv, survival_prob: Any, times: Any) -> Array:
     ```{python}
     # Compare model calibration against a naive 50% baseline
     null_probs = np.full_like(probs, 0.5)
-    null_brier = gw.brier_score(y, null_probs, times)
+    null_brier = gw.brier_score(y, survival_prob=null_probs, times=times)
     print(f"Null model Brier: {null_brier}")
     print(f"Cox model Brier: {brier}")
     print(f"Improvement: {null_brier - brier}")
@@ -413,10 +452,19 @@ def brier_score(surv: Surv, survival_prob: Any, times: Any) -> Array:
 
     ```{python}
     # Summarize calibration as a single integrated Brier score
-    ibs = gw.integrated_brier_score(y, probs, times)
+    ibs = gw.integrated_brier_score(y, survival_prob=probs, times=times)
     print(f"Integrated Brier Score: {ibs:.3f}")
     ```
     """
+    bound = bind_fit_inputs(
+        surv,
+        data=data,
+        labels={"survival_prob": survival_prob},
+        estimator="brier_score()",
+    )
+    surv = bound.surv
+    survival_prob = bound.labels["survival_prob"]
+
     query = np.atleast_1d(np.asarray(times, dtype=float))
     probs = np.asarray(survival_prob, dtype=float)
     if probs.shape != (surv.n, query.shape[0]):
@@ -452,7 +500,9 @@ def brier_score(surv: Surv, survival_prob: Any, times: Any) -> Array:
     return out
 
 
-def integrated_brier_score(surv: Surv, survival_prob: Any, times: Any) -> float:
+def integrated_brier_score(
+    surv: Surv | Outcome | str, survival_prob: Any, times: Any, *, data: Any = None
+) -> float:
     r"""Integrated (time-averaged) Brier score across multiple time points.
 
     Summarizes Brier scores computed at multiple time horizons into a single summary metric
@@ -470,13 +520,18 @@ def integrated_brier_score(surv: Surv, survival_prob: Any, times: Any) -> float:
     Parameters
     ----------
     surv
-        A right-censored `Surv` response.
+        A right-censored `Surv` response. An `Outcome` or a formula response such as
+        `'Surv(time, status == 2)'` is also accepted, with its columns read from `data`.
     survival_prob
         Predicted survival probabilities, shape `(n_subjects, n_times)`.
     times
-        Evaluation times (must be at least 2 to define an interval). The IBS is computed as
-        the area under the Brier-score curve from times[0] to times[-1], normalized by the
-        time span.
+        Evaluation times (must be at least 2 to define an interval). The IBS is computed as the area
+        under the Brier-score curve from times[0] to times[-1], normalized by the time span.
+    data
+        A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns named
+        by the response and `survival_prob`. When `surv` is an `Outcome` or a formula, rows with a
+        missing value in any column used are dropped first, along with the matching rows of any
+        arrays passed alongside.
 
     Returns
     -------
@@ -507,21 +562,21 @@ def integrated_brier_score(surv: Surv, survival_prob: Any, times: Any) -> float:
 
     # Load data and build a right-censored response
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-    cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+    cox = gw.CoxPH().fit(y, covariates=lung[["age", "sex"]])
 
     # Compute the integrated Brier score across three time horizons
     times = [180, 365, 540]
     surv_pred = cox.predict(lung[["age", "sex"]], type="survival", times=times, format="pandas")
     probs = surv_pred.iloc[:, 1:].to_numpy().T
-    ibs = gw.integrated_brier_score(y, probs, times)
+    ibs = gw.integrated_brier_score(y, survival_prob=probs, times=times)
     ibs
     ```
 
     Compare two models via their integrated Brier scores. Lower is better:
 
     ```{python}
-    # cox2 = CoxPH().fit(y, lung[["age", "sex", "ph.ecog"]])  # More covariates
+    # cox2 = CoxPH().fit(y, covariates=lung[["age", "sex", "ph.ecog"]])  # More covariates
     # surv_pred2 = cox2.predict(...)
     # ibs2 = gw.integrated_brier_score(y, probs2, times)
     # print(f"Model 1 IBS: {ibs:.3f}")
@@ -539,10 +594,19 @@ def integrated_brier_score(surv: Surv, survival_prob: Any, times: Any) -> float:
         lung[["age", "sex"]], type="survival", times=times_wide, format="pandas"
     )
     probs_wide = surv_pred_wide.iloc[:, 1:].to_numpy().T
-    ibs_wide = gw.integrated_brier_score(y, probs_wide, times_wide)
+    ibs_wide = gw.integrated_brier_score(y, survival_prob=probs_wide, times=times_wide)
     print(f"IBS over {len(times_wide)} time points: {ibs_wide:.3f}")
     ```
     """
+    bound = bind_fit_inputs(
+        surv,
+        data=data,
+        labels={"survival_prob": survival_prob},
+        estimator="integrated_brier_score()",
+    )
+    surv = bound.surv
+    survival_prob = bound.labels["survival_prob"]
+
     query = np.atleast_1d(np.asarray(times, dtype=float))
     if query.shape[0] < 2:
         raise ValueError("integrated_brier_score needs at least two times.")
@@ -562,39 +626,46 @@ def _survival_at(km: Any, time: float) -> tuple[float, float, float]:
 
 
 def calibration(
-    surv: Surv,
+    surv: Surv | Outcome | str,
     predicted: Any,
     time: float,
     *,
+    data: Any = None,
     n_bins: int = 10,
     conf_level: float = 0.95,
     format: str | None = None,
 ) -> Any:
     """Assess calibration of predicted survival probabilities at a fixed time.
 
-    Subjects are grouped into `n_bins` bins by their predicted survival probability at
-    `time`. Within each bin the mean prediction is compared against the observed survival, a
-    Kaplan-Meier estimate at `time` for that bin's subjects. A well-calibrated model has the
-    observed values close to the predicted ones (points near the diagonal).
+    Subjects are grouped into `n_bins` bins by their predicted survival probability at `time=`.
+    Within each bin the mean prediction is compared against the observed survival, a Kaplan-Meier
+    estimate at `time` for that bin's subjects. A well-calibrated model has the observed values
+    close to the predicted ones (points near the diagonal).
 
     Parameters
     ----------
     surv
-        The `Surv` response (right-censored or counting-process).
+        The `Surv` response (right-censored or counting-process). An `Outcome` or a formula response
+        such as `'Surv(time, status == 2)'` is also accepted, with its columns read from `data`.
     predicted
         Predicted survival probability at `time`, one per subject (for example a column of
         `CoxPH.predict(newdata, type="survival", times=[time])`).
     time
         The horizon at which predictions are assessed.
     n_bins
-        Number of prediction bins (default 10). Bins are quantile-based. Empty bins are
-        dropped, so ties in `predicted` may yield fewer rows.
+        Number of prediction bins (default 10). Bins are quantile-based. Empty bins are dropped, so
+        ties in `predicted` may yield fewer rows.
     conf_level
         Confidence level for the observed (Kaplan-Meier) interval.
     format
-        Output format for the returned DataFrame: `None` (default), `"pandas"`, `"polars"`,
-        or `"pyarrow"`. `None` (the default) will auto-detects and prefer Polars if available (falls
+        Output format for the returned DataFrame: `None` (default), `"pandas"`, `"polars"`, or
+        `"pyarrow"`. `None` (the default) will auto-detects and prefer Polars if available (falls
         back to Pandas, then Pyarrow, and raises an error if no DataFrame library is available).
+    data
+        A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns named
+        by the response and `predicted`. When `surv` is an `Outcome` or a formula, rows with a
+        missing value in any column used are dropped first, along with the matching rows of any
+        arrays passed alongside.
 
     Returns
     -------
@@ -622,15 +693,24 @@ def calibration(
 
     # Load data and build a right-censored response
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-    cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+    cox = gw.CoxPH().fit(y, covariates=lung[["age", "sex"]])
 
     # Assess one-year calibration across five prediction bins
     surv = cox.predict(lung[["age", "sex"]], type="survival", times=[365.0], format="pandas")
     predicted = surv.iloc[0, 1:].to_numpy()
-    gw.calibration(y, predicted, 365.0, n_bins=5, format="polars")
+    gw.calibration(y, predicted=predicted, time=365.0, n_bins=5, format="polars")
     ```
     """
+    bound = bind_fit_inputs(
+        surv,
+        data=data,
+        labels={"predicted": predicted},
+        estimator="calibration()",
+    )
+    surv = bound.surv
+    predicted = bound.labels["predicted"]
+
     from ._backends import to_dataframe
     from ._nonparametric import KaplanMeier
     from ._resample import _subset_surv
@@ -678,7 +758,9 @@ def calibration(
     )
 
 
-def time_dependent_auc(surv: Surv, marker: Any, times: Any) -> Array:
+def time_dependent_auc(
+    surv: Surv | Outcome | str, marker: Any, times: Any, *, data: Any = None
+) -> Array:
     r"""IPCW (Uno) time-dependent AUC at specified times.
 
     Computes the cumulative-dynamic AUC at each requested time using the inverse-probability-
@@ -702,14 +784,20 @@ def time_dependent_auc(surv: Surv, marker: Any, times: Any) -> Array:
     Parameters
     ----------
     surv
-        A right-censored `Surv` response.
+        A right-censored `Surv` response. An `Outcome` or a formula response such as
+        `'Surv(time, status == 2)'` is also accepted, with its columns read from `data`.
     marker
-        Risk score for each subject (one value per observation). Higher values should
-        indicate higher risk (earlier expected failure). Accepts a 1-D array, pandas/Polars
-        Series, or Python sequence.
+        Risk score for each subject (one value per observation). Higher values should indicate
+        higher risk (earlier expected failure). Accepts a 1-D array, pandas/Polars Series, or Python
+        sequence.
     times
-        Evaluation times where the AUC is computed. 1-D array-like. Times before the first
-        event or after the last observation yield `nan`.
+        Evaluation times where the AUC is computed. 1-D array-like. Times before the first event or
+        after the last observation yield `nan`.
+    data
+        A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns named
+        by the response and `marker`. When `surv` is an `Outcome` or a formula, rows with a missing
+        value in any column used are dropped first, along with the matching rows of any arrays
+        passed alongside.
 
     Returns
     -------
@@ -743,20 +831,20 @@ def time_dependent_auc(surv: Surv, marker: Any, times: Any) -> Array:
 
     Examples
     --------
-    Fit a Cox model on the `lung` dataset and compute its time-dependent AUC using the
-    linear predictor as the risk marker.
+    Fit a Cox model on the `lung` dataset and compute its time-dependent AUC using the linear
+    predictor as the risk marker.
 
     ```{python}
     import greenwood as gw
 
     # Load data and build a right-censored response
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-    cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+    cox = gw.CoxPH().fit(y, covariates=lung[["age", "sex"]])
 
     # Compute time-dependent AUC at three clinically relevant horizons
     lp = cox.predict(type="lp")
-    auc = gw.time_dependent_auc(y, lp, times=[180, 365, 540])
+    auc = gw.time_dependent_auc(y, marker=lp, times=[180, 365, 540])
     auc
     ```
 
@@ -764,10 +852,19 @@ def time_dependent_auc(surv: Surv, marker: Any, times: Any) -> Array:
 
     ```{python}
     # Summarize discrimination as a single time-averaged AUC
-    ibs = gw.integrated_auc(y, lp, times=[180, 365, 540])
+    ibs = gw.integrated_auc(y, marker=lp, times=[180, 365, 540])
     ibs
     ```
     """
+    bound = bind_fit_inputs(
+        surv,
+        data=data,
+        labels={"marker": marker},
+        estimator="time_dependent_auc()",
+    )
+    surv = bound.surv
+    marker = bound.labels["marker"]
+
     from ._surv import _to_1d_array
 
     scores = _to_1d_array(marker)
@@ -817,26 +914,34 @@ def time_dependent_auc(surv: Surv, marker: Any, times: Any) -> Array:
     return out
 
 
-def integrated_auc(surv: Surv, marker: Any, times: Any) -> float:
+def integrated_auc(
+    surv: Surv | Outcome | str, marker: Any, times: Any, *, data: Any = None
+) -> float:
     r"""Time-averaged IPCW AUC across multiple time points.
 
-    Summarises `time_dependent_auc()` into a single number via trapezoidal integration
-    over the supplied time range. This provides a discrimination summary analogous to
-    Harrell's C-statistic but with explicit IPCW bias-correction for censoring.
+    Summarises `time_dependent_auc()` into a single number via trapezoidal integration over the
+    supplied time range. This provides a discrimination summary analogous to Harrell's C-statistic
+    but with explicit IPCW bias-correction for censoring.
 
-    **Interpretation**: Same scale as `time_dependent_auc()` (0.5 = random, 1.0 = perfect).
-    Values of 0.6-0.7 indicate moderate and 0.7+ indicate strong discrimination.
+    **Interpretation**: Same scale as `time_dependent_auc()` (0.5 = random, 1.0 = perfect). Values
+    of 0.6-0.7 indicate moderate and 0.7+ indicate strong discrimination.
 
     Parameters
     ----------
     surv
-        A right-censored `Surv` response.
+        A right-censored `Surv` response. An `Outcome` or a formula response such as
+        `'Surv(time, status == 2)'` is also accepted, with its columns read from `data`.
     marker
         Risk score for each subject. Higher values indicate higher risk.
     times
         Evaluation times (at least 2). The integrated AUC is computed as the area under the
         AUC curve from `times[0]` to `times[-1]`, normalized by the time span. `nan` time
         points (no cases or controls) are dropped before integration.
+    data
+        A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns named
+        by the response and `marker`. When `surv` is an `Outcome` or a formula, rows with a missing
+        value in any column used are dropped first, along with the matching rows of any arrays
+        passed alongside.
 
     Returns
     -------
@@ -861,14 +966,23 @@ def integrated_auc(surv: Surv, marker: Any, times: Any) -> float:
 
     # Load data and build a right-censored response
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-    cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+    cox = gw.CoxPH().fit(y, covariates=lung[["age", "sex"]])
 
     # Compute the time-averaged AUC across three horizons
     lp = cox.predict(type="lp")
-    gw.integrated_auc(y, lp, times=[180, 365, 540])
+    gw.integrated_auc(y, marker=lp, times=[180, 365, 540])
     ```
     """
+    bound = bind_fit_inputs(
+        surv,
+        data=data,
+        labels={"marker": marker},
+        estimator="integrated_auc()",
+    )
+    surv = bound.surv
+    marker = bound.labels["marker"]
+
     query = np.atleast_1d(np.asarray(times, dtype=float))
     if query.shape[0] < 2:
         raise ValueError("integrated_auc needs at least two times.")
@@ -893,10 +1007,11 @@ def _censoring_survival_multistate(surv: Surv) -> tuple[Array, Array]:
 
 
 def brier_score_incidence(
-    surv: Surv,
+    surv: Surv | Outcome | str,
     incidence_prob: Any,
     times: Any,
     *,
+    data: Any = None,
     cause: int,
 ) -> Array:
     r"""IPCW Brier score for a cause-specific cumulative incidence function at specified times.
@@ -919,7 +1034,8 @@ def brier_score_incidence(
     ----------
     surv
         A multi-state `Surv` response (from `Surv.multistate()`). The `status` column encodes
-        0 = censored, 1 = first cause, 2 = second cause, etc.
+        0 = censored, 1 = first cause, 2 = second cause, etc. An `Outcome` or a formula response
+        such as `'Surv(time, status == 2)'` is also accepted, with its columns read from `data`.
     incidence_prob
         Predicted cumulative incidence probabilities for the cause of interest, shape
         `(n_subjects, n_times)`. Each entry is a predicted probability that cause `cause` has
@@ -931,6 +1047,11 @@ def brier_score_incidence(
         The cause of interest, as an integer event code from the `Surv` response. For example, if
         `states=("relapse", "death")` then `cause=1` evaluates predictions for relapse and `cause=2`
         evaluates predictions for death.
+    data
+        A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns named
+        by the response and `incidence_prob`. When `surv` is an `Outcome` or a formula, rows with a
+        missing value in any column used are dropped first, along with the matching rows of any
+        arrays passed alongside.
 
     Returns
     -------
@@ -972,7 +1093,7 @@ def brier_score_incidence(
         mgus2["pstat"].to_numpy() == 1, 1,
         np.where(mgus2["death"].to_numpy() == 1, 2, 0),
     )
-    y = gw.Surv.multistate(mgus2["futime"].to_numpy(), event, states=("pcm", "death"))
+    y = gw.Surv.multistate(time=mgus2["futime"].to_numpy(), event=event, states=("pcm", "death"))
 
     # Fit Aalen-Johansen for the marginal CIF
     aj = gw.AalenJohansen().fit(y)
@@ -988,10 +1109,19 @@ def brier_score_incidence(
 
     # Naive model: same marginal CIF for every subject
     probs = np.tile(marginal, (y.n, 1))
-    bs = gw.brier_score_incidence(y, probs, times, cause=1)
+    bs = gw.brier_score_incidence(y, incidence_prob=probs, times=times, cause=1)
     bs
     ```
     """
+    bound = bind_fit_inputs(
+        surv,
+        data=data,
+        labels={"incidence_prob": incidence_prob},
+        estimator="brier_score_incidence()",
+    )
+    surv = bound.surv
+    incidence_prob = bound.labels["incidence_prob"]
+
     query = np.atleast_1d(np.asarray(times, dtype=float))
     probs = np.asarray(incidence_prob, dtype=float)
     if probs.shape != (surv.n, query.shape[0]):
@@ -1047,10 +1177,11 @@ def brier_score_incidence(
 
 
 def integrated_brier_score_incidence(
-    surv: Surv,
+    surv: Surv | Outcome | str,
     incidence_prob: Any,
     times: Any,
     *,
+    data: Any = None,
     cause: int,
 ) -> float:
     r"""Integrated (time-averaged) Brier score for a cause-specific cumulative incidence.
@@ -1068,7 +1199,8 @@ def integrated_brier_score_incidence(
     Parameters
     ----------
     surv
-        A multi-state `Surv` response (from `Surv.multistate()`).
+        A multi-state `Surv` response (from `Surv.multistate()`). An `Outcome` or a formula response
+        such as `'Surv(time, status == 2)'` is also accepted, with its columns read from `data`.
     incidence_prob
         Predicted cumulative incidence probabilities for the cause of interest, shape
         `(n_subjects, n_times)`.
@@ -1078,6 +1210,11 @@ def integrated_brier_score_incidence(
         time span.
     cause
         The cause of interest (integer event code from the `Surv` response).
+    data
+        A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns named
+        by the response and `incidence_prob`. When `surv` is an `Outcome` or a formula, rows with a
+        missing value in any column used are dropped first, along with the matching rows of any
+        arrays passed alongside.
 
     Returns
     -------
@@ -1098,7 +1235,7 @@ def integrated_brier_score_incidence(
         mgus2["pstat"].to_numpy() == 1, 1,
         np.where(mgus2["death"].to_numpy() == 1, 2, 0),
     )
-    y = gw.Surv.multistate(mgus2["futime"].to_numpy(), event, states=("pcm", "death"))
+    y = gw.Surv.multistate(time=mgus2["futime"].to_numpy(), event=event, states=("pcm", "death"))
 
     # Marginal CIF from Aalen-Johansen as a naive baseline
     aj = gw.AalenJohansen().fit(y)
@@ -1112,10 +1249,19 @@ def integrated_brier_score_incidence(
          for t in times]
     )
     probs = np.tile(marginal, (y.n, 1))
-    ibs = gw.integrated_brier_score_incidence(y, probs, times, cause=1)
+    ibs = gw.integrated_brier_score_incidence(y, incidence_prob=probs, times=times, cause=1)
     ibs
     ```
     """
+    bound = bind_fit_inputs(
+        surv,
+        data=data,
+        labels={"incidence_prob": incidence_prob},
+        estimator="integrated_brier_score_incidence()",
+    )
+    surv = bound.surv
+    incidence_prob = bound.labels["incidence_prob"]
+
     query = np.atleast_1d(np.asarray(times, dtype=float))
     if query.shape[0] < 2:
         raise ValueError("integrated_brier_score_incidence needs at least two times.")
@@ -1125,9 +1271,10 @@ def integrated_brier_score_incidence(
 
 
 def concordance_index_incidence(
-    surv: Surv,
+    surv: Surv | Outcome | str,
     incidence_prob: Any,
     *,
+    data: Any = None,
     cause: int,
     tau: float | None = None,
 ) -> float:
@@ -1149,7 +1296,8 @@ def concordance_index_incidence(
     Parameters
     ----------
     surv
-        A multi-state `Surv` response (from `Surv.multistate()`).
+        A multi-state `Surv` response (from `Surv.multistate()`). An `Outcome` or a formula response
+        such as `'Surv(time, status == 2)'` is also accepted, with its columns read from `data`.
     incidence_prob
         Predicted cumulative incidence probability for the cause of interest at the evaluation time
         `tau`, one value per subject. Higher values should indicate a higher predicted probability
@@ -1159,6 +1307,11 @@ def concordance_index_incidence(
     tau
         Truncation time. Only subjects with events before `tau` contribute as cases. Defaults to the
         largest observed time for the cause of interest.
+    data
+        A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns named
+        by the response and `incidence_prob`. When `surv` is an `Outcome` or a formula, rows with a
+        missing value in any column used are dropped first, along with the matching rows of any
+        arrays passed alongside.
 
     Returns
     -------
@@ -1193,7 +1346,7 @@ def concordance_index_incidence(
         mgus2["pstat"].to_numpy() == 1, 1,
         np.where(mgus2["death"].to_numpy() == 1, 2, 0),
     )
-    y = gw.Surv.multistate(mgus2["futime"].to_numpy(), event, states=("pcm", "death"))
+    y = gw.Surv.multistate(time=mgus2["futime"].to_numpy(), event=event, states=("pcm", "death"))
 
     # Fit Aalen-Johansen for the marginal CIF
     aj = gw.AalenJohansen().fit(y)
@@ -1207,10 +1360,19 @@ def concordance_index_incidence(
     )
     pred = np.full(y.n, marginal_at_tau)
 
-    c = gw.concordance_index_incidence(y, pred, cause=1, tau=tau)
+    c = gw.concordance_index_incidence(y, incidence_prob=pred, cause=1, tau=tau)
     c
     ```
     """
+    bound = bind_fit_inputs(
+        surv,
+        data=data,
+        labels={"incidence_prob": incidence_prob},
+        estimator="concordance_index_incidence()",
+    )
+    surv = bound.surv
+    incidence_prob = bound.labels["incidence_prob"]
+
     from ._surv import _to_1d_array
 
     scores = _to_1d_array(incidence_prob)
@@ -1287,10 +1449,11 @@ def concordance_index_incidence(
 
 
 def calibration_incidence(
-    surv: Surv,
+    surv: Surv | Outcome | str,
     incidence_prob: Any,
     times: Any,
     *,
+    data: Any = None,
     cause: int,
 ) -> Array:
     r"""Aalen-Johansen calibration error for cause-specific cumulative incidence predictions.
@@ -1311,7 +1474,8 @@ def calibration_incidence(
     Parameters
     ----------
     surv
-        A multi-state `Surv` response (from `Surv.multistate()`).
+        A multi-state `Surv` response (from `Surv.multistate()`). An `Outcome` or a formula response
+        such as `'Surv(time, status == 2)'` is also accepted, with its columns read from `data`.
     incidence_prob
         Predicted cumulative incidence probabilities for the cause of interest, shape
         `(n_subjects, n_times)`. Each entry is a predicted probability that cause `cause` has
@@ -1321,6 +1485,11 @@ def calibration_incidence(
         the second dimension of `incidence_prob`.
     cause
         The cause of interest, as an integer event code from the `Surv` response.
+    data
+        A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns named
+        by the response and `incidence_prob`. When `surv` is an `Outcome` or a formula, rows with a
+        missing value in any column used are dropped first, along with the matching rows of any
+        arrays passed alongside.
 
     Returns
     -------
@@ -1335,9 +1504,9 @@ def calibration_incidence(
     \mathrm{CalErr}_k(t) = \left|\bar{\hat{F}}_k(t) - \hat{F}_k^{\mathrm{AJ}}(t)\right|
     $$
 
-    where $\bar{\hat{F}}_k(t) = \frac{1}{n}\sum_{i=1}^n \hat{F}_k(t \mid \mathbf{x}_i)$ is
-    the mean predicted CIF and $\hat{F}_k^{\mathrm{AJ}}(t)$ is the marginal Aalen-Johansen
-    CIF. The AJ estimator is fit internally from the supplied `surv` response.
+    where $\bar{\hat{F}}_k(t) = \frac{1}{n}\sum_{i=1}^n \hat{F}_k(t \mid \mathbf{x}_i)$ is the mean
+    predicted CIF and $\hat{F}_k^{\mathrm{AJ}}(t)$ is the marginal Aalen-Johansen CIF. The AJ
+    estimator is fit internally from the supplied `surv` response.
 
     Examples
     --------
@@ -1353,7 +1522,7 @@ def calibration_incidence(
         mgus2["pstat"].to_numpy() == 1, 1,
         np.where(mgus2["death"].to_numpy() == 1, 2, 0),
     )
-    y = gw.Surv.multistate(mgus2["futime"].to_numpy(), event, states=("pcm", "death"))
+    y = gw.Surv.multistate(time=mgus2["futime"].to_numpy(), event=event, states=("pcm", "death"))
 
     # Fit Aalen-Johansen for the marginal CIF
     aj = gw.AalenJohansen().fit(y)
@@ -1369,10 +1538,19 @@ def calibration_incidence(
     probs = np.tile(marginal, (y.n, 1))
 
     # Calibration error should be near zero for the marginal model
-    cal_err = gw.calibration_incidence(y, probs, times, cause=1)
+    cal_err = gw.calibration_incidence(y, incidence_prob=probs, times=times, cause=1)
     cal_err
     ```
     """
+    bound = bind_fit_inputs(
+        surv,
+        data=data,
+        labels={"incidence_prob": incidence_prob},
+        estimator="calibration_incidence()",
+    )
+    surv = bound.surv
+    incidence_prob = bound.labels["incidence_prob"]
+
     query = np.atleast_1d(np.asarray(times, dtype=float))
     probs = np.asarray(incidence_prob, dtype=float)
     if probs.shape != (surv.n, query.shape[0]):
@@ -1406,9 +1584,11 @@ def calibration_incidence(
 
 
 def accuracy_in_time(
-    surv: Surv,
+    surv: Surv | Outcome | str,
     incidence_probs: Any,
     times: Any,
+    *,
+    data: Any = None,
 ) -> Array:
     r"""Time-dependent classification accuracy for competing-risks predictions.
 
@@ -1433,6 +1613,8 @@ def accuracy_in_time(
     ----------
     surv
         A multi-state `Surv` response (from `Surv.multistate()`).
+        An `Outcome` or a formula response such as `'Surv(time, status == 2)'` is also accepted,
+        with its columns read from `data`.
     incidence_probs
         Predicted cumulative incidence probabilities, shape
         `(n_subjects, n_causes, n_times)`. Axis 1 indexes causes in the same order as the states in
@@ -1440,7 +1622,12 @@ def accuracy_in_time(
         event) is computed internally as `1 - sum(CIFs)` and used as class 0 in the argmax.
     times
         Evaluation times. 1-D array-like. Must have length equal to the third dimension of
-        `incidence_probs`.
+        `incidence_probs=`.
+    data
+        A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns named
+        by the response and `incidence_probs`. When `surv` is an `Outcome` or a formula, rows with a
+        missing value in any column used are dropped first, along with the matching rows of any
+        arrays passed alongside.
 
     Returns
     -------
@@ -1453,13 +1640,13 @@ def accuracy_in_time(
 
     1. Subjects censored before $\zeta$ (status = 0 and $T_i \le \zeta$) are excluded.
     2. The predicted class is $\hat{y}_i = \arg\max_{k \in \{0,\dots,K\}}
-       \hat{F}_k(\zeta \mid \mathbf{x}_i)$, where $\hat{F}_0 = \hat{S}$ is the predicted
-       survival probability.
-    3. The observed class is $y_{i,\zeta} = \delta_i \cdot \mathbb{1}(T_i \le \zeta)$,
-       which is 0 (survived) if the subject has not yet experienced any event by $\zeta$,
-       and $\delta_i$ if an event occurred.
-    4. Accuracy is the proportion of uncensored subjects whose predicted class matches the
-       observed class.
+       \hat{F}_k(\zeta \mid \mathbf{x}_i)$, where $\hat{F}_0 = \hat{S}$ is the predicted survival
+       probability.
+    3. The observed class is $y_{i,\zeta} = \delta_i \cdot \mathbb{1}(T_i \le \zeta)$, which is 0
+       (survived) if the subject has not yet experienced any event by $\zeta$, and $\delta_i$ if an
+       event occurred.
+    4. Accuracy is the proportion of uncensored subjects whose predicted class matches the observed
+       class.
 
     Examples
     --------
@@ -1475,7 +1662,7 @@ def accuracy_in_time(
         mgus2["pstat"].to_numpy() == 1, 1,
         np.where(mgus2["death"].to_numpy() == 1, 2, 0),
     )
-    y = gw.Surv.multistate(mgus2["futime"].to_numpy(), event, states=("pcm", "death"))
+    y = gw.Surv.multistate(time=mgus2["futime"].to_numpy(), event=event, states=("pcm", "death"))
 
     # Fit Aalen-Johansen for marginal CIFs
     aj = gw.AalenJohansen().fit(y)
@@ -1497,10 +1684,19 @@ def accuracy_in_time(
         [np.tile(pcm_vals, (y.n, 1)), np.tile(death_vals, (y.n, 1))], axis=1
     )
 
-    acc = gw.accuracy_in_time(y, probs, times)
+    acc = gw.accuracy_in_time(y, incidence_probs=probs, times=times)
     acc
     ```
     """
+    bound = bind_fit_inputs(
+        surv,
+        data=data,
+        labels={"incidence_probs": incidence_probs},
+        estimator="accuracy_in_time()",
+    )
+    surv = bound.surv
+    incidence_probs = bound.labels["incidence_probs"]
+
     query = np.atleast_1d(np.asarray(times, dtype=float))
     preds = np.asarray(incidence_probs, dtype=float)
 
@@ -1868,9 +2064,10 @@ def _ipcw_concordance_influence_incidence(
 
 
 def concordance_index_ci(
-    surv: Surv,
+    surv: Surv | Outcome | str,
     risk: Any,
     *,
+    data: Any = None,
     cause: int | None = None,
     tau: float | None = None,
     conf_level: float = 0.95,
@@ -1887,6 +2084,8 @@ def concordance_index_ci(
     surv
         A `Surv` response. If `cause` is given, must be multistate (`Surv.multistate`). Otherwise it
         must be right-censored (`Surv.right`).
+        An `Outcome` or a formula response such as `'Surv(time, status == 2)'` is also accepted,
+        with its columns read from `data`.
     risk
         Risk score or predicted cumulative incidence, one per subject.
     cause
@@ -1898,6 +2097,11 @@ def concordance_index_ci(
         Confidence level for the interval (default 0.95).
     transform
         Scale for the CI: `"logit"` (default, recommended), `"log"`, or `"identity"`.
+    data
+        A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns named
+        by the response and `risk`. When `surv` is an `Outcome` or a formula, rows with a missing
+        value in any column used are dropped first, along with the matching rows of any arrays
+        passed alongside.
 
     Returns
     -------
@@ -1910,13 +2114,22 @@ def concordance_index_ci(
     import greenwood as gw
 
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-    cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+    cox = gw.CoxPH().fit(y, covariates=lung[["age", "sex"]])
     lp = cox.predict(type="lp")
 
-    gw.concordance_index_ci(y, lp)
+    gw.concordance_index_ci(y, risk=lp)
     ```
     """
+    bound = bind_fit_inputs(
+        surv,
+        data=data,
+        labels={"risk": risk},
+        estimator="concordance_index_ci()",
+    )
+    surv = bound.surv
+    risk = bound.labels["risk"]
+
     from scipy.stats import norm as sp_norm
 
     from ._surv import _to_1d_array
@@ -1965,10 +2178,11 @@ def concordance_index_ci(
 
 
 def concordance_index_compare(
-    surv: Surv,
+    surv: Surv | Outcome | str,
     risk_a: Any,
     risk_b: Any,
     *,
+    data: Any = None,
     cause: int | None = None,
     tau: float | None = None,
     conf_level: float = 0.95,
@@ -1983,7 +2197,8 @@ def concordance_index_compare(
     Parameters
     ----------
     surv
-        A `Surv` response (right-censored or multistate).
+        A `Surv` response (right-censored or multistate). An `Outcome` or a formula response such as
+        `'Surv(time, status == 2)'` is also accepted, with its columns read from `data`.
     risk_a
         Risk scores from the first model.
     risk_b
@@ -1994,6 +2209,11 @@ def concordance_index_compare(
         Truncation time.
     conf_level
         Confidence level.
+    data
+        A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns named
+        by the response, `risk_a`, and `risk_b`. When `surv` is an `Outcome` or a formula, rows with
+        a missing value in any column used are dropped first, along with the matching rows of any
+        arrays passed alongside.
 
     Returns
     -------
@@ -2006,15 +2226,25 @@ def concordance_index_compare(
     import greenwood as gw
 
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-    cox1 = gw.CoxPH().fit(y, lung[["age"]])
-    cox2 = gw.CoxPH().fit(y, lung[["age", "sex"]])
+    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+    cox1 = gw.CoxPH().fit(y, covariates=lung[["age"]])
+    cox2 = gw.CoxPH().fit(y, covariates=lung[["age", "sex"]])
     lp1 = cox1.predict(type="lp")
     lp2 = cox2.predict(type="lp")
 
-    gw.concordance_index_compare(y, lp1, lp2)
+    gw.concordance_index_compare(y, risk_a=lp1, risk_b=lp2)
     ```
     """
+    bound = bind_fit_inputs(
+        surv,
+        data=data,
+        labels={"risk_a": risk_a, "risk_b": risk_b},
+        estimator="concordance_index_compare()",
+    )
+    surv = bound.surv
+    risk_a = bound.labels["risk_a"]
+    risk_b = bound.labels["risk_b"]
+
     from scipy.stats import norm as sp_norm
 
     from ._surv import _to_1d_array
@@ -2063,9 +2293,10 @@ def concordance_index_compare(
 
 
 def score_cr(
-    surv: Surv,
+    surv: Surv | Outcome | str,
     incidence_prob: Any,
     *,
+    data: Any = None,
     cause: int,
     times: Any,
     tau: float | None = None,
@@ -2081,6 +2312,8 @@ def score_cr(
     ----------
     surv
         A multistate `Surv` response.
+        An `Outcome` or a formula response such as `'Surv(time, status == 2)'` is also accepted,
+        with its columns read from `data`.
     incidence_prob
         Predicted CIF for the cause of interest, shape `(n_subjects, n_times)`.
     cause
@@ -2093,6 +2326,11 @@ def score_cr(
         Confidence level for the concordance CI.
     format
         DataFrame backend for the returned table.
+    data
+        A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns named
+        by the response and `incidence_prob`. When `surv` is an `Outcome` or a formula, rows with a
+        missing value in any column used are dropped first, along with the matching rows of any
+        arrays passed alongside.
 
     Returns
     -------
@@ -2109,17 +2347,26 @@ def score_cr(
     mg = gw.load_dataset("mgus2", backend="polars")
     etime = np.where(mg["pstat"] == 1, mg["ptime"], mg["futime"])
     event = np.where(mg["pstat"] == 1, 1, 2 * mg["death"])
-    y = gw.Surv.multistate(etime, event=event, states=("pcm", "death"))
+    y = gw.Surv.multistate(time=etime, event=event, states=("pcm", "death"))
 
-    fg = gw.FineGray("pcm").fit(y, mg[["age", "sex"]])
+    fg = gw.FineGray(cause="pcm").fit(y, covariates=mg[["age", "sex"]])
     eval_times = np.array([120, 240, 360])
     cif_pred = fg.predict_cumulative_incidence(
         mg[["age", "sex"]], times=eval_times, format="pandas"
     ).drop(columns="time").values.T
 
-    gw.score_cr(y, cif_pred, cause=1, times=eval_times, format="polars")
+    gw.score_cr(y, incidence_prob=cif_pred, cause=1, times=eval_times, format="polars")
     ```
     """
+    bound = bind_fit_inputs(
+        surv,
+        data=data,
+        labels={"incidence_prob": incidence_prob},
+        estimator="score_cr()",
+    )
+    surv = bound.surv
+    incidence_prob = bound.labels["incidence_prob"]
+
     from ._backends import to_dataframe as _to_df
 
     times_arr = np.atleast_1d(np.asarray(times, dtype=float))

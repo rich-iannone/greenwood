@@ -182,7 +182,7 @@ def tidy(model: object, **kwargs: Any) -> Any:
 
     # Load data, build a right-censored response, and fit a Cox model
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
     cox = gw.CoxPH().fit(y, covariates=lung[["age", "sex"]])
 
     # Tidy the coefficients into a Polars DataFrame
@@ -220,7 +220,7 @@ def glance(model: object, **kwargs: Any) -> Any:
 
     # Load data, build a right-censored response, and fit a Cox model
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
     cox = gw.CoxPH().fit(y, covariates=lung[["age", "sex"]])
 
     # Glance at overall model-fit statistics
@@ -261,7 +261,7 @@ def augment(model: object, data: Any = None, **kwargs: Any) -> Any:
     import greenwood as gw
 
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
     cox = gw.CoxPH().fit(y, covariates=lung[["age", "sex"]])
     gw.augment(cox, data=lung, format="polars")
     ```

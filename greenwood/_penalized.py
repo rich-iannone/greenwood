@@ -26,8 +26,11 @@ import numpy.typing as npt
 
 from ._backends import to_dataframe
 from ._cox import _cox_terms, _design_matrix
+from ._outcome import bind_fit_inputs
+from ._repr import dropped_note
 
 if TYPE_CHECKING:
+    from ._outcome import Outcome
     from ._surv import Surv
 
 __all__ = ["CoxNet", "CoxNetCVResult", "cv_coxnet"]
@@ -100,11 +103,11 @@ class CoxNet:
 
     # Load data and build a right-censored response
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
     cols = ["age", "sex", "ph.ecog", "ph.karno", "wt.loss"]
 
     # Fit a lasso-penalized Cox model
-    coxnet = gw.CoxNet(penalizer=0.05, l1_ratio=1.0).fit(y, lung[cols])
+    coxnet = gw.CoxNet(penalizer=0.05, l1_ratio=1.0).fit(y, covariates=lung[cols])
     coxnet
     ```
     """
@@ -142,11 +145,14 @@ class CoxNet:
                 "",
                 table,
                 "",
-                f"n = {self.n_}, events = {self.n_event_}, nonzero coefficients = {n_nonzero}",
+                f"n = {self.n_}, events = {self.n_event_}, nonzero coefficients = {n_nonzero}"
+                + dropped_note(self),
             ]
         )
 
-    def fit(self, surv: Surv, covariates: Any, *, data: Any = None) -> CoxNet:
+    def fit(
+        self, surv: Surv | Outcome | str, covariates: Any = None, *, data: Any = None
+    ) -> CoxNet:
         r"""Fit the elastic-net penalized Cox model to survival data.
 
         Fits a Cox proportional-hazards model with elastic-net penalty (L1 + L2 regularization) to a
@@ -166,12 +172,17 @@ class CoxNet:
         surv
             A `Surv` response (right-censored or counting-process). Built with `Surv.right()`
             or `Surv.counting()`.
+            An `Outcome` or a formula string such as `'Surv(time, status == 2) ~ age + sex'` is also
+            accepted, with its columns read from `data`. The right-hand side sets `covariates`.
         covariates
             A dataframe (pandas or polars), a 2-D array, or a formula string (e.g.,
             `"age + sex"`) evaluated against the `data` argument.
+            A list of column names in `data` also works.
         data
-            A dataframe to evaluate the formula string (ignored if `covariates` is a
-            dataframe or array).
+            A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns
+            named by the response and `covariates`. When `surv` is an `Outcome` or a formula, rows
+            with a missing value in any column used are dropped before fitting. Covariate formula
+            strings and lists of column names are also resolved here.
 
         Returns
         -------
@@ -200,11 +211,11 @@ class CoxNet:
 
         # Load data and build a right-censored response
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
         cols = ["age", "sex", "ph.ecog", "ph.karno", "wt.loss"]
 
         # Fit a ridge-penalized Cox model
-        coxnet_ridge = gw.CoxNet(penalizer=0.05, l1_ratio=0.0).fit(y, lung[cols])
+        coxnet_ridge = gw.CoxNet(penalizer=0.05, l1_ratio=0.0).fit(y, covariates=lung[cols])
         coxnet_ridge
         ```
 
@@ -212,10 +223,24 @@ class CoxNet:
 
         ```{python}
         # Fit a lasso-penalized Cox model for variable selection
-        coxnet_lasso = gw.CoxNet(penalizer=0.05, l1_ratio=1.0).fit(y, lung[cols])
+        coxnet_lasso = gw.CoxNet(penalizer=0.05, l1_ratio=1.0).fit(y, covariates=lung[cols])
         coxnet_lasso
         ```
         """
+        bound = bind_fit_inputs(
+            surv,
+            data=data,
+            designs={"covariates": covariates},
+            rhs_to="covariates",
+            required=("covariates",),
+            estimator="CoxNet",
+        )
+        surv = bound.surv
+        covariates = bound.designs["covariates"]
+        data = bound.data
+        self._n_input = bound.n_input
+        self.n_dropped_ = bound.n_dropped
+
         from ._surv import CensoringType
 
         if surv.type not in (CensoringType.RIGHT, CensoringType.COUNTING):
@@ -289,6 +314,7 @@ class CoxNet:
         self.loglik_ = float(loglik)
         self._info = info
         self.n_ = n
+        self.n_dropped_ = max(getattr(self, "_n_input", self.n_) - self.n_, 0)
         self.n_event_ = int(event.sum())
         return self
 
@@ -389,9 +415,9 @@ class CoxNet:
 
         # Load data and fit a lasso-penalized Cox model
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
         cols = ["age", "sex", "ph.ecog", "ph.karno", "wt.loss"]
-        coxnet = gw.CoxNet(penalizer=0.05, l1_ratio=1.0).fit(y, lung[cols])
+        coxnet = gw.CoxNet(penalizer=0.05, l1_ratio=1.0).fit(y, covariates=lung[cols])
 
         # Predict the linear predictor for the first five subjects
         coxnet.predict(lung[cols], type="lp")[:5]
@@ -469,9 +495,9 @@ class CoxNet:
 
         # Load data and fit a lasso-penalized Cox model
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
         cols = ["age", "sex", "ph.ecog", "ph.karno", "wt.loss"]
-        coxnet = gw.CoxNet(penalizer=0.05, l1_ratio=1.0).fit(y, lung[cols])
+        coxnet = gw.CoxNet(penalizer=0.05, l1_ratio=1.0).fit(y, covariates=lung[cols])
 
         # Export the penalized coefficients as a Polars DataFrame
         coxnet.to_frame(format="polars")
@@ -658,11 +684,11 @@ class CoxNetCVResult:
 
     # Load data and build a right-censored response
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
     cols = ["age", "sex", "ph.ecog", "ph.karno", "wt.loss"]
 
     # Run cross-validated penalizer selection
-    cv_result = gw.cv_coxnet(y, lung[cols], seed=23)
+    cv_result = gw.cv_coxnet(y, covariates=lung[cols], seed=23)
     cv_result
     ```
 
@@ -754,9 +780,9 @@ class CoxNetCVResult:
 
         # Load data and run cross-validated penalizer selection
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
         cols = ["age", "sex", "ph.ecog", "ph.karno", "wt.loss"]
-        result = gw.cv_coxnet(y, lung[cols], seed=23)
+        result = gw.cv_coxnet(y, covariates=lung[cols], seed=23)
 
         # Export the CV path as a Polars DataFrame
         result.to_frame(format="polars")
@@ -774,8 +800,8 @@ class CoxNetCVResult:
 
 
 def cv_coxnet(
-    surv: Surv,
-    covariates: Any,
+    surv: Surv | Outcome | str,
+    covariates: Any = None,
     *,
     data: Any = None,
     l1_ratio: float = 1.0,
@@ -801,10 +827,15 @@ def cv_coxnet(
     ----------
     surv
         A right-censored or counting-process `Surv` response.
+        An `Outcome` or a formula string such as `'Surv(time, status == 2) ~ age + sex'` is also
+        accepted, with its columns read from `data`. The right-hand side sets `covariates`.
     covariates
         Covariate design (dataframe, 2-D array, or formula string with `data`).
     data
-        DataFrame to evaluate a formula `covariates` string against.
+        A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns named
+        by the response and `covariates`. When `surv` is an `Outcome` or a formula, rows with a
+        missing value in any column used are dropped first, along with the matching rows of any
+        arrays passed alongside.
     l1_ratio
         Elastic-net mixing parameter (default `1.0` = lasso). Fixed across the entire path (only the
         `penalizer` is varied).
@@ -864,8 +895,8 @@ def cv_coxnet(
     **Fitting the final model.** After selecting a penalizer, refit on all data:
 
     ```python
-    result = gw.cv_coxnet(y, x, seed=23)
-    final = gw.CoxNet(penalizer=result.best_penalizer_).fit(y, x)
+    result = gw.cv_coxnet(y, covariates=x, seed=23)
+    final = gw.CoxNet(penalizer=result.best_penalizer_).fit(y, covariates=x)
     ```
 
     Examples
@@ -877,11 +908,11 @@ def cv_coxnet(
 
     # Load data and build a right-censored response
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
     cols = ["age", "sex", "ph.ecog", "ph.karno", "wt.loss"]
 
     # Run cross-validated lasso selection with 3 folds
-    result = gw.cv_coxnet(y, lung[cols], l1_ratio=1.0, n_penalizers=10, k=3, seed=23)
+    result = gw.cv_coxnet(y, covariates=lung[cols], l1_ratio=1.0, n_penalizers=10, k=3, seed=23)
     result
     ```
 
@@ -896,7 +927,7 @@ def cv_coxnet(
 
     ```{python}
     # Refit at the best penalizer on all data
-    final = gw.CoxNet(penalizer=result.best_penalizer_, l1_ratio=1.0).fit(y, lung[cols])
+    final = gw.CoxNet(penalizer=result.best_penalizer_, l1_ratio=1.0).fit(y, covariates=lung[cols])
     final
     ```
 
@@ -904,10 +935,22 @@ def cv_coxnet(
 
     ```{python}
     # Refit at the 1-SE penalizer for a sparser model
-    sparse = gw.CoxNet(penalizer=result.penalizer_1se_, l1_ratio=1.0).fit(y, lung[cols])
+    sparse = gw.CoxNet(penalizer=result.penalizer_1se_, l1_ratio=1.0).fit(y, covariates=lung[cols])
     sparse
     ```
     """
+    bound = bind_fit_inputs(
+        surv,
+        data=data,
+        designs={"covariates": covariates},
+        rhs_to="covariates",
+        required=("covariates",),
+        estimator="cv_coxnet()",
+    )
+    surv = bound.surv
+    covariates = bound.designs["covariates"]
+    data = bound.data
+
     from ._cox import _design_matrix
     from ._metrics import concordance_index, integrated_brier_score
     from ._resample import _stratified_kfold_indices, _subset_surv

@@ -130,7 +130,7 @@ def simulate_competing_risks(
         states=("relapse", "death"),
         seed=99,
     )
-    fg = gw.FineGray("relapse").fit(sim.surv, sim.covariates)
+    fg = gw.FineGray(cause="relapse").fit(sim.surv, covariates=sim.covariates)
     gw.tidy(fg, format="polars")
     ```
 

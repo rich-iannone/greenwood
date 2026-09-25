@@ -21,8 +21,11 @@ from scipy.stats import norm
 
 from ._backends import to_dataframe
 from ._cox import _design_matrix
+from ._outcome import bind_fit_inputs
+from ._repr import dropped_note
 
 if TYPE_CHECKING:
+    from ._outcome import Outcome
     from ._surv import Surv
 
 __all__ = ["PiecewiseExponential"]
@@ -212,16 +215,16 @@ class PiecewiseExponential:
     import greenwood as gw
 
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
-    pem = gw.PiecewiseExponential().fit(y, lung[["age", "sex"]])
+    pem = gw.PiecewiseExponential().fit(y, covariates=lung[["age", "sex"]])
     pem
     ```
 
     With manual break points:
 
     ```{python}
-    pem_manual = gw.PiecewiseExponential(breaks=[180, 365]).fit(y, lung[["age", "sex"]])
+    pem_manual = gw.PiecewiseExponential(breaks=[180, 365]).fit(y, covariates=lung[["age", "sex"]])
     pem_manual.to_frame(format="polars")
     ```
     """
@@ -269,7 +272,7 @@ class PiecewiseExponential:
                 "Intervals:",
                 *intervals,
                 "",
-                f"n = {self.n_}, events = {self.n_event_}",
+                f"n = {self.n_}, events = {self.n_event_}{dropped_note(self)}",
                 f"Log-likelihood = {num(self.loglik_)}",
                 f"AIC = {num(self.aic_)}",
             ]
@@ -277,8 +280,8 @@ class PiecewiseExponential:
 
     def fit(
         self,
-        surv: Surv,
-        covariates: Any,
+        surv: Surv | Outcome | str,
+        covariates: Any = None,
         *,
         data: Any = None,
         max_iter: int = 50,
@@ -290,10 +293,16 @@ class PiecewiseExponential:
         ----------
         surv
             A right-censored or counting-process `Surv` response.
+            An `Outcome` or a formula string such as `'Surv(time, status == 2) ~ age + sex'` is also
+            accepted, with its columns read from `data`. The right-hand side sets `covariates`.
         covariates
             A dataframe (pandas or polars), a 2-D array, or a formula string.
+            A list of column names in `data` also works.
         data
-            A dataframe for formula evaluation (ignored otherwise).
+            A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns
+            named by the response and `covariates`. When `surv` is an `Outcome` or a formula, rows
+            with a missing value in any column used are dropped before fitting. Covariate formula
+            strings and lists of column names are also resolved here.
         max_iter
             Maximum IRLS iterations (default 50).
         tol
@@ -310,11 +319,25 @@ class PiecewiseExponential:
         import greenwood as gw
 
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-        pem = gw.PiecewiseExponential(breaks=[180, 365]).fit(y, lung[["age", "sex"]])
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+        pem = gw.PiecewiseExponential(breaks=[180, 365]).fit(y, covariates=lung[["age", "sex"]])
         pem.to_frame(format="polars")
         ```
         """
+        bound = bind_fit_inputs(
+            surv,
+            data=data,
+            designs={"covariates": covariates},
+            rhs_to="covariates",
+            required=("covariates",),
+            estimator="PiecewiseExponential",
+        )
+        surv = bound.surv
+        covariates = bound.designs["covariates"]
+        data = bound.data
+        self._n_input = bound.n_input
+        self.n_dropped_ = bound.n_dropped
+
         from ._surv import CensoringType
 
         if surv.type not in (CensoringType.RIGHT, CensoringType.COUNTING):
@@ -400,6 +423,7 @@ class PiecewiseExponential:
         self.hazard_ratio_ = np.exp(cov_beta)
         self.loglik_ = ll
         self.n_ = int(keep.sum())
+        self.n_dropped_ = max(getattr(self, "_n_input", self.n_) - self.n_, 0)
         self.n_event_ = int(event.sum())
         self.df_ = len(beta)
         self.aic_ = -2.0 * ll + 2.0 * self.df_
@@ -469,8 +493,8 @@ class PiecewiseExponential:
         import greenwood as gw
 
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-        pem = gw.PiecewiseExponential(breaks=[180, 365]).fit(y, lung[["age", "sex"]])
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+        pem = gw.PiecewiseExponential(breaks=[180, 365]).fit(y, covariates=lung[["age", "sex"]])
         pem.baseline_hazard(format="polars")
         ```
         """
@@ -591,8 +615,8 @@ class PiecewiseExponential:
         import greenwood as gw
 
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-        pem = gw.PiecewiseExponential(breaks=[180, 365]).fit(y, lung[["age", "sex"]])
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+        pem = gw.PiecewiseExponential(breaks=[180, 365]).fit(y, covariates=lung[["age", "sex"]])
         pem.to_frame(format="polars")
         ```
         """

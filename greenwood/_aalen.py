@@ -24,8 +24,11 @@ import numpy.typing as npt
 from scipy.stats import norm as norm_dist
 
 from ._backends import to_dataframe
+from ._outcome import bind_fit_inputs
+from ._repr import dropped_note
 
 if TYPE_CHECKING:
+    from ._outcome import Outcome
     from ._surv import Surv
 
 __all__ = ["AalenAdditive"]
@@ -70,9 +73,9 @@ class AalenAdditive:
     import greenwood as gw
 
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
-    aalen = gw.AalenAdditive().fit(y, lung[["age", "sex"]])
+    aalen = gw.AalenAdditive().fit(y, covariates=lung[["age", "sex"]])
     aalen
     ```
     """
@@ -118,11 +121,13 @@ class AalenAdditive:
                 table,
                 "",
                 f"n = {self.n_}, events = {self.n_event_}, "
-                f"event times used = {self.n_event_times_used_}",
+                f"event times used = {self.n_event_times_used_}{dropped_note(self)}",
             ]
         )
 
-    def fit(self, surv: Surv, covariates: Any, *, data: Any = None) -> AalenAdditive:
+    def fit(
+        self, surv: Surv | Outcome | str, covariates: Any = None, *, data: Any = None
+    ) -> AalenAdditive:
         r"""Fit the Aalen additive hazards model.
 
         At each event time, an OLS regression of the event indicator on the at-risk design
@@ -133,17 +138,37 @@ class AalenAdditive:
         ----------
         surv
             A right-censored or counting-process `Surv` response.
+            An `Outcome` or a formula string such as `'Surv(time, status == 2) ~ age + sex'` is also
+            accepted, with its columns read from `data`. The right-hand side sets `covariates`.
         covariates
             A dataframe (pandas or polars), 2-D array, or formula string evaluated against
             `data`.
+            A list of column names in `data` also works.
         data
-            DataFrame for formula evaluation (ignored if `covariates` is a dataframe or array).
+            A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns
+            named by the response and `covariates`. When `surv` is an `Outcome` or a formula, rows
+            with a missing value in any column used are dropped before fitting. Covariate formula
+            strings and lists of column names are also resolved here.
 
         Returns
         -------
         AalenAdditive
             The fitted estimator.
         """
+        bound = bind_fit_inputs(
+            surv,
+            data=data,
+            designs={"covariates": covariates},
+            rhs_to="covariates",
+            required=("covariates",),
+            estimator="AalenAdditive",
+        )
+        surv = bound.surv
+        covariates = bound.designs["covariates"]
+        data = bound.data
+        self._n_input = bound.n_input
+        self.n_dropped_ = bound.n_dropped
+
         from ._cox import _design_matrix
         from ._surv import CensoringType
 
@@ -295,6 +320,7 @@ class AalenAdditive:
 
         self.term_names_ = term_names
         self.n_ = n
+        self.n_dropped_ = max(getattr(self, "_n_input", self.n_) - self.n_, 0)
         self.n_event_ = int(event.sum())
         self.n_unique_event_times_ = len(np.unique(exit_[event]))
         self.n_event_times_used_ = n_events_used
@@ -359,8 +385,8 @@ class AalenAdditive:
         import greenwood as gw
 
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-        aalen = gw.AalenAdditive().fit(y, lung[["age", "sex"]])
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+        aalen = gw.AalenAdditive().fit(y, covariates=lung[["age", "sex"]])
 
         aalen.predict(lung[["age", "sex"]][:3], times=[180, 365], format="polars")
         ```

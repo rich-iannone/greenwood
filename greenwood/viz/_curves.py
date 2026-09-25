@@ -96,7 +96,7 @@ def theme_survival() -> Any:
 
     # Load data and fit a stratified Kaplan-Meier estimator
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
     km = gw.KaplanMeier().fit(y, by=lung["sex"])
 
     # Apply the survival theme to the plot
@@ -192,7 +192,7 @@ def plot_survival(
 
     # Load data and fit a stratified Kaplan-Meier estimator
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
     km = gw.KaplanMeier().fit(y, by=lung["sex"])
 
     # Plot the survival curves
@@ -320,7 +320,7 @@ def risk_table(km: KaplanMeier, times: Any = None) -> Any:
 
     # Load data and fit a stratified Kaplan-Meier estimator
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
     km = gw.KaplanMeier().fit(y, by=lung["sex"])
 
     # Render the numbers-at-risk table at specified time points

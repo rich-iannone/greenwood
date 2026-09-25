@@ -95,8 +95,8 @@ def plot_influence(
     import greenwood as gw
 
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-    cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+    cox = gw.CoxPH().fit(y, covariates=lung[["age", "sex"]])
 
     gw.plot_influence(cox)
     ```

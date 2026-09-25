@@ -21,8 +21,11 @@ import numpy.typing as npt
 from scipy.stats import chi2, norm
 
 from ._backends import to_dataframe
+from ._outcome import bind_fit_inputs
+from ._repr import dropped_note
 
 if TYPE_CHECKING:
+    from ._outcome import Outcome
     from ._surv import Surv
     from ._tests import TestResult
 
@@ -306,7 +309,9 @@ def _grays_statistic(
     return statistic, ng1, observed, expected
 
 
-def grays_test(surv: Surv, group: Any, *, cause: int | str = 1) -> TestResult:
+def grays_test(
+    surv: Surv | Outcome | str, group: Any = None, *, data: Any = None, cause: int | str = 1
+) -> TestResult:
     r"""Compare cumulative incidence functions across groups using Gray's test.
 
     Gray's test (1988) is the competing-risks analogue of the log-rank test. While the log-rank test
@@ -323,12 +328,19 @@ def grays_test(surv: Surv, group: Any, *, cause: int | str = 1) -> TestResult:
     surv
         A multi-state `Surv` response built with `Surv.multistate()`. Must have at least two causes.
         Event codes are 0 for censoring and 1..K for causes.
+        An `Outcome` or a formula string such as `'Surv(time, status == 2) ~ sex'` is also accepted,
+        with its columns read from `data`. The right-hand side names the `group` column(s).
     group
         Group labels, one per observation. Can be a Narwhals series, 1-D array, or Python sequence.
         Must have the same length as `surv`. At least two groups are required.
     cause
         The cause of interest to compare across groups. Can be a state label (string) or an integer
         cause code (1-indexed). Default is `1` (the first cause).
+    data
+        A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns named
+        by the response and `group`. When `surv` is an `Outcome` or a formula, rows with a missing
+        value in any column used are dropped first, along with the matching rows of any arrays
+        passed alongside.
 
     Returns
     -------
@@ -364,7 +376,7 @@ def grays_test(surv: Surv, group: Any, *, cause: int | str = 1) -> TestResult:
     mg = gw.load_dataset("mgus2", backend="pandas")
     etime = mg["ptime"].where(mg["pstat"] == 1, mg["futime"])
     cause = mg["pstat"].where(mg["pstat"] == 1, 2 * mg["death"])
-    cr = gw.Surv.multistate(etime, event=cause, states=("pcm", "death"))
+    cr = gw.Surv.multistate(time=etime, event=cause, states=("pcm", "death"))
 
     gw.grays_test(cr, group=mg["sex"], cause="pcm")
     ```
@@ -375,6 +387,17 @@ def grays_test(surv: Surv, group: Any, *, cause: int | str = 1) -> TestResult:
     gw.grays_test(cr, group=mg["sex"], cause="death")
     ```
     """
+    bound = bind_fit_inputs(
+        surv,
+        data=data,
+        labels={"group": group},
+        rhs_to="group",
+        required=("group",),
+        estimator="grays_test()",
+    )
+    surv = bound.surv
+    group = bound.labels["group"]
+
     from ._surv import _to_1d_array
     from ._tests import TestResult
 
@@ -477,7 +500,7 @@ class AalenJohansen:
     mg = gw.load_dataset("mgus2", backend="pandas")
     etime = mg["ptime"].where(mg["pstat"] == 1, mg["futime"])
     cause = mg["pstat"].where(mg["pstat"] == 1, 2 * mg["death"])
-    cr = gw.Surv.multistate(etime, event=cause, states=("pcm", "death"))
+    cr = gw.Surv.multistate(time=etime, event=cause, states=("pcm", "death"))
 
     # Fit cumulative incidence for each cause
     aj = gw.AalenJohansen().fit(cr)
@@ -512,7 +535,7 @@ class AalenJohansen:
         # Single stratum: read the risk set and final CIF per cause off the fitted blocks.
         block = next(iter(self._blocks.values()))
         first_cause = self._causes[0]
-        head.append(f"n = {int(block[first_cause]['n_risk'][0])}")
+        head.append(f"n = {int(block[first_cause]['n_risk'][0])}{dropped_note(self)}")
         labels, rows = [], []
         for cause in self._causes:
             labels.append(str(self.states_[cause - 1]))
@@ -520,7 +543,7 @@ class AalenJohansen:
         table = align_table(["final CIF"], rows, labels)
         return "\n".join(head) + "\n\n" + table
 
-    def fit(self, surv: Surv, *, by: Any = None) -> AalenJohansen:
+    def fit(self, surv: Surv | Outcome | str, *, data: Any = None, by: Any = None) -> AalenJohansen:
         r"""Fit cumulative incidence functions to a competing-risks response.
 
         Computes the cumulative incidence function (CIF) for each cause-of-interest from a
@@ -542,10 +565,17 @@ class AalenJohansen:
             A multi-state `Surv` response built with `Surv.multistate()`. Must have multiple
             causes-of-interest. Raises `ValueError` if a single-event response is passed (use
             `KaplanMeier` for that).
+            An `Outcome` or a formula string such as `'Surv(time, status == 2) ~ sex'` is also
+            accepted, with its columns read from `data`. The right-hand side names the `by`
+            column(s).
         by
             Optional grouping variable (e.g., a column or array). Produces one set of cumulative
             incidence functions per unique value of `by`. Default (`None`): fit a single,
             unstratified set of CIFs.
+        data
+            A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns
+            named by the response and `by`. When `surv` is an `Outcome` or a formula, rows with a
+            missing value in any column used are dropped before fitting.
 
         Returns
         -------
@@ -577,7 +607,7 @@ class AalenJohansen:
         mg = gw.load_dataset("mgus2", backend="pandas")
         etime = mg["ptime"].where(mg["pstat"] == 1, mg["futime"])
         cause = mg["pstat"].where(mg["pstat"] == 1, 2 * mg["death"])
-        cr = gw.Surv.multistate(etime, event=cause, states=("pcm", "death"))
+        cr = gw.Surv.multistate(time=etime, event=cause, states=("pcm", "death"))
 
         # Fit cumulative incidence for each cause
         aj = gw.AalenJohansen().fit(cr)
@@ -592,6 +622,19 @@ class AalenJohansen:
         aj_stratified
         ```
         """
+        bound = bind_fit_inputs(
+            surv,
+            data=data,
+            labels={"by": by},
+            rhs_to="by",
+            estimator="AalenJohansen",
+        )
+        surv = bound.surv
+        by = bound.labels["by"]
+        data = bound.data
+        self._n_input = bound.n_input
+        self.n_dropped_ = bound.n_dropped
+
         if not surv.is_multistate:
             raise ValueError(
                 "AalenJohansen needs a multi-state response; build it with Surv.multistate "
@@ -691,7 +734,7 @@ class AalenJohansen:
         mg = gw.load_dataset("mgus2", backend="pandas")
         etime = mg["ptime"].where(mg["pstat"] == 1, mg["futime"])
         cause = mg["pstat"].where(mg["pstat"] == 1, 2 * mg["death"])
-        cr = gw.Surv.multistate(etime, event=cause, states=("pcm", "death"))
+        cr = gw.Surv.multistate(time=etime, event=cause, states=("pcm", "death"))
         aj = gw.AalenJohansen().fit(cr)
 
         # Export cumulative incidence as a Polars DataFrame
@@ -767,10 +810,10 @@ class FineGray:
     mg = gw.load_dataset("mgus2", backend="pandas")
     etime = mg["ptime"].where(mg["pstat"] == 1, mg["futime"])
     cause = mg["pstat"].where(mg["pstat"] == 1, 2 * mg["death"])
-    cr = gw.Surv.multistate(etime, event=cause, states=("pcm", "death"))
+    cr = gw.Surv.multistate(time=etime, event=cause, states=("pcm", "death"))
 
     # Fit the Fine-Gray subdistribution hazard model for pcm
-    fg = gw.FineGray("pcm").fit(cr, mg[["age", "sex"]])
+    fg = gw.FineGray(cause="pcm").fit(cr, covariates=mg[["age", "sex"]])
     fg
     ```
 
@@ -810,13 +853,19 @@ class FineGray:
                 "",
                 table,
                 "",
-                f"n = {self.n_}, events = {self.n_event_}",
+                f"n = {self.n_}, events = {self.n_event_}{dropped_note(self)}",
                 "Standard errors: robust (clustered)",
             ]
         )
 
     def fit(
-        self, surv: Surv, covariates: Any, *, max_iter: int = 30, tol: float = 1e-9
+        self,
+        surv: Surv | Outcome | str,
+        covariates: Any = None,
+        *,
+        data: Any = None,
+        max_iter: int = 30,
+        tol: float = 1e-9,
     ) -> FineGray:
         r"""Fit the Fine-Gray subdistribution hazard model to competing-risks data.
 
@@ -831,14 +880,22 @@ class FineGray:
         surv
             A multi-state `Surv` response built with `Surv.multistate()`. Must have multiple
             causes-of-interest. Raises `ValueError` if a single-event response is passed.
+            An `Outcome` or a formula string such as `'Surv(time, status == 2) ~ age + sex'` is also
+            accepted, with its columns read from `data`. The right-hand side sets `covariates`.
         covariates
             A dataframe (pandas or polars) or 2-D array of covariates to adjust for in the
             subdistribution hazard. An intercept is added automatically. Must have the same
             number of rows as `surv`.
+            A list of column names in `data` also works.
         max_iter
             Maximum number of Newton-Raphson iterations (default 30).
         tol
             Convergence tolerance for coefficient changes (default 1e-9).
+        data
+            A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns
+            named by the response and `covariates`. When `surv` is an `Outcome` or a formula, rows
+            with a missing value in any column used are dropped before fitting. Covariate formula
+            strings and lists of column names are also resolved here.
 
         Returns
         -------
@@ -872,10 +929,10 @@ class FineGray:
         mg = gw.load_dataset("mgus2", backend="pandas")
         etime = mg["ptime"].where(mg["pstat"] == 1, mg["futime"])
         cause = mg["pstat"].where(mg["pstat"] == 1, 2 * mg["death"])
-        cr = gw.Surv.multistate(etime, event=cause, states=("pcm", "death"))
+        cr = gw.Surv.multistate(time=etime, event=cause, states=("pcm", "death"))
 
         # Fit the Fine-Gray subdistribution hazard model for pcm
-        fg = gw.FineGray("pcm").fit(cr, mg[["age", "sex"]])
+        fg = gw.FineGray(cause="pcm").fit(cr, covariates=mg[["age", "sex"]])
         fg
         ```
 
@@ -887,6 +944,20 @@ class FineGray:
         gw.tidy(fg, exponentiate=True, format="polars")
         ```
         """
+        bound = bind_fit_inputs(
+            surv,
+            data=data,
+            designs={"covariates": covariates},
+            rhs_to="covariates",
+            required=("covariates",),
+            estimator="FineGray",
+        )
+        surv = bound.surv
+        covariates = bound.designs["covariates"]
+        data = bound.data
+        self._n_input = bound.n_input
+        self.n_dropped_ = bound.n_dropped
+
         from ._cox import _design_matrix
 
         if not surv.is_multistate:
@@ -901,7 +972,7 @@ class FineGray:
         else:
             raise ValueError(f"cause {self.cause!r} is not one of the states {surv.states}.")
 
-        x, names = _design_matrix(covariates)
+        x, names = _design_matrix(covariates, data)
         if x.shape[0] != surv.n:
             raise ValueError("Covariates and response must have the same number of rows.")
 
@@ -987,6 +1058,7 @@ class FineGray:
         self.conf_high_ = beta + z * self.std_error_
         self.loglik_ = float(loglik)
         self.n_ = int(keep.sum())
+        self.n_dropped_ = max(getattr(self, "_n_input", self.n_) - self.n_, 0)
         self.n_event_ = int((cause == target).sum())
 
         # Store training data for prediction.
@@ -1197,8 +1269,8 @@ class FineGray:
         mg = gw.load_dataset("mgus2", backend="pandas")
         etime = mg["ptime"].where(mg["pstat"] == 1, mg["futime"])
         cause = mg["pstat"].where(mg["pstat"] == 1, 2 * mg["death"])
-        cr = gw.Surv.multistate(etime, event=cause, states=("pcm", "death"))
-        fg = gw.FineGray("pcm").fit(cr, mg[["age", "sex"]])
+        cr = gw.Surv.multistate(time=etime, event=cause, states=("pcm", "death"))
+        fg = gw.FineGray(cause="pcm").fit(cr, covariates=mg[["age", "sex"]])
 
         # Export the coefficient table as a Polars DataFrame
         fg.to_frame(format="polars")
@@ -1257,10 +1329,10 @@ class PenalizedFineGray:
     mg = gw.load_dataset("mgus2", backend="pandas")
     etime = mg["ptime"].where(mg["pstat"] == 1, mg["futime"])
     cause = mg["pstat"].where(mg["pstat"] == 1, 2 * mg["death"])
-    cr = gw.Surv.multistate(etime, event=cause, states=("pcm", "death"))
+    cr = gw.Surv.multistate(time=etime, event=cause, states=("pcm", "death"))
 
-    pfg = gw.PenalizedFineGray("pcm", penalizer=0.01, l1_ratio=1.0)
-    pfg.fit(cr, mg[["age", "sex"]])
+    pfg = gw.PenalizedFineGray(cause="pcm", penalizer=0.01, l1_ratio=1.0)
+    pfg.fit(cr, covariates=mg[["age", "sex"]])
     pfg
     ```
     """
@@ -1304,25 +1376,50 @@ class PenalizedFineGray:
                 "",
                 table,
                 "",
-                f"n = {self.n_}, events = {self.n_event_}, nonzero coefficients = {n_nonzero}",
+                f"n = {self.n_}, events = {self.n_event_}, nonzero coefficients = {n_nonzero}"
+                + dropped_note(self),
             ]
         )
 
-    def fit(self, surv: Surv, covariates: Any) -> PenalizedFineGray:
+    def fit(
+        self, surv: Surv | Outcome | str, covariates: Any = None, *, data: Any = None
+    ) -> PenalizedFineGray:
         r"""Fit the penalized Fine-Gray model.
 
         Parameters
         ----------
         surv
             A multi-state `Surv` response built with `Surv.multistate()`.
+            An `Outcome` or a formula string such as `'Surv(time, status == 2) ~ age + sex'` is also
+            accepted, with its columns read from `data`. The right-hand side sets `covariates`.
         covariates
             A dataframe or 2-D array of covariates.
+            A list of column names in `data` also works.
+        data
+            A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns
+            named by the response and `covariates`. When `surv` is an `Outcome` or a formula, rows
+            with a missing value in any column used are dropped before fitting. Covariate formula
+            strings and lists of column names are also resolved here.
 
         Returns
         -------
         PenalizedFineGray
             The fitted estimator with penalized coefficients in `coef_`.
         """
+        bound = bind_fit_inputs(
+            surv,
+            data=data,
+            designs={"covariates": covariates},
+            rhs_to="covariates",
+            required=("covariates",),
+            estimator="PenalizedFineGray",
+        )
+        surv = bound.surv
+        covariates = bound.designs["covariates"]
+        data = bound.data
+        self._n_input = bound.n_input
+        self.n_dropped_ = bound.n_dropped
+
         from ._cox import _design_matrix
 
         if not surv.is_multistate:
@@ -1337,7 +1434,7 @@ class PenalizedFineGray:
         else:
             raise ValueError(f"cause {self.cause!r} is not one of the states {surv.states}.")
 
-        x, names = _design_matrix(covariates)
+        x, names = _design_matrix(covariates, data)
         if x.shape[0] != surv.n:
             raise ValueError("Covariates and response must have the same number of rows.")
 
@@ -1415,6 +1512,7 @@ class PenalizedFineGray:
         self.coef_ = beta / scale
         self.hazard_ratio_ = np.exp(self.coef_)
         self.n_ = int(keep.sum())
+        self.n_dropped_ = max(getattr(self, "_n_input", self.n_) - self.n_, 0)
         self.n_event_ = int((cause == target).sum())
 
         # Store training data for prediction.
@@ -1564,16 +1662,16 @@ class CauseSpecificCox:
     mg = gw.load_dataset("mgus2", backend="polars")
     etime = np.where(mg["pstat"] == 1, mg["ptime"], mg["futime"])
     cause = np.where(mg["pstat"] == 1, 1, 2 * mg["death"])
-    cr = gw.Surv.multistate(etime, event=cause, states=("pcm", "death"))
+    cr = gw.Surv.multistate(time=etime, event=cause, states=("pcm", "death"))
 
-    csc = gw.CauseSpecificCox("pcm").fit(cr, mg[["age", "sex"]])
+    csc = gw.CauseSpecificCox(cause="pcm").fit(cr, covariates=mg[["age", "sex"]])
     csc
     ```
 
     Compare cause-specific hazard ratios for both causes side by side:
 
     ```{python}
-    csc_death = gw.CauseSpecificCox("death").fit(cr, mg[["age", "sex"]])
+    csc_death = gw.CauseSpecificCox(cause="death").fit(cr, covariates=mg[["age", "sex"]])
     gw.tidy(csc, exponentiate=True, format="polars")
     ```
     """
@@ -1596,8 +1694,8 @@ class CauseSpecificCox:
 
     def fit(
         self,
-        surv: Surv,
-        covariates: Any,
+        surv: Surv | Outcome | str,
+        covariates: Any = None,
         *,
         data: Any = None,
         strata: Any = None,
@@ -1620,10 +1718,17 @@ class CauseSpecificCox:
         ----------
         surv
             A multi-state `Surv` response built with `Surv.multistate()`.
+            An `Outcome` or a formula string such as `'Surv(time, status == 2) ~ age + sex'` is also
+            accepted, with its columns read from `data`. The right-hand side sets `covariates`.
         covariates
             A dataframe or 2-D array of covariates.
+            A list of column names in `data` also works.
         data
-            A dataframe to evaluate a formula `covariates` string against.
+            A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns
+            named by the response, `strata`, `cluster`, `frailty_cluster`, and `covariates`. When
+            `surv` is an `Outcome` or a formula, rows with a missing value in any column used are
+            dropped before fitting. Covariate formula strings and lists of column names are also
+            resolved here.
         strata, robust, cluster, frailty, frailty_cluster, frailty_theta, frailty_max_iter
             Passed through to `CoxPH.fit()`.
         max_iter, tol
@@ -1634,6 +1739,24 @@ class CauseSpecificCox:
         CauseSpecificCox
             The fitted estimator.
         """
+        bound = bind_fit_inputs(
+            surv,
+            data=data,
+            designs={"covariates": covariates},
+            labels={"strata": strata, "cluster": cluster, "frailty_cluster": frailty_cluster},
+            rhs_to="covariates",
+            required=("covariates",),
+            estimator="CauseSpecificCox",
+        )
+        surv = bound.surv
+        covariates = bound.designs["covariates"]
+        strata = bound.labels["strata"]
+        cluster = bound.labels["cluster"]
+        frailty_cluster = bound.labels["frailty_cluster"]
+        data = bound.data
+        self._n_input = bound.n_input
+        self.n_dropped_ = bound.n_dropped
+
         from ._cox import CoxPH
 
         if not surv.is_multistate:
@@ -1673,6 +1796,9 @@ class CauseSpecificCox:
             tol=tol,
         )
         self.cox_ = cox
+        # The inner model only sees rows the binder kept, so add the binder's drops to its count.
+        cox.n_dropped_ += self.n_dropped_
+        self.n_dropped_ = cox.n_dropped_
         self.states_ = surv.states
         return self
 
@@ -1843,7 +1969,9 @@ class MultiState:
     start, stop, state, event = map(list, zip(*rows))
 
     # Fit the multi-state model and view occupancy probabilities
-    ms = gw.MultiState().fit(start, stop, state, event, states=("mgus", "pcm", "death"))
+    ms = gw.MultiState().fit(
+        start=start, stop=stop, state=state, event=event, states=("mgus", "pcm", "death")
+    )
     ms.to_frame(format="polars")
     ```
     """
@@ -1963,7 +2091,9 @@ class MultiState:
         start, stop, state, event = map(list, zip(*rows))
 
         # Fit the multi-state model
-        ms = gw.MultiState().fit(start, stop, state, event, states=("mgus", "pcm", "death"))
+        ms = gw.MultiState().fit(
+            start=start, stop=stop, state=state, event=event, states=("mgus", "pcm", "death")
+        )
         ms
         ```
 
@@ -2073,10 +2203,12 @@ class MultiState:
                 event += ["death" if died else ("pcm" if progressed else None)]
         rows = [(a, b, s, e) for a, b, s, e in zip(start, stop, state, event) if b > a]
         start, stop, state, event = map(list, zip(*rows))
-        ms = gw.MultiState().fit(start, stop, state, event, states=("mgus", "pcm", "death"))
+        ms = gw.MultiState().fit(
+            start=start, stop=stop, state=state, event=event, states=("mgus", "pcm", "death")
+        )
 
         # Predict occupancy at 60, 120, and 240 months
-        ms.predict([60, 120, 240], format="polars")
+        ms.predict(times=[60, 120, 240], format="polars")
         ```
         """
         query = np.atleast_1d(np.asarray(times, dtype=float))
@@ -2137,7 +2269,9 @@ class MultiState:
                 event += ["death" if died else ("pcm" if progressed else None)]
         rows = [(a, b, s, e) for a, b, s, e in zip(start, stop, state, event) if b > a]
         start, stop, state, event = map(list, zip(*rows))
-        ms = gw.MultiState().fit(start, stop, state, event, states=("mgus", "pcm", "death"))
+        ms = gw.MultiState().fit(
+            start=start, stop=stop, state=state, event=event, states=("mgus", "pcm", "death")
+        )
 
         # Export occupancy probabilities as a Polars DataFrame
         ms.to_frame(format="polars")

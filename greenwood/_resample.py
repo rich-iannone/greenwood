@@ -14,7 +14,10 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import numpy.typing as npt
 
+from ._outcome import bind_fit_inputs
+
 if TYPE_CHECKING:
+    from ._outcome import Outcome
     from ._surv import Surv
 
 __all__ = ["cross_validate"]
@@ -154,8 +157,8 @@ def _score_fold(
 
 def cross_validate(
     model: Any,
-    surv: Surv,
-    covariates: Any,
+    surv: Surv | Outcome | str,
+    covariates: Any = None,
     *,
     data: Any = None,
     k: int = 5,
@@ -194,6 +197,8 @@ def cross_validate(
     surv
         A `Surv` response (time-to-event data). Can be right-censored or counting-process. Weights
         in the response are carried through the cross-validation.
+        An `Outcome` or a formula string such as `'Surv(time, status == 2) ~ age + sex'` is also
+        accepted, with its columns read from `data`. The right-hand side sets `covariates`.
     covariates
         Covariates/predictors for the model. Can be:
 
@@ -201,7 +206,10 @@ def cross_validate(
         - A formula string (as in `CoxPH.fit()`), evaluated against `data`
 
     data
-        If `covariates` is a formula string, the data frame to evaluate it against.
+        A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns named
+        by the response and `covariates`. When `surv` is an `Outcome` or a formula, rows with a
+        missing value in any column used are dropped first, along with the matching rows of any
+        arrays passed alongside.
     k
         Number of folds (default 5). Each fold serves as test data once; subjects are split randomly
         and evenly across folds. Typical choices: 5 or 10.
@@ -277,11 +285,11 @@ def cross_validate(
 
     # Load data and build a right-censored response
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
     # Run 5-fold cross-validation with concordance
     result = gw.cross_validate(
-        gw.CoxPH(), y, lung[["age", "sex"]], k=5, metric="concordance", seed=1
+        gw.CoxPH(), surv=y, covariates=lung[["age", "sex"]], k=5, metric="concordance", seed=1
     )
     result
     ```
@@ -313,7 +321,7 @@ def cross_validate(
     ```{python}
     # Evaluate concordance, Brier, and AUC in one pass
     result_multi = gw.cross_validate(
-        gw.CoxPH(), y, lung[["age", "sex"]], k=5,
+        gw.CoxPH(), surv=y, covariates=lung[["age", "sex"]], k=5,
         metrics=["concordance", "brier", "auc"],
         times=[180, 365, 540], seed=1
     )
@@ -332,6 +340,18 @@ def cross_validate(
     result_multi["results"]["brier"]["mean"]
     ```
     """
+    bound = bind_fit_inputs(
+        surv,
+        data=data,
+        designs={"covariates": covariates},
+        rhs_to="covariates",
+        required=("covariates",),
+        estimator="cross_validate()",
+    )
+    surv = bound.surv
+    covariates = bound.designs["covariates"]
+    data = bound.data
+
     from ._cox import CoxPH, _design_matrix
     from ._flexible import RoystonParmar
     from ._parametric import AFT

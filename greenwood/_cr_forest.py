@@ -17,8 +17,11 @@ from typing_extensions import Self
 
 from ._backends import to_dataframe
 from ._cox import _design_matrix
+from ._outcome import bind_fit_inputs
+from ._repr import dropped_note
 
 if TYPE_CHECKING:
+    from ._outcome import Outcome
     from ._surv import Surv
 
 __all__ = ["CompetingRiskForest"]
@@ -329,10 +332,10 @@ class CompetingRiskForest:
     mg = gw.load_dataset("mgus2", backend="pandas")
     etime = np.where(mg["pstat"] == 1, mg["ptime"], mg["futime"])
     cause = np.where(mg["pstat"] == 1, 1, 2 * mg["death"])
-    y = gw.Surv.multistate(etime, event=cause, states=("pcm", "death"))
+    y = gw.Surv.multistate(time=etime, event=cause, states=("pcm", "death"))
 
     crf = gw.CompetingRiskForest(n_estimators=50, random_state=0).fit(
-        y, mg[["age", "sex"]]
+        y, covariates=mg[["age", "sex"]]
     )
     crf
     ```
@@ -375,24 +378,31 @@ class CompetingRiskForest:
         lines = [
             f"CompetingRiskForest ({self.n_estimators} logrankCR trees, "
             f"max_features={self.max_features!r})",
-            f"n = {self.n_}, events = {self.n_event_}, features = {self.n_features_in_}",
+            f"n = {self.n_}, events = {self.n_event_}, features = {self.n_features_in_}"
+            + dropped_note(self),
             f"causes: {', '.join(str(s) for s in self.states_)}",
         ]
         if self.oob_score_ is not None:
             lines.append(f"out-of-bag concordance = {self.oob_score_:.4f}")
         return "\n".join(lines)
 
-    def fit(self, surv: Surv, covariates: Any, *, data: Any = None) -> Self:
+    def fit(self, surv: Surv | Outcome | str, covariates: Any = None, *, data: Any = None) -> Self:
         """Fit the competing-risk forest.
 
         Parameters
         ----------
         surv
             A multistate `Surv` response built with `Surv.multistate()`.
+            An `Outcome` or a formula string such as `'Surv(time, status == 2) ~ age + sex'` is also
+            accepted, with its columns read from `data`. The right-hand side sets `covariates`.
         covariates
             A dataframe, a 2-D array, or a formula string evaluated against `data`.
+            A list of column names in `data` also works.
         data
-            DataFrame used to evaluate a formula string.
+            A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns
+            named by the response and `covariates`. When `surv` is an `Outcome` or a formula, rows
+            with a missing value in any column used are dropped before fitting. Covariate formula
+            strings and lists of column names are also resolved here.
 
         Returns
         -------
@@ -400,6 +410,20 @@ class CompetingRiskForest:
             The fitted estimator with attributes `trees_`, `event_times_`,
             `states_`, `cause_codes_`, and `oob_score_`.
         """
+        bound = bind_fit_inputs(
+            surv,
+            data=data,
+            designs={"covariates": covariates},
+            rhs_to="covariates",
+            required=("covariates",),
+            estimator="CompetingRiskForest",
+        )
+        surv = bound.surv
+        covariates = bound.designs["covariates"]
+        data = bound.data
+        self._n_input = bound.n_input
+        self.n_dropped_ = bound.n_dropped
+
         x, names = _design_matrix(covariates, data)
         time, status, states, cause_codes = _prepare_cr_response(surv)
         if x.shape[0] != surv.n:
@@ -419,6 +443,7 @@ class CompetingRiskForest:
         self.feature_names_in_ = list(names)
         self.n_features_in_ = x.shape[1]
         self.n_ = int(n)
+        self.n_dropped_ = max(getattr(self, "_n_input", self.n_) - self.n_, 0)
         self.n_event_ = int((status > 0).sum())
         self._n_features_split = self._resolve_max_features(x.shape[1])
         self._x_train = x

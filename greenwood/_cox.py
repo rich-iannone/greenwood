@@ -29,8 +29,11 @@ from scipy.special import gammaln
 from scipy.stats import chi2, norm
 
 from ._backends import to_dataframe
+from ._outcome import bind_fit_inputs
+from ._repr import dropped_note
 
 if TYPE_CHECKING:
+    from ._outcome import Outcome
     from ._surv import Surv
 
 __all__ = ["CoxPH", "SmoothHRResult", "ZPHResult", "ZPHWindowResult"]
@@ -100,8 +103,8 @@ class ZPHResult:
 
     # Load data and fit a Cox model
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-    cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+    cox = gw.CoxPH().fit(y, covariates=lung[["age", "sex"]])
 
     # Run the proportional-hazards test
     zph = cox.cox_zph()
@@ -169,8 +172,8 @@ class ZPHResult:
         import greenwood as gw
 
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-        cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+        cox = gw.CoxPH().fit(y, covariates=lung[["age", "sex"]])
         zph = cox.cox_zph()
         zph.to_frame(format="polars")
         ```
@@ -255,14 +258,14 @@ class SmoothHRResult:
         Parameters
         ----------
         scale
-            ``"log_hr"`` (default) returns log hazard ratios and confidence bounds.
-            ``"hr"`` returns hazard ratios (exponentiated).
+            `"log_hr"` (the default) returns log hazard ratios and confidence bounds.
+            `"hr"` returns hazard ratios (exponentiated).
         format
-            Output format: ``None`` (default), ``"pandas"``, ``"polars"``, or ``"pyarrow"``.
+            Output format: `None` (default), `"pandas"`, `"polars"`, or `"pyarrow"`.
 
         Returns
         -------
-        pandas.DataFrame, polars.DataFrame, or pyarrow.Table
+        `pandas.DataFrame`, `polars.DataFrame`, or `pyarrow.Table`
         """
         return to_dataframe(self._table_columns(scale=scale), format=format)
 
@@ -736,10 +739,10 @@ class CoxPH:
 
     # Load data and build a right-censored response
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
     # Fit a Cox model with age and sex as covariates
-    cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+    cox = gw.CoxPH().fit(y, covariates=lung[["age", "sex"]])
     cox
     ```
 
@@ -782,7 +785,7 @@ class CoxPH:
             "",
             table,
             "",
-            f"n = {self.n_}, events = {self.n_event_}",
+            f"n = {self.n_}, events = {self.n_event_}{dropped_note(self)}",
             f"Likelihood ratio test = {num(self.lr_stat_)} on {self.df_} df, p = {num(lr_p)}",
         ]
         if self.robust:
@@ -800,8 +803,8 @@ class CoxPH:
 
     def fit(
         self,
-        surv: Surv,
-        covariates: Any,
+        surv: Surv | Outcome | str,
+        covariates: Any = None,
         *,
         data: Any = None,
         strata: Any = None,
@@ -827,11 +830,17 @@ class CoxPH:
         surv
             A `Surv` object representing the response (censoring type must be
             right-censored or counting-process).
+            An `Outcome` or a formula string such as `'Surv(time, status == 2) ~ age + sex'` is also
+            accepted, with its columns read from `data`. The right-hand side sets `covariates`.
         covariates
             Covariate design, either a 2-D array, dataframe, or formula string.
+            A list of column names in `data` also works.
         data
-            DataFrame to evaluate formula strings against (required if `covariates=`
-            is a formula string).
+            A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns
+            named by the response, `strata`, `cluster`, `frailty_cluster`, and `covariates`. When
+            `surv` is an `Outcome` or a formula, rows with a missing value in any column used are
+            dropped before fitting. Covariate formula strings and lists of column names are also
+            resolved here.
         strata
             Optional stratification variable, giving each stratum its own baseline
             hazard while sharing coefficients. Can be a 1-D array or series.
@@ -877,10 +886,10 @@ class CoxPH:
 
         # Load data and build a right-censored response
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
         # Fit a stratified Cox model and export the coefficients
-        gw.CoxPH().fit(y, lung[["age", "ph.ecog"]], strata=lung["sex"]).to_frame(
+        gw.CoxPH().fit(y, covariates=lung[["age", "ph.ecog"]], strata=lung["sex"]).to_frame(
             format="polars"
         )
         ```
@@ -888,6 +897,24 @@ class CoxPH:
         The `covariates` argument also accepts a right-hand-side formula string (for example
         `"age + sex + C(ph.ecog)"`), and `robust=True` reports the Lin-Wei sandwich variance.
         """
+        bound = bind_fit_inputs(
+            surv,
+            data=data,
+            designs={"covariates": covariates},
+            labels={"strata": strata, "cluster": cluster, "frailty_cluster": frailty_cluster},
+            rhs_to="covariates",
+            required=("covariates",),
+            estimator="CoxPH",
+        )
+        surv = bound.surv
+        covariates = bound.designs["covariates"]
+        strata = bound.labels["strata"]
+        cluster = bound.labels["cluster"]
+        frailty_cluster = bound.labels["frailty_cluster"]
+        data = bound.data
+        self._n_input = bound.n_input
+        self.n_dropped_ = bound.n_dropped
+
         from ._surv import CensoringType
 
         if surv.type not in (CensoringType.RIGHT, CensoringType.COUNTING):
@@ -1226,6 +1253,7 @@ class CoxPH:
         self.loglik_ = float(loglik)
         self.loglik_null_ = float(loglik_null)
         self.n_ = int(keep.sum())
+        self.n_dropped_ = max(getattr(self, "_n_input", self.n_) - self.n_, 0)
         self.n_event_ = int(event.sum())
 
         z = float(norm.ppf(1.0 - (1.0 - self.conf_level) / 2.0))
@@ -1410,8 +1438,8 @@ class CoxPH:
 
         # Load data and fit a Cox model
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-        cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+        cox = gw.CoxPH().fit(y, covariates=lung[["age", "sex"]])
 
         # Export the baseline cumulative hazard as a Polars DataFrame
         cox.baseline_hazard(format="polars")
@@ -1430,7 +1458,7 @@ class CoxPH:
 
         ```{python}
         # Fit a stratified model and get per-stratum baselines
-        cox_stratified = gw.CoxPH().fit(y, lung[["age", "ph.ecog"]], strata=lung["sex"])
+        cox_stratified = gw.CoxPH().fit(y, covariates=lung[["age", "ph.ecog"]], strata=lung["sex"])
         cox_stratified.baseline_hazard(ci=True, format="polars")
         ```
 
@@ -1655,8 +1683,8 @@ class CoxPH:
 
         # Load data and fit a Cox model
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-        cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+        cox = gw.CoxPH().fit(y, covariates=lung[["age", "sex"]])
 
         # Predict the centered linear predictor for the first five subjects
         cox.predict(type="lp")[:5]
@@ -1685,14 +1713,14 @@ class CoxPH:
         base = (pbcseq.drop_duplicates("id")[["id", "futime", "status"]]
                       .rename(columns={"futime": "time"}))
         long = gw.split_episodes(
-            base, pbcseq[["id", "day", "bili", "albumin", "protime"]],
+            baseline=base, visits=pbcseq[["id", "day", "bili", "albumin", "protime"]],
             id="id", time="time", event="status", visit_time="day", format="pandas",
         )
         long = long.dropna(subset=["bili", "albumin", "protime"])
         long["event_bin"] = (long["status"] == 2).astype(int)
 
-        y = gw.Surv.counting(long["tstart"], long["tstop"], long["event_bin"])
-        cox = gw.CoxPH().fit(y, long[["bili", "albumin", "protime"]])
+        y = gw.Surv.counting(start=long["tstart"], stop=long["tstop"], event=long["event_bin"])
+        cox = gw.CoxPH().fit(y, covariates=long[["bili", "albumin", "protime"]])
 
         # Subject 1's covariate path (two visits)
         tvc_path = pd.DataFrame({
@@ -1883,8 +1911,8 @@ class CoxPH:
         import greenwood as gw
 
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-        cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+        cox = gw.CoxPH().fit(y, covariates=lung[["age", "sex"]])
 
         # Predicted survival-time quartiles for three subjects
         cox.predict_quantile(lung[["age", "sex"]][:3], p=[0.25, 0.5, 0.75], format="polars")
@@ -2025,8 +2053,8 @@ class CoxPH:
         import greenwood as gw
 
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-        cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+        cox = gw.CoxPH().fit(y, covariates=lung[["age", "sex"]])
 
         cox.predict_median(lung[["age", "sex"]][:3], format="polars")
         ```
@@ -2088,8 +2116,8 @@ class CoxPH:
         import greenwood as gw
 
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-        cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+        cox = gw.CoxPH().fit(y, covariates=lung[["age", "sex"]])
 
         # Expected survival time up to one year for three subjects
         cox.predict_expectation(lung[["age", "sex"]][:3], tau=365, format="polars")
@@ -2557,10 +2585,10 @@ class CoxPH:
         import greenwood as gw
 
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-        cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+        cox = gw.CoxPH().fit(y, covariates=lung[["age", "sex"]])
 
-        cox.residuals("martingale")[:5]
+        cox.residuals(type="martingale")[:5]
         ```
 
         ```{python}
@@ -2833,8 +2861,8 @@ class CoxPH:
         import greenwood as gw
 
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-        cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+        cox = gw.CoxPH().fit(y, covariates=lung[["age", "sex"]])
 
         zph = cox.cox_zph()
         zph
@@ -2962,21 +2990,21 @@ class CoxPH:
     ) -> SmoothHRResult:
         """Smooth non-linear hazard ratio curve for a continuous covariate.
 
-        Refits the Cox model replacing the linear term for ``term`` with a B-spline basis
-        expansion, then computes the log-hazard ratio (and confidence band) across the
-        covariate's range relative to a reference value. The result reveals non-linear
-        covariate effects that a single coefficient cannot capture.
+        Refits the Cox model replacing the linear term for `term=` with a B-spline basis expansion,
+        then computes the log-hazard ratio (and confidence band) across the covariate's range
+        relative to a reference value. The result reveals non-linear covariate effects that a single
+        coefficient cannot capture.
 
         Parameters
         ----------
         term
-            Name of the covariate to expand. Must be one of the fitted model's ``term_names_``.
+            Name of the covariate to expand. Must be one of the fitted model's `term_names_`.
         df
             Degrees of freedom for the spline (number of basis functions). Defaults to 4, which
             gives a cubic spline with one interior knot. Higher values allow more flexible curves
             but risk overfitting.
         n_grid
-            Number of equally spaced points at which to evaluate the curve (default 200).
+            Number of equally spaced points at which to evaluate the curve (the default is `200`).
         reference
             Reference value for the covariate. The log-HR is zero at this point. Defaults to the
             weighted mean of the covariate in the training data.
@@ -2985,7 +3013,7 @@ class CoxPH:
         -------
         SmoothHRResult
             Contains the evaluation grid, log-HR, HR, and pointwise confidence bands. Use
-            ``to_frame()`` for a tidy DataFrame or pass the result to ``plot_smooth_hr()``.
+            `to_frame()` for a tidy DataFrame or pass the result to `plot_smooth_hr()`.
 
         Examples
         --------
@@ -2993,10 +3021,10 @@ class CoxPH:
         import greenwood as gw
 
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-        cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+        cox = gw.CoxPH().fit(y, covariates=lung[["age", "sex"]])
 
-        shr = cox.smooth_hr("age")
+        shr = cox.smooth_hr(term="age")
         shr.to_frame(format="polars")
         ```
         """
@@ -3260,8 +3288,8 @@ class CoxPH:
         import greenwood as gw
 
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-        cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+        cox = gw.CoxPH().fit(y, covariates=lung[["age", "sex"]])
         cox.concordance()
         ```
         """
@@ -3321,7 +3349,7 @@ class CoxPH:
 
         # Load data and build a right-censored response
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
         # Fit a Cox model with shared gamma frailty by institution
         cox = gw.CoxPH(ties="breslow").fit(
@@ -3401,8 +3429,8 @@ class CoxPH:
 
         # Load data and fit a Cox model
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-        cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+        cox = gw.CoxPH().fit(y, covariates=lung[["age", "sex"]])
 
         # Export the coefficient table as a Polars DataFrame
         cox.to_frame(format="polars")

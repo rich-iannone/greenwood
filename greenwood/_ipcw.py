@@ -19,8 +19,11 @@ import numpy as np
 import numpy.typing as npt
 
 from ._backends import to_dataframe
+from ._outcome import bind_fit_inputs
+from ._repr import dropped_note
 
 if TYPE_CHECKING:
+    from ._outcome import Outcome
     from ._surv import Surv
 
 __all__ = ["CensoringDistribution", "IPCRidge"]
@@ -76,7 +79,7 @@ class CensoringDistribution:
     import greenwood as gw
 
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
     # Fit the censoring distribution
     cens = gw.CensoringDistribution(y)
@@ -237,10 +240,10 @@ class IPCRidge:
     import greenwood as gw
 
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
     cols = ["age", "sex"]
 
-    ridge = gw.IPCRidge(alpha=1.0).fit(y, lung[cols])
+    ridge = gw.IPCRidge(alpha=1.0).fit(y, covariates=lung[cols])
     ridge
     ```
     """
@@ -271,11 +274,13 @@ class IPCRidge:
                 "",
                 table,
                 "",
-                f"n = {self.n_}, events = {self.n_event_} (used for fitting)",
+                f"n = {self.n_}, events = {self.n_event_} (used for fitting){dropped_note(self)}",
             ]
         )
 
-    def fit(self, surv: Surv, covariates: Any, *, data: Any = None) -> IPCRidge:
+    def fit(
+        self, surv: Surv | Outcome | str, covariates: Any = None, *, data: Any = None
+    ) -> IPCRidge:
         r"""Fit the IPC-weighted ridge regression to survival data.
 
         Only uncensored subjects contribute to the fit. Each is weighted by $1/\hat{G}(T_i^-)$ from
@@ -286,18 +291,37 @@ class IPCRidge:
         ----------
         surv
             A right-censored `Surv` response (built with `Surv.right()`).
+            An `Outcome` or a formula string such as `'Surv(time, status == 2) ~ age + sex'` is also
+            accepted, with its columns read from `data`. The right-hand side sets `covariates`.
         covariates
             A dataframe (pandas or polars), a 2-D array, or a formula string (e.g., `"age + sex"`)
             evaluated against `data`.
+            A list of column names in `data` also works.
         data
-            A dataframe to evaluate the formula string (ignored if `covariates` is a dataframe or
-            array).
+            A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns
+            named by the response and `covariates`. When `surv` is an `Outcome` or a formula, rows
+            with a missing value in any column used are dropped before fitting. Covariate formula
+            strings and lists of column names are also resolved here.
 
         Returns
         -------
         IPCRidge
             The fitted estimator with cached coefficient arrays.
         """
+        bound = bind_fit_inputs(
+            surv,
+            data=data,
+            designs={"covariates": covariates},
+            rhs_to="covariates",
+            required=("covariates",),
+            estimator="IPCRidge",
+        )
+        surv = bound.surv
+        covariates = bound.designs["covariates"]
+        data = bound.data
+        self._n_input = bound.n_input
+        self.n_dropped_ = bound.n_dropped
+
         from ._cox import _design_matrix
         from ._surv import CensoringType
 
@@ -345,6 +369,7 @@ class IPCRidge:
         self.intercept_ = float(np.mean(y_fit * w_fit) / np.mean(w_fit) - center @ self.coef_)
         self.term_names_ = names
         self.n_ = int(keep.sum())
+        self.n_dropped_ = max(getattr(self, "_n_input", self.n_) - self.n_, 0)
         self.n_event_ = int(mask.sum())
         self._center = center
         self._scale = scale

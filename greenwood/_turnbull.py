@@ -25,8 +25,10 @@ import numpy as np
 import numpy.typing as npt
 
 from ._backends import to_dataframe
+from ._outcome import bind_fit_inputs
 
 if TYPE_CHECKING:
+    from ._outcome import Outcome
     from ._surv import Surv
 
 __all__ = ["Turnbull"]
@@ -393,7 +395,7 @@ class Turnbull:
     def __repr__(self) -> str:
         if getattr(self, "_blocks", None) is None:
             return f"Turnbull(tol={self.tol!r}, max_iter={self.max_iter!r}) <unfitted>"
-        from ._repr import align_table, whole
+        from ._repr import align_table, dropped_footer, whole
 
         headers = ["n", "atoms", "ambiguous", "iters", "converged"]
 
@@ -413,9 +415,15 @@ class Turnbull:
             table = align_table(headers, [row_for(b) for b in self._blocks], labels)
         else:
             table = align_table(headers, [row_for(self._blocks[0])])
-        return "Turnbull (self-consistent NPMLE for interval-censored data)\n\n" + table
+        return (
+            "Turnbull (self-consistent NPMLE for interval-censored data)\n\n"
+            + table
+            + dropped_footer(self)
+        )
 
-    def fit(self, surv: Surv, *, by: Any = None, weights: Any = None) -> Turnbull:
+    def fit(
+        self, surv: Surv | Outcome | str, *, data: Any = None, by: Any = None, weights: Any = None
+    ) -> Turnbull:
         r"""Fit Turnbull's NPMLE to interval-censored survival data.
 
         Computes the maximal intersection intervals and their probability masses from a
@@ -428,12 +436,19 @@ class Turnbull:
             A `Surv` response built with `Surv.interval()`, `Surv.right()`, or `Surv.left()`.
             Left-truncated (`Surv.counting()`) and multi-state responses raise
             `NotImplementedError`.
+            An `Outcome` or a formula string such as `'Surv(time, status == 2) ~ sex'` is also
+            accepted, with its columns read from `data`. The right-hand side names the `by`
+            column(s).
         by
             Optional grouping variable (e.g., a column or array). Produces one fit per unique
             value of `by`. Default (`None`): a single, unstratified fit.
         weights
             Optional case weights. Must have the same length as `surv`. Default (`None`): uses
             `surv.weights` if present, otherwise unit weights.
+        data
+            A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns
+            named by the response, `by`, and `weights`. When `surv` is an `Outcome` or a formula,
+            rows with a missing value in any column used are dropped before fitting.
 
         Returns
         -------
@@ -451,6 +466,20 @@ class Turnbull:
         tb.survival_
         ```
         """
+        bound = bind_fit_inputs(
+            surv,
+            data=data,
+            labels={"by": by, "weights": weights},
+            rhs_to="by",
+            estimator="Turnbull",
+        )
+        surv = bound.surv
+        by = bound.labels["by"]
+        weights = bound.labels["weights"]
+        data = bound.data
+        self._n_input = bound.n_input
+        self.n_dropped_ = bound.n_dropped
+
         self._blocks = _fit_turnbull_blocks(surv, by, weights, self.tol, self.max_iter)
         self._grouped = by is not None
         return self
@@ -524,7 +553,7 @@ class Turnbull:
         tb = gw.Turnbull().fit(y)
 
         # The first-quartile survival time (or its ambiguity bracket)
-        tb.quantile(0.25)
+        tb.quantile(p=0.25)
         ```
         """
         level = 1.0 - p
@@ -590,7 +619,7 @@ class Turnbull:
 
         y = gw.Surv.interval(lower=[0, 4, 7, 0, 3, 5], upper=[4, float("inf"), 7, 2.5, 6, 5])
         tb = gw.Turnbull().fit(y)
-        tb.rmst(7)
+        tb.rmst(tau=7)
         ```
         """
         if not self._grouped:
@@ -629,7 +658,7 @@ class Turnbull:
 
         y = gw.Surv.interval(lower=[0, 4, 7, 0, 3, 5], upper=[4, float("inf"), 7, 2.5, 6, 5])
         tb = gw.Turnbull().fit(y)
-        tb.rmrl(4, 7)
+        tb.rmrl(s=4, tau=7)
         ```
         """
         if tau <= s:
@@ -678,7 +707,7 @@ class Turnbull:
         tb = gw.Turnbull().fit(y)
 
         # nan at t=1 (strictly inside the ambiguous (0, 2.5) region)
-        tb.predict([1, 2.5, 5, 7])
+        tb.predict(times=[1, 2.5, 5, 7])
         ```
         """
         query = np.atleast_1d(np.asarray(times, dtype=float))

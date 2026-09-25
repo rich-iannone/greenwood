@@ -234,7 +234,7 @@ def plot_cif(
     mg = gw.load_dataset("mgus2", backend="polars")
     etime = np.where(mg["pstat"] == 1, mg["ptime"], mg["futime"])
     cause = np.where(mg["pstat"] == 1, 1, 2 * mg["death"])
-    y = gw.Surv.multistate(etime, event=cause, states=("pcm", "death"))
+    y = gw.Surv.multistate(time=etime, event=cause, states=("pcm", "death"))
 
     # Fit the Aalen-Johansen estimator and plot cumulative incidence
     aj = gw.AalenJohansen().fit(y)
