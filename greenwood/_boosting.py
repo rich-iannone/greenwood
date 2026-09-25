@@ -21,7 +21,7 @@ import numpy.typing as npt
 from typing_extensions import Self
 
 from ._backends import to_dataframe
-from ._cox import _design_matrix
+from ._cox import _design_matrix_spec
 from ._outcome import bind_fit_inputs
 from ._repr import dropped_note
 
@@ -330,7 +330,7 @@ class GradientBoostingSurvivalAnalysis:
                 f"GradientBoostingSurvivalAnalysis supports right-censored responses, "
                 f"not {surv.type.value!r}."
             )
-        x, names = _design_matrix(covariates, data)
+        x, names, self._design_spec = _design_matrix_spec(covariates, data)
         time = np.asarray(surv.stop, dtype=float)
         event = np.asarray(surv.event, dtype=bool)
         if x.shape[0] != surv.n:
@@ -406,6 +406,8 @@ class GradientBoostingSurvivalAnalysis:
         ----------
         newdata
             Covariates to predict for. `None` predicts for the training subjects.
+            A data frame may also hold other columns. The covariates are picked out by name and
+            coded as they were at fit time, so the frame the model was fit on can be passed as is.
         type
             One of `"risk"`, `"lp"`, `"survival"`, or `"cumulative_hazard"`.
         times
@@ -421,7 +423,11 @@ class GradientBoostingSurvivalAnalysis:
         """
         if type not in _PREDICT_TYPES:
             raise ValueError(f"Unknown predict type {type!r}; use one of {_PREDICT_TYPES}.")
-        scores = self._train_scores if newdata is None else self._score(_design_matrix(newdata)[0])
+        scores = (
+            self._train_scores
+            if newdata is None
+            else self._score(self._design_spec.transform(newdata))
+        )
         if type == "lp":
             return scores
         if type == "risk":
