@@ -26,16 +26,20 @@ When you hand Greenwood a data frame or a column, it reads the values through Na
 numerical work on the underlying arrays. Your original object is never mutated and never copied into
 a foreign format.
 
-In practice this means you can pass data from any of the backends Narwhals supports. Three of these
-are covered directly by the Greenwood test suite, which checks that they all produce identical
-estimates on the same data.
+In practice this means you can pass data from any of the backends Narwhals supports. These are
+covered directly by the Greenwood test suite, which checks that they all produce identical estimates
+on the same data.
 
 - **Pandas**, the most widely used data frame library, and the default for the bundled datasets
-- **Polars**, a fast, multi-threaded, Arrow-based data frame library, well suited to large datasets
+- **Polars**, a fast, multi-threaded, Arrow-based data frame library, well suited to large datasets,
+including lazy `LazyFrame` queries
 - **PyArrow** tables, the in-memory Arrow format that many file readers and databases produce
+- **DuckDB** relations, so a SQL query over a Parquet file or a database table can be analyzed
+without first loading it into another library
 
-Other backends that Narwhals supports, such as Modin, cuDF, and DuckDB, use the same interface and
-are expected to work the same way, though the test suite pins parity on the three above.
+With a lazy source (a Polars `LazyFrame` or a DuckDB relation), Greenwood selects only the columns a
+call names and collects them once. Other backends that Narwhals supports, such as Modin, cuDF, and
+Ibis, use the same interface and are expected to work the same way.
 
 ::: {.callout-note}
 ## What "backend-agnostic" buys you
@@ -44,16 +48,14 @@ You do not have to rewrite your analysis when you switch data frame libraries. C
 Pandas workflow runs unchanged when the data arrives as Polars, because Greenwood reads both through
 the same interface. This also means results do not depend on the backend: the same data produces the
 same estimates regardless of where the frame came from. The test suite verifies this for Pandas,
-Polars, and PyArrow on identical inputs.
+Polars, PyArrow, and DuckDB on identical inputs.
 :::
 
-## Passing columns and passing frames
+## Naming columns in a frame
 
-There are two ways to feed data to Greenwood, and both are always available.
-
-The first is to pass individual columns to a `Surv` constructor. This is how you build the response.
-A column can be a Pandas `Series`, a Polars `Series`, a NumPy array, or an ordinary Python list.
-Greenwood treats them all the same.
+The simplest way to feed data to Greenwood is to hand it the frame and name the columns. The
+response constructors take column names plus `data=`, and the event coding is declared as a value
+(here `event_value=2`, because `lung` codes a death as `2`).
 
 ```{python}
 import greenwood as gw
@@ -61,25 +63,40 @@ import greenwood as gw
 # Load the bundled lung dataset as a Polars DataFrame
 lung = gw.load_dataset("lung", backend="polars")
 
-# Build a right-censored response; status == 2 marks a death
-y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+# Name the response columns, and say which status value marks a death
+y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
 # Display the response summary
 y
 ```
 
-The second is to pass a whole data frame of covariates to a model. The model reads the columns it
-needs, converts non-numeric columns to indicator variables, and drops rows with missing values, just
-as R's modeling functions do. We fit the model in its own cell, then set it aside and look at its
-results through the tidy functions below.
+Models take their covariates the same way, as a list of column names, a formula string, or a frame
+of covariates. The model converts non-numeric columns to indicator variables and drops rows with
+missing values, just as R's modeling functions do. We fit the model in its own cell, then set it
+aside and look at its results through the tidy functions below.
 
 ```{python}
 # Fit a Cox model with age, sex, and ECOG score as covariates
-cox = gw.CoxPH().fit(y, lung[["age", "sex", "ph.ecog"]])
+cox = gw.CoxPH().fit(y, covariates=["age", "sex", "ph.ecog"], data=lung)
 
 # Print the coefficient table and global test statistics
 cox
 ```
+
+When you fit several models to one endpoint, describe it once with `gw.Outcome` (or an R-style
+formula) and let each fit read everything from the frame. The response and the covariates are then
+filtered together, so a row missing any value the model uses is dropped once and the printout says
+how many. The [Survival data](03-survival-data.qmd) page covers both forms in detail.
+
+```{python}
+# Describe the endpoint once, then fit from the frame
+death = gw.Outcome.right(time="time", event="status", event_value=2)
+gw.CoxPH().fit(death, covariates=["age", "sex", "ph.ecog"], data=lung)
+```
+
+Individual columns and arrays are still accepted everywhere. A column can be a Pandas `Series`, a
+Polars `Series`, a NumPy array, or an ordinary Python list, which is useful when the values do not
+come from a frame.
 
 Printing a fitted model shows a readable summary, but for programmatic use you read its results
 through tidy output frames. The `tidy` function returns one row per model term, and passing
@@ -90,8 +107,8 @@ through tidy output frames. The `tidy` function returns one row per model term, 
 gw.tidy(cox, exponentiate=True, format="polars")
 ```
 
-These two patterns (columns into `Surv`, frames into models) are the only interface you need for the
-entire package. Every page in this guide uses one or both of them.
+These patterns (column names with `data=`, or an `Outcome` bound at fit time) are the only
+interface you need for the entire package. Every page in this guide uses one or both of them.
 
 ## Choosing a backend
 
@@ -110,24 +127,18 @@ type(lung_pd).__module__.split(".")[0], type(lung_pl).__module__.split(".")[0]
 
 The backend makes no difference to any result. The same model fit on the Pandas frame and on the
 Polars frame returns the same coefficients, a property the test suite checks on every release. To
-show this, we first build a response from the Polars columns. The resulting `Surv` object looks the
-same as one built from Pandas: it records the same times and events, because Greenwood read both
-through Narwhals.
+show this, we fit one `Outcome` to both frames. Because the call names columns rather than using
+backend-specific expressions, it is identical for the two.
 
 ```{python}
-# Build a response from the Polars columns — identical to building from Pandas
-y_pl = gw.Surv.right(lung_pl["time"], event=(lung_pl["status"] == 2))
+death = gw.Outcome.right(time="time", event="status", event_value=2)
 
-# Display the summary; it looks the same regardless of backend
-y_pl
-```
+# The same call on each backend
+cox_pd = gw.CoxPH().fit(death, covariates=["age", "sex"], data=lung_pd)
+cox_pl = gw.CoxPH().fit(death, covariates=["age", "sex"], data=lung_pl)
 
-Fitting a Cox model on the Polars-backed response and covariates, then viewing the result with
-`to_frame()`, gives the same coefficient table you would get from the Polars DataFrame.
-
-```{python}
-# Fit on the Polars frame and export the coefficient table — same numbers as Pandas
-gw.CoxPH().fit(y_pl, lung_pl[["age", "sex"]]).to_frame(format="polars")
+# The coefficients agree exactly
+cox_pd.coef_, cox_pl.coef_
 ```
 
 You can choose whichever backend fits your existing workflow. If your pipeline already uses Polars,
@@ -138,10 +149,22 @@ result.
 ## Reading from files and databases
 
 Greenwood does not read files itself, and it does not need to. Use your DataFrame library's reader
-(`pandas.read_csv()`, `polars.read_parquet()`, a database query, and so on) to get a DataFrame, then
-pass its columns to `Surv` exactly as above. Anything that produces a supported DataFrame is a valid
-source.
+(`pandas.read_csv()`, `polars.scan_parquet()`, a database query, and so on) and pass the result as
+`data=`. Anything that produces a supported DataFrame is a valid source, including lazy queries.
 :::
+
+A DuckDB relation, for instance, can go straight into a fit. Only the columns the formula uses are
+read from it.
+
+```{python}
+import duckdb
+
+# Wrap the data in a DuckDB relation (a SQL query over a Parquet file works the same way)
+lung_db = duckdb.from_arrow(gw.load_dataset("lung", backend="polars").to_arrow())
+
+# Fit directly from the relation
+gw.CoxPH().fit("Surv(time, status == 2) ~ age + sex", data=lung_db)
+```
 
 ## Shaping raw study data for `Surv`
 
@@ -153,10 +176,10 @@ DataFrame mixes rows that belong to different analyses.
 
 ### Computing durations from timestamps
 
-The most common transformation is computing the elapsed time between two date columns. Subtract the
-enrollment date from the exit date and convert the result to your preferred time unit. Polars
-returns a `Duration` type from date subtraction; `.dt.total_days()` gives integer days, which you
-then cast to float for `Surv`.
+The most common transformation is computing the elapsed time between two date columns. Rather than
+subtracting them yourself, describe the time with `gw.duration()`. It names the two columns and the
+unit, and Greenwood computes the difference when it reads the data. The outcome column needs no
+recoding either, since `event_value=` says which value marks the event.
 
 ```{python}
 import polars as pl
@@ -169,17 +192,15 @@ study = pl.DataFrame({
     "exit":    ["2022-01-10", "2021-09-22", "2023-01-01",
                 "2021-12-05", "2022-08-14", "2022-03-30"],
     "outcome": ["died", "censored", "censored", "died", "withdrew", "died"],
-}).with_columns(
-    pl.col("enroll", "exit").cast(pl.Date)
-).with_columns(
-    # Subtract dates to get a Duration, then convert to float days
-    time=(pl.col("exit") - pl.col("enroll")).dt.total_days().cast(pl.Float64),
-    # True only for "died"; censored and withdrew both become censored observations
-    event=(pl.col("outcome") == "died"),
-)
+}).with_columns(pl.col("enroll", "exit").cast(pl.Date))
 
-# Build the right-censored response from the computed columns
-y = gw.Surv.right(study["time"], event=study["event"])
+# The time is the gap between the two dates in days, and only "died" is an event
+y = gw.Surv.right(
+    time=gw.duration(start="enroll", end="exit", unit="days"),
+    event="outcome",
+    data=study,
+    event_value="died",
+)
 
 # Display the response summary
 y
@@ -187,19 +208,28 @@ y
 
 A few things to notice in this example. First, the `outcome` column uses three values: `"died"` (the
 event), `"censored"` (lost to follow-up at the exit date), and `"withdrew"` (left the study early).
-All three map cleanly to a boolean event indicator: the event is `True` only for `"died"`, and all
-other outcomes become censored observations. Second, the exit date serves the same role regardless
-of the reason for exit: it is always the last time at which the subject was observed, and the event
-indicator records what happened at that time.
+With `event_value="died"`, the event is recorded only for `"died"`, and all other outcomes become
+censored observations. Second, the exit date serves the same role regardless of the reason for exit:
+it is always the last time at which the subject was observed, and the event column records what
+happened at that time. The `unit=` argument also accepts `"weeks"`, `"months"`, and `"years"`
+(months and years use average lengths of 30.4375 and 365.25 days), and the date columns can be
+dates, datetimes, or ISO date strings.
 
 ::: {.callout-note}
 ## Missing values
 
-`Surv` raises an error if `time` or `event` contains null values. Drop or impute missing rows before
-constructing the response:
+`Surv` raises an error if a response column contains missing values, because it has no way to drop
+the matching rows from your covariates. Describe the response with `gw.Outcome` instead and fit with
+`data=`. Every row with a missing value in any column the model uses is then dropped once, and the
+printout reports how many:
 
 ```python
-study_clean = study.drop_nulls(subset=["time", "event"])
+visit = gw.Outcome.right(
+    time=gw.duration(start="enroll", end="exit"),
+    event="outcome",
+    event_value="died",
+)
+gw.KaplanMeier().fit(visit, data=study)
 ```
 :::
 
@@ -207,17 +237,17 @@ study_clean = study.drop_nulls(subset=["time", "event"])
 
 Some datasets store multiple outcome levels in a single integer status column. `pbc` is a typical
 example: `status` is `0` (censored), `1` (transplant), or `2` (dead). The right encoding depends on
-the analysis you intend to run.
+the analysis you intend to run, and each choice is one argument.
 
 ```{python}
-# Load the pbc dataset; its status column has three levels (0, 1, 2)
+# Load the pbc dataset, whose status column has three levels (0, 1, 2)
 pbc = gw.load_dataset("pbc", backend="polars")
 
-# All-cause analysis: transplant and death are both events
-y_all = gw.Surv.right(pbc["time"], event=(pbc["status"] > 0))
+# All-cause analysis: anything other than 0 is an event
+y_all = gw.Surv.right(time="time", event="status", data=pbc, censor_value=0)
 
 # Death-only: transplant becomes censoring (patient still alive at last contact)
-y_death = gw.Surv.right(pbc["time"], event=(pbc["status"] == 2))
+y_death = gw.Surv.right(time="time", event="status", data=pbc, event_value=2)
 
 # Compare event counts between the two endpoint definitions
 print("all-cause: ", y_all)
@@ -227,8 +257,9 @@ print("death-only:", y_death)
 The event counts differ because 25 subjects reached transplant rather than death: the all-cause
 endpoint treats them as events, the death-only endpoint treats them as censored. Which is correct
 depends entirely on your research question. For a competing-risks analysis that keeps the two
-outcomes separate, pass the full `status` column to `AalenJohansen` or `FineGray` with explicit
-event codes. See the competing-risks chapter for that pattern.
+outcomes separate, map each outcome to its code with
+`gw.Surv.multistate(time="time", event="status", data=pbc, states={"transplant": 1, "death": 2})`.
+See the competing-risks chapter for that pattern.
 
 ### Filtering multi-endpoint frames
 
@@ -245,16 +276,24 @@ colon = gw.load_dataset("colon", backend="polars")
 recurrence = colon.filter(pl.col("etype") == 1)
 
 # Build the response from the filtered frame (929 patients, not 1858 rows)
-y_recur = gw.Surv.right(recurrence["time"], event=recurrence["status"])
+y_recur = gw.Surv.right(time="time", event="status", data=recurrence)
 
 # Display the response summary
 y_recur
 ```
 
 The same principle applies to `mgus2`, which stores its two competing endpoints in separate column
-pairs (`ptime`/`pstat` for progression, `futime`/`death` for death) rather than separate rows. There
-you select the column pair that matches the endpoint you want, or pass both to a competing-risks
-model.
+pairs (`ptime`/`pstat` for progression, `futime`/`death` for death) rather than separate rows. For a
+single endpoint, pick the matching pair. For a competing-risks analysis, `gw.Surv.first_event()`
+combines the pairs: the earliest observed event becomes the cause, ties go to the endpoint listed
+first, and subjects with no event are censored at their last follow-up time.
+
+```{python}
+mgus2 = gw.load_dataset("mgus2", backend="polars")
+
+# One (time, event) pair per endpoint, in priority order for ties
+gw.Surv.first_event(endpoints={"pcm": ("ptime", "pstat"), "death": ("futime", "death")}, data=mgus2)
+```
 
 ## Tidy output frames
 
@@ -265,12 +304,12 @@ installed, otherwise Pandas, otherwise PyArrow). This makes the results easy to 
 join, or pass on to a plotting or table library.
 
 ```{python}
-# Load data and build the response
+# Load data and describe the response
 lung = gw.load_dataset("lung", backend="polars")
-y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+death = gw.Outcome.right(time="time", event="status", event_value=2)
 
 # Fit a Cox model with three covariates
-cox = gw.CoxPH().fit(y, lung[["age", "sex", "ph.ecog"]])
+cox = gw.CoxPH().fit(death, covariates=["age", "sex", "ph.ecog"], data=lung)
 
 # Retrieve the one-row model summary: n, events, log-likelihood, AIC
 gw.glance(cox, format="polars")
@@ -319,7 +358,8 @@ throughout this guide.
 ## Event coding
 
 `status` uses the R-style `1`/`2` convention: `1` = censored, `2` = dead. Build the response as
-`Surv.right(time, event=(status == 2))`.
+`Surv.right(time="time", event="status", data=lung, event_value=2)`, or write
+`Surv(time, status == 2)` in a formula.
 :::
 
 ```{python}
@@ -385,15 +425,15 @@ Greenwood.
 **Model fit:** `pbc` is the standard choice for `CoxPH` with many covariates and for `CoxNet`
 (penalized Cox) when you want automatic variable selection or regularization. The Royston-Parmar
 flexible parametric model also fits well here. Because `status` has three levels, you can treat
-transplant and death as a combined endpoint (`event=(status > 0)`) for a standard right-censored
+transplant and death as a combined endpoint (`censor_value=0`) for a standard right-censored
 analysis, or separate them into competing events for `AalenJohansen` and `FineGray`.
 
 ::: {.callout-note}
 ## Event coding
 
 `status` has three levels: `0` = censored, `1` = transplant, `2` = dead. For an all-cause analysis
-use `event=(status > 0)`. For competing risks, pass the full column with explicit event codes to
-`AalenJohansen` or `FineGray`.
+use `censor_value=0`, and for death only use `event_value=2`. For competing risks, map both outcomes
+with `states={"transplant": 1, "death": 2}` and pass the response to `AalenJohansen` or `FineGray`.
 :::
 
 ```{python}
@@ -422,7 +462,9 @@ setup for `AalenJohansen` and `FineGray`.
 
 ```{python}
 #| echo: false
-gd.tbl_explorer(gw.load_dataset("colon"), caption="colon: 1858 rows (2 endpoints per patient), 16 variables")
+gd.tbl_explorer(
+    gw.load_dataset("colon"), caption="colon: 1858 rows (2 endpoints per patient), 16 variables"
+)
 ```
 
 ### `mgus2`: Monoclonal gammopathy
@@ -442,7 +484,9 @@ progression, `1` = progressed), `futime` (months to death or censoring), `death`
 
 **Model fit:** `mgus2` is designed for competing-risks analysis. Use `AalenJohansen` for
 non-parametric cumulative incidence functions and `FineGray` for regression on the cause-specific
-subdistribution hazard. The `MultiState` model can extend the analysis to a three-state
+subdistribution hazard. Build the competing-risks response with `Surv.first_event()` (or
+`Outcome.first_event()`), which combines the two column pairs. The `MultiState` model can extend
+the analysis to a three-state
 illness-death structure (MGUS -> progression -> death). The competing-risks page of this guide
 builds its examples entirely on this dataset.
 
@@ -456,8 +500,9 @@ gd.tbl_explorer(gw.load_dataset("mgus2"), caption="mgus2: 1384 patients, 11 vari
 
 Several of these datasets follow R's convention rather than the `0`/`1` convention for the status
 column. `lung` codes status as `1` = censored and `2` = dead. `pbc` uses three levels (`0`/`1`/`2`).
-Always inspect the column and convert it explicitly when building the response. See
-[Survival data](03-survival-data.qmd) for why Greenwood does not guess at event coding.
+Always inspect the column and declare its coding with `event_value=` or `censor_value=` when you
+build the response. See [Survival data](03-survival-data.qmd) for why Greenwood does not guess at
+event coding.
 :::
 
 ## Next steps
