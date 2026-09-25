@@ -20,7 +20,7 @@ right-censored data with Breslow ties.
 from __future__ import annotations
 
 import warnings
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -288,14 +288,14 @@ def _to_labels(values: Any, n: int, name: str) -> Array:
     return labels
 
 
-def _formula_design(formula: str, data: Any) -> tuple[Array, list[str]]:
+def _formula_design_spec(formula: str, data: Any) -> tuple[Array, list[str], DesignSpec]:
     """Build a design matrix from a Wilkinson formula (right-hand side) via formulaic.
 
     `formula` is the right-hand side only (no `~`), for example `"age + sex + ph.ecog"`,
     `"age + C(celltype)"`, or `"age * sex"`. The intercept column that formulaic adds is dropped,
     so the result matches the no-intercept design the models expect (an AFT adds its own intercept).
     Missing values are preserved so the caller's complete-case handling drops the same rows as the
-    response.
+    response. The returned `DesignSpec` keeps formulaic's model spec for `predict()`.
     """
     try:
         from formulaic import model_matrix  # pyright: ignore[reportMissingImports]
@@ -306,15 +306,99 @@ def _formula_design(formula: str, data: Any) -> tuple[Array, list[str]]:
         ) from error
     if data is None:
         raise ValueError("A formula string requires the `data` argument.")
-    import narwhals as nw  # pyright: ignore[reportMissingImports]  # installed + typed; pyright quirk
-
-    # Normalize any backend (pandas, Polars, PyArrow, ...) to pandas for formulaic.
-    frame = nw.from_native(data, eager_only=True).to_pandas()
-    matrix = model_matrix(f"~ {formula}", frame, na_action="ignore")
+    matrix = model_matrix(f"~ {formula}", _to_pandas(data), na_action="ignore")
     names = [c for c in matrix.columns if c != "Intercept"]
     if not names:
         raise ValueError("The formula produced no covariates.")
-    return np.asarray(matrix[names].to_numpy(), dtype=float), list(names)
+    spec = DesignSpec(kind="formula", names=tuple(names), model_spec=matrix.model_spec)
+    return np.asarray(matrix[names].to_numpy(), dtype=float), list(names), spec
+
+
+def _to_pandas(data: Any) -> Any:
+    """Normalize any backend (pandas, Polars, PyArrow, DuckDB, lazy frames) to pandas."""
+    import narwhals as nw  # pyright: ignore[reportMissingImports]  # installed + typed; pyright quirk
+
+    frame: Any = nw.from_native(data)
+    if isinstance(frame, nw.LazyFrame):
+        frame = frame.collect()
+    return frame.to_pandas()
+
+
+@dataclass(frozen=True)
+class DesignSpec:
+    """How a model's covariate design was built, so `predict()` can rebuild it from new data.
+
+    Recorded at fit time. For a data frame of covariates it keeps the source column names and the
+    levels of each non-numeric column. For a formula it keeps formulaic's model spec. Either way,
+    `transform()` can then build the same design from any frame that holds those columns: extra
+    columns are ignored, columns are matched by name rather than position, and categorical columns
+    are coded with the levels seen at fit time. Array designs pass through unchanged.
+    """
+
+    kind: str
+    names: tuple[str, ...]
+    columns: tuple[str, ...] = ()
+    levels: tuple[tuple[Any, ...] | None, ...] = ()
+    model_spec: Any = field(default=None, compare=False)
+
+    def transform(self, newdata: Any, data: Any = None) -> Array:
+        """Build the fitted design from `newdata` (a frame, an array, or a formula with `data`)."""
+        if isinstance(newdata, str):
+            if self.kind == "formula" and data is not None:
+                newdata = data
+            else:
+                return self._check_width(_design_matrix(newdata, data)[0])
+        if isinstance(newdata, np.ndarray):
+            x = np.asarray(newdata, dtype=float)
+            if x.ndim != 2:
+                raise ValueError("A covariate array must be 2-D (n_obs x n_features).")
+            return self._check_width(x)
+        if self.kind == "array":
+            return self._check_width(_design_matrix(newdata)[0])
+        if self.kind == "formula":
+            matrix = self.model_spec.get_model_matrix(_to_pandas(newdata), na_action="ignore")
+            return np.asarray(matrix[list(self.names)].to_numpy(), dtype=float)
+        return self._frame_design(newdata)
+
+    def _check_width(self, x: Array) -> Array:
+        if x.shape[1] != len(self.names):
+            raise ValueError(
+                f"`newdata` gives {x.shape[1]} covariate column(s), but the model was fit with "
+                f"{len(self.names)}: {list(self.names)}."
+            )
+        return x
+
+    def _frame_design(self, newdata: Any) -> Array:
+        import narwhals as nw  # pyright: ignore[reportMissingImports]  # installed + typed; pyright quirk
+
+        from ._ingest import select_columns
+
+        frame: Any = nw.from_native(newdata)
+        available = [str(c) for c in frame.collect_schema().names()]
+        missing = [c for c in self.columns if c not in available]
+        if missing:
+            raise ValueError(
+                f"`newdata` is missing the column(s) {missing} that the model was fit with. It "
+                f"needs every covariate column ({list(self.columns)}), and other columns are "
+                "ignored."
+            )
+        eager = select_columns(frame, list(self.columns))
+        out: list[Array] = []
+        for name, levels in zip(self.columns, self.levels, strict=True):
+            values = eager.get_column(name).to_numpy()
+            if levels is None:
+                out.append(np.asarray(values, dtype=float))
+                continue
+            seen = {v for v in values.tolist() if v is not None}
+            unseen = sorted(str(v) for v in seen - set(levels))
+            if unseen:
+                raise ValueError(
+                    f"Column {name!r} in `newdata` has level(s) {unseen} that were not present "
+                    f"when the model was fit (known levels: {[str(v) for v in levels]})."
+                )
+            for level in levels[1:]:
+                out.append((values == level).astype(float))
+        return np.column_stack(out)
 
 
 def _design_matrix(covariates: Any, data: Any = None) -> tuple[Array, list[str]]:
@@ -324,32 +408,47 @@ def _design_matrix(covariates: Any, data: Any = None) -> tuple[Array, list[str]]
     Narwhals-compatible dataframe. Numeric columns pass through; non-numeric columns are
     treatment-coded (drop-first dummies) with names like `celltypesmallcell`.
     """
+    x, names, _ = _design_matrix_spec(covariates, data)
+    return x, names
+
+
+def _design_matrix_spec(covariates: Any, data: Any = None) -> tuple[Array, list[str], DesignSpec]:
+    """Like `_design_matrix()`, and also return the `DesignSpec` that `predict()` reuses."""
     if isinstance(covariates, str):
-        return _formula_design(covariates, data)
+        return _formula_design_spec(covariates, data)
     if isinstance(covariates, np.ndarray):
         x = np.asarray(covariates, dtype=float)
         if x.ndim != 2:
             raise ValueError("A covariate array must be 2-D (n_obs x n_features).")
-        return x, [f"x{i}" for i in range(x.shape[1])]
+        names = [f"x{i}" for i in range(x.shape[1])]
+        return x, names, DesignSpec(kind="array", names=tuple(names))
 
     import narwhals as nw  # pyright: ignore[reportMissingImports]  # installed + typed; pyright quirk
 
     frame = nw.from_native(covariates, eager_only=True)
     columns: list[Array] = []
-    names: list[str] = []
+    names = []
+    sources: list[str] = []
+    source_levels: list[tuple[Any, ...] | None] = []
     for name in frame.columns:
         values = frame[name].to_numpy()
+        sources.append(name)
         if values.dtype.kind in "iufb":
             columns.append(values.astype(float))
             names.append(name)
+            source_levels.append(None)
         else:
             levels = sorted({v for v in values.tolist() if v is not None})
+            source_levels.append(tuple(levels))
             for level in levels[1:]:  # drop the first level as the reference
                 columns.append((values == level).astype(float))
                 names.append(f"{name}{level}")
     if not columns:
         raise ValueError("No covariates found.")
-    return np.column_stack(columns), names
+    spec = DesignSpec(
+        kind="frame", names=tuple(names), columns=tuple(sources), levels=tuple(source_levels)
+    )
+    return np.column_stack(columns), names, spec
 
 
 def _zph_test(
@@ -951,7 +1050,7 @@ class CoxPH:
                     "robust/cluster variance."
                 )
 
-        x, names = _design_matrix(covariates, data)
+        x, names, self._design_spec = _design_matrix_spec(covariates, data)
         if x.shape[0] != surv.n:
             raise ValueError("Covariates and response must have the same number of rows.")
 
@@ -1633,6 +1732,8 @@ class CoxPH:
         newdata
             Covariate design for prediction. If None, predictions are made on the fitted data. Can
             be a 2-D array or dataframe. Mutually exclusive with `trajectory`.
+            A data frame may also hold other columns. The covariates are picked out by name and
+            coded as they were at fit time, so the frame the model was fit on can be passed as is.
         type
             Type of prediction: `"lp"` (centered linear predictor, default), `"risk"` (exp of linear
             predictor), or `"survival"` (survival probability).
@@ -1744,10 +1845,7 @@ class CoxPH:
                 trajectory, times=times, strata=strata, ci=ci, format=format
             )
 
-        if newdata is None:
-            x = self._x
-        else:
-            x, _ = _design_matrix(newdata)
+        x = self._x if newdata is None else self._design_spec.transform(newdata)
 
         if type == "lp":
             return self._linear_predictor(x)
@@ -1885,6 +1983,8 @@ class CoxPH:
         newdata
             Covariate design for prediction. If `None`, predictions are made on the fitted data. Can
             be a 2-D array or DataFrame.
+            A data frame may also hold other columns. The covariates are picked out by name and
+            coded as they were at fit time, so the frame the model was fit on can be passed as is.
         p
             Failure probability or probabilities at which to compute quantiles. Can be a scalar
             (e.g., `0.5` for median) or array-like (e.g., `[0.25, 0.5, 0.75]` for quartiles). Must
@@ -1930,10 +2030,7 @@ class CoxPH:
         if np.any(p_arr <= 0.0) or np.any(p_arr >= 1.0):
             raise ValueError("p must be in (0, 1).")
 
-        if newdata is None:
-            x = self._x
-        else:
-            x, _ = _design_matrix(newdata)
+        x = self._x if newdata is None else self._design_spec.transform(newdata)
 
         baseline_list = self._baseline()
         stratum_baseline: dict[Any, tuple[Array, Array]] = {
@@ -2032,6 +2129,8 @@ class CoxPH:
         newdata
             Covariate design for prediction. If `None`, predictions are made on the fitted data. Can
             be a 2-D array or DataFrame.
+            A data frame may also hold other columns. The covariates are picked out by name and
+            coded as they were at fit time, so the frame the model was fit on can be passed as is.
         strata
             Stratum labels for new subjects (required when `newdata` is provided and the model was
             fitted with `strata=`). One label per row of `newdata`.
@@ -2062,7 +2161,7 @@ class CoxPH:
         With confidence intervals:
 
         ```{python}
-        cox.predict_median(lung[["age", "sex"]][:3], ci=True, format="polars")
+        cox.predict_median(lung[:3], ci=True, format="polars")
         ```
         """
         return self.predict_quantile(newdata, p=0.5, strata=strata, ci=ci, format=format)
@@ -2092,6 +2191,8 @@ class CoxPH:
         newdata
             Covariate design for prediction. If `None`, predictions are made on the fitted data. Can
             be a 2-D array or DataFrame.
+            A data frame may also hold other columns. The covariates are picked out by name and
+            coded as they were at fit time, so the frame the model was fit on can be passed as is.
         tau
             The restriction time (time horizon). Must be positive.
         strata
@@ -2135,10 +2236,7 @@ class CoxPH:
 
         tau_arr = np.atleast_1d(np.asarray(tau_val, dtype=float))
 
-        if newdata is None:
-            x = self._x
-        else:
-            x, _ = _design_matrix(newdata)
+        x = self._x if newdata is None else self._design_spec.transform(newdata)
 
         baseline_list = self._baseline()
         stratum_baseline: dict[Any, tuple[Array, Array]] = {
@@ -2254,7 +2352,7 @@ class CoxPH:
         if not cov_cols:
             raise ValueError("trajectory has no covariate columns (only tstart and tstop).")
 
-        x_traj, _ = _design_matrix(nw.to_native(traj_nw.select(cov_cols)))
+        x_traj = self._design_spec.transform(nw.to_native(traj_nw.select(cov_cols)))
         tstart = np.asarray(traj_nw["tstart"].to_list(), dtype=float)
         tstop = np.asarray(traj_nw["tstop"].to_list(), dtype=float)
 
