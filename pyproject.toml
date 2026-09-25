@@ -81,6 +81,7 @@ dev = [
     "altair>=6",
     "vl-convert-python>=1.9",
     "numba>=0.59",
+    "duckdb>=1.0",
 ]
 docs = [
     "jupyter",
@@ -93,7 +94,8 @@ docs = [
     "vl-convert-python>=1.9",
     "plotnine>=0.13",
     "formulaic>=1.0",
-    "great-tables>=0.22"
+    "great-tables>=0.22",
+    "duckdb>=1.0"
 ]
 
 [project.urls]
