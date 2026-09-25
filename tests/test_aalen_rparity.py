@@ -1,8 +1,7 @@
 """R-parity tests for the Aalen additive hazards model.
 
-Validates coefficient increments, cumulative coefficients, and summary
-statistics against values computed by R's ``survival::aareg`` (fixtures:
-aalen_lung_age_sex.json, aalen_veteran.json).
+Validates coefficient increments, cumulative coefficients, and summary statistics against values
+computed by R's `survival::aareg` (fixtures: aalen_lung_age_sex.json, aalen_veteran.json).
 """
 
 from __future__ import annotations
