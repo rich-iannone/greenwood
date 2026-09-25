@@ -96,7 +96,7 @@ def plot_influence(
 
     lung = gw.load_dataset("lung", backend="polars")
     y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-    cox = gw.CoxPH().fit(y, covariates=lung[["age", "sex"]])
+    cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
 
     gw.plot_influence(cox)
     ```

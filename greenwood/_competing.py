@@ -378,13 +378,13 @@ def grays_test(
     cause = mg["pstat"].where(mg["pstat"] == 1, 2 * mg["death"])
     cr = gw.Surv.multistate(time=etime, event=cause, states=("pcm", "death"))
 
-    gw.grays_test(cr, group=mg["sex"], cause="pcm")
+    gw.grays_test(cr, group="sex", cause="pcm", data=mg)
     ```
 
     Test the other cause (death) across groups:
 
     ```{python}
-    gw.grays_test(cr, group=mg["sex"], cause="death")
+    gw.grays_test(cr, group="sex", cause="death", data=mg)
     ```
     """
     bound = bind_fit_inputs(
@@ -618,7 +618,7 @@ class AalenJohansen:
 
         ```{python}
         # Fit cumulative incidence stratified by sex
-        aj_stratified = gw.AalenJohansen().fit(cr, by=mg["sex"])
+        aj_stratified = gw.AalenJohansen().fit(cr, by="sex", data=mg)
         aj_stratified
         ```
         """
@@ -813,7 +813,7 @@ class FineGray:
     cr = gw.Surv.multistate(time=etime, event=cause, states=("pcm", "death"))
 
     # Fit the Fine-Gray subdistribution hazard model for pcm
-    fg = gw.FineGray(cause="pcm").fit(cr, covariates=mg[["age", "sex"]])
+    fg = gw.FineGray(cause="pcm").fit(cr, covariates=["age", "sex"], data=mg)
     fg
     ```
 
@@ -932,7 +932,7 @@ class FineGray:
         cr = gw.Surv.multistate(time=etime, event=cause, states=("pcm", "death"))
 
         # Fit the Fine-Gray subdistribution hazard model for pcm
-        fg = gw.FineGray(cause="pcm").fit(cr, covariates=mg[["age", "sex"]])
+        fg = gw.FineGray(cause="pcm").fit(cr, covariates=["age", "sex"], data=mg)
         fg
         ```
 
@@ -1270,7 +1270,7 @@ class FineGray:
         etime = mg["ptime"].where(mg["pstat"] == 1, mg["futime"])
         cause = mg["pstat"].where(mg["pstat"] == 1, 2 * mg["death"])
         cr = gw.Surv.multistate(time=etime, event=cause, states=("pcm", "death"))
-        fg = gw.FineGray(cause="pcm").fit(cr, covariates=mg[["age", "sex"]])
+        fg = gw.FineGray(cause="pcm").fit(cr, covariates=["age", "sex"], data=mg)
 
         # Export the coefficient table as a Polars DataFrame
         fg.to_frame(format="polars")
@@ -1332,7 +1332,7 @@ class PenalizedFineGray:
     cr = gw.Surv.multistate(time=etime, event=cause, states=("pcm", "death"))
 
     pfg = gw.PenalizedFineGray(cause="pcm", penalizer=0.01, l1_ratio=1.0)
-    pfg.fit(cr, covariates=mg[["age", "sex"]])
+    pfg.fit(cr, covariates=["age", "sex"], data=mg)
     pfg
     ```
     """
@@ -1664,14 +1664,14 @@ class CauseSpecificCox:
     cause = np.where(mg["pstat"] == 1, 1, 2 * mg["death"])
     cr = gw.Surv.multistate(time=etime, event=cause, states=("pcm", "death"))
 
-    csc = gw.CauseSpecificCox(cause="pcm").fit(cr, covariates=mg[["age", "sex"]])
+    csc = gw.CauseSpecificCox(cause="pcm").fit(cr, covariates=["age", "sex"], data=mg)
     csc
     ```
 
     Compare cause-specific hazard ratios for both causes side by side:
 
     ```{python}
-    csc_death = gw.CauseSpecificCox(cause="death").fit(cr, covariates=mg[["age", "sex"]])
+    csc_death = gw.CauseSpecificCox(cause="death").fit(cr, covariates=["age", "sex"], data=mg)
     gw.tidy(csc, exponentiate=True, format="polars")
     ```
     """
@@ -2102,7 +2102,7 @@ class MultiState:
 
         ```{python}
         # Predict occupancy probabilities at specific follow-up times
-        ms.predict([60, 120, 240], format="polars")
+        ms.predict(times=[60, 120, 240], format="polars")
         ```
         """
         from ._surv import _to_1d_array

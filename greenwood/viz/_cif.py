@@ -245,7 +245,7 @@ def plot_cif(
 
     ```{python}
     # Stratify by sex and compare groups across causes
-    aj_sex = gw.AalenJohansen().fit(y, by=mg["sex"])
+    aj_sex = gw.AalenJohansen().fit(y, by="sex", data=mg)
     gw.plot_cif(aj_sex, title="Cumulative incidence by sex")
     ```
 

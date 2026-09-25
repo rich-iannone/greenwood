@@ -260,7 +260,7 @@ def event_table(
 
     ```{python}
     # Stratify the event table by sex
-    et_sex = gw.event_table(y, group=lung["sex"])
+    et_sex = gw.event_table(y, group="sex", data=lung)
     et_sex.to_frame(format="polars").head(15)
     ```
 

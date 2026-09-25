@@ -225,7 +225,7 @@ class MixtureCure:
     e1684 = gw.load_dataset("e1684", backend="polars")
     y = gw.Surv.right(time=e1684["FAILTIME"], event=e1684["FAILCENS"])
 
-    cure = gw.MixtureCure().fit(y, latency=e1684[["TRT"]], cure=e1684[["TRT"]])
+    cure = gw.MixtureCure().fit(y, latency=["TRT"], data=e1684, cure=["TRT"])
     cure
     ```
     """

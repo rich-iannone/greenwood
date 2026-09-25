@@ -91,7 +91,7 @@ class RMSTResult:
     y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
     # Compare one-year RMST between sex groups
-    result = gw.rmst_test(y, tau=365, group=lung["sex"])
+    result = gw.rmst_test(y, tau=365, group="sex", data=lung)
     result
     ```
 
@@ -382,7 +382,7 @@ def rmst_test(
     y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
     # Test for one-year RMST difference between sex groups
-    result = gw.rmst_test(y, tau=365, group=lung["sex"])
+    result = gw.rmst_test(y, tau=365, group="sex", data=lung)
     result
     ```
 
@@ -404,7 +404,7 @@ def rmst_test(
 
     ```{python}
     # Compare RMST as a ratio instead of a difference
-    gw.rmst_test(y, tau=365, group=lung["sex"], estimand="ratio")
+    gw.rmst_test(y, tau=365, group="sex", estimand="ratio", data=lung)
     ```
     """
     bound = bind_fit_inputs(
@@ -570,7 +570,7 @@ def rmst_diff(
     y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
     # Compute the one-year RMST difference as a tidy DataFrame
-    gw.rmst_diff(y, tau=365, group=lung["sex"])
+    gw.rmst_diff(y, tau=365, group="sex", data=lung)
     ```
     """
     bound = bind_fit_inputs(
@@ -702,7 +702,7 @@ def pairwise_rmst_test(
     y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
     # Run pairwise RMST comparisons with Holm-adjusted p-values
-    gw.pairwise_rmst_test(y, tau=365, group=lung["sex"], format="polars")
+    gw.pairwise_rmst_test(y, tau=365, group="sex", format="polars", data=lung)
     ```
     """
     bound = bind_fit_inputs(

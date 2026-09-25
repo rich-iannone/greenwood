@@ -156,7 +156,7 @@ class BuckleyJames:
     y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
     # Fit a Buckley-James model
-    bj = gw.BuckleyJames().fit(y, covariates=lung[["age", "sex"]])
+    bj = gw.BuckleyJames().fit(y, covariates=["age", "sex"], data=lung)
     bj
     ```
     """
@@ -241,7 +241,7 @@ class BuckleyJames:
         lung = gw.load_dataset("lung", backend="polars")
         y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
-        bj = gw.BuckleyJames().fit(y, covariates=lung[["age", "sex"]])
+        bj = gw.BuckleyJames().fit(y, covariates=["age", "sex"], data=lung)
         bj
         ```
         """
@@ -395,9 +395,9 @@ class BuckleyJames:
 
         lung = gw.load_dataset("lung", backend="polars")
         y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-        bj = gw.BuckleyJames().fit(y, covariates=lung[["age", "sex"]])
+        bj = gw.BuckleyJames().fit(y, covariates=["age", "sex"], data=lung)
 
-        bj.predict(lung[["age", "sex"]][:2], type="survival", times=[180, 365, 730],
+        bj.predict(lung[:2], type="survival", times=[180, 365, 730],
                    format="polars")
         ```
         """
@@ -452,7 +452,7 @@ class BuckleyJames:
 
         lung = gw.load_dataset("lung", backend="polars")
         y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-        bj = gw.BuckleyJames(n_boot=200, seed=0).fit(y, covariates=lung[["age", "sex"]])
+        bj = gw.BuckleyJames(n_boot=200, seed=0).fit(y, covariates=["age", "sex"], data=lung)
         bj.to_frame(format="polars")
         ```
         """

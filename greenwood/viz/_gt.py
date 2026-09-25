@@ -47,7 +47,7 @@ def risk_table(km: KaplanMeier, times: Any = None) -> Any:
     # Load data and fit a stratified Kaplan-Meier estimator
     lung = gw.load_dataset("lung", backend="polars")
     y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-    km = gw.KaplanMeier().fit(y, by=lung["sex"])
+    km = gw.KaplanMeier().fit(y, by="sex", data=lung)
 
     # Produce a publication-ready numbers-at-risk table
     gw.risk_table(km, times=[0, 250, 500, 750, 1000])

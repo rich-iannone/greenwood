@@ -183,7 +183,7 @@ def tidy(model: object, **kwargs: Any) -> Any:
     # Load data, build a right-censored response, and fit a Cox model
     lung = gw.load_dataset("lung", backend="polars")
     y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-    cox = gw.CoxPH().fit(y, covariates=lung[["age", "sex"]])
+    cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
 
     # Tidy the coefficients into a Polars DataFrame
     gw.tidy(cox, format="polars")
@@ -221,7 +221,7 @@ def glance(model: object, **kwargs: Any) -> Any:
     # Load data, build a right-censored response, and fit a Cox model
     lung = gw.load_dataset("lung", backend="polars")
     y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-    cox = gw.CoxPH().fit(y, covariates=lung[["age", "sex"]])
+    cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
 
     # Glance at overall model-fit statistics
     gw.glance(cox, format="polars")

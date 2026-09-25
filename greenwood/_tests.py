@@ -86,7 +86,7 @@ class TestResult:
     y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
     # Run a log-rank test comparing survival by sex
-    result = gw.logrank_test(y, group=lung["sex"])
+    result = gw.logrank_test(y, group="sex", data=lung)
     result
     ```
 
@@ -378,7 +378,7 @@ def logrank_test(
     y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
     # Test whether survival differs between the two sex groups
-    result = gw.logrank_test(y, group=lung["sex"])
+    result = gw.logrank_test(y, group="sex", data=lung)
     result
     ```
 
@@ -400,7 +400,7 @@ def logrank_test(
 
     ```{python}
     # Use Peto-Peto weighting to emphasize early event times
-    gw.logrank_test(y, group=lung["sex"], rho=1, gamma=0)
+    gw.logrank_test(y, group="sex", rho=1, gamma=0, data=lung)
     ```
 
     Run a stratified test to control for institution (if available in data):
@@ -664,7 +664,7 @@ def maxcombo_test(
     lung = gw.load_dataset("lung", backend="polars")
     y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
-    result = gw.maxcombo_test(y, group=lung["sex"])
+    result = gw.maxcombo_test(y, group="sex", data=lung)
     result
     ```
 
@@ -677,7 +677,7 @@ def maxcombo_test(
     Use a custom weight set focusing on standard and delayed effects:
 
     ```{python}
-    gw.maxcombo_test(y, group=lung["sex"], weights=[(0, 0), (0, 1)])
+    gw.maxcombo_test(y, group="sex", weights=[(0, 0), (0, 1)], data=lung)
     ```
     """
     bound = bind_fit_inputs(
@@ -877,7 +877,7 @@ def pairwise_logrank_test(
     y = gw.Surv.right(time=vet["time"], event=vet["status"])
 
     # Run a global log-rank test across all cell types
-    gw.logrank_test(y, group=vet["celltype"])
+    gw.logrank_test(y, group="celltype", data=vet)
     ```
 
     The pairwise test compares all six pairs of cell types and returns a table with the
@@ -886,7 +886,7 @@ def pairwise_logrank_test(
 
     ```{python}
     # Compare all pairs of cell types with Holm-adjusted p-values
-    pairs = gw.pairwise_logrank_test(y, group=vet["celltype"], format="polars")
+    pairs = gw.pairwise_logrank_test(y, group="celltype", format="polars", data=vet)
     pairs
     ```
 
@@ -895,7 +895,7 @@ def pairwise_logrank_test(
 
     ```{python}
     # Filter to pairs with statistically significant differences
-    pairs = gw.pairwise_logrank_test(y, group=vet["celltype"], format="pandas")
+    pairs = gw.pairwise_logrank_test(y, group="celltype", format="pandas", data=vet)
     pairs[pairs["p_adjusted"] < 0.05]
     ```
 
@@ -903,7 +903,7 @@ def pairwise_logrank_test(
 
     ```{python}
     # Use Peto-Peto weighting to emphasize early event times
-    gw.pairwise_logrank_test(y, group=vet["celltype"], rho=1, format="polars")
+    gw.pairwise_logrank_test(y, group="celltype", rho=1, format="polars", data=vet)
     ```
 
     Use Benjamini-Hochberg adjustment (less conservative) if you're interested in which pairs
@@ -911,7 +911,7 @@ def pairwise_logrank_test(
 
     ```{python}
     # Use Benjamini-Hochberg correction for false-discovery rate control
-    gw.pairwise_logrank_test(y, group=vet["celltype"], correction="bh", format="polars")
+    gw.pairwise_logrank_test(y, group="celltype", correction="bh", format="polars", data=vet)
     ```
     """
     bound = bind_fit_inputs(
@@ -1073,7 +1073,7 @@ def trend_test(
     y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
     # Default: ECOG grades are sorted and assigned scores 0,1,2,3
-    result = gw.trend_test(y, group=lung["ph.ecog"])
+    result = gw.trend_test(y, group="ph.ecog", data=lung)
     result
     ```
 
@@ -1082,28 +1082,28 @@ def trend_test(
     ```{python}
     # Quadratic scores emphasize the steep decline from ECOG 2 to ECOG 3
     scores = {0: 0, 1: 1, 2: 4, 3: 9}
-    gw.trend_test(y, group=lung["ph.ecog"], scores=scores)
+    gw.trend_test(y, group="ph.ecog", scores=scores, data=lung)
     ```
 
     Use Peto-Peto weighting to emphasize early differences:
 
     ```{python}
     # Peto-Peto: rho=1 gives more weight to early event times
-    gw.trend_test(y, group=lung["ph.ecog"], rho=1, gamma=0)
+    gw.trend_test(y, group="ph.ecog", rho=1, gamma=0, data=lung)
     ```
 
     Use Tarone-Ware weighting to emphasize late differences (gamma=1):
 
     ```{python}
     # Tarone-Ware: gamma=1 gives more weight to late event times
-    gw.trend_test(y, group=lung["ph.ecog"], rho=0, gamma=1)
+    gw.trend_test(y, group="ph.ecog", rho=0, gamma=1, data=lung)
     ```
 
     Stratified by sex to control for a confounder:
 
     ```{python}
     # Stratify by sex to adjust for a known confounder
-    gw.trend_test(y, group=lung["ph.ecog"], strata=lung["sex"])
+    gw.trend_test(y, group="ph.ecog", strata="sex", data=lung)
     ```
     """
     bound = bind_fit_inputs(

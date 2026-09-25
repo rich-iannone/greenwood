@@ -65,7 +65,7 @@ def plot_smooth_hr(
 
     lung = gw.load_dataset("lung", backend="polars")
     y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-    cox = gw.CoxPH().fit(y, covariates=lung[["age", "sex"]])
+    cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
 
     gw.plot_smooth_hr(cox.smooth_hr(term="age"))
     ```
@@ -73,7 +73,7 @@ def plot_smooth_hr(
     Plot on the hazard ratio scale instead:
 
     ```{python}
-    gw.plot_smooth_hr(cox.smooth_hr("age"), scale="hr")
+    gw.plot_smooth_hr(cox.smooth_hr(term="age"), scale="hr")
     ```
     """
     x_label: str = result.term if xlab is None else xlab

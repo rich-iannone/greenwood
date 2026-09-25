@@ -190,7 +190,7 @@ class RoystonParmar:
     y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
     # Fit a flexible model with three spline terms
-    rp = gw.RoystonParmar(df=3).fit(y, covariates=lung[["age", "sex"]])
+    rp = gw.RoystonParmar(df=3).fit(y, covariates=["age", "sex"], data=lung)
     rp
     ```
 
@@ -198,7 +198,7 @@ class RoystonParmar:
 
     ```{python}
     # Fit a flexible proportional-odds model
-    rp_odds = gw.RoystonParmar(df=3, scale="odds").fit(y, covariates=lung[["age", "sex"]])
+    rp_odds = gw.RoystonParmar(df=3, scale="odds").fit(y, covariates=["age", "sex"], data=lung)
     rp_odds
     ```
     """
@@ -304,7 +304,7 @@ class RoystonParmar:
         y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
         # Fit the model with three spline degrees of freedom
-        rp = gw.RoystonParmar(df=3).fit(y, covariates=lung[["age", "sex"]])
+        rp = gw.RoystonParmar(df=3).fit(y, covariates=["age", "sex"], data=lung)
         rp
         ```
 
@@ -312,7 +312,7 @@ class RoystonParmar:
 
         ```{python}
         # Increase spline flexibility to five degrees of freedom
-        rp_flexible = gw.RoystonParmar(df=5).fit(y, covariates=lung[["age", "sex"]])
+        rp_flexible = gw.RoystonParmar(df=5).fit(y, covariates=["age", "sex"], data=lung)
         rp_flexible
         ```
 
@@ -526,11 +526,11 @@ class RoystonParmar:
         # Load data and build a right-censored response
         lung = gw.load_dataset("lung", backend="polars")
         y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-        rp = gw.RoystonParmar(df=3).fit(y, covariates=lung[["age", "sex"]])
+        rp = gw.RoystonParmar(df=3).fit(y, covariates=["age", "sex"], data=lung)
 
         # Predict survival probabilities at 180 and 365 days for two subjects
         rp.predict(
-            lung[["age", "sex"]][:2], type="survival", times=[180, 365], format="polars"
+            lung[:2], type="survival", times=[180, 365], format="polars"
         )
         ```
 
@@ -539,7 +539,7 @@ class RoystonParmar:
         ```{python}
         # Predict instantaneous hazard at the same time points
         rp.predict(
-            lung[["age", "sex"]][:2], type="hazard", times=[180, 365], format="polars"
+            lung[:2], type="hazard", times=[180, 365], format="polars"
         )
         ```
 
@@ -548,7 +548,7 @@ class RoystonParmar:
         ```{python}
         # Predict cumulative hazard at the same time points
         rp.predict(
-            lung[["age", "sex"]][:2], type="cumhaz", times=[180, 365], format="polars"
+            lung[:2], type="cumhaz", times=[180, 365], format="polars"
         )
         ```
 
@@ -629,16 +629,16 @@ class RoystonParmar:
 
         lung = gw.load_dataset("lung", backend="polars")
         y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-        rp = gw.RoystonParmar(df=3).fit(y, covariates=lung[["age", "sex"]])
+        rp = gw.RoystonParmar(df=3).fit(y, covariates=["age", "sex"], data=lung)
 
         # Predicted survival-time quartiles for three subjects
-        rp.predict_quantile(lung[["age", "sex"]][:3], p=[0.25, 0.5, 0.75], format="polars")
+        rp.predict_quantile(lung[:3], p=[0.25, 0.5, 0.75], format="polars")
         ```
 
         With confidence intervals at the median:
 
         ```{python}
-        rp.predict_quantile(lung[["age", "sex"]][:3], p=0.5, ci=True, format="polars")
+        rp.predict_quantile(lung[:3], p=0.5, ci=True, format="polars")
         ```
         """
         from scipy.optimize import brentq
@@ -752,15 +752,15 @@ class RoystonParmar:
 
         lung = gw.load_dataset("lung", backend="polars")
         y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-        rp = gw.RoystonParmar(df=3).fit(y, covariates=lung[["age", "sex"]])
+        rp = gw.RoystonParmar(df=3).fit(y, covariates=["age", "sex"], data=lung)
 
-        rp.predict_median(lung[["age", "sex"]][:3], format="polars")
+        rp.predict_median(lung[:3], format="polars")
         ```
 
         With confidence intervals:
 
         ```{python}
-        rp.predict_median(lung[["age", "sex"]][:3], ci=True, format="polars")
+        rp.predict_median(lung[:3], ci=True, format="polars")
         ```
         """
         return self.predict_quantile(newdata, p=0.5, ci=ci, format=format)
@@ -809,16 +809,16 @@ class RoystonParmar:
 
         lung = gw.load_dataset("lung", backend="polars")
         y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-        rp = gw.RoystonParmar(df=3).fit(y, covariates=lung[["age", "sex"]])
+        rp = gw.RoystonParmar(df=3).fit(y, covariates=["age", "sex"], data=lung)
 
         # Expected survival time up to one year for three subjects
-        rp.predict_expectation(lung[["age", "sex"]][:3], tau=365, format="polars")
+        rp.predict_expectation(lung[:3], tau=365, format="polars")
         ```
 
         With confidence intervals:
 
         ```{python}
-        rp.predict_expectation(lung[["age", "sex"]][:3], tau=365, ci=True, format="polars")
+        rp.predict_expectation(lung[:3], tau=365, ci=True, format="polars")
         ```
         """
         from scipy.integrate import quad
@@ -944,7 +944,7 @@ class RoystonParmar:
         # Load data and build a right-censored response
         lung = gw.load_dataset("lung", backend="polars")
         y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-        rp = gw.RoystonParmar(df=3).fit(y, covariates=lung[["age", "sex"]])
+        rp = gw.RoystonParmar(df=3).fit(y, covariates=["age", "sex"], data=lung)
 
         # Export the coefficient table as a Polars DataFrame
         rp.to_frame(format="polars")

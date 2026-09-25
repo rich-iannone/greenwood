@@ -122,7 +122,7 @@ def theme_forest() -> Any:
     # Load data and fit a Cox model with two covariates
     lung = gw.load_dataset("lung", backend="polars")
     y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-    cox = gw.CoxPH().fit(y, covariates=lung[["age", "sex"]])
+    cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
 
     # Draw a forest plot and apply the minimal forest theme
     gw.plot_forest(cox, backend="plotnine") + gw.theme_forest()
@@ -209,7 +209,7 @@ def plot_forest(
     # Load data and fit a Cox model with three covariates
     lung = gw.load_dataset("lung", backend="polars")
     y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-    cox = gw.CoxPH().fit(y, covariates=lung[["age", "sex", "ph.ecog"]])
+    cox = gw.CoxPH().fit(y, covariates=["age", "sex", "ph.ecog"], data=lung)
 
     # Draw a forest plot of hazard ratios with confidence intervals
     gw.plot_forest(cox)

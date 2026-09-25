@@ -289,7 +289,7 @@ def cross_validate(
 
     # Run 5-fold cross-validation with concordance
     result = gw.cross_validate(
-        gw.CoxPH(), surv=y, covariates=lung[["age", "sex"]], k=5, metric="concordance", seed=1
+        gw.CoxPH(), surv=y, covariates=["age", "sex"], data=lung, k=5, metric="concordance", seed=1
     )
     result
     ```
@@ -321,7 +321,7 @@ def cross_validate(
     ```{python}
     # Evaluate concordance, Brier, and AUC in one pass
     result_multi = gw.cross_validate(
-        gw.CoxPH(), surv=y, covariates=lung[["age", "sex"]], k=5,
+        gw.CoxPH(), surv=y, covariates=["age", "sex"], data=lung, k=5,
         metrics=["concordance", "brier", "auc"],
         times=[180, 365, 540], seed=1
     )

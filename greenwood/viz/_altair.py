@@ -184,7 +184,7 @@ def plot_survival(
 
     lung = gw.load_dataset("lung", backend="polars")
     y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-    km = gw.KaplanMeier().fit(y, by=lung["sex"])
+    km = gw.KaplanMeier().fit(y, by="sex", data=lung)
 
     # Interactive Altair (default)
     gw.plot_survival(km, risk_table=True)

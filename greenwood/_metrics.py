@@ -114,7 +114,7 @@ def concordance_index(surv: Surv | Outcome | str, risk: Any, *, data: Any = None
     # Load data and build a right-censored response
     lung = gw.load_dataset("lung", backend="polars")
     y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-    cox = gw.CoxPH().fit(y, covariates=lung[["age", "sex"]])
+    cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
 
     # Compute the concordance index from the Cox linear predictor
     lp = cox.predict(type="lp")
@@ -250,7 +250,7 @@ def concordance_index_ipcw(
 
     lung = gw.load_dataset("lung", backend="polars")
     y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-    cox = gw.CoxPH().fit(y, covariates=lung[["age", "sex"]])
+    cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
 
     lp = cox.predict(type="lp")
 
@@ -426,11 +426,11 @@ def brier_score(
     # Load data and build a right-censored response
     lung = gw.load_dataset("lung", backend="polars")
     y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-    cox = gw.CoxPH().fit(y, covariates=lung[["age", "sex"]])
+    cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
 
     # Compute Brier scores at three clinically relevant horizons
     times = [180, 365, 540]
-    surv_pred = cox.predict(lung[["age", "sex"]], type="survival", times=times, format="pandas")
+    surv_pred = cox.predict(lung, type="survival", times=times, format="pandas")
     probs = surv_pred.iloc[:, 1:].to_numpy().T
     brier = gw.brier_score(y, survival_prob=probs, times=times)
     brier
@@ -563,11 +563,11 @@ def integrated_brier_score(
     # Load data and build a right-censored response
     lung = gw.load_dataset("lung", backend="polars")
     y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-    cox = gw.CoxPH().fit(y, covariates=lung[["age", "sex"]])
+    cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
 
     # Compute the integrated Brier score across three time horizons
     times = [180, 365, 540]
-    surv_pred = cox.predict(lung[["age", "sex"]], type="survival", times=times, format="pandas")
+    surv_pred = cox.predict(lung, type="survival", times=times, format="pandas")
     probs = surv_pred.iloc[:, 1:].to_numpy().T
     ibs = gw.integrated_brier_score(y, survival_prob=probs, times=times)
     ibs
@@ -591,7 +591,7 @@ def integrated_brier_score(
     # Use a finer time grid for a more robust calibration summary
     times_wide = list(range(100, 700, 50))
     surv_pred_wide = cox.predict(
-        lung[["age", "sex"]], type="survival", times=times_wide, format="pandas"
+        lung, type="survival", times=times_wide, format="pandas"
     )
     probs_wide = surv_pred_wide.iloc[:, 1:].to_numpy().T
     ibs_wide = gw.integrated_brier_score(y, survival_prob=probs_wide, times=times_wide)
@@ -694,10 +694,10 @@ def calibration(
     # Load data and build a right-censored response
     lung = gw.load_dataset("lung", backend="polars")
     y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-    cox = gw.CoxPH().fit(y, covariates=lung[["age", "sex"]])
+    cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
 
     # Assess one-year calibration across five prediction bins
-    surv = cox.predict(lung[["age", "sex"]], type="survival", times=[365.0], format="pandas")
+    surv = cox.predict(lung, type="survival", times=[365.0], format="pandas")
     predicted = surv.iloc[0, 1:].to_numpy()
     gw.calibration(y, predicted=predicted, time=365.0, n_bins=5, format="polars")
     ```
@@ -840,7 +840,7 @@ def time_dependent_auc(
     # Load data and build a right-censored response
     lung = gw.load_dataset("lung", backend="polars")
     y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-    cox = gw.CoxPH().fit(y, covariates=lung[["age", "sex"]])
+    cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
 
     # Compute time-dependent AUC at three clinically relevant horizons
     lp = cox.predict(type="lp")
@@ -967,7 +967,7 @@ def integrated_auc(
     # Load data and build a right-censored response
     lung = gw.load_dataset("lung", backend="polars")
     y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-    cox = gw.CoxPH().fit(y, covariates=lung[["age", "sex"]])
+    cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
 
     # Compute the time-averaged AUC across three horizons
     lp = cox.predict(type="lp")
@@ -2115,7 +2115,7 @@ def concordance_index_ci(
 
     lung = gw.load_dataset("lung", backend="polars")
     y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-    cox = gw.CoxPH().fit(y, covariates=lung[["age", "sex"]])
+    cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
     lp = cox.predict(type="lp")
 
     gw.concordance_index_ci(y, risk=lp)
@@ -2227,8 +2227,8 @@ def concordance_index_compare(
 
     lung = gw.load_dataset("lung", backend="polars")
     y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-    cox1 = gw.CoxPH().fit(y, covariates=lung[["age"]])
-    cox2 = gw.CoxPH().fit(y, covariates=lung[["age", "sex"]])
+    cox1 = gw.CoxPH().fit(y, covariates=["age"], data=lung)
+    cox2 = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
     lp1 = cox1.predict(type="lp")
     lp2 = cox2.predict(type="lp")
 
@@ -2349,10 +2349,10 @@ def score_cr(
     event = np.where(mg["pstat"] == 1, 1, 2 * mg["death"])
     y = gw.Surv.multistate(time=etime, event=event, states=("pcm", "death"))
 
-    fg = gw.FineGray(cause="pcm").fit(y, covariates=mg[["age", "sex"]])
+    fg = gw.FineGray(cause="pcm").fit(y, covariates=["age", "sex"], data=mg)
     eval_times = np.array([120, 240, 360])
     cif_pred = fg.predict_cumulative_incidence(
-        mg[["age", "sex"]], times=eval_times, format="pandas"
+        mg, times=eval_times, format="pandas"
     ).drop(columns="time").values.T
 
     gw.score_cr(y, incidence_prob=cif_pred, cause=1, times=eval_times, format="polars")

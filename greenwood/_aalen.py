@@ -75,7 +75,7 @@ class AalenAdditive:
     lung = gw.load_dataset("lung", backend="polars")
     y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
-    aalen = gw.AalenAdditive().fit(y, covariates=lung[["age", "sex"]])
+    aalen = gw.AalenAdditive().fit(y, covariates=["age", "sex"], data=lung)
     aalen
     ```
     """
@@ -386,9 +386,9 @@ class AalenAdditive:
 
         lung = gw.load_dataset("lung", backend="polars")
         y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-        aalen = gw.AalenAdditive().fit(y, covariates=lung[["age", "sex"]])
+        aalen = gw.AalenAdditive().fit(y, covariates=["age", "sex"], data=lung)
 
-        aalen.predict(lung[["age", "sex"]][:3], times=[180, 365], format="polars")
+        aalen.predict(lung[:3], times=[180, 365], format="polars")
         ```
         """
         from ._cox import _design_matrix

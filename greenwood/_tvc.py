@@ -103,7 +103,7 @@ def split_episodes(
         baseline=baseline, visits=visits, id="id", time="time", event="event", visit_time="day"
     )
     y = gw.Surv.counting(start=long["tstart"], stop=long["tstop"], event=long["event"])
-    cox = gw.CoxPH().fit(y, covariates=long[["bili"]])
+    cox = gw.CoxPH().fit(y, covariates=["bili"], data=long)
     ```
     """
     try:

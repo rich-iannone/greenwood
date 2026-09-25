@@ -538,7 +538,7 @@ class KaplanMeier:
 
         ```{python}
         # Fit stratified curves by sex and plot them
-        km_stratified = gw.KaplanMeier().fit(y, by=lung["sex"])
+        km_stratified = gw.KaplanMeier().fit(y, by="sex", data=lung)
         gw.plot_survival(km_stratified)
         ```
         """
@@ -929,7 +929,7 @@ class KaplanMeier:
 
         ```{python}
         # Evaluate the cumulative hazard at the same time points
-        km.predict([180, 365, 730], what="cumhaz")
+        km.predict(times=[180, 365, 730], what="cumhaz")
         ```
         """
         if what not in ("survival", "cumhaz"):
@@ -1222,7 +1222,7 @@ class NelsonAalen:
 
         ```{python}
         # Fit stratified cumulative hazard curves by sex
-        na_stratified = gw.NelsonAalen().fit(y, by=lung["sex"])
+        na_stratified = gw.NelsonAalen().fit(y, by="sex", data=lung)
         na_stratified
         ```
         """

@@ -335,7 +335,7 @@ class CompetingRiskForest:
     y = gw.Surv.multistate(time=etime, event=cause, states=("pcm", "death"))
 
     crf = gw.CompetingRiskForest(n_estimators=50, random_state=0).fit(
-        y, covariates=mg[["age", "sex"]]
+        y, covariates=["age", "sex"], data=mg
     )
     crf
     ```
