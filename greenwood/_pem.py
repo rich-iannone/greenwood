@@ -20,7 +20,7 @@ import numpy.typing as npt
 from scipy.stats import norm
 
 from ._backends import to_dataframe
-from ._cox import _design_matrix
+from ._cox import _design_matrix_spec
 from ._outcome import bind_fit_inputs
 from ._repr import dropped_note
 
@@ -217,14 +217,16 @@ class PiecewiseExponential:
     lung = gw.load_dataset("lung", backend="polars")
     y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
-    pem = gw.PiecewiseExponential().fit(y, covariates=lung[["age", "sex"]])
+    pem = gw.PiecewiseExponential().fit(y, covariates=["age", "sex"], data=lung)
     pem
     ```
 
     With manual break points:
 
     ```{python}
-    pem_manual = gw.PiecewiseExponential(breaks=[180, 365]).fit(y, covariates=lung[["age", "sex"]])
+    pem_manual = gw.PiecewiseExponential(breaks=[180, 365]).fit(
+        y, covariates=["age", "sex"], data=lung
+    )
     pem_manual.to_frame(format="polars")
     ```
     """
@@ -320,7 +322,9 @@ class PiecewiseExponential:
 
         lung = gw.load_dataset("lung", backend="polars")
         y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-        pem = gw.PiecewiseExponential(breaks=[180, 365]).fit(y, covariates=lung[["age", "sex"]])
+        pem = gw.PiecewiseExponential(breaks=[180, 365]).fit(
+            y, covariates=["age", "sex"], data=lung
+        )
         pem.to_frame(format="polars")
         ```
         """
@@ -346,7 +350,7 @@ class PiecewiseExponential:
                 f"not {surv.type.value!r}."
             )
 
-        design, cov_names = _design_matrix(covariates, data)
+        design, cov_names, self._design_spec = _design_matrix_spec(covariates, data)
         if design.shape[0] != surv.n:
             raise ValueError("Covariates and response must have the same number of rows.")
 
@@ -494,7 +498,9 @@ class PiecewiseExponential:
 
         lung = gw.load_dataset("lung", backend="polars")
         y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-        pem = gw.PiecewiseExponential(breaks=[180, 365]).fit(y, covariates=lung[["age", "sex"]])
+        pem = gw.PiecewiseExponential(breaks=[180, 365]).fit(
+            y, covariates=["age", "sex"], data=lung
+        )
         pem.baseline_hazard(format="polars")
         ```
         """
@@ -525,6 +531,8 @@ class PiecewiseExponential:
         ----------
         newdata
             Covariate values for new subjects. If `None`, uses the training data.
+            A data frame may also hold other columns. The covariates are picked out by name and
+            coded as they were at fit time, so the frame the model was fit on can be passed as is.
         type
             `"survival"` (default), `"cumhaz"` (cumulative hazard), `"lp"` (linear predictor), or
             `"risk"` (exp of linear predictor).
@@ -540,10 +548,7 @@ class PiecewiseExponential:
             For `"lp"` and `"risk"`, a 1-D array. For `"survival"` and `"cumhaz"`, a DataFrame with
             one column per subject and one row per time.
         """
-        if newdata is None:
-            x = self._x
-        else:
-            x, _ = _design_matrix(newdata)
+        x = self._x if newdata is None else self._design_spec.transform(newdata)
 
         lp = x @ self.coef_ if len(self.coef_) > 0 else np.zeros(x.shape[0])
 
@@ -616,7 +621,9 @@ class PiecewiseExponential:
 
         lung = gw.load_dataset("lung", backend="polars")
         y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-        pem = gw.PiecewiseExponential(breaks=[180, 365]).fit(y, covariates=lung[["age", "sex"]])
+        pem = gw.PiecewiseExponential(breaks=[180, 365]).fit(
+            y, covariates=["age", "sex"], data=lung
+        )
         pem.to_frame(format="polars")
         ```
         """
