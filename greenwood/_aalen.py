@@ -169,7 +169,7 @@ class AalenAdditive:
         self._n_input = bound.n_input
         self.n_dropped_ = bound.n_dropped
 
-        from ._cox import _design_matrix
+        from ._cox import _design_matrix_spec
         from ._surv import CensoringType
 
         if surv.type not in (CensoringType.RIGHT, CensoringType.COUNTING):
@@ -178,7 +178,7 @@ class AalenAdditive:
                 f"not {surv.type.value!r}."
             )
 
-        x_raw, covariate_names = _design_matrix(covariates, data)
+        x_raw, covariate_names, self._design_spec = _design_matrix_spec(covariates, data)
         if x_raw.shape[0] != surv.n:
             raise ValueError("Covariates and response must have the same number of rows.")
 
@@ -366,6 +366,8 @@ class AalenAdditive:
         newdata
             Covariate values for prediction. A DataFrame, 2-D array, or `None`. When `None`,
             predictions are made for the training data subjects.
+            A data frame may also hold other columns. The covariates are picked out by name and
+            coded as they were at fit time, so the frame the model was fit on can be passed as is.
         type
             Prediction type: `"survival"` (default) or `"cumhaz"`.
         times
@@ -391,12 +393,8 @@ class AalenAdditive:
         aalen.predict(lung[:3], times=[180, 365], format="polars")
         ```
         """
-        from ._cox import _design_matrix
 
-        if newdata is None:
-            x = self._x
-        else:
-            x, _ = _design_matrix(newdata)
+        x = self._x if newdata is None else self._design_spec.transform(newdata)
 
         if times is None:
             query = self.event_times_
