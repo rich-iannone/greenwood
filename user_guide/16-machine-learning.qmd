@@ -31,7 +31,7 @@ lung = gw.load_dataset("lung", backend="polars").drop_nulls(
     subset=["ph.ecog", "ph.karno", "wt.loss"]
 )
 
-y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 covariates = ["age", "sex", "ph.ecog", "ph.karno", "wt.loss"]
 y
 ```
@@ -46,7 +46,7 @@ interpretable building block of an ensemble.
 
 ```{python}
 # Grow a shallow, interpretable survival tree
-tree = gw.SurvivalTree(max_depth=3, random_state=0).fit(y, lung[covariates])
+tree = gw.SurvivalTree(max_depth=3, random_state=0).fit(y, covariates=lung[covariates])
 tree
 ```
 
@@ -70,7 +70,7 @@ only the trees for which each subject was not in the bootstrap sample.
 # Fit a forest and report the out-of-bag concordance
 rsf = gw.RandomSurvivalForest(
     n_estimators=200, oob_score=True, random_state=0
-).fit(y, lung[covariates])
+).fit(y, covariates=lung[covariates])
 rsf
 ```
 
@@ -108,7 +108,7 @@ Following the extra-trees convention, it grows each tree on the whole sample by 
 # Extremely-randomized survival trees with out-of-bag scoring enabled
 ext = gw.ExtraSurvivalTrees(
     n_estimators=200, bootstrap=True, oob_score=True, random_state=0
-).fit(y, lung[covariates])
+).fit(y, covariates=lung[covariates])
 ext
 ```
 
@@ -135,7 +135,7 @@ predicts very well on structured tabular data.
 # Fit a gradient-boosted survival model
 gbm = gw.GradientBoostingSurvivalAnalysis(
     n_estimators=300, learning_rate=0.05, max_depth=2, random_state=0
-).fit(y, lung[covariates])
+).fit(y, covariates=lung[covariates])
 gbm
 ```
 
@@ -166,7 +166,7 @@ when censoring is heavy receive greater influence. The result is a simple linear
 assume proportional hazards.
 
 ```{python}
-ridge = gw.IPCRidge(alpha=1.0).fit(y, lung[covariates])
+ridge = gw.IPCRidge(alpha=1.0).fit(y, covariates=lung[covariates])
 ridge
 ```
 
@@ -196,7 +196,7 @@ get a risk score compatible with `concordance_index()`.
 
 ```{python}
 risk = -ridge.predict(lung[covariates], type="lp")
-gw.concordance_index(y, risk)
+gw.concordance_index(y, risk=risk)
 ```
 
 ## Visualizing per-subject curves
@@ -208,7 +208,7 @@ individuals.
 
 ```{python}
 # Compare predicted survival for four patients from the forest
-gw.plot_predicted_survival(rsf, lung[covariates][:4])
+gw.plot_predicted_survival(rsf, newdata=lung[covariates][:4])
 ```
 
 Pass `type="cumulative_hazard"` for the cumulative-hazard scale, or `labels=` to name the curves.
@@ -223,9 +223,9 @@ score).
 ```{python}
 # In-sample concordance for the three ensemble models
 scores = {
-    "random forest": gw.concordance_index(y, rsf.predict(lung[covariates])),
-    "extra trees": gw.concordance_index(y, ext.predict(lung[covariates])),
-    "gradient boosting": gw.concordance_index(y, gbm.predict(lung[covariates])),
+    "random forest": gw.concordance_index(y, risk=rsf.predict(lung[covariates])),
+    "extra trees": gw.concordance_index(y, risk=ext.predict(lung[covariates])),
+    "gradient boosting": gw.concordance_index(y, risk=gbm.predict(lung[covariates])),
 }
 scores
 ```
@@ -276,7 +276,7 @@ sim = gw.simulate_competing_risks(n=500, n_causes=2, n_covariates=3, seed=42)
 sb = gw.SurvivalBoost(
     n_estimators=50, learning_rate=0.1, max_depth=3, random_state=0
 )
-sb.fit(sim.surv, sim.covariates)
+sb.fit(sim.surv, covariates=sim.covariates)
 sb
 ```
 
@@ -352,7 +352,7 @@ to the observed outcomes.
 # Brier score for cause 1 at several time horizons
 eval_times = np.array([3.0, 6.0, 10.0])
 cif_eval = sb.predict_cumulative_incidence(sim.covariates, times=eval_times)
-bs = gw.brier_score_incidence(sim.surv, cif_eval[:, 1, :], eval_times, cause=1)
+bs = gw.brier_score_incidence(sim.surv, incidence_prob=cif_eval[:, 1, :], times=eval_times, cause=1)
 dict(zip(eval_times, bs))
 ```
 
@@ -363,7 +363,9 @@ their predicted CIF at a given time horizon. Values above 0.5 indicate better-th
 # Concordance for cause 1 at median follow-up
 tau = float(np.median(sim.surv.stop))
 cif_tau = sb.predict_cumulative_incidence(sim.covariates, times=np.array([tau]))
-c_index = gw.concordance_index_incidence(sim.surv, cif_tau[:, 1, 0], cause=1, tau=tau)
+c_index = gw.concordance_index_incidence(
+    sim.surv, incidence_prob=cif_tau[:, 1, 0], cause=1, tau=tau
+)
 c_index
 ```
 
@@ -421,7 +423,7 @@ $K + 1$ (one per cause, plus the survival class).
 # Three competing causes
 sim3 = gw.simulate_competing_risks(n=400, n_causes=3, n_covariates=2, seed=7)
 sb3 = gw.SurvivalBoost(n_estimators=30, learning_rate=0.1, max_depth=2, random_state=0)
-sb3.fit(sim3.surv, sim3.covariates)
+sb3.fit(sim3.surv, covariates=sim3.covariates)
 
 # CIF at t = 5: shape is (400, 4, 1) because there are 4 classes (survival + 3 causes)
 cif3 = sb3.predict_cumulative_incidence(sim3.covariates, times=np.array([5.0]))

@@ -27,8 +27,8 @@ import greenwood as gw
 # Load the bundled lung dataset as a Polars DataFrame
 lung = gw.load_dataset("lung", backend="polars")
 
-# Build a right-censored response; status == 2 marks a death
-y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+# Build a right-censored response, where a status of 2 marks a death
+y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
 # Display the response summary
 y
@@ -39,7 +39,7 @@ confidence interval transform. Printing the fitted estimator summarizes each str
 
 ```{python}
 # Fit Kaplan-Meier with log-log CI transform, stratified by sex
-km = gw.KaplanMeier(conf_type="log-log").fit(y, by=lung["sex"])
+km = gw.KaplanMeier(conf_type="log-log").fit(y, by="sex", data=lung)
 
 # Print per-stratum median survival
 km
@@ -70,10 +70,10 @@ each stratum, a shaded confidence band, and a small notch at each censoring time
 ```{python}
 # Load data and build the response
 lung = gw.load_dataset("lung", backend="polars")
-y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
 # Fit Kaplan-Meier stratified by sex with log-log CI
-km = gw.KaplanMeier(conf_type="log-log").fit(y, by=lung["sex"])
+km = gw.KaplanMeier(conf_type="log-log").fit(y, by="sex", data=lung)
 
 # Draw the interactive survival curve with confidence band and censoring marks
 gw.plot_survival(km)
@@ -93,7 +93,7 @@ If you have fit a `CoxPH` model, you can extract the baseline hazard with confid
 plot it to visualize the estimated survival trajectory for a reference subject:
 
 ```{python}
-cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
 baseline = cox.baseline_hazard(ci=True, format="polars")
 
 # The 'survival' column is S_0(t) and 'survival_lower'/'survival_upper' are the CI bounds
@@ -226,10 +226,10 @@ line at HR = 1.
 ```{python}
 # Load data and build the response
 lung = gw.load_dataset("lung", backend="polars")
-y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
 # Fit a Cox model with three covariates
-cox = gw.CoxPH().fit(y, lung[["age", "sex", "ph.ecog"]])
+cox = gw.CoxPH().fit(y, covariates=["age", "sex", "ph.ecog"], data=lung)
 
 # Draw a forest plot of hazard ratios with a log-scale x-axis
 gw.plot_forest(cox)
@@ -331,22 +331,16 @@ patient either progresses to overt plasma-cell malignancy (`pcm`), dies from an 
 (`death`), or is censored (two competing events).
 
 ```{python}
-import numpy as np
-
 # Load the monoclonal gammopathy dataset
 mg = gw.load_dataset("mgus2", backend="polars")
 
-# Build a single event-time per subject: progression time if they progressed,
-# otherwise total follow-up time.
-etime = np.where(mg["pstat"] == 1, mg["ptime"], mg["futime"])
+# Each endpoint has its own (time, event) column pair, and the first one observed wins
+y = gw.Surv.first_event(
+    endpoints={"pcm": ("ptime", "pstat"), "death": ("futime", "death")},
+    data=mg,
+)
 
-# Encode the cause: 0 = censored, 1 = pcm progression, 2 = death without progression
-cause = np.where(mg["pstat"] == 1, 1, 2 * mg["death"])
-
-# Build the multi-state response, naming the two competing causes
-y = gw.Surv.multistate(etime, event=cause, states=("pcm", "death"))
-
-# Fit the Aalen-Johansen estimator (no grouping variable — overall population)
+# Fit the Aalen-Johansen estimator for the whole population (no grouping variable)
 aj = gw.AalenJohansen().fit(y)
 gw.plot_cif(aj)
 ```
@@ -367,7 +361,7 @@ its own panel so you can see both differences side by side.
 
 ```{python}
 # Stratify by sex: fit separate CIF curves for each group
-aj_sex = gw.AalenJohansen().fit(y, by=mg["sex"])
+aj_sex = gw.AalenJohansen().fit(y, by="sex", data=mg)
 
 # plot_cif detects the grouping and draws one colored line per group per panel
 gw.plot_cif(aj_sex, title="Cumulative incidence by sex")

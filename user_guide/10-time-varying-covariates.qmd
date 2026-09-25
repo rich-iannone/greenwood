@@ -22,8 +22,8 @@ The counting-process form of the Cox model handles time-varying covariates natur
 of one row per subject you create one row per *interval*: each row records when the subject
 entered the risk set (`tstart`), when they exited (`tstop`), the event indicator for that
 interval, and the covariate values that were constant during it. The `split_episodes()`
-function builds this dataset from the raw repeated-measurement data, and `Surv.counting()`
-wraps it into the response object.
+function builds this dataset from the raw repeated-measurement data, and `Outcome.counting()`
+describes the response over it.
 
 ## The data
 
@@ -66,8 +66,8 @@ base = (
 
 # Split into counting-process intervals, carrying bilirubin, albumin, and protime forward.
 long = gw.split_episodes(
-    base,
-    pbcseq_pd[["id", "day", "bili", "albumin", "protime"]],
+    baseline=base,
+    visits=pbcseq_pd[["id", "day", "bili", "albumin", "protime"]],
     id="id",
     time="time",
     event="status",
@@ -88,37 +88,32 @@ death) for the last.
 long[long["id"] == 1][["id", "tstart", "tstop", "status", "bili", "albumin", "protime"]]
 ```
 
-Before fitting we drop the small number of rows with missing covariate values and create a
-binary event indicator.
-
-```{python}
-long_clean = long.dropna(subset=["bili", "albumin", "protime"]).copy()
-long_clean["event"] = (long_clean["status"] == 2).astype(int)
-print(f"{len(long_clean)} intervals, {long_clean['event'].sum()} events, "
-      f"{long_clean['id'].nunique()} subjects")
-```
+A few intervals have missing lab values, and `status` uses the `pbc` coding (`2` is death). Neither
+needs a manual cleaning step. We describe the response once with an `Outcome`, and when the model is
+fit, every row with a missing value in a column it uses is dropped. The printout reports how many.
 
 ## Fitting the TVC Cox model
 
-The counting-process `Surv` object wraps `tstart` and `tstop` alongside the event indicator.
-Pass the resulting response and covariate columns to `CoxPH` exactly as with a
-right-censored model.
+The counting-process `Outcome` names `tstart` and `tstop` alongside the event column. Pass it to
+`CoxPH` with the covariate columns and the frame, exactly as with a right-censored model.
 
 ```{python}
-y = gw.Surv.counting(long_clean["tstart"], long_clean["tstop"], long_clean["event"])
-cox_tvc = gw.CoxPH().fit(y, long_clean[["bili", "albumin", "protime"]])
+# Describe the counting-process response: a status of 2 marks a death at the end of an interval
+tvc = gw.Outcome.counting(start="tstart", stop="tstop", event="status", event_value=2)
+
+# Fit from the long frame, and rows with missing lab values are dropped at fit time
+cox_tvc = gw.CoxPH().fit(tvc, covariates=["bili", "albumin", "protime"], data=long)
 cox_tvc
 ```
 
 For comparison, fit the same model using only the baseline lab values from `pbc`.
 
 ```{python}
-pbc_pd = gw.load_dataset("pbc", backend="pandas")
-pbc_clean = pbc_pd.dropna(subset=["bili", "albumin", "protime"]).copy()
-pbc_clean["event"] = (pbc_clean["status"] == 2).astype(int)
+pbc = gw.load_dataset("pbc", backend="pandas")
 
-y_static = gw.Surv.right(pbc_clean["time"], event=pbc_clean["event"])
-cox_static = gw.CoxPH().fit(y_static, pbc_clean[["bili", "albumin", "protime"]])
+# The same death endpoint, now with one row per subject
+death = gw.Outcome.right(time="time", event="status", event_value=2)
+cox_static = gw.CoxPH().fit(death, covariates=["bili", "albumin", "protime"], data=pbc)
 cox_static
 ```
 
@@ -236,8 +231,8 @@ are identical. The divergence begins exactly where the trajectory changes.
 |---|---|
 | Load repeated-measurement data | `gw.load_dataset("pbcseq")` |
 | Build counting-process dataset | `gw.split_episodes(base, visits, id=, time=, event=, visit_time=)` |
-| Wrap the response | `gw.Surv.counting(tstart, tstop, event)` |
-| Fit the TVC Cox model | `gw.CoxPH().fit(y, covariates)` |
+| Describe the response | `gw.Outcome.counting(start="tstart", stop="tstop", event="status", event_value=2)` |
+| Fit the TVC Cox model | `gw.CoxPH().fit(tvc, covariates=["bili", ...], data=long)` |
 | Predict along a trajectory | `cox.predict(trajectory=path, times=...)` |
 
 Time-varying covariates require more data preparation than a static model, but the tradeoff

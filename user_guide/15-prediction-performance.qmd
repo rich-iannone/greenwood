@@ -27,7 +27,7 @@ import greenwood as gw
 
 lung = gw.load_dataset("lung", backend="polars")
 
-y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 y
 ```
 
@@ -36,7 +36,7 @@ aside: everything below needs only `y` and the risk scores and survival probabil
 produces.
 
 ```{python}
-cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
 ```
 
 ## Discrimination: the concordance index
@@ -54,8 +54,8 @@ for comparing an external score. Here we use the Cox model's linear predictor. A
 ```{python}
 lung = gw.load_dataset("lung", backend="polars")
 
-y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
 
 risk = cox.predict(type="lp")
 risk[:8]
@@ -76,7 +76,7 @@ should correspond to earlier failure, we pass a score where larger means higher 
 linear predictor or its exponential.
 
 ```{python}
-gw.concordance_index(y, risk)
+gw.concordance_index(y, risk=risk)
 ```
 
 ::: {.callout-note}
@@ -102,11 +102,11 @@ lost to censoring. The result is a consistent estimator of the true concordance 
 ```{python}
 lung = gw.load_dataset("lung", backend="polars")
 
-y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
 
 risk = cox.predict(type="lp")
-gw.concordance_index_ipcw(y, risk)
+gw.concordance_index_ipcw(y, risk=risk)
 ```
 
 In the `lung` dataset censoring is moderate (~28%), so the IPCW and Harrell values are close. In
@@ -118,7 +118,7 @@ instability from very small censoring probabilities in the tail, where few subje
 observation. It also focuses discrimination on a clinically relevant horizon.
 
 ```{python}
-gw.concordance_index_ipcw(y, risk, tau=365.0)
+gw.concordance_index_ipcw(y, risk=risk, tau=365.0)
 ```
 
 ::: {.callout-tip}
@@ -141,18 +141,18 @@ respects the [0, 1] bounds and provides better coverage when the estimate is nea
 ```{python}
 lung = gw.load_dataset("lung", backend="polars")
 
-y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
 
 risk = cox.predict(type="lp")
-gw.concordance_index_ci(y, risk)
+gw.concordance_index_ci(y, risk=risk)
 ```
 
 The result is a `ConcordanceResult` with the point estimate, standard error, and confidence limits.
 You can convert it to a one-row DataFrame with `to_frame()`.
 
 ```{python}
-gw.concordance_index_ci(y, risk).to_frame()
+gw.concordance_index_ci(y, risk=risk).to_frame()
 ```
 
 The `transform` parameter controls the scale on which the CI is constructed. The default `"logit"`
@@ -160,7 +160,7 @@ is recommended because it keeps the interval inside [0, 1] even when the estimat
 boundary. The `"log"` and `"identity"` options are available for comparison.
 
 ```{python}
-gw.concordance_index_ci(y, risk, transform="identity")
+gw.concordance_index_ci(y, risk=risk, transform="identity")
 ```
 
 For competing-risks data, pass `cause=` and `tau=` to get the cause-specific concordance with its
@@ -172,18 +172,18 @@ import numpy as np
 
 mgus2 = gw.load_dataset("mgus2", backend="polars")
 
-event = np.where(
-    mgus2["pstat"].to_numpy() == 1, 1,
-    np.where(mgus2["death"].to_numpy() == 1, 2, 0),
+# The first observed endpoint (PCM at `ptime`, or death at `futime`) is the event
+y_cr = gw.Surv.first_event(
+    endpoints={"pcm": ("ptime", "pstat"), "death": ("futime", "death")},
+    data=mgus2,
 )
-y_cr = gw.Surv.multistate(mgus2["futime"].to_numpy(), event, states=("pcm", "death"))
 
-fg = gw.FineGray("pcm").fit(y_cr, mgus2[["age", "sex"]])
+fg = gw.FineGray(cause="pcm").fit(y_cr, covariates=["age", "sex"], data=mgus2)
 cif_at_tau = fg.predict_cumulative_incidence(
-    mgus2[["age", "sex"]], times=np.array([240.0]), format="pandas"
+    mgus2, times=np.array([240.0]), format="pandas"
 ).drop(columns="time").values.flatten()
 
-gw.concordance_index_ci(y_cr, cif_at_tau, cause=1, tau=240.0)
+gw.concordance_index_ci(y_cr, risk=cif_at_tau, cause=1, tau=240.0)
 ```
 
 ## Comparing two concordance indices
@@ -197,15 +197,15 @@ influence function, which properly accounts for the shared subjects.
 ```{python}
 lung = gw.load_dataset("lung", backend="polars")
 
-y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
-cox_full = gw.CoxPH().fit(y, lung[["age", "sex"]])
-cox_age = gw.CoxPH().fit(y, lung[["age"]])
+cox_full = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
+cox_age = gw.CoxPH().fit(y, covariates=["age"], data=lung)
 
 lp_full = cox_full.predict(type="lp")
 lp_age = cox_age.predict(type="lp")
 
-gw.concordance_index_compare(y, lp_full, lp_age)
+gw.concordance_index_compare(y, risk_a=lp_full, risk_b=lp_age)
 ```
 
 The result reports the difference (model A minus model B), its standard error, a confidence
@@ -214,7 +214,7 @@ detectably different discrimination on this data. The result also has a `to_fram
 tabular output.
 
 ```{python}
-gw.concordance_index_compare(y, lp_full, lp_age).to_frame()
+gw.concordance_index_compare(y, risk_a=lp_full, risk_b=lp_age).to_frame()
 ```
 
 ::: {.callout-tip}
@@ -236,7 +236,7 @@ directly when you need the censoring probabilities or IPC weights for a custom a
 
 ```{python}
 lung = gw.load_dataset("lung", backend="polars")
-y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
 cens = gw.CensoringDistribution(y)
 cens
@@ -246,7 +246,7 @@ The `survival()` method evaluates the censoring survival function G(t), which is
 not being censored by time t, at any set of query times.
 
 ```{python}
-cens.survival([180, 365, 540])
+cens.survival(times=[180, 365, 540])
 ```
 
 The values decrease over follow-up as more subjects are censored. At 180 days about 97% of subjects
@@ -289,11 +289,11 @@ Start by asking the Cox model for survival curves at three fixed times.
 ```{python}
 lung = gw.load_dataset("lung", backend="polars")
 
-y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
 
 times = [180, 365, 540]
-surv = cox.predict(lung[["age", "sex"]], type="survival", times=times, format="polars")
+surv = cox.predict(lung, type="survival", times=times, format="polars")
 surv.shape
 ```
 
@@ -310,7 +310,7 @@ probs.shape
 With the probabilities in the expected `(n_subjects, n_times)` shape, we can score them.
 
 ```{python}
-gw.brier_score(y, probs, times)
+gw.brier_score(y, survival_prob=probs, times=times)
 ```
 
 The result is one Brier score per time. As a rule of thumb, a useful model should beat the Brier
@@ -321,7 +321,7 @@ To summarize accuracy across a range of times in a single number, integrate the 
 time.
 
 ```{python}
-gw.integrated_brier_score(y, probs, times)
+gw.integrated_brier_score(y, survival_prob=probs, times=times)
 ```
 
 ::: {.callout-tip}
@@ -352,11 +352,11 @@ import numpy as np
 
 mgus2 = gw.load_dataset("mgus2", backend="polars")
 
-event = np.where(
-    mgus2["pstat"].to_numpy() == 1, 1,
-    np.where(mgus2["death"].to_numpy() == 1, 2, 0),
+# The first observed endpoint (PCM at `ptime`, or death at `futime`) is the event
+y_cr = gw.Surv.first_event(
+    endpoints={"pcm": ("ptime", "pstat"), "death": ("futime", "death")},
+    data=mgus2,
 )
-y_cr = gw.Surv.multistate(mgus2["futime"].to_numpy(), event, states=("pcm", "death"))
 y_cr
 ```
 
@@ -375,7 +375,7 @@ marginal = np.array(
 )
 
 probs_cr = np.tile(marginal, (y_cr.n, 1))
-gw.brier_score_incidence(y_cr, probs_cr, times_cr, cause=1)
+gw.brier_score_incidence(y_cr, incidence_prob=probs_cr, times=times_cr, cause=1)
 ```
 
 The `cause=` argument selects which event code to evaluate. Here `cause=1` corresponds to
@@ -391,7 +391,7 @@ marginal_fine = np.array(
      for t in times_fine]
 )
 probs_fine = np.tile(marginal_fine, (y_cr.n, 1))
-gw.integrated_brier_score_incidence(y_cr, probs_fine, times_fine, cause=1)
+gw.integrated_brier_score_incidence(y_cr, incidence_prob=probs_fine, times=times_fine, cause=1)
 ```
 
 A model that uses covariates to produce subject-specific CIF predictions should yield a lower
@@ -418,7 +418,7 @@ marginal_at_tau = float(
 )
 pred_flat = np.full(y_cr.n, marginal_at_tau)
 
-gw.concordance_index_incidence(y_cr, pred_flat, cause=1, tau=tau)
+gw.concordance_index_incidence(y_cr, incidence_prob=pred_flat, cause=1, tau=tau)
 ```
 
 A model that produces subject-specific CIF predictions should achieve a concordance above 0.5.
@@ -432,7 +432,7 @@ calibration error at each time point.
 
 ```{python}
 # Calibration check: mean predicted CIF vs. AJ reference
-cal_err = gw.calibration_incidence(y_cr, probs_cr, times_cr, cause=1)
+cal_err = gw.calibration_incidence(y_cr, incidence_prob=probs_cr, times=times_cr, cause=1)
 cal_err
 ```
 
@@ -462,7 +462,7 @@ probs_3d = np.stack(
     [np.tile(pcm_vals, (y_cr.n, 1)), np.tile(death_vals, (y_cr.n, 1))], axis=1
 )
 
-gw.accuracy_in_time(y_cr, probs_3d, times_cr)
+gw.accuracy_in_time(y_cr, incidence_probs=probs_3d, times=times_cr)
 ```
 
 Early times tend to show high accuracy because most subjects have survived and the model predicts
@@ -481,20 +481,20 @@ import numpy as np
 
 mgus2 = gw.load_dataset("mgus2", backend="polars")
 
-event = np.where(
-    mgus2["pstat"].to_numpy() == 1, 1,
-    np.where(mgus2["death"].to_numpy() == 1, 2, 0),
+# The first observed endpoint (PCM at `ptime`, or death at `futime`) is the event
+y_cr = gw.Surv.first_event(
+    endpoints={"pcm": ("ptime", "pstat"), "death": ("futime", "death")},
+    data=mgus2,
 )
-y_cr = gw.Surv.multistate(mgus2["futime"].to_numpy(), event, states=("pcm", "death"))
 
-fg = gw.FineGray("pcm").fit(y_cr, mgus2[["age", "sex"]])
+fg = gw.FineGray(cause="pcm").fit(y_cr, covariates=["age", "sex"], data=mgus2)
 
 eval_times = np.array([120, 240, 360])
 cif_pred = fg.predict_cumulative_incidence(
-    mgus2[["age", "sex"]], times=eval_times, format="pandas"
+    mgus2, times=eval_times, format="pandas"
 ).drop(columns="time").values.T
 
-gw.score_cr(y_cr, cif_pred, cause=1, times=eval_times)
+gw.score_cr(y_cr, incidence_prob=cif_pred, cause=1, times=eval_times)
 ```
 
 The `incidence_prob` argument expects a matrix with shape `(n_subjects, n_times)`, where each column
@@ -522,7 +522,7 @@ the Cox linear predictor is a natural choice.
 
 ```{python}
 lp = cox.predict(type="lp")
-gw.time_dependent_auc(y, lp, times=[180, 365, 540])
+gw.time_dependent_auc(y, marker=lp, times=[180, 365, 540])
 ```
 
 Each value is the AUC at one horizon. Values above 0.5 mean the marker separates early failures from
@@ -533,7 +533,7 @@ To reduce these to a single number for model comparison, `integrated_auc()` comp
 time-averaged AUC using the trapezoidal rule over the supplied time range.
 
 ```{python}
-gw.integrated_auc(y, lp, times=[180, 365, 540])
+gw.integrated_auc(y, marker=lp, times=[180, 365, 540])
 ```
 
 The integrated AUC plays the same role as the integrated Brier score: it collapses time-specific
@@ -549,9 +549,11 @@ held-out fold. Pass an unfitted model, the response, and the covariates.
 ```{python}
 lung = gw.load_dataset("lung", backend="polars")
 
-y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
-gw.cross_validate(gw.CoxPH(), y, lung[["age", "sex"]], k=5, metric="concordance", seed=23)
+gw.cross_validate(
+    gw.CoxPH(), surv=y, covariates=["age", "sex"], data=lung, k=5, metric="concordance", seed=23
+)
 ```
 
 The result reports the score on each fold plus their mean and standard deviation. The
@@ -562,7 +564,7 @@ to cross-validate the integrated Brier score instead. The same call works for `A
 
 ```{python}
 gw.cross_validate(
-    gw.CoxPH(), y, lung[["age", "sex"]], k=5,
+    gw.CoxPH(), surv=y, covariates=["age", "sex"], data=lung, k=5,
     metric="brier", times=[180, 365, 540], seed=23
 )
 ```
@@ -575,7 +577,7 @@ assignments and avoid redundant refitting.
 
 ```{python}
 result_multi = gw.cross_validate(
-    gw.CoxPH(), y, lung[["age", "sex"]], k=5,
+    gw.CoxPH(), surv=y, covariates=["age", "sex"], data=lung, k=5,
     metrics=["concordance", "brier", "auc"],
     times=[180, 365, 540], seed=23
 )
@@ -629,13 +631,13 @@ concordance (or lower mean Brier score) generalizes better to unseen subjects.
 
 ```{python}
 lung = gw.load_dataset("lung", backend="polars")
-y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
-cols_simple = lung[["age", "sex"]]
-cols_full = lung[["age", "sex", "ph.ecog"]]
+cols_simple = ["age", "sex"]
+cols_full = ["age", "sex", "ph.ecog"]
 
-simple_cv = gw.cross_validate(gw.CoxPH(), y, cols_simple, seed=1)
-full_cv = gw.cross_validate(gw.CoxPH(), y, cols_full, seed=1)
+simple_cv = gw.cross_validate(gw.CoxPH(), surv=y, covariates=cols_simple, data=lung, seed=1)
+full_cv = gw.cross_validate(gw.CoxPH(), surv=y, covariates=cols_full, data=lung, seed=1)
 
 print(f"Simple model  C-index: {simple_cv['mean']:.3f} ± {simple_cv['std']:.3f}")
 print(f"Full model    C-index: {full_cv['mean']:.3f} ± {full_cv['std']:.3f}")
@@ -656,16 +658,16 @@ Kaplan-Meier estimate for that bin.
 ```{python}
 lung = gw.load_dataset("lung", backend="polars")
 
-y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
 
 surv_at_year = cox.predict(
-    lung[["age", "sex"]], type="survival", times=[365.0], format="polars"
+    lung, type="survival", times=[365.0], format="polars"
 )
 
 predicted = surv_at_year.slice(0, 1).drop("time").to_numpy().flatten()
 
-gw.calibration(y, predicted, 365.0, n_bins=5, format="polars")
+gw.calibration(y, predicted=predicted, time=365.0, n_bins=5, format="polars")
 ```
 
 Each row is a bin, from the lowest predicted survival to the highest. A well-calibrated model has
