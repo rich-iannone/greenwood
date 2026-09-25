@@ -249,7 +249,7 @@ Covariate
   used to explain or predict variation in survival outcomes. In a regression model such as `CoxPH`
   or `AFT`, each covariate has an associated coefficient $\beta_j$ whose exponentiated value
   $e^{\beta_j}$ is the **hazard ratio** (or acceleration factor in AFT) for a one-unit increase in
-  that variable. Covariates are passed as the `X` argument to `model.fit(y, X)`.
+  that variable. Covariates are passed as the `X` argument to `model.fit(y, covariates=X)`.
 
   Covariates are distinct from **strata**. A covariate enters the model parametrically: its effect
   is summarized by a single estimated coefficient that applies uniformly across all subjects, and
@@ -959,7 +959,7 @@ Response (`y`)
   `y` is the vector of outcomes and `X` is the covariate matrix. Survival analysis adopts the
   same convention even though the response is a composite (time and status) rather than a
   single scalar. Throughout the documentation and examples you will see the pattern
-  `y = gw.Surv.right(time, event)` followed by `model.fit(y, X)`, deliberately mirroring
+  `y = gw.Surv.right(time, event)` followed by `model.fit(y, covariates=X)`, deliberately mirroring
   the $y$, $X$ split familiar from regression.
 
 Response residuals
@@ -1058,7 +1058,7 @@ Simulated competing risks
   independent Weibull distributions (one per cause) and selects the cause with the shortest
   latent time as the observed event. Independent exponential censoring is applied on top.
   Optionally generates standard-normal covariates with cause-specific proportional-hazards
-  effects. The generator returns a ``Surv.multistate`` response, the covariate matrix, and
+  effects. The generator returns a `Surv.multistate` response, the covariate matrix, and
   the latent times (useful for constructing oracle predictions in benchmarks). Available via
   `simulate_competing_risks()`.
 
