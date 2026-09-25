@@ -16,7 +16,7 @@ import numpy.typing as npt
 from typing_extensions import Self
 
 from ._backends import to_dataframe
-from ._cox import _design_matrix
+from ._cox import _design_matrix_spec
 from ._outcome import bind_fit_inputs
 from ._repr import dropped_note
 
@@ -424,7 +424,7 @@ class CompetingRiskForest:
         self._n_input = bound.n_input
         self.n_dropped_ = bound.n_dropped
 
-        x, names = _design_matrix(covariates, data)
+        x, names, self._design_spec = _design_matrix_spec(covariates, data)
         time, status, states, cause_codes = _prepare_cr_response(surv)
         if x.shape[0] != surv.n:
             raise ValueError("Covariates and response must have the same number of rows.")
@@ -578,6 +578,8 @@ class CompetingRiskForest:
         ----------
         newdata
             Covariates to predict for.
+            A data frame may also hold other columns. The covariates are picked out by name and
+            coded as they were at fit time, so the frame the model was fit on can be passed as is.
         cause
             Which cause to predict. A string label or integer code. Required when
             there are multiple causes.
@@ -592,7 +594,7 @@ class CompetingRiskForest:
             Columns `time`, `subject_1`, `subject_2`, ...
         """
         cause_code = self._resolve_cause(cause)
-        x = self._x_train if newdata is None else _design_matrix(newdata)[0]
+        x = self._x_train if newdata is None else self._design_spec.transform(newdata)
         cif_dict = self._ensemble_cif(x)
         cif_k = cif_dict[cause_code]  # (n_subjects, n_times)
 
@@ -623,7 +625,7 @@ class CompetingRiskForest:
         Higher values indicate higher predicted cumulative incidence for the given cause.
         """
         cause_code = self._resolve_cause(cause)
-        x = self._x_train if newdata is None else _design_matrix(newdata)[0]
+        x = self._x_train if newdata is None else self._design_spec.transform(newdata)
         cif_dict = self._ensemble_cif(x)
         return cif_dict[cause_code].sum(axis=1)
 
