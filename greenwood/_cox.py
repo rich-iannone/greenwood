@@ -19,6 +19,7 @@ right-censored data with Breslow ties.
 
 from __future__ import annotations
 
+import re
 import warnings
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
@@ -306,12 +307,47 @@ def _formula_design_spec(formula: str, data: Any) -> tuple[Array, list[str], Des
         ) from error
     if data is None:
         raise ValueError("A formula string requires the `data` argument.")
-    matrix = model_matrix(f"~ {formula}", _to_pandas(data), na_action="ignore")
+    frame = _to_pandas(data)
+    matrix = model_matrix(f"~ {formula}", frame, na_action="ignore")
     names = [c for c in matrix.columns if c != "Intercept"]
     if not names:
         raise ValueError("The formula produced no covariates.")
-    spec = DesignSpec(kind="formula", names=tuple(names), model_spec=matrix.model_spec)
-    return np.asarray(matrix[names].to_numpy(), dtype=float), list(names), spec
+    used = _formula_source_columns(formula, matrix.model_spec, [str(c) for c in frame.columns])
+    spec = DesignSpec(
+        kind="formula", names=tuple(names), columns=tuple(used), model_spec=matrix.model_spec
+    )
+    x = np.asarray(matrix[names].to_numpy(), dtype=float)
+    return _blank_missing_rows(x, frame, used), list(names), spec
+
+
+def _formula_source_columns(formula: str, model_spec: Any, available: list[str]) -> list[str]:
+    """The data columns a formula reads, including dotted R names such as `ph.ecog`."""
+    from ._outcome import _formula_columns  # pyright: ignore[reportPrivateUsage]
+
+    found = _formula_columns(formula, available)
+    if found is not None:
+        return found
+    variables = {str(v) for v in getattr(model_spec, "required_variables", set())}
+    return [c for c in available if c in variables]
+
+
+def _blank_missing_rows(x: Array, frame: Any, columns: tuple[str, ...] | list[str]) -> Array:
+    """Set a design row to NaN when any source column is missing in it.
+
+    formulaic codes a missing category as all-zero dummies, which would silently treat the row as
+    the reference level. Marking the row NaN lets the models' complete-case step drop it instead,
+    as it does for a missing numeric value.
+    """
+    from ._ingest import as_1d, missing_mask
+
+    missing = np.zeros(x.shape[0], dtype=bool)
+    for name in columns:
+        if name in frame.columns:
+            missing |= missing_mask(as_1d(frame[name].to_numpy()))
+    if missing.any():
+        x = x.copy()
+        x[missing] = np.nan
+    return x
 
 
 def _to_pandas(data: Any) -> Any:
@@ -356,8 +392,27 @@ class DesignSpec:
         if self.kind == "array":
             return self._check_width(_design_matrix(newdata)[0])
         if self.kind == "formula":
-            matrix = self.model_spec.get_model_matrix(_to_pandas(newdata), na_action="ignore")
-            return np.asarray(matrix[list(self.names)].to_numpy(), dtype=float)
+            frame = _to_pandas(newdata)
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.simplefilter("always")
+                matrix = self.model_spec.get_model_matrix(frame, na_action="ignore")
+            for warning in caught:
+                message = str(warning.message)
+                if "outside of the nominated levels" not in message:
+                    warnings.warn(warning.message, warning.category, stacklevel=2)
+                    continue
+                # A missing value is reported as an unseen `nan` / `None` category. That row is
+                # blanked below, so only a genuinely new level is a problem.
+                reported = re.search(r"\{(.*)\}", message)
+                tokens = {t.strip() for t in reported.group(1).split(",")} if reported else {"?"}
+                new = tokens - {"nan", "None", "<NA>", "NaT", ""}
+                if new:
+                    raise ValueError(
+                        f"`newdata` has categorical level(s) {sorted(new)} that were not present "
+                        "when the model was fit."
+                    )
+            x = np.asarray(matrix[list(self.names)].to_numpy(), dtype=float)
+            return _blank_missing_rows(x, frame, self.columns)
         return self._frame_design(newdata)
 
     def _check_width(self, x: Array) -> Array:
@@ -371,7 +426,7 @@ class DesignSpec:
     def _frame_design(self, newdata: Any) -> Array:
         import narwhals as nw  # pyright: ignore[reportMissingImports]  # installed + typed; pyright quirk
 
-        from ._ingest import select_columns
+        from ._ingest import as_1d, missing_mask, select_columns
 
         frame: Any = nw.from_native(newdata)
         available = [str(c) for c in frame.collect_schema().names()]
@@ -389,15 +444,15 @@ class DesignSpec:
             if levels is None:
                 out.append(np.asarray(values, dtype=float))
                 continue
-            seen = {v for v in values.tolist() if v is not None}
+            missing = missing_mask(as_1d(values))
+            seen = {v for v, m in zip(values.tolist(), missing, strict=True) if not m}
             unseen = sorted(str(v) for v in seen - set(levels))
             if unseen:
                 raise ValueError(
                     f"Column {name!r} in `newdata` has level(s) {unseen} that were not present "
                     f"when the model was fit (known levels: {[str(v) for v in levels]})."
                 )
-            for level in levels[1:]:
-                out.append((values == level).astype(float))
+            out += _dummies(values, levels, missing)
         return np.column_stack(out)
 
 
@@ -412,8 +467,20 @@ def _design_matrix(covariates: Any, data: Any = None) -> tuple[Array, list[str]]
     return x, names
 
 
+def _dummies(values: Array, levels: tuple[Any, ...], missing: Array) -> list[Array]:
+    """Treatment-coded (drop-first) dummy columns, NaN where the value is missing."""
+    out: list[Array] = []
+    for level in levels[1:]:  # the first level is the reference
+        column = (values == level).astype(float)
+        column[missing] = np.nan
+        out.append(column)
+    return out
+
+
 def _design_matrix_spec(covariates: Any, data: Any = None) -> tuple[Array, list[str], DesignSpec]:
     """Like `_design_matrix()`, and also return the `DesignSpec` that `predict()` reuses."""
+    from ._ingest import as_1d, missing_mask
+
     if isinstance(covariates, str):
         return _formula_design_spec(covariates, data)
     if isinstance(covariates, np.ndarray):
@@ -438,11 +505,11 @@ def _design_matrix_spec(covariates: Any, data: Any = None) -> tuple[Array, list[
             names.append(name)
             source_levels.append(None)
         else:
-            levels = sorted({v for v in values.tolist() if v is not None})
+            missing = missing_mask(as_1d(values))
+            levels = sorted({v for v, m in zip(values.tolist(), missing, strict=True) if not m})
             source_levels.append(tuple(levels))
-            for level in levels[1:]:  # drop the first level as the reference
-                columns.append((values == level).astype(float))
-                names.append(f"{name}{level}")
+            columns += _dummies(values, tuple(levels), missing)
+            names += [f"{name}{level}" for level in levels[1:]]
     if not columns:
         raise ValueError("No covariates found.")
     spec = DesignSpec(
