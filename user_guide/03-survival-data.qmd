@@ -140,19 +140,23 @@ gw.Surv.interval(lower=[1, 2, 3], upper=[2, np.inf, 5])
 ```
 
 Competing risks and multi-state endpoints, where more than one kind of event can occur, use
-`gw.Surv.multistate()`. The event codes are `0` for censoring and `1, 2, ...` for the competing
-causes, and you name the states.
+`gw.Surv.multistate()`. Name each state and the value that marks it in the event column. Rows
+holding `0` are censored.
 
 ```{python}
-# Event codes: 0 = censored, 1 = relapse, 2 = death; name the states explicitly
-gw.Surv.multistate(time=[5, 6, 7, 8], event=[1, 2, 0, 1], states=("relapse", "death"))
+# Map each state to its event code, and 0 means censored
+gw.Surv.multistate(time=[5, 6, 7, 8], event=[1, 2, 0, 1], states={"relapse": 1, "death": 2})
 ```
+
+Because the mapping is explicit, the column can use any coding, strings included. A value that is
+assigned to no state and is not listed as censoring raises an error, so a typo can never quietly
+turn into censoring.
 
 ## Building a response from a data frame
 
-In practice your data lives in a data frame. Greenwood is dataframe-agnostic through Narwhals, so
-you can pass Pandas or Polars columns directly. The bundled `lung` dataset, from the North Central
-Cancer Treatment Group, is a good example.
+In practice your data lives in a data frame. Rather than pulling columns out yourself, name them and
+pass the frame as `data=`. The bundled `lung` dataset, from the North Central Cancer Treatment Group,
+is a good example.
 
 ```{python}
 # Load the bundled lung dataset as a Polars DataFrame
@@ -164,25 +168,150 @@ lung
 
 There is a subtlety here that might trip you up. In this dataset, and in several others that come
 from R, the `status` column is coded `1` for censored and `2` for dead, rather than the `0`/`1`
-convention. Greenwood does not guess at this coding, and it will raise an error if you pass `1`/`2`
-values directly. You convert the column explicitly instead.
+convention. Greenwood does not guess at this coding. Instead, you say which value marks the event
+with `event_value=`.
 
 ```{python}
-# Convert the R-style coding (2 = dead) to a boolean event indicator
-y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+# Name the columns, and say that a status of 2 marks a death
+y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
 # Display the response summary
 y
 ```
 
+Leave out `event_value=` and Greenwood stops with an error that names the fix, rather than silently
+treating every `1` as an event:
+
+```{python}
+# Without an encoding, R's 1/2 coding is rejected with a pointer to the fix
+try:
+    gw.Surv.right(time="time", event="status", data=lung)
+except ValueError as error:
+    print(error)
+```
+
+The same call works on any data frame backend (Polars, Pandas, PyArrow, DuckDB, or a lazy frame),
+because the encoding is a value rather than a data frame expression. Only the named columns are
+read.
+
+### Declaring the event encoding
+
+There are two ways to state an encoding, and each takes a single value or a list:
+
+- `event_value=` lists the values that mark an event. Every other row is censored.
+- `censor_value=` lists the values that mark censoring. Every other row is an event.
+
+This covers the codings you meet in practice. The `pbc` dataset codes `status` as `0` (censored),
+`1` (transplant), and `2` (dead), so an all-cause endpoint and a death-only endpoint are one argument
+apart:
+
+```{python}
+pbc = gw.load_dataset("pbc", backend="polars")
+
+# All-cause: anything other than 0 is an event
+print("all-cause: ", gw.Surv.right(time="time", event="status", data=pbc, censor_value=0))
+
+# Death only: transplant becomes censoring
+print("death-only:", gw.Surv.right(time="time", event="status", data=pbc, event_value=2))
+```
+
+Strings work the same way, which saves recoding an outcome column by hand:
+
+```{python}
+import polars as pl
+
+study = pl.DataFrame({
+    "time": [12.0, 5.5, 20.0, 8.0],
+    "outcome": ["died", "withdrew", "censored", "died"],
+})
+
+# Only "died" is an event, and the other outcomes are censored
+gw.Surv.right(time="time", event="outcome", data=study, event_value="died")
+```
+
 ::: {.callout-warning}
 ## Check your event coding
 
-Greenwood requires the event indicator to be boolean or `0`/`1`, where `1` means the event occurred.
-If your data uses another convention, such as `1` for censored and `2` for the event, convert it
-first with a comparison like `status == 2`. This deliberate strictness prevents a silent and serious
-error where censoring and events are swapped.
+Without `event_value=` or `censor_value=`, the event column must be boolean or `0`/`1`, where `1`
+means the event occurred. Anything else raises an error. A value of the wrong kind (a string for a
+numeric column, or the reverse) also raises, and an encoding that matches no rows at all gives a
+warning, which catches slips like `"Died"` versus `"died"`. This deliberate strictness prevents a
+silent and serious error where censoring and events are swapped.
 :::
+
+### Describing an outcome once
+
+When you fit several models to the same endpoint, describe it once with `gw.Outcome`. An `Outcome`
+holds the column names and the encoding but no data, and it is bound to a frame when you fit.
+
+```{python}
+# The lung endpoint, described without any data attached
+death = gw.Outcome.right(time="time", event="status", event_value=2)
+death
+```
+
+Pass it to any estimator along with `data=`. Covariates and grouping arguments such as `by=` or
+`strata=` can then be column names too:
+
+```{python}
+# The same description drives a Kaplan-Meier curve and a Cox model
+km = gw.KaplanMeier().fit(death, by="sex", data=lung)
+cox = gw.CoxPH().fit(death, covariates=["age", "sex", "ph.ecog"], data=lung)
+cox
+```
+
+Binding at fit time reads every column the model uses from the one frame, and it drops any row with
+a missing value in one of them, as R's `na.omit` does. The response and the covariates therefore can
+never get out of step. The printout reports how many rows were dropped, and the fitted model keeps
+the count in `n_dropped_`. Here, one patient has no `ph.ecog` score.
+
+Call `bind()` when you want the `Surv` itself. It is strict about missing values, like the `Surv`
+constructors.
+
+```{python}
+# Bind the description to a frame to get a Surv
+death.bind(lung)
+```
+
+### Writing the response as a formula
+
+If you know R's `survival` package, you can write the response as a formula instead. It is parsed
+into an `Outcome`, so it behaves exactly the same way.
+
+```{python}
+# The response and the covariates in one R-style formula
+gw.CoxPH().fit("Surv(time, status == 2) ~ age + sex + strata(inst)", data=lung)
+```
+
+The response accepts the same encodings as the arguments: `status == 2`, `status != 0`,
+`status in (1, 2)` (R's `%in% c(1, 2)` works too), and a plain `event` column that is already
+`0`/`1`. `Surv(start, stop, event)` gives the counting-process form, and `type="left"` or
+`type="interval2"` select the other censoring types. On the right-hand side, `strata()` and
+`cluster()` terms route columns to the `strata=` and `cluster=` arguments. For the non-parametric
+estimators and the hypothesis tests, the right-hand side names the grouping column(s).
+
+```{python}
+# A formula for a grouped Kaplan-Meier curve and for the log-rank test
+km = gw.KaplanMeier().fit("Surv(time, status == 2) ~ sex", data=lung)
+gw.logrank_test("Surv(time, status == 2) ~ sex", data=lung)
+```
+
+Formulas only ever name columns and literal values. Nothing in a formula is evaluated as code.
+
+### Passing values directly
+
+Every constructor still accepts plain arrays and series, which is the right tool when the values do
+not live in a frame, or when you have computed them yourself:
+
+```{python}
+# The expert path: pass the values, with the event already coded as True/False
+gw.Surv.right(time=lung["time"], event=(lung["status"] == 2))
+```
+
+Prefer the column-name form when you can. A comparison such as `lung["status"] == 2` is data frame
+syntax, and it does not behave the same way on every backend (on a PyArrow table it compares the
+whole column and returns a single `False`). The column-name form also leaves missing values to the
+fit-time binding described above.
 
 ## Validation and reproducibility
 
@@ -194,7 +323,7 @@ a confusing failure deep inside an estimator.
 ```{python}
 # Surv rejects negative times immediately with a descriptive error
 try:
-    gw.Surv.right([5, -1, 3], [1, 1, 1])
+    gw.Surv.right(time=[5, -1, 3], event=[1, 1, 1])
 except ValueError as error:
     print(error)
 ```
@@ -236,7 +365,7 @@ its first stretch so you can see the shape of it.
 ```{python}
 # Load data and build the response
 lung = gw.load_dataset("lung", backend="polars")
-y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
 # Serialize the response to a self-contained JSON string
 text = y.to_json(indent=None)
@@ -272,7 +401,7 @@ an equivalent response from it.
 
 ```{python}
 # Serialize to a dict, then immediately reconstruct from it
-gw.Surv.from_dict(gw.Surv.right([5, 6, 4], event=[1, 0, 1]).to_dict())
+gw.Surv.from_dict(gw.Surv.right(time=[5, 6, 4], event=[1, 0, 1]).to_dict())
 ```
 
 ## The risk-set table
@@ -285,7 +414,7 @@ is what Kaplan-Meier, the log-rank test, and Cox all build on, and you can compu
 ```{python}
 # Load data and build the response
 lung = gw.load_dataset("lung", backend="polars")
-y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
 # Tabulate events and censorings at each distinct event time
 gw.event_table(y).to_frame(format="polars")
@@ -297,7 +426,7 @@ within strata, which adds a `strata` column.
 
 ```{python}
 # Tabulate separately within each level of the `sex` column
-gw.event_table(y, group=lung["sex"]).to_frame(format="polars")
+gw.event_table(y, group="sex", data=lung).to_frame(format="polars")
 ```
 
 You rarely need this table directly, but it is the shared foundation the estimators are built on,
@@ -305,8 +434,9 @@ and it is handy when you want to check counts by hand or drive a custom calculat
 
 ## Next steps
 
-You now know how to represent survival data and how to avoid the most common coding mistake. From
-here you can bring in your own data or start estimating.
+You now know how to represent survival data, how to declare its event coding, and how to describe
+an outcome once with `Outcome` or a formula. From here you can bring in your own data or start
+estimating.
 
 - [Data sources and formats](04-data-sources.qmd) shows how to load data from pandas, Polars, and
 other backends, how to compute durations from timestamps and encode event indicators from compound
