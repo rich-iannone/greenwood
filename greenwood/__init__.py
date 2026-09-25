@@ -23,6 +23,7 @@ from ._cr_forest import CompetingRiskForest
 from ._cure import MixtureCure
 from ._flexible import RoystonParmar
 from ._forest import ExtraSurvivalTrees, RandomSurvivalForest, SurvivalTree
+from ._ingest import Duration, duration
 from ._ipcw import CensoringDistribution, IPCRidge
 from ._metrics import (
     ConcordanceCompareResult,
@@ -44,6 +45,7 @@ from ._metrics import (
     time_dependent_auc,
 )
 from ._nonparametric import KaplanMeier, NelsonAalen
+from ._outcome import Outcome
 from ._parametric import AFT
 from ._pem import PiecewiseExponential
 from ._penalized import CoxNet, CoxNetCVResult, cv_coxnet
@@ -88,6 +90,9 @@ except PackageNotFoundError:  # pragma: no cover - source tree without metadata
 __all__ = [
     "__version__",
     "Surv",
+    "Outcome",
+    "duration",
+    "Duration",
     "CensoringType",
     "EventTable",
     "event_table",
