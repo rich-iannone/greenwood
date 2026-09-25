@@ -71,7 +71,7 @@ gw.plot_survival(km, risk_table=True)
 
 ```{python}
 # Model covariate effects on hazard
-cox = gw.CoxPH().fit(y, covariates=lung[["age", "sex"]])
+cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
 
 # Get hazard ratios with confidence intervals
 gw.tidy(cox, exponentiate=True, format="polars")
