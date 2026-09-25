@@ -121,3 +121,58 @@ def test_fine_gray_predicts_from_full_frame() -> None:
         mg[["age", "sex"]].head(3), times=[120, 240], format="pandas"
     )
     np.testing.assert_allclose(a.to_numpy(dtype=float), b.to_numpy(dtype=float))
+
+
+# -- missing categorical values -------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def veteran_na(veteran: Any) -> Any:
+    frame = veteran.copy()
+    frame["celltype"] = frame["celltype"].astype(object)
+    frame.loc[[0, 5, 9], "celltype"] = None
+    return frame
+
+
+VET = Outcome.right(time="time", event="status")
+
+
+@pytest.mark.parametrize("backend", ["pandas", "polars"])
+def test_missing_category_drops_the_row(veteran_na: Any, backend: str) -> None:
+    import polars as pl
+
+    data = veteran_na if backend == "pandas" else pl.from_pandas(veteran_na)
+    ref_frame = veteran_na.dropna(subset=["celltype"])
+    y_ref = gw.Surv.right(time="time", event="status", data=ref_frame)
+    ref = gw.CoxPH().fit(y_ref, covariates=["age", "celltype"], data=ref_frame)
+    # A plain Surv over the full frame: the model's own complete-case step drops the rows
+    y = gw.Surv.right(time="time", event="status", data=data)
+    cox = gw.CoxPH().fit(y, covariates=["age", "celltype"], data=data)
+    np.testing.assert_allclose(cox.coef_, ref.coef_, rtol=1e-10)
+    assert cox.n_dropped_ == 3
+    assert "3 observations deleted due to missingness" in repr(cox)
+
+
+def test_missing_category_in_formula_drops_the_row(veteran_na: Any) -> None:
+    ref_frame = veteran_na.dropna(subset=["celltype"])
+    ref = gw.CoxPH().fit("Surv(time, status) ~ age + C(celltype)", data=ref_frame)
+    y = gw.Surv.right(time="time", event="status", data=veteran_na)
+    cox = gw.CoxPH().fit(y, covariates="age + C(celltype)", data=veteran_na)
+    np.testing.assert_allclose(cox.coef_, ref.coef_, rtol=1e-10)
+    assert cox.n_dropped_ == 3
+
+
+def test_missing_category_gives_nan_prediction(veteran: Any, veteran_na: Any) -> None:
+    cox = gw.CoxPH().fit(VET, covariates=["age", "celltype"], data=veteran)
+    lp = _lp(cox, veteran_na)
+    assert np.isnan(lp[[0, 5, 9]]).all()
+    np.testing.assert_allclose(np.delete(lp, [0, 5, 9]), np.delete(_lp(cox, veteran), [0, 5, 9]))
+    formula = gw.CoxPH().fit("Surv(time, status) ~ age + C(celltype)", data=veteran)
+    assert np.isnan(_lp(formula, veteran_na)[[0, 5, 9]]).all()
+
+
+def test_formula_predict_rejects_unseen_level(veteran: Any) -> None:
+    cox = gw.CoxPH().fit("Surv(time, status) ~ age + C(celltype)", data=veteran)
+    new = veteran.head(1).assign(celltype="unknown")
+    with pytest.raises(ValueError, match="not present when the model"):
+        cox.predict(new)
