@@ -27,7 +27,7 @@ import numpy.typing as npt
 from scipy.stats import norm
 
 from ._backends import to_dataframe
-from ._cox import _design_matrix
+from ._cox import _design_matrix_spec
 from ._outcome import bind_fit_inputs
 from ._repr import dropped_note
 
@@ -267,7 +267,7 @@ class BuckleyJames:
                 f"{surv.type.value!r}."
             )
 
-        design, cov_names = _design_matrix(covariates, data)
+        design, cov_names, self._design_spec = _design_matrix_spec(covariates, data)
         if design.shape[0] != surv.n:
             raise ValueError("Covariates and response must have the same number of rows.")
 
@@ -346,7 +346,7 @@ class BuckleyJames:
     def _design(self, newdata: Any) -> Array:
         if newdata is None:
             return self._x
-        design, _ = _design_matrix(newdata)
+        design = self._design_spec.transform(newdata)
         return np.column_stack([np.ones(design.shape[0]), design])
 
     def predict(
@@ -364,6 +364,8 @@ class BuckleyJames:
         newdata
             Covariate values for prediction. A DataFrame (Pandas or Polars), 2-D array, or `None`
             (the default, uses the training data).
+            A data frame may also hold other columns. The covariates are picked out by name and
+            coded as they were at fit time, so the frame the model was fit on can be passed as is.
         type
             `"survival"` (default): survival probabilities $S(t \mid x)$ at `times`, evaluated by
             shifting the fitted residual Kaplan-Meier curve by each subject's linear predictor.
