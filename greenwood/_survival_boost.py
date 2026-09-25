@@ -18,8 +18,11 @@ from ._backends import to_dataframe
 from ._boosting import _RegressionTree, _resolve_max_features
 from ._competing import _censoring_km
 from ._cox import _design_matrix
+from ._outcome import bind_fit_inputs
+from ._repr import dropped_note
 
 if TYPE_CHECKING:
+    from ._outcome import Outcome
     from ._surv import Surv
 
 __all__ = ["SurvivalBoost"]
@@ -147,7 +150,7 @@ class SurvivalBoost:
     sim = gw.simulate_competing_risks(n=500, n_causes=2, n_covariates=3, seed=42)
 
     sb = gw.SurvivalBoost(n_estimators=50, learning_rate=0.1, max_depth=3, random_state=0)
-    sb.fit(sim.surv, sim.covariates)
+    sb.fit(sim.surv, covariates=sim.covariates)
     sb
     ```
 
@@ -217,26 +220,46 @@ class SurvivalBoost:
             f"SurvivalBoost ({self.n_estimators} rounds, "
             f"learning_rate={self.learning_rate}, max_depth={self.max_depth})\n"
             f"n = {self.n_}, events = {self.n_event_}, "
-            f"causes = {self.n_causes_}, features = {self.n_features_in_}"
+            f"causes = {self.n_causes_}, features = {self.n_features_in_}{dropped_note(self)}"
         )
 
-    def fit(self, surv: Surv, covariates: Any, *, data: Any = None) -> Self:
+    def fit(self, surv: Surv | Outcome | str, covariates: Any = None, *, data: Any = None) -> Self:
         """Fit the gradient-boosted cumulative incidence model.
 
         Parameters
         ----------
         surv
             A multi-state `Surv` response (built with `Surv.multistate()`).
+            An `Outcome` or a formula string such as `'Surv(time, status == 2) ~ age + sex'` is also
+            accepted, with its columns read from `data`. The right-hand side sets `covariates`.
         covariates
             A dataframe, a 2-D array, or a right-hand-side formula string evaluated against `data`.
+            A list of column names in `data` also works.
         data
-            DataFrame used to evaluate a formula string.
+            A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns
+            named by the response and `covariates`. When `surv` is an `Outcome` or a formula, rows
+            with a missing value in any column used are dropped before fitting. Covariate formula
+            strings and lists of column names are also resolved here.
 
         Returns
         -------
         self
             The fitted estimator.
         """
+        bound = bind_fit_inputs(
+            surv,
+            data=data,
+            designs={"covariates": covariates},
+            rhs_to="covariates",
+            required=("covariates",),
+            estimator="SurvivalBoost",
+        )
+        surv = bound.surv
+        covariates = bound.designs["covariates"]
+        data = bound.data
+        self._n_input = bound.n_input
+        self.n_dropped_ = bound.n_dropped
+
         if surv.states is None:
             raise NotImplementedError(
                 "SurvivalBoost requires a multi-state response from Surv.multistate()."
@@ -347,6 +370,7 @@ class SurvivalBoost:
         self.n_classes_ = n_classes
         self.n_causes_ = n_causes
         self.n_ = int(n)
+        self.n_dropped_ = max(getattr(self, "_n_input", self.n_) - self.n_, 0)
         self.n_event_ = int((status > 0).sum())
         self.n_features_in_ = x.shape[1]
         self.feature_names_in_ = list(names)
