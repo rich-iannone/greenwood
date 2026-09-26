@@ -127,7 +127,10 @@ def duration(start: str, end: str, *, unit: str = "days") -> Duration:
     Returns
     -------
     Duration
-        A time specification that is computed when the data is read.
+        A frozen `Duration` spec holding the two column names and the unit. It is computed when the
+        data is read, and it prints as the call that made it, such as
+        `duration(start='enroll', end='exit', unit='days')`. The `Duration` class is exported
+        for type annotations.
 
     Examples
     --------
