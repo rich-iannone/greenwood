@@ -437,3 +437,197 @@ def test_compare_distributions_formula(lung: Any) -> None:
     res = gw.compare_distributions("Surv(time, status == 2)", data=lung, format="pandas")
 
     np.testing.assert_allclose(res["aic"], ref["aic"])
+
+
+# -- split_episodes column selection ------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def pbcseq() -> Any:
+    return gw.load_dataset("pbcseq", backend="pandas")
+
+
+def test_split_episodes_long_table_matches_two_frame_form(pbcseq: Any) -> None:
+    import pandas as pd
+
+    base = pbcseq.drop_duplicates("id")[["id", "futime", "status"]]
+    old = gw.split_episodes(
+        baseline=base,
+        visits=pbcseq[["id", "day", "bili", "albumin"]],
+        id="id",
+        time="futime",
+        event="status",
+        visit_time="day",
+        format="pandas",
+    )
+    new = gw.split_episodes(
+        baseline=pbcseq,
+        visits=pbcseq,
+        id="id",
+        time="futime",
+        event="status",
+        visit_time="day",
+        covariates=["bili", "albumin"],
+        format="pandas",
+    )
+    pd.testing.assert_frame_equal(old.reset_index(drop=True), new.reset_index(drop=True))
+
+
+def test_split_episodes_baseline_covariates_and_lazy_input(pbcseq: Any) -> None:
+    import polars as pl
+
+    long = gw.split_episodes(
+        baseline=pl.from_pandas(pbcseq).lazy(),
+        visits=pl.from_pandas(pbcseq),
+        id="id",
+        time="futime",
+        event="status",
+        visit_time="day",
+        covariates=["bili"],
+        baseline_covariates=["trt", "age"],
+        format="polars",
+    )
+    assert long.columns == ["id", "tstart", "tstop", "status", "trt", "age", "bili"]
+
+
+def test_split_episodes_errors(pbcseq: Any) -> None:
+    common: dict[str, Any] = {"id": "id", "time": "futime", "event": "status", "visit_time": "day"}
+    with pytest.raises(ValueError, match="more than one value of 'chol'"):
+        gw.split_episodes(
+            baseline=pbcseq,
+            visits=pbcseq,
+            covariates=["bili"],
+            baseline_covariates=["chol"],
+            **common,
+        )
+    with pytest.raises(ValueError, match="both time-fixed"):
+        gw.split_episodes(
+            baseline=pbcseq,
+            visits=pbcseq,
+            covariates=["age"],
+            baseline_covariates=["age"],
+            **common,
+        )
+    with pytest.raises(ValueError, match="'bilirubin' not found in visits"):
+        gw.split_episodes(baseline=pbcseq, visits=pbcseq, covariates=["bilirubin"], **common)
+
+
+# -- MultiState column names ----------------------------------------------------
+
+
+def test_multistate_fit_by_column_names() -> None:
+    import polars as pl
+
+    intervals = pl.DataFrame(
+        {
+            "tstart": [0.0, 0.0, 5.0, 0.0],
+            "tstop": [5.0, 8.0, 9.0, 4.0],
+            "from": ["a", "a", "b", "a"],
+            "to": ["b", None, "c", "c"],
+        }
+    )
+    by_name = gw.MultiState().fit(
+        start="tstart", stop="tstop", state="from", event="to", data=intervals
+    )
+    by_value = gw.MultiState().fit(
+        start=intervals["tstart"],
+        stop=intervals["tstop"],
+        state=intervals["from"],
+        event=intervals["to"],
+    )
+    a, b = by_name.to_frame(format="pandas"), by_value.to_frame(format="pandas")
+    np.testing.assert_allclose(a.drop(columns="time").to_numpy(), b.drop(columns="time").to_numpy())
+    with pytest.raises(ValueError, match="no `data=` was given"):
+        gw.MultiState().fit(start="tstart", stop="tstop", state="from", event="to")
+
+
+# -- duration() in formulas -----------------------------------------------------
+
+
+def test_duration_in_formula() -> None:
+    import polars as pl
+
+    df = pl.DataFrame(
+        {
+            "enroll": [date(2021, 1, 1), date(2021, 1, 1), date(2021, 2, 1)],
+            "exit": [date(2021, 1, 11), date(2021, 1, 21), date(2021, 3, 3)],
+            "outcome": ["died", "alive", "died"],
+        }
+    )
+    parsed = Outcome.from_formula('Surv(duration(enroll, exit, unit="weeks"), outcome == "died")')
+    built = Outcome.right(
+        time=gw.duration(start="enroll", end="exit", unit="weeks"),
+        event="outcome",
+        event_value="died",
+    )
+    assert parsed == built
+    km = gw.KaplanMeier().fit('Surv(duration(enroll, exit), outcome == "died")', data=df)
+    ref = gw.KaplanMeier().fit(gw.Surv.right(time=[10.0, 20.0, 30.0], event=[1, 0, 1]))
+    np.testing.assert_allclose(km.survival_, ref.survival_)
+
+
+@pytest.mark.parametrize(
+    "formula",
+    [
+        "Surv(duration(enroll), died)",
+        "Surv(duration(enroll, exit, days), died)",
+        'Surv(duration(enroll, exit, scale="days"), died)',
+    ],
+)
+def test_bad_duration_in_formula(formula: str) -> None:
+    with pytest.raises(ValueError):
+        Outcome.from_formula(formula)
+
+
+# -- frailty() terms ------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("term", "dist"),
+    [
+        ("frailty(inst)", "gamma"),
+        ("frailty.gamma(inst)", "gamma"),
+        ('frailty(inst, distribution="gaussian")', "lognormal"),
+        ("frailty.gaussian(inst)", "lognormal"),
+    ],
+)
+def test_frailty_term_matches_arguments(lung: Any, term: str, dist: str) -> None:
+    ref = gw.CoxPH(ties="breslow").fit(
+        DEATH, covariates=["age", "sex"], data=lung, frailty=dist, frailty_cluster="inst"
+    )
+    cox = gw.CoxPH(ties="breslow").fit(f"Surv(time, status == 2) ~ age + sex + {term}", data=lung)
+    np.testing.assert_allclose(cox.coef_, ref.coef_, rtol=1e-10)
+
+
+def test_frailty_term_errors(lung: Any) -> None:
+    formula = "Surv(time, status == 2) ~ age + frailty(inst)"
+    with pytest.raises(ValueError, match="also given"):
+        gw.CoxPH(ties="breslow").fit(formula, data=lung, frailty="lognormal")
+    with pytest.raises(ValueError, match="not supported"):
+        gw.CoxPH(ties="breslow").fit(
+            "Surv(time, status == 2) ~ age + frailty(inst, theta=1)", data=lung
+        )
+    with pytest.raises(ValueError, match="two different frailty"):
+        gw.CoxPH(ties="breslow").fit(
+            'Surv(time, status == 2) ~ age + frailty.gamma(inst, distribution="gaussian")',
+            data=lung,
+        )
+    with pytest.raises(ValueError, match="does not support `frailty\\(\\)`"):
+        gw.AFT(dist="weibull").fit(formula, data=lung)
+
+
+# -- first_event() sanity warning ------------------------------------------------
+
+
+def test_first_event_warns_when_an_event_follows_ended_follow_up() -> None:
+    data = {"p": [80.0, 5.0], "ps": [1, 0], "f": [60.0, 9.0], "d": [0, 0]}
+    with pytest.warns(UserWarning, match="follow-up stops at 60"):
+        Surv.first_event(endpoints={"pcm": ("p", "ps"), "death": ("f", "d")}, data=data)
+
+
+def test_first_event_is_quiet_on_mgus2(mgus2: Any) -> None:
+    import warnings
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        Surv.first_event(endpoints=MGUS_ENDPOINTS, data=mgus2)
