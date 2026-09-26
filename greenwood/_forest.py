@@ -29,9 +29,12 @@ import numpy.typing as npt
 from typing_extensions import Self
 
 from ._backends import to_dataframe
-from ._cox import _design_matrix
+from ._cox import _design_matrix_spec
+from ._outcome import bind_fit_inputs
+from ._repr import dropped_note
 
 if TYPE_CHECKING:
+    from ._outcome import Outcome
     from ._surv import Surv
 
 __all__ = ["SurvivalTree", "RandomSurvivalForest", "ExtraSurvivalTrees"]
@@ -401,11 +404,11 @@ class SurvivalTree:
 
     # Load data and build a right-censored response
     lung = gw.load_dataset("lung", backend="pandas").dropna(subset=["ph.ecog", "ph.karno"])
-    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
     cols = ["age", "sex", "ph.ecog", "ph.karno", "wt.loss"]
 
     # Fit a survival tree and score the first five subjects
-    tree = gw.SurvivalTree(max_depth=3, random_state=0).fit(y, lung[cols])
+    tree = gw.SurvivalTree(max_depth=3, random_state=0).fit(y, covariates=lung[cols])
     tree.predict(lung[cols])[:5]
     ```
     """
@@ -443,12 +446,13 @@ class SurvivalTree:
         return (
             f"SurvivalTree (log-rank splits, {self._n_nodes_} nodes, {self._n_leaves_} leaves)\n"
             f"n = {self.n_}, events = {self.n_event_}, features = {self.n_features_in_}"
+            + dropped_note(self)
         )
 
     def fit(
         self,
-        surv: Surv | None,
-        covariates: Any,
+        surv: Surv | Outcome | str | None,
+        covariates: Any = None,
         *,
         data: Any = None,
         _rng: np.random.Generator | None = None,
@@ -462,10 +466,16 @@ class SurvivalTree:
         ----------
         surv
             A right-censored `Surv` response (built with `Surv.right()`).
+            An `Outcome` or a formula string such as `'Surv(time, status == 2) ~ age + sex'` is also
+            accepted, with its columns read from `data`. The right-hand side sets `covariates`.
         covariates
             A dataframe, a 2-D array, or a right-hand-side formula string evaluated against `data`.
+            A list of column names in `data` also works.
         data
-            DataFrame used to evaluate a formula string.
+            A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns
+            named by the response and `covariates`. When `surv` is an `Outcome` or a formula, rows
+            with a missing value in any column used are dropped before fitting. Covariate formula
+            strings and lists of column names are also resolved here.
 
         Returns
         -------
@@ -473,7 +483,22 @@ class SurvivalTree:
             The fitted estimator (for method chaining), with cached attributes such as
             `event_times_`, `n_features_in_`, and `feature_names_in_`.
         """
-        x, names = _design_matrix(covariates, data)
+        if surv is not None:
+            bound = bind_fit_inputs(
+                surv,
+                data=data,
+                designs={"covariates": covariates},
+                rhs_to="covariates",
+                required=("covariates",),
+                estimator="SurvivalTree",
+            )
+            surv = bound.surv
+            covariates = bound.designs["covariates"]
+            data = bound.data
+            self._n_input = bound.n_input
+            self.n_dropped_ = bound.n_dropped
+
+        x, names, self._design_spec = _design_matrix_spec(covariates, data)
         # The forest passes already-aligned time/event arrays (e.g. from a bootstrap sample);
         # otherwise derive them from the response and check row alignment.
         if _time is not None and _event is not None:
@@ -495,6 +520,7 @@ class SurvivalTree:
         self.feature_names_in_ = list(names)
         self.n_features_in_ = x.shape[1]
         self.n_ = int(x.shape[0])
+        self.n_dropped_ = max(getattr(self, "_n_input", self.n_) - self.n_, 0)
         self.n_event_ = int(event.sum())
         self._n_features_split = _resolve_max_features(self.max_features, x.shape[1])
 
@@ -592,6 +618,8 @@ class SurvivalTree:
         ----------
         newdata
             Covariates to predict for. `None` predicts for the training subjects.
+            A data frame may also hold other columns. The covariates are picked out by name and
+            coded as they were at fit time, so the frame the model was fit on can be passed as is.
         type
             One of `"risk"`, `"survival"`, or `"cumulative_hazard"`.
         times
@@ -618,7 +646,7 @@ class SurvivalTree:
     def _design(self, newdata: Any) -> Array:
         if newdata is None:
             raise ValueError("Provide `newdata` to predict; the tree does not retain training X.")
-        return _design_matrix(newdata)[0]
+        return self._design_spec.transform(newdata)
 
     def _curve_frame(self, curves: Array, times: Any, format: str | None, boundary: float) -> Any:
         query = (
@@ -692,23 +720,30 @@ class _BaseSurvivalForest:
             return f"{name}(n_estimators={self.n_estimators}) <unfitted>"
         lines = [
             f"{name} ({self.n_estimators} log-rank trees, max_features={self.max_features!r})",
-            f"n = {self.n_}, events = {self.n_event_}, features = {self.n_features_in_}",
+            f"n = {self.n_}, events = {self.n_event_}, features = {self.n_features_in_}"
+            + dropped_note(self),
         ]
         if self.oob_score_ is not None:
             lines.append(f"out-of-bag concordance = {self.oob_score_:.4f}")
         return "\n".join(lines)
 
-    def fit(self, surv: Surv, covariates: Any, *, data: Any = None) -> Self:
+    def fit(self, surv: Surv | Outcome | str, covariates: Any = None, *, data: Any = None) -> Self:
         """Fit the forest to a right-censored response and covariate design.
 
         Parameters
         ----------
         surv
             A right-censored `Surv` response (built with `Surv.right()`).
+            An `Outcome` or a formula string such as `'Surv(time, status == 2) ~ age + sex'` is also
+            accepted, with its columns read from `data`. The right-hand side sets `covariates`.
         covariates
             A dataframe, a 2-D array, or a right-hand-side formula string evaluated against `data`.
+            A list of column names in `data` also works.
         data
-            DataFrame used to evaluate a formula string.
+            A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns
+            named by the response and `covariates`. When `surv` is an `Outcome` or a formula, rows
+            with a missing value in any column used are dropped before fitting. Covariate formula
+            strings and lists of column names are also resolved here.
 
         Returns
         -------
@@ -716,7 +751,21 @@ class _BaseSurvivalForest:
             The fitted estimator, with cached attributes including `trees_`, `event_times_`,
             `oob_score_`, `n_features_in_`, and `feature_names_in_`.
         """
-        x, names = _design_matrix(covariates, data)
+        bound = bind_fit_inputs(
+            surv,
+            data=data,
+            designs={"covariates": covariates},
+            rhs_to="covariates",
+            required=("covariates",),
+            estimator="_BaseSurvivalForest",
+        )
+        surv = bound.surv
+        covariates = bound.designs["covariates"]
+        data = bound.data
+        self._n_input = bound.n_input
+        self.n_dropped_ = bound.n_dropped
+
+        x, names, self._design_spec = _design_matrix_spec(covariates, data)
         time, event = _prepare_response(surv)
         if x.shape[0] != surv.n:
             raise ValueError("Covariates and response must have the same number of rows.")
@@ -732,6 +781,7 @@ class _BaseSurvivalForest:
         self.feature_names_in_ = list(names)
         self.n_features_in_ = x.shape[1]
         self.n_ = int(n)
+        self.n_dropped_ = max(getattr(self, "_n_input", self.n_) - self.n_, 0)
         self.n_event_ = int(event.sum())
         # Retain training data for OOB scoring and variable importance.
         self._x_train, self._time_train, self._event_train = x, time, event
@@ -815,6 +865,8 @@ class _BaseSurvivalForest:
         ----------
         newdata
             Covariates to predict for. `None` predicts for the training subjects.
+            A data frame may also hold other columns. The covariates are picked out by name and
+            coded as they were at fit time, so the frame the model was fit on can be passed as is.
         type
             One of `"risk"`, `"survival"`, or `"cumulative_hazard"`.
         times
@@ -829,7 +881,7 @@ class _BaseSurvivalForest:
         """
         if type not in _PREDICT_TYPES:
             raise ValueError(f"Unknown predict type {type!r}; use one of {_PREDICT_TYPES}.")
-        x = self._x_train if newdata is None else _design_matrix(newdata)[0]
+        x = self._x_train if newdata is None else self._design_spec.transform(newdata)
         cumhaz, survival = self._ensemble_curves(x)
         if type == "risk":
             return cumhaz.sum(axis=1)
@@ -956,13 +1008,13 @@ class RandomSurvivalForest(_BaseSurvivalForest):
 
     # Load data and build a right-censored response
     lung = gw.load_dataset("lung", backend="pandas").dropna(subset=["ph.ecog", "ph.karno"])
-    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
     cols = ["age", "sex", "ph.ecog", "ph.karno", "wt.loss"]
 
     # Fit the forest with an out-of-bag score
     rsf = gw.RandomSurvivalForest(
         n_estimators=100, oob_score=True, random_state=0
-    ).fit(y, lung[cols])
+    ).fit(y, covariates=lung[cols])
     rsf
     ```
     """
@@ -1013,13 +1065,13 @@ class ExtraSurvivalTrees(_BaseSurvivalForest):
 
     # Load data and build a right-censored response
     lung = gw.load_dataset("lung", backend="pandas").dropna(subset=["ph.ecog", "ph.karno"])
-    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
     cols = ["age", "sex", "ph.ecog", "ph.karno", "wt.loss"]
 
     # Fit with bootstrap sampling so an out-of-bag score is available
     ext = gw.ExtraSurvivalTrees(
         n_estimators=100, bootstrap=True, oob_score=True, random_state=0
-    ).fit(y, lung[cols])
+    ).fit(y, covariates=lung[cols])
     ext
     ```
     """

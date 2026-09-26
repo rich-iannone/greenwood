@@ -36,9 +36,9 @@ Here's a complete example: load survival data, estimate a curve, test for differ
 ```{python}
 import greenwood as gw
 
-# Load data and represent it as a survival object
+# Load data and represent it as a survival object (a status of 2 marks a death)
 lung = gw.load_dataset("lung", backend="polars")
-y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 y
 ```
 
@@ -46,7 +46,7 @@ y
 
 ```{python}
 # Fit stratified Kaplan-Meier with log-log confidence intervals
-km = gw.KaplanMeier(conf_type="log-log").fit(y, by=lung["sex"])
+km = gw.KaplanMeier(conf_type="log-log").fit(y, by="sex", data=lung)
 
 # Get median survival per group with 95% confidence intervals
 km.median(ci=True)
@@ -56,7 +56,7 @@ km.median(ci=True)
 
 ```{python}
 # Test for differences in survival between sexes
-test_result = gw.logrank_test(y, group=lung["sex"])
+test_result = gw.logrank_test(y, group="sex", data=lung)
 test_result
 ```
 
@@ -71,7 +71,7 @@ gw.plot_survival(km, risk_table=True)
 
 ```{python}
 # Model covariate effects on hazard
-cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
 
 # Get hazard ratios with confidence intervals
 gw.tidy(cox, exponentiate=True, format="polars")

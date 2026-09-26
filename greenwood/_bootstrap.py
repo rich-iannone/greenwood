@@ -16,8 +16,11 @@ import numpy as np
 import numpy.typing as npt
 from scipy.stats import norm
 
+from ._outcome import bind_fit_inputs
+
 if TYPE_CHECKING:
     from ._nonparametric import KaplanMeier
+    from ._outcome import Outcome
     from ._surv import Surv
 
 Array = npt.NDArray[Any]
@@ -230,9 +233,10 @@ def _bca_ci(
 
 
 def bootstrap(
-    surv: Surv,
+    surv: Surv | Outcome | str,
     statistic: str | Callable[[KaplanMeier], float],
     *,
+    data: Any = None,
     by: Any = None,
     weights: Any = None,
     n_boot: int = 1000,
@@ -253,6 +257,8 @@ def bootstrap(
     ----------
     surv
         A `Surv` response (right-censored or counting-process).
+        An `Outcome` or a formula string such as `'Surv(time, status == 2) ~ sex'` is also accepted,
+        with its columns read from `data`. The right-hand side names the `group` column(s).
     statistic
         The quantity to bootstrap. Pass a string for built-in statistics:
 
@@ -286,12 +292,28 @@ def bootstrap(
         Quantile level for `"quantile"` statistic.
     times
         Time point for `"survival"` and `"survival_diff"` statistics.
+    data
+        A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns named
+        by the response, `by`, and `weights`. When `surv` is an `Outcome` or a formula, rows with a
+        missing value in any column used are dropped first, along with the matching rows of any
+        arrays passed alongside.
 
     Returns
     -------
     BootstrapResult
         Point estimate, standard error, confidence interval, and the full bootstrap distribution.
     """
+    bound = bind_fit_inputs(
+        surv,
+        data=data,
+        labels={"by": by, "weights": weights},
+        rhs_to="by",
+        estimator="bootstrap()",
+    )
+    surv = bound.surv
+    by = bound.labels["by"]
+    weights = bound.labels["weights"]
+
     from ._nonparametric import KaplanMeier as _KM
     from ._resample import _subset_surv
     from ._surv import _to_1d_array

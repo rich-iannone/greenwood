@@ -23,8 +23,11 @@ from scipy.optimize import minimize
 from scipy.stats import norm as norm_dist
 
 from ._backends import to_dataframe
+from ._outcome import bind_fit_inputs
+from ._repr import dropped_note
 
 if TYPE_CHECKING:
+    from ._outcome import Outcome
     from ._surv import Surv
 
 __all__ = ["MixtureCure"]
@@ -220,9 +223,9 @@ class MixtureCure:
     import greenwood as gw
 
     e1684 = gw.load_dataset("e1684", backend="polars")
-    y = gw.Surv.right(e1684["FAILTIME"], event=e1684["FAILCENS"])
+    y = gw.Surv.right(time=e1684["FAILTIME"], event=e1684["FAILCENS"])
 
-    cure = gw.MixtureCure().fit(y, latency=e1684[["TRT"]], cure=e1684[["TRT"]])
+    cure = gw.MixtureCure().fit(y, latency=["TRT"], data=e1684, cure=["TRT"])
     cure
     ```
     """
@@ -283,15 +286,16 @@ class MixtureCure:
                 "Failure time distribution model:",
                 lat_table,
                 "",
-                f"n = {self.n_}, events = {self.n_event_}, EM iterations = {self.n_iter_}",
+                f"n = {self.n_}, events = {self.n_event_}, EM iterations = {self.n_iter_}"
+                + dropped_note(self),
             ]
         )
 
     def fit(
         self,
-        surv: Surv,
-        latency: Any,
-        cure: Any,
+        surv: Surv | Outcome | str,
+        latency: Any = None,
+        cure: Any = None,
         *,
         data: Any = None,
         nboot: int = 100,
@@ -302,14 +306,21 @@ class MixtureCure:
         ----------
         surv
             A right-censored `Surv` response.
+            An `Outcome` or a formula string such as `'Surv(time, status == 2) ~ age + sex'` is also
+            accepted, with its columns read from `data`. The right-hand side sets `latency`.
         latency
             Covariates for the latency (survival) submodel. A dataframe, 2-D array,
             or formula string evaluated against `data`.
+            A list of column names in `data` also works.
         cure
             Covariates for the incidence (cure) submodel. A dataframe, 2-D array,
             or formula string evaluated against `data`.
+            A list of column names in `data` also works.
         data
-            DataFrame for formula evaluation.
+            A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns
+            named by the response, `latency`, and `cure`. When `surv` is an `Outcome` or a formula,
+            rows with a missing value in any column used are dropped before fitting. Covariate
+            formula strings and lists of column names are also resolved here.
         nboot
             Number of bootstrap resamples for standard errors (default 100).
 
@@ -318,7 +329,25 @@ class MixtureCure:
         MixtureCure
             The fitted estimator.
         """
-        from ._cox import _design_matrix
+        bound = bind_fit_inputs(
+            surv,
+            data=data,
+            designs={"latency": latency, "cure": cure},
+            rhs_to="latency",
+            required=(
+                "latency",
+                "cure",
+            ),
+            estimator="MixtureCure",
+        )
+        surv = bound.surv
+        latency = bound.designs["latency"]
+        cure = bound.designs["cure"]
+        data = bound.data
+        self._n_input = bound.n_input
+        self.n_dropped_ = bound.n_dropped
+
+        from ._cox import _design_matrix_spec
         from ._surv import CensoringType
 
         if surv.type != CensoringType.RIGHT:
@@ -326,8 +355,8 @@ class MixtureCure:
                 f"MixtureCure supports right-censored responses, not {surv.type.value!r}."
             )
 
-        x_raw, latency_names = _design_matrix(latency, data)
-        z_raw, cure_names = _design_matrix(cure, data)
+        x_raw, latency_names, self._latency_spec = _design_matrix_spec(latency, data)
+        z_raw, cure_names, self._cure_spec = _design_matrix_spec(cure, data)
 
         if x_raw.shape[0] != surv.n:
             raise ValueError("Latency covariates and response must have the same number of rows.")
@@ -377,6 +406,7 @@ class MixtureCure:
         self.baseline_survival_ = base_surv
 
         self.n_ = n
+        self.n_dropped_ = max(getattr(self, "_n_input", self.n_) - self.n_, 0)
         self.n_event_ = int(status.sum())
         self.n_iter_ = n_iter
 
@@ -402,9 +432,8 @@ class MixtureCure:
         numpy.ndarray
             Array of susceptibility probabilities (1 = certainly uncured).
         """
-        from ._cox import _design_matrix
 
-        z_raw, _ = _design_matrix(cure_covariates, data)
+        z_raw = self._cure_spec.transform(cure_covariates, data=data)
         z = np.column_stack([np.ones(z_raw.shape[0]), z_raw])
         return _expit(z @ self.cure_coef_)
 
@@ -434,11 +463,10 @@ class MixtureCure:
         numpy.ndarray
             Array of shape `(n_subjects, n_times)` with population survival probabilities.
         """
-        from ._cox import _design_matrix
 
         t = np.atleast_1d(np.asarray(times, dtype=float))
-        x_raw, _ = _design_matrix(latency_covariates, data)
-        z_raw, _ = _design_matrix(cure_covariates, data)
+        x_raw = self._latency_spec.transform(latency_covariates, data=data)
+        z_raw = self._cure_spec.transform(cure_covariates, data=data)
         z = np.column_stack([np.ones(z_raw.shape[0]), z_raw])
 
         pi_ = _expit(z @ self.cure_coef_)

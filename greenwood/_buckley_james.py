@@ -27,9 +27,12 @@ import numpy.typing as npt
 from scipy.stats import norm
 
 from ._backends import to_dataframe
-from ._cox import _design_matrix
+from ._cox import _design_matrix_spec
+from ._outcome import bind_fit_inputs
+from ._repr import dropped_note
 
 if TYPE_CHECKING:
+    from ._outcome import Outcome
     from ._surv import Surv
 
 __all__ = ["BuckleyJames"]
@@ -150,10 +153,10 @@ class BuckleyJames:
 
     # Load data and build a right-censored response
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
     # Fit a Buckley-James model
-    bj = gw.BuckleyJames().fit(y, lung[["age", "sex"]])
+    bj = gw.BuckleyJames().fit(y, covariates=["age", "sex"], data=lung)
     bj
     ```
     """
@@ -197,24 +200,31 @@ class BuckleyJames:
                 "",
                 table,
                 "",
-                f"n = {self.n_}, events = {self.n_event_}",
+                f"n = {self.n_}, events = {self.n_event_}{dropped_note(self)}",
                 f"iterations = {self.n_iter_}, converged = {self.converged_}",
             ]
         )
 
-    def fit(self, surv: Surv, covariates: Any, *, data: Any = None) -> BuckleyJames:
+    def fit(
+        self, surv: Surv | Outcome | str, covariates: Any = None, *, data: Any = None
+    ) -> BuckleyJames:
         """Fit the Buckley-James model to survival data.
 
         Parameters
         ----------
         surv
             A right-censored `Surv` response. Built with `Surv.right()`.
+            An `Outcome` or a formula string such as `'Surv(time, status == 2) ~ age + sex'` is also
+            accepted, with its columns read from `data`. The right-hand side sets `covariates`.
         covariates
             A dataframe (pandas or polars), a 2-D array, or a formula string (e.g., `"age + sex"`)
             evaluated against the `data` argument.
+            A list of column names in `data` also works.
         data
-            A dataframe to evaluate the formula string (ignored if `covariates` is a dataframe or
-            array).
+            A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns
+            named by the response and `covariates`. When `surv` is an `Outcome` or a formula, rows
+            with a missing value in any column used are dropped before fitting. Covariate formula
+            strings and lists of column names are also resolved here.
 
         Returns
         -------
@@ -229,12 +239,26 @@ class BuckleyJames:
         import greenwood as gw
 
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
-        bj = gw.BuckleyJames().fit(y, lung[["age", "sex"]])
+        bj = gw.BuckleyJames().fit(y, covariates=["age", "sex"], data=lung)
         bj
         ```
         """
+        bound = bind_fit_inputs(
+            surv,
+            data=data,
+            designs={"covariates": covariates},
+            rhs_to="covariates",
+            required=("covariates",),
+            estimator="BuckleyJames",
+        )
+        surv = bound.surv
+        covariates = bound.designs["covariates"]
+        data = bound.data
+        self._n_input = bound.n_input
+        self.n_dropped_ = bound.n_dropped
+
         from ._surv import CensoringType
 
         if surv.type is not CensoringType.RIGHT:
@@ -243,7 +267,7 @@ class BuckleyJames:
                 f"{surv.type.value!r}."
             )
 
-        design, cov_names = _design_matrix(covariates, data)
+        design, cov_names, self._design_spec = _design_matrix_spec(covariates, data)
         if design.shape[0] != surv.n:
             raise ValueError("Covariates and response must have the same number of rows.")
 
@@ -273,6 +297,7 @@ class BuckleyJames:
         self.term_names_ = names
         self.coef_ = beta
         self.n_ = int(keep.sum())
+        self.n_dropped_ = max(getattr(self, "_n_input", self.n_) - self.n_, 0)
         self.n_event_ = int(event.sum())
         self.n_iter_ = n_iter
         self.converged_ = converged
@@ -321,7 +346,7 @@ class BuckleyJames:
     def _design(self, newdata: Any) -> Array:
         if newdata is None:
             return self._x
-        design, _ = _design_matrix(newdata)
+        design = self._design_spec.transform(newdata)
         return np.column_stack([np.ones(design.shape[0]), design])
 
     def predict(
@@ -339,6 +364,8 @@ class BuckleyJames:
         newdata
             Covariate values for prediction. A DataFrame (Pandas or Polars), 2-D array, or `None`
             (the default, uses the training data).
+            A data frame may also hold other columns. The covariates are picked out by name and
+            coded as they were at fit time, so the frame the model was fit on can be passed as is.
         type
             `"survival"` (default): survival probabilities $S(t \mid x)$ at `times`, evaluated by
             shifting the fitted residual Kaplan-Meier curve by each subject's linear predictor.
@@ -369,10 +396,10 @@ class BuckleyJames:
         import greenwood as gw
 
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-        bj = gw.BuckleyJames().fit(y, lung[["age", "sex"]])
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+        bj = gw.BuckleyJames().fit(y, covariates=["age", "sex"], data=lung)
 
-        bj.predict(lung[["age", "sex"]][:2], type="survival", times=[180, 365, 730],
+        bj.predict(lung[:2], type="survival", times=[180, 365, 730],
                    format="polars")
         ```
         """
@@ -426,8 +453,8 @@ class BuckleyJames:
         import greenwood as gw
 
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-        bj = gw.BuckleyJames(n_boot=200, seed=0).fit(y, lung[["age", "sex"]])
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+        bj = gw.BuckleyJames(n_boot=200, seed=0).fit(y, covariates=["age", "sex"], data=lung)
         bj.to_frame(format="polars")
         ```
         """

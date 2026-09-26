@@ -37,10 +37,13 @@ from scipy.optimize import minimize
 from scipy.stats import norm
 
 from ._backends import to_dataframe
-from ._cox import _design_matrix
+from ._cox import DesignSpec, _design_matrix_spec
+from ._outcome import bind_fit_inputs
 from ._parametric import _num_hessian
+from ._repr import dropped_note
 
 if TYPE_CHECKING:
+    from ._outcome import Outcome
     from ._surv import Surv
 
 __all__ = ["RoystonParmar"]
@@ -184,10 +187,10 @@ class RoystonParmar:
 
     # Load data and build a right-censored response
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
     # Fit a flexible model with three spline terms
-    rp = gw.RoystonParmar(df=3).fit(y, lung[["age", "sex"]])
+    rp = gw.RoystonParmar(df=3).fit(y, covariates=["age", "sex"], data=lung)
     rp
     ```
 
@@ -195,7 +198,7 @@ class RoystonParmar:
 
     ```{python}
     # Fit a flexible proportional-odds model
-    rp_odds = gw.RoystonParmar(df=3, scale="odds").fit(y, lung[["age", "sex"]])
+    rp_odds = gw.RoystonParmar(df=3, scale="odds").fit(y, covariates=["age", "sex"], data=lung)
     rp_odds
     ```
     """
@@ -232,12 +235,14 @@ class RoystonParmar:
                 "",
                 table,
                 "",
-                f"n = {self.n_}, events = {self.n_event_}",
+                f"n = {self.n_}, events = {self.n_event_}{dropped_note(self)}",
                 f"Log-likelihood = {num(self.loglik_)}",
             ]
         )
 
-    def fit(self, surv: Surv, covariates: Any = None, *, data: Any = None) -> RoystonParmar:
+    def fit(
+        self, surv: Surv | Outcome | str, covariates: Any = None, *, data: Any = None
+    ) -> RoystonParmar:
         """Fit the Royston-Parmar flexible parametric model to survival data.
 
         Fits a flexible parametric survival model to a right-censored response and optional
@@ -255,13 +260,18 @@ class RoystonParmar:
         ----------
         surv
             A right-censored `Surv` response. Built with `Surv.right()`.
+            An `Outcome` or a formula string such as `'Surv(time, status == 2) ~ age + sex'` is also
+            accepted, with its columns read from `data`. The right-hand side sets `covariates`.
         covariates
             Optional. A dataframe (pandas or polars), a 2-D array, or a formula string
             (e.g., `"age + sex"`) evaluated against the `data` argument. If `None` (default),
             fits a univariate model with no covariates.
+            A list of column names in `data` also works.
         data
-            A dataframe to evaluate the formula string (ignored if `covariates` is a
-            dataframe, array, or `None`).
+            A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns
+            named by the response and `covariates`. When `surv` is an `Outcome` or a formula, rows
+            with a missing value in any column used are dropped before fitting. Covariate formula
+            strings and lists of column names are also resolved here.
 
         Returns
         -------
@@ -291,10 +301,10 @@ class RoystonParmar:
 
         # Load data and build a right-censored response
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
         # Fit the model with three spline degrees of freedom
-        rp = gw.RoystonParmar(df=3).fit(y, lung[["age", "sex"]])
+        rp = gw.RoystonParmar(df=3).fit(y, covariates=["age", "sex"], data=lung)
         rp
         ```
 
@@ -302,7 +312,7 @@ class RoystonParmar:
 
         ```{python}
         # Increase spline flexibility to five degrees of freedom
-        rp_flexible = gw.RoystonParmar(df=5).fit(y, lung[["age", "sex"]])
+        rp_flexible = gw.RoystonParmar(df=5).fit(y, covariates=["age", "sex"], data=lung)
         rp_flexible
         ```
 
@@ -314,6 +324,19 @@ class RoystonParmar:
         rp_univariate
         ```
         """
+        bound = bind_fit_inputs(
+            surv,
+            data=data,
+            designs={"covariates": covariates},
+            rhs_to="covariates",
+            estimator="RoystonParmar",
+        )
+        surv = bound.surv
+        covariates = bound.designs["covariates"]
+        data = bound.data
+        self._n_input = bound.n_input
+        self.n_dropped_ = bound.n_dropped
+
         from ._nonparametric import KaplanMeier, NelsonAalen
         from ._surv import CensoringType
 
@@ -328,8 +351,9 @@ class RoystonParmar:
         if covariates is None:
             design = np.empty((surv.n, 0))
             cov_names: list[str] = []
+            self._design_spec = DesignSpec(kind="array", names=())
         else:
-            design, cov_names = _design_matrix(covariates, data)
+            design, cov_names, self._design_spec = _design_matrix_spec(covariates, data)
             if design.shape[0] != surv.n:
                 raise ValueError("Covariates and response must have the same number of rows.")
 
@@ -393,6 +417,7 @@ class RoystonParmar:
         self.std_error_ = np.sqrt(np.diag(vcov))
         self.loglik_ = -float(result.fun)
         self.n_ = int(keep.sum())
+        self.n_dropped_ = max(getattr(self, "_n_input", self.n_) - self.n_, 0)
         self.n_event_ = int(event.sum())
         self._n_spline = n_spline
 
@@ -447,6 +472,8 @@ class RoystonParmar:
             Covariate values for prediction. A DataFrame (Pandas or Polars), 2-D array, or
             `None` (the default). If `None`, uses baseline (all covariates `0` or the training
             data mean). Must have the same columns/features as the training data.
+            A data frame may also hold other columns. The covariates are picked out by name and
+            coded as they were at fit time, so the frame the model was fit on can be passed as is.
         type
             Prediction type (default `"survival"`):
 
@@ -501,12 +528,12 @@ class RoystonParmar:
 
         # Load data and build a right-censored response
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-        rp = gw.RoystonParmar(df=3).fit(y, lung[["age", "sex"]])
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+        rp = gw.RoystonParmar(df=3).fit(y, covariates=["age", "sex"], data=lung)
 
         # Predict survival probabilities at 180 and 365 days for two subjects
         rp.predict(
-            lung[["age", "sex"]][:2], type="survival", times=[180, 365], format="polars"
+            lung[:2], type="survival", times=[180, 365], format="polars"
         )
         ```
 
@@ -515,7 +542,7 @@ class RoystonParmar:
         ```{python}
         # Predict instantaneous hazard at the same time points
         rp.predict(
-            lung[["age", "sex"]][:2], type="hazard", times=[180, 365], format="polars"
+            lung[:2], type="hazard", times=[180, 365], format="polars"
         )
         ```
 
@@ -524,7 +551,7 @@ class RoystonParmar:
         ```{python}
         # Predict cumulative hazard at the same time points
         rp.predict(
-            lung[["age", "sex"]][:2], type="cumhaz", times=[180, 365], format="polars"
+            lung[:2], type="cumhaz", times=[180, 365], format="polars"
         )
         ```
 
@@ -538,7 +565,7 @@ class RoystonParmar:
         if newdata is None:
             x = np.zeros((1, max(self.coef_.size - self._n_spline, 0)))
         else:
-            x, _ = _design_matrix(newdata)
+            x = self._design_spec.transform(newdata)
         query = np.atleast_1d(np.asarray(times, dtype=float))
         columns: dict[str, Array] = {"time": query}
         for i in range(x.shape[0]):
@@ -581,6 +608,8 @@ class RoystonParmar:
         newdata
             Covariate values for prediction. A DataFrame (Pandas or Polars), 2-D array, or `None`
             (the default). If `None`, uses baseline (all covariates 0).
+            A data frame may also hold other columns. The covariates are picked out by name and
+            coded as they were at fit time, so the frame the model was fit on can be passed as is.
         p
             Failure probability or probabilities at which to compute quantiles. Can be a scalar
             (e.g., `0.5` for median) or array-like (e.g., `[0.25, 0.5, 0.75]` for quartiles). Must
@@ -604,17 +633,17 @@ class RoystonParmar:
         import greenwood as gw
 
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-        rp = gw.RoystonParmar(df=3).fit(y, lung[["age", "sex"]])
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+        rp = gw.RoystonParmar(df=3).fit(y, covariates=["age", "sex"], data=lung)
 
         # Predicted survival-time quartiles for three subjects
-        rp.predict_quantile(lung[["age", "sex"]][:3], p=[0.25, 0.5, 0.75], format="polars")
+        rp.predict_quantile(lung[:3], p=[0.25, 0.5, 0.75], format="polars")
         ```
 
         With confidence intervals at the median:
 
         ```{python}
-        rp.predict_quantile(lung[["age", "sex"]][:3], p=0.5, ci=True, format="polars")
+        rp.predict_quantile(lung[:3], p=0.5, ci=True, format="polars")
         ```
         """
         from scipy.optimize import brentq
@@ -626,7 +655,7 @@ class RoystonParmar:
         if newdata is None:
             x = np.zeros((1, max(self.coef_.size - self._n_spline, 0)))
         else:
-            x, _ = _design_matrix(newdata)
+            x = self._design_spec.transform(newdata)
 
         gamma = self.coef_[: self._n_spline]
         beta = self.coef_[self._n_spline :]
@@ -709,6 +738,8 @@ class RoystonParmar:
         newdata
             Covariate values for prediction. A DataFrame (Pandas or Polars), 2-D array,
             or `None` (the default). If `None`, uses baseline (all covariates 0).
+            A data frame may also hold other columns. The covariates are picked out by name and
+            coded as they were at fit time, so the frame the model was fit on can be passed as is.
         ci
             If `True`, include confidence intervals. Default is `False`.
         format
@@ -727,16 +758,16 @@ class RoystonParmar:
         import greenwood as gw
 
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-        rp = gw.RoystonParmar(df=3).fit(y, lung[["age", "sex"]])
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+        rp = gw.RoystonParmar(df=3).fit(y, covariates=["age", "sex"], data=lung)
 
-        rp.predict_median(lung[["age", "sex"]][:3], format="polars")
+        rp.predict_median(lung[:3], format="polars")
         ```
 
         With confidence intervals:
 
         ```{python}
-        rp.predict_median(lung[["age", "sex"]][:3], ci=True, format="polars")
+        rp.predict_median(lung[:3], ci=True, format="polars")
         ```
         """
         return self.predict_quantile(newdata, p=0.5, ci=ci, format=format)
@@ -764,6 +795,8 @@ class RoystonParmar:
         newdata
             Covariate values for prediction. A DataFrame (Pandas or Polars), 2-D array, or `None`
             (the default). If `None`, uses baseline (all covariates 0).
+            A data frame may also hold other columns. The covariates are picked out by name and
+            coded as they were at fit time, so the frame the model was fit on can be passed as is.
         tau
             The restriction time (time horizon). Must be positive.
         ci
@@ -784,17 +817,17 @@ class RoystonParmar:
         import greenwood as gw
 
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-        rp = gw.RoystonParmar(df=3).fit(y, lung[["age", "sex"]])
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+        rp = gw.RoystonParmar(df=3).fit(y, covariates=["age", "sex"], data=lung)
 
         # Expected survival time up to one year for three subjects
-        rp.predict_expectation(lung[["age", "sex"]][:3], tau=365, format="polars")
+        rp.predict_expectation(lung[:3], tau=365, format="polars")
         ```
 
         With confidence intervals:
 
         ```{python}
-        rp.predict_expectation(lung[["age", "sex"]][:3], tau=365, ci=True, format="polars")
+        rp.predict_expectation(lung[:3], tau=365, ci=True, format="polars")
         ```
         """
         from scipy.integrate import quad
@@ -806,7 +839,7 @@ class RoystonParmar:
         if newdata is None:
             x = np.zeros((1, max(self.coef_.size - self._n_spline, 0)))
         else:
-            x, _ = _design_matrix(newdata)
+            x = self._design_spec.transform(newdata)
 
         gamma = self.coef_[: self._n_spline]
         beta = self.coef_[self._n_spline :]
@@ -919,8 +952,8 @@ class RoystonParmar:
 
         # Load data and build a right-censored response
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-        rp = gw.RoystonParmar(df=3).fit(y, lung[["age", "sex"]])
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+        rp = gw.RoystonParmar(df=3).fit(y, covariates=["age", "sex"], data=lung)
 
         # Export the coefficient table as a Polars DataFrame
         rp.to_frame(format="polars")

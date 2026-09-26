@@ -95,8 +95,8 @@ def plot_influence(
     import greenwood as gw
 
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-    cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+    cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
 
     gw.plot_influence(cox)
     ```
@@ -196,12 +196,15 @@ def _plot_influence_plotnine(
     height: int,
 ) -> Any:
     try:
-        import plotnine as p9
+        import plotnine
     except ImportError as exc:  # pragma: no cover
         raise ImportError(
             "plot_influence() with backend='plotnine' requires plotnine. "
             "Install with `pip install greenwood[plotnine]`."
         ) from exc
+    # plotnine's submodules share names with its classes (plotnine.ggplot, ...), which
+    # pyright resolves to the modules. Treat the package as untyped instead.
+    p9: Any = plotnine
 
     import pandas as pd
 

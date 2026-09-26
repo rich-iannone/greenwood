@@ -28,53 +28,57 @@ flowchart LR
 ```
 
 We use the bundled `mgus2` dataset, which follows patients with monoclonal gammopathy. The competing
-events are progression to a plasma-cell malignancy and death without progression. We first build the
-competing-risks endpoint from two intermediate arrays: a single event time and a cause code that is
-`0` for censored, `1` for progression, and `2` for death.
+events are progression to a plasma-cell malignancy and death without progression. The dataset
+records each endpoint in its own pair of columns: `ptime` and `pstat` for progression, and `futime`
+and `death` for death. A competing-risks analysis needs one time and one cause per subject, and
+`gw.Surv.first_event()` builds exactly that from the pairs.
 
 ```{python}
-import numpy as np
 import greenwood as gw
 
 # Load the mgus2 dataset: monoclonal-gammopathy patients with competing-risk follow-up
 mg = gw.load_dataset("mgus2", backend="polars")
 
-# Event time: progression time if progressed, otherwise overall follow-up time
-etime = np.where(mg["pstat"] == 1, mg["ptime"], mg["futime"])
-
-# Cause code: 1 = pcm progression, 2 = death without progression, 0 = censored
-cause = np.where(mg["pstat"] == 1, 1, 2 * mg["death"])
-```
-
-The `etime` array picks each subject's event time: the progression time `ptime` when the subject
-progressed (`pstat == 1`), and otherwise the follow-up time `futime`. Because a subject can
-experience only the first of the competing events, one time per subject is all we need. Here are the
-first several values, in months.
-
-```{python}
-# Show the first eight event times (in months)
-etime[:8]
-```
-
-The `cause` array records which event that time refers to, using the coding noted in the comment
-above. Where a subject progressed it is `1` (`pcm`). Otherwise it is `2 * death`, which is `2` when
-the subject died without progressing and `0` when the subject was censored. Reading `etime` and
-`cause` position by position gives each subject's (time, cause) pair.
-
-```{python}
-# Show the first eight cause codes (0 censored, 1 pcm, 2 death)
-cause[:8]
-```
-
-We pass both arrays to `gw.Surv.multistate`, mapping cause code `1` to `pcm` and code `2` to
-`death`, with code `0` left as censoring. The resulting response object shows the event times
-alongside their decoded states.
-
-```{python}
-# Build the multi-state response, naming the two competing causes
-y = gw.Surv.multistate(etime, event=cause, states=("pcm", "death"))
+# Name each endpoint's (time, event) columns, and the first observed endpoint wins
+y = gw.Surv.first_event(
+    endpoints={"pcm": ("ptime", "pstat"), "death": ("futime", "death")},
+    data=mg,
+)
 y
 ```
+
+For each subject, the endpoint with the earliest observed event becomes the cause, and its time
+becomes the event time. Because a subject can experience only the first of the competing events,
+one time per subject is all we need. Ties go to the endpoint listed first, so a progression
+diagnosed at the same visit as death counts as progression. A subject with no observed event is
+censored at the latest of the endpoint times, the last time they were known to be event-free.
+Here are the first several subjects, with the times in months.
+
+```{python}
+# Show each subject's event time and state
+y.to_frame(format="polars").head(8)
+```
+
+::: {.callout-note}
+## The same response, built by hand
+
+`first_event()` replaces a recipe you may have seen elsewhere, which picks `ptime` for subjects who
+progressed and `futime` for everyone else, then codes the cause as `1`, `2`, or `0`:
+
+```python
+etime = np.where(mg["pstat"] == 1, mg["ptime"], mg["futime"])
+cause = np.where(mg["pstat"] == 1, 1, 2 * mg["death"])
+y = gw.Surv.multistate(etime, cause, states={"pcm": 1, "death": 2})
+```
+
+Both give identical responses on `mgus2`. The helper states the rule once, and it also works when
+the data arrives as a DuckDB relation or a lazy frame. To bind the response at fit time instead,
+describe it with `gw.Outcome.first_event()` and pass `data=`.
+
+`first_event()` also checks the data. If a subject's event is recorded after another endpoint's
+follow-up had already ended (a progression at month 80 when survival follow-up stopped at month
+60, say), it warns. That usually means the time columns do not share an origin or a unit.
+:::
 
 ## Cumulative incidence, not one-minus-survival
 
@@ -92,9 +96,10 @@ curve for every cause.
 # Rebuild the dataset and competing-risks response
 mg = gw.load_dataset("mgus2", backend="polars")
 
-etime = np.where(mg["pstat"] == 1, mg["ptime"], mg["futime"])
-cause = np.where(mg["pstat"] == 1, 1, 2 * mg["death"])   # 0 censor, 1 pcm, 2 death
-y = gw.Surv.multistate(etime, event=cause, states=("pcm", "death"))
+y = gw.Surv.first_event(
+    endpoints={"pcm": ("ptime", "pstat"), "death": ("futime", "death")},
+    data=mg,
+)
 
 # Fit the Aalen-Johansen estimator to get a CIF for each competing cause
 aj = gw.AalenJohansen().fit(y)
@@ -131,7 +136,7 @@ together in the fitted object.
 
 ```{python}
 # Fit separate CIFs for each level of sex
-aj_sex = gw.AalenJohansen().fit(y, by=mg["sex"])
+aj_sex = gw.AalenJohansen().fit(y, by="sex", data=mg)
 aj_sex
 ```
 
@@ -175,9 +180,10 @@ You set the transform at construction time.
 # Rebuild the dataset and competing-risks response
 mg = gw.load_dataset("mgus2", backend="polars")
 
-etime = np.where(mg["pstat"] == 1, mg["ptime"], mg["futime"])
-cause = np.where(mg["pstat"] == 1, 1, 2 * mg["death"])
-y = gw.Surv.multistate(etime, event=cause, states=("pcm", "death"))
+y = gw.Surv.first_event(
+    endpoints={"pcm": ("ptime", "pstat"), "death": ("futime", "death")},
+    data=mg,
+)
 
 # Fit with the log-log confidence interval transform
 aj_loglog = gw.AalenJohansen(conf_type="log-log").fit(y)
@@ -260,12 +266,13 @@ groups, properly accounting for competing events.
 # Rebuild the dataset and response
 mg = gw.load_dataset("mgus2", backend="polars")
 
-etime = np.where(mg["pstat"] == 1, mg["ptime"], mg["futime"])
-cause = np.where(mg["pstat"] == 1, 1, 2 * mg["death"])
-y = gw.Surv.multistate(etime, event=cause, states=("pcm", "death"))
+y = gw.Surv.first_event(
+    endpoints={"pcm": ("ptime", "pstat"), "death": ("futime", "death")},
+    data=mg,
+)
 
 # Test whether the CIF of pcm differs between sexes
-gw.grays_test(y, group=mg["sex"], cause="pcm")
+gw.grays_test(y, group="sex", data=mg, cause="pcm")
 ```
 
 The test returns a `TestResult` with the chi-square statistic, degrees of freedom, p-value, and
@@ -274,7 +281,7 @@ by changing the `cause=` argument.
 
 ```{python}
 # Test the death cause instead
-gw.grays_test(y, group=mg["sex"], cause="death")
+gw.grays_test(y, group="sex", cause="death", data=mg)
 ```
 
 Gray's test uses the subdistribution risk set, the same framework behind the Fine-Gray model.
@@ -302,12 +309,13 @@ itself, which is usually what you want to report.
 # Rebuild the dataset and response
 mg = gw.load_dataset("mgus2", backend="polars")
 
-etime = np.where(mg["pstat"] == 1, mg["ptime"], mg["futime"])
-cause = np.where(mg["pstat"] == 1, 1, 2 * mg["death"])   # 0 censor, 1 pcm, 2 death
-y = gw.Surv.multistate(etime, event=cause, states=("pcm", "death"))
+y = gw.Surv.first_event(
+    endpoints={"pcm": ("ptime", "pstat"), "death": ("futime", "death")},
+    data=mg,
+)
 
 # Fit the Fine-Gray model for the pcm cause with age and sex as covariates
-fg = gw.FineGray("pcm").fit(y, mg[["age", "sex"]])
+fg = gw.FineGray(cause="pcm").fit(y, covariates=["age", "sex"], data=mg)
 fg
 ```
 
@@ -334,8 +342,8 @@ models, one for each cause, to compare the covariate effects across causes.
 import pandas as pd
 
 # Fit FineGray models for both competing causes
-fg_pcm = gw.FineGray("pcm").fit(y, mg[["age", "sex"]])
-fg_death = gw.FineGray("death").fit(y, mg[["age", "sex"]])
+fg_pcm = gw.FineGray(cause="pcm").fit(y, covariates=["age", "sex"], data=mg)
+fg_death = gw.FineGray(cause="death").fit(y, covariates=["age", "sex"], data=mg)
 
 # Compare the hazard ratios side-by-side
 pcm_tidy = gw.tidy(fg_pcm, exponentiate=True, format="pandas")
@@ -374,7 +382,7 @@ target cause counts as an event.
 
 ```{python}
 # Fit a cause-specific Cox model for the pcm cause
-csc_pcm = gw.CauseSpecificCox("pcm").fit(y, mg[["age", "sex"]])
+csc_pcm = gw.CauseSpecificCox(cause="pcm").fit(y, covariates=["age", "sex"], data=mg)
 csc_pcm
 ```
 
@@ -390,7 +398,7 @@ You can fit a second model for the competing cause and compare the two side by s
 
 ```{python}
 # Fit a cause-specific Cox model for death
-csc_death = gw.CauseSpecificCox("death").fit(y, mg[["age", "sex"]])
+csc_death = gw.CauseSpecificCox(cause="death").fit(y, covariates=["age", "sex"], data=mg)
 gw.tidy(csc_death, exponentiate=True, format="polars")
 ```
 
@@ -411,14 +419,15 @@ $F(t \mid x) = 1 - \exp\bigl(-H_0(t)\,\exp(x\beta)\bigr)$ for each subject.
 # Rebuild the dataset and fit the Fine-Gray model
 mg = gw.load_dataset("mgus2", backend="polars")
 
-etime = np.where(mg["pstat"] == 1, mg["ptime"], mg["futime"])
-cause = np.where(mg["pstat"] == 1, 1, 2 * mg["death"])
-y = gw.Surv.multistate(etime, event=cause, states=("pcm", "death"))
+y = gw.Surv.first_event(
+    endpoints={"pcm": ("ptime", "pstat"), "death": ("futime", "death")},
+    data=mg,
+)
 
-fg = gw.FineGray("pcm").fit(y, mg[["age", "sex"]])
+fg = gw.FineGray(cause="pcm").fit(y, covariates=["age", "sex"], data=mg)
 
 # Predict cumulative incidence at 10, 20, and 30 years for three subjects
-fg.predict_cumulative_incidence(mg[["age", "sex"]][:3], times=[120, 240, 360], format="polars")
+fg.predict_cumulative_incidence(mg[:3], times=[120, 240, 360], format="polars")
 ```
 
 Each column is one subject and each row is a time point. The values are the predicted probability of
@@ -430,7 +439,7 @@ are useful for model evaluation with `concordance_index_incidence()` and `brier_
 
 ```{python}
 # Linear predictor (centered) for the first five subjects
-fg.predict(mg[["age", "sex"]][:5], type="lp")
+fg.predict(mg[:5], type="lp")
 ```
 
 ## Penalized Fine-Gray for high-dimensional covariates
@@ -448,12 +457,15 @@ The penalty is $\lambda\bigl(\alpha\|\beta\|_1 + \tfrac{1-\alpha}{2}\|\beta\|_2^
 # Rebuild the dataset and response
 mg = gw.load_dataset("mgus2", backend="polars")
 
-etime = np.where(mg["pstat"] == 1, mg["ptime"], mg["futime"])
-cause = np.where(mg["pstat"] == 1, 1, 2 * mg["death"])
-y = gw.Surv.multistate(etime, event=cause, states=("pcm", "death"))
+y = gw.Surv.first_event(
+    endpoints={"pcm": ("ptime", "pstat"), "death": ("futime", "death")},
+    data=mg,
+)
 
 # Fit a lasso-penalized Fine-Gray model
-pfg = gw.PenalizedFineGray("pcm", penalizer=0.01, l1_ratio=1.0).fit(y, mg[["age", "sex"]])
+pfg = gw.PenalizedFineGray(cause="pcm", penalizer=0.01, l1_ratio=1.0).fit(
+    y, covariates=["age", "sex"], data=mg
+)
 pfg
 ```
 
@@ -462,7 +474,7 @@ unpenalized `FineGray`, you can predict cumulative incidence for new subjects.
 
 ```{python}
 # Predict cumulative incidence at landmark times
-pfg.predict_cumulative_incidence(mg[["age", "sex"]][:3], times=[120, 240, 360], format="polars")
+pfg.predict_cumulative_incidence(mg[:3], times=[120, 240, 360], format="polars")
 ```
 
 To examine the penalized coefficients as a tidy frame, call `to_frame()`. Because penalized
@@ -481,9 +493,13 @@ at the cost of bias. To find the right balance, fit models at several penalty va
 with `concordance_index_incidence()` or `brier_score_incidence()` on held-out data.
 
 ```{python}
+import numpy as np
+
 # Compare penalized models at different strengths
 for lam in [0.001, 0.01, 0.1]:
-    m = gw.PenalizedFineGray("pcm", penalizer=lam, l1_ratio=1.0).fit(y, mg[["age", "sex"]])
+    m = gw.PenalizedFineGray(cause="pcm", penalizer=lam, l1_ratio=1.0).fit(
+        y, covariates=["age", "sex"], data=mg
+    )
     n_nz = int(np.count_nonzero(m.coef_))
     print(f"  penalizer={lam:.3f}  nonzero={n_nz}  coef={np.round(m.coef_, 4)}")
 ```
@@ -514,7 +530,7 @@ across all trees.
 # Fit a competing-risk forest
 crf = gw.CompetingRiskForest(
     n_estimators=100, max_depth=5, oob_score=True, random_state=0
-).fit(y, mg[["age", "sex"]])
+).fit(y, covariates=["age", "sex"], data=mg)
 crf
 ```
 
@@ -522,7 +538,7 @@ Predict the cumulative incidence for a specific cause.
 
 ```{python}
 # Predict CIF for the pcm cause at landmark times
-crf.predict(mg[["age", "sex"]][:5], cause="pcm", times=[365, 730, 1095], format="polars")
+crf.predict(mg[:5], cause="pcm", times=[365, 730, 1095], format="polars")
 ```
 
 Because the forest uses bootstrap aggregation, you can inspect out-of-bag variable importance to
@@ -538,7 +554,7 @@ be used for ranking or as input to `concordance_index_incidence()`.
 
 ```{python}
 # Scalar risk scores
-risk = crf.predict_risk(mg[["age", "sex"]][:5], cause="pcm")
+risk = crf.predict_risk(mg[:5], cause="pcm")
 risk
 ```
 

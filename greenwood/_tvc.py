@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Sequence
 from typing import Any
 
 import numpy as np
@@ -23,6 +24,8 @@ def split_episodes(
     time: str,
     event: str,
     visit_time: str,
+    covariates: Sequence[str] | None = None,
+    baseline_covariates: Sequence[str] | None = None,
     carry_forward: bool = True,
     format: str | None = None,
 ) -> Any:
@@ -40,12 +43,13 @@ def split_episodes(
     Parameters
     ----------
     baseline
-        One row per subject. Must contain the `id`, `time`, and `event` columns. Any
-        additional columns are treated as time-fixed covariates and carried through to every
-        output row for that subject.
+        The subject-level table. Must contain the `id`, `time`, and `event` columns. It may have
+        one row per subject, or it may be the same long table as `visits` when that table repeats
+        the follow-up time and event on every row. In that case the first row of each subject is
+        used, after checking that `time`, `event`, and any `baseline_covariates` are constant
+        within the subject.
     visits
-        One row per (subject, visit). Must contain the `id` and `visit_time` columns. Every
-        other column is treated as a time-varying covariate.
+        One row per (subject, visit). Must contain the `id` and `visit_time` columns.
     id
         Column name linking `baseline` and `visits`.
     time
@@ -54,6 +58,14 @@ def split_episodes(
         Column in `baseline` giving the event indicator.
     visit_time
         Column in `visits` giving the measurement time for each row.
+    covariates
+        The columns of `visits` to carry as time-varying covariates. The default (`None`) uses
+        every column other than `id` and `visit_time`.
+    baseline_covariates
+        The columns of `baseline` to carry as time-fixed covariates. The default (`None`) uses
+        every column other than `id`, `time`, and `event` when `baseline` has one row per
+        subject, and none when it repeats subjects (a long table usually holds per-visit columns
+        that are not fixed in time).
     carry_forward
         If `True` (default), the last observed covariate value is carried forward to the
         end of follow-up (LOCF), producing a final interval `(last_visit, time]`. If
@@ -100,10 +112,10 @@ def split_episodes(
     })
 
     long = gw.split_episodes(
-        baseline, visits, id="id", time="time", event="event", visit_time="day"
+        baseline=baseline, visits=visits, id="id", time="time", event="event", visit_time="day"
     )
-    y = gw.Surv.counting(long["tstart"], long["tstop"], long["event"])
-    cox = gw.CoxPH().fit(y, long[["bili"]])
+    y = gw.Surv.counting(start=long["tstart"], stop=long["tstop"], event=long["event"])
+    cox = gw.CoxPH().fit(y, covariates=["bili"], data=long)
     ```
     """
     try:
@@ -111,25 +123,48 @@ def split_episodes(
     except ImportError as exc:  # pragma: no cover
         raise ImportError("narwhals is required for split_episodes.") from exc
 
-    base_nw = nw.from_native(baseline, eager_only=True)
-    vis_nw = nw.from_native(visits, eager_only=True)
+    base_nw = _eager(nw.from_native(baseline))
+    vis_nw = _eager(nw.from_native(visits))
 
     # --- validate column presence ---
-    for col in (id, time, event):
+    for col in (id, time, event, *(baseline_covariates or ())):
         if col not in base_nw.columns:
             raise ValueError(f"Column {col!r} not found in baseline (columns: {base_nw.columns}).")
-    for col in (id, visit_time):
+    for col in (id, visit_time, *(covariates or ())):
         if col not in vis_nw.columns:
             raise ValueError(f"Column {col!r} not found in visits (columns: {vis_nw.columns}).")
 
-    static_cols = [c for c in base_nw.columns if c not in (id, time, event)]
-    tvc_cols = [c for c in vis_nw.columns if c not in (id, visit_time)]
+    tvc_cols = (
+        list(covariates)
+        if covariates is not None
+        else [c for c in vis_nw.columns if c not in (id, visit_time)]
+    )
 
-    # --- extract arrays ---
-    base_ids: list[Any] = base_nw[id].to_list()
-    base_times = np.asarray(base_nw[time].to_list(), dtype=float)
-    base_events: list[Any] = base_nw[event].to_list()
-    base_static: dict[str, list[Any]] = {col: base_nw[col].to_list() for col in static_cols}
+    base_ids_all: list[Any] = base_nw[id].to_list()
+    repeated = len(set(base_ids_all)) < len(base_ids_all)
+    if baseline_covariates is not None:
+        static_cols = list(baseline_covariates)
+    elif repeated:
+        static_cols = []
+    else:
+        static_cols = [c for c in base_nw.columns if c not in (id, time, event)]
+    clash = sorted(set(static_cols) & set(tvc_cols))
+    if clash:
+        raise ValueError(
+            f"Column(s) {clash} are both time-fixed (from baseline) and time-varying (from "
+            "visits). Choose them with `baseline_covariates=` and `covariates=`."
+        )
+
+    # --- extract arrays (one row per subject) ---
+    keep_rows = _first_row_per_subject(base_nw, id, [time, event, *static_cols])
+    base_ids: list[Any] = [base_ids_all[i] for i in keep_rows]
+    base_times = np.asarray([base_nw[time].to_list()[i] for i in keep_rows], dtype=float)
+    event_values = base_nw[event].to_list()
+    base_events: list[Any] = [event_values[i] for i in keep_rows]
+    base_static: dict[str, list[Any]] = {}
+    for col in static_cols:
+        values = base_nw[col].to_list()
+        base_static[col] = [values[i] for i in keep_rows]
 
     vis_ids: list[Any] = vis_nw[id].to_list()
     vis_times = np.asarray(vis_nw[visit_time].to_list(), dtype=float)
@@ -248,3 +283,32 @@ def split_episodes(
         out[col] = out_tvc[col]
 
     return to_dataframe(out, format=format)
+
+
+def _eager(frame: Any) -> Any:
+    """Collect a lazy Narwhals frame (Polars `LazyFrame`, DuckDB, ...), or return it as is."""
+    import narwhals as nw  # pyright: ignore[reportMissingImports]
+
+    return frame.collect() if isinstance(frame, nw.LazyFrame) else frame
+
+
+def _first_row_per_subject(frame: Any, id: str, constant: list[str]) -> list[int]:
+    """Row index of each subject's first row, checking that `constant` columns do not vary."""
+    ids: list[Any] = frame[id].to_list()
+    columns = {c: frame[c].to_list() for c in constant}
+    first: dict[Any, int] = {}
+    for i, subject in enumerate(ids):
+        if subject not in first:
+            first[subject] = i
+            continue
+        j = first[subject]
+        for c, values in columns.items():
+            a, b = values[i], values[j]
+            same = a == b or (a != a and b != b)  # NaN equals NaN here
+            if not same:
+                raise ValueError(
+                    f"Subject {subject!r} has more than one value of {c!r} in baseline "
+                    f"({b!r} and {a!r}). A baseline with repeated subjects must hold the same "
+                    "follow-up time, event, and baseline covariates on every row."
+                )
+    return list(first.values())

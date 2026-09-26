@@ -1,8 +1,8 @@
 """Smooth non-linear hazard ratio curves for continuous covariates.
 
-Plots the estimated log-hazard ratio (or hazard ratio) as a function of a continuous
-covariate, with a pointwise confidence band. The curve is computed by refitting the Cox
-model with a B-spline basis expansion for the covariate of interest.
+Plots the estimated log-hazard ratio (or hazard ratio) as a function of a continuous covariate, with
+a pointwise confidence band. The curve is computed by refitting the Cox model with a B-spline basis
+expansion for the covariate of interest.
 """
 
 from __future__ import annotations
@@ -31,24 +31,24 @@ def plot_smooth_hr(
 ) -> Any:
     r"""Plot a smooth hazard ratio curve for a continuous covariate.
 
-    Draws the estimated (log) hazard ratio as a smooth curve across the range of a
-    continuous covariate, with a shaded pointwise confidence band. A horizontal reference
-    line marks HR = 1 (log-HR = 0). The curve is produced by ``CoxPH.smooth_hr()``.
+    Draws the estimated (log) hazard ratio as a smooth curve across the range of a continuous
+    covariate, with a shaded pointwise confidence band. A horizontal reference line marks HR = 1
+    (log-HR = 0). The curve is produced by `CoxPH.smooth_hr()`.
 
     Parameters
     ----------
     result
-        A ``SmoothHRResult`` from ``CoxPH.smooth_hr()``.
+        A `SmoothHRResult` from `CoxPH.smooth_hr()`.
     scale
-        ``"log_hr"`` (default) plots the log hazard ratio. ``"hr"`` plots the hazard ratio.
+        `"log_hr"` (default) plots the log hazard ratio. `"hr"` plots the hazard ratio.
     title
         Optional title for the chart.
     xlab
         Label for the x-axis. Defaults to the covariate name.
     ylab
-        Label for the y-axis. Defaults to ``"Log hazard ratio"`` or ``"Hazard ratio"``.
+        Label for the y-axis. Defaults to `"Log hazard ratio"` or `"Hazard ratio"`.
     backend
-        Plotting backend: ``"altair"`` (default) or ``"plotnine"``.
+        Plotting backend: `"altair"` (default) or `"plotnine"`.
     width
         Width in pixels (Altair) or approximate inches (plotnine).
     height
@@ -56,7 +56,7 @@ def plot_smooth_hr(
 
     Returns
     -------
-    alt.Chart or plotnine.ggplot
+    `alt.Chart` or `plotnine.ggplot`
 
     Examples
     --------
@@ -64,16 +64,16 @@ def plot_smooth_hr(
     import greenwood as gw
 
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-    cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+    cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
 
-    gw.plot_smooth_hr(cox.smooth_hr("age"))
+    gw.plot_smooth_hr(cox.smooth_hr(term="age"))
     ```
 
     Plot on the hazard ratio scale instead:
 
     ```{python}
-    gw.plot_smooth_hr(cox.smooth_hr("age"), scale="hr")
+    gw.plot_smooth_hr(cox.smooth_hr(term="age"), scale="hr")
     ```
     """
     x_label: str = result.term if xlab is None else xlab
@@ -181,12 +181,15 @@ def _plot_plotnine(
     height: int,
 ) -> Any:
     try:
-        import plotnine as p9
+        import plotnine
     except ImportError as exc:  # pragma: no cover
         raise ImportError(
             "plot_smooth_hr() with backend='plotnine' requires plotnine. "
             "Install with `pip install greenwood[plotnine]`."
         ) from exc
+    # plotnine's submodules share names with its classes (plotnine.ggplot, ...), which
+    # pyright resolves to the modules. Treat the package as untyped instead.
+    p9: Any = plotnine
 
     import pandas as pd
 

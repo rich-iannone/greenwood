@@ -186,3 +186,20 @@ def align_table(
             line += "  " + cell.rjust(widths[j])
         lines.append(line)
     return "\n".join(lines)
+
+
+def dropped_note(model: Any) -> str:
+    """R-style note on rows removed for missing values, e.g. `" (1 observation deleted ...)"`.
+
+    Returns an empty string when nothing was dropped, so it can be appended to an `n = ...` line.
+    """
+    k = int(getattr(model, "n_dropped_", 0) or 0)
+    if k <= 0:
+        return ""
+    return f" ({k} observation{'' if k == 1 else 's'} deleted due to missingness)"
+
+
+def dropped_footer(model: Any) -> str:
+    """The dropped-rows note as a trailing paragraph, for table-style reprs without an `n` line."""
+    note = dropped_note(model).strip()
+    return f"\n\n{note}" if note else ""

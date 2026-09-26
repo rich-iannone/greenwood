@@ -17,8 +17,10 @@ from scipy.stats import norm
 
 from ._backends import to_dataframe
 from ._core import event_table
+from ._outcome import bind_fit_inputs
 
 if TYPE_CHECKING:
+    from ._outcome import Outcome
     from ._surv import Surv
 
 __all__ = ["KaplanMeier", "NelsonAalen"]
@@ -388,7 +390,7 @@ class KaplanMeier:
 
     # Load data and build a right-censored response
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
     # Fit the Kaplan-Meier estimator
     km = gw.KaplanMeier().fit(y)
@@ -418,7 +420,7 @@ class KaplanMeier:
     def __repr__(self) -> str:
         if getattr(self, "_blocks", None) is None:
             return f"KaplanMeier(conf_type={self.conf_type!r}) <unfitted>"
-        from ._repr import align_table, whole
+        from ._repr import align_table, dropped_footer, whole
 
         lcl, ucl = f"{self.conf_level}LCL", f"{self.conf_level}UCL"
         headers = ["n", "events", "median", lcl, ucl]
@@ -449,10 +451,16 @@ class KaplanMeier:
                 whole(hi),
             ]
             table = align_table(headers, [row])
-        return "KaplanMeier (Kaplan-Meier survival estimate)\n\n" + table
+        return "KaplanMeier (Kaplan-Meier survival estimate)\n\n" + table + dropped_footer(self)
 
     def fit(
-        self, surv: Surv, *, by: Any = None, weights: Any = None, cluster: Any = None
+        self,
+        surv: Surv | Outcome | str,
+        *,
+        data: Any = None,
+        by: Any = None,
+        weights: Any = None,
+        cluster: Any = None,
     ) -> KaplanMeier:
         r"""Fit the Kaplan-Meier estimator to survival data.
 
@@ -473,6 +481,9 @@ class KaplanMeier:
         surv
             A `Surv` response (typically right-censored, but supports counting-process and
             other forms). Built from data using `Surv.right()`, `Surv.interval()`, etc.
+            An `Outcome` or a formula string such as `'Surv(time, status == 2) ~ sex'` is also
+            accepted, with its columns read from `data`. The right-hand side names the `by`
+            column(s).
         by
             Optional grouping variable (e.g., a column or array). Produces one fit (one curve) per
             unique value of `by`, enabling stratified Kaplan-Meier analysis. Each group's results
@@ -487,6 +498,10 @@ class KaplanMeier:
             `robust=True` is implied. Per-subject influences are summed within each cluster before
             squaring, accounting for within-cluster correlation. Default (`None`) means no
             clustering.
+        data
+            A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns
+            named by the response, `by`, `weights`, and `cluster`. When `surv` is an `Outcome` or a
+            formula, rows with a missing value in any column used are dropped before fitting.
 
         Returns
         -------
@@ -511,7 +526,7 @@ class KaplanMeier:
 
         # Load data and build a right-censored response
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
         # Fit a single unstratified survival curve
         km = gw.KaplanMeier().fit(y)
@@ -523,10 +538,25 @@ class KaplanMeier:
 
         ```{python}
         # Fit stratified curves by sex and plot them
-        km_stratified = gw.KaplanMeier().fit(y, by=lung["sex"])
+        km_stratified = gw.KaplanMeier().fit(y, by="sex", data=lung)
         gw.plot_survival(km_stratified)
         ```
         """
+        bound = bind_fit_inputs(
+            surv,
+            data=data,
+            labels={"by": by, "weights": weights, "cluster": cluster},
+            rhs_to="by",
+            estimator="KaplanMeier",
+        )
+        surv = bound.surv
+        by = bound.labels["by"]
+        weights = bound.labels["weights"]
+        cluster = bound.labels["cluster"]
+        data = bound.data
+        self._n_input = bound.n_input
+        self.n_dropped_ = bound.n_dropped
+
         z = float(norm.ppf(1.0 - (1.0 - self.conf_level) / 2.0))
         use_robust = self.robust or cluster is not None
         self._blocks = _fit_blocks(
@@ -625,11 +655,11 @@ class KaplanMeier:
 
         # Load data and fit the Kaplan-Meier estimator
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
         km = gw.KaplanMeier().fit(y)
 
         # Compute the first-quartile survival time with confidence limits
-        km.quantile(0.25, ci=True)
+        km.quantile(p=0.25, ci=True)
         ```
         """
         level = 1.0 - p
@@ -685,7 +715,7 @@ class KaplanMeier:
 
         # Load data and fit the Kaplan-Meier estimator
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
         km = gw.KaplanMeier().fit(y)
 
         # Compute the median survival time with confidence limits
@@ -745,11 +775,11 @@ class KaplanMeier:
 
         # Load data and fit the Kaplan-Meier estimator
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
         km = gw.KaplanMeier().fit(y)
 
         # Compute the restricted mean survival time over 365 days
-        km.rmst(365, ci=True)
+        km.rmst(tau=365, ci=True)
         ```
         """
         z = float(norm.ppf(1.0 - (1.0 - self.conf_level) / 2.0))
@@ -820,11 +850,11 @@ class KaplanMeier:
 
         # Load data and fit the Kaplan-Meier estimator
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
         km = gw.KaplanMeier().fit(y)
 
         # Compute the restricted mean residual life at 180 days
-        km.rmrl(180, 730, ci=True)
+        km.rmrl(s=180, tau=730, ci=True)
         ```
         """
         if tau <= s:
@@ -888,18 +918,18 @@ class KaplanMeier:
 
         # Load data and fit the Kaplan-Meier estimator
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
         km = gw.KaplanMeier().fit(y)
 
         # Read survival probabilities at specific time points
-        km.predict([180, 365, 730])
+        km.predict(times=[180, 365, 730])
         ```
 
         Pass `what="cumhaz"` instead to evaluate the cumulative hazard at those same times:
 
         ```{python}
         # Evaluate the cumulative hazard at the same time points
-        km.predict([180, 365, 730], what="cumhaz")
+        km.predict(times=[180, 365, 730], what="cumhaz")
         ```
         """
         if what not in ("survival", "cumhaz"):
@@ -969,7 +999,7 @@ class KaplanMeier:
 
         # Load data and fit the Kaplan-Meier estimator
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
         km = gw.KaplanMeier().fit(y)
 
         # Export the survival curve as a Polars DataFrame
@@ -1062,7 +1092,7 @@ class NelsonAalen:
 
     # Load data and build a right-censored response
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
     # Fit the Nelson-Aalen estimator
     na = gw.NelsonAalen().fit(y)
@@ -1081,7 +1111,7 @@ class NelsonAalen:
     def __repr__(self) -> str:
         if getattr(self, "_blocks", None) is None:
             return f"NelsonAalen(conf_type={self.conf_type!r}) <unfitted>"
-        from ._repr import align_table, num, whole
+        from ._repr import align_table, dropped_footer, num, whole
 
         headers = ["n", "events", "max cumhaz"]
         if self._grouped:
@@ -1104,9 +1134,15 @@ class NelsonAalen:
                 num(b.cumhaz[-1]),
             ]
             table = align_table(headers, [row])
-        return "NelsonAalen (Nelson-Aalen cumulative hazard estimate)\n\n" + table
+        return (
+            "NelsonAalen (Nelson-Aalen cumulative hazard estimate)\n\n"
+            + table
+            + dropped_footer(self)
+        )
 
-    def fit(self, surv: Surv, *, by: Any = None, weights: Any = None) -> NelsonAalen:
+    def fit(
+        self, surv: Surv | Outcome | str, *, data: Any = None, by: Any = None, weights: Any = None
+    ) -> NelsonAalen:
         r"""Fit the Nelson-Aalen estimator to survival data.
 
         Computes the cumulative hazard function $H(t)$ from a `Surv` response (time-to-event
@@ -1126,6 +1162,9 @@ class NelsonAalen:
         surv
             A `Surv` response (typically right-censored). Built from data using `Surv.right()`,
             `Surv.interval()`, etc.
+            An `Outcome` or a formula string such as `'Surv(time, status == 2) ~ sex'` is also
+            accepted, with its columns read from `data`. The right-hand side names the `by`
+            column(s).
         by
             Optional grouping variable (e.g., a column or array). Produces one fit (one
             cumulative hazard curve) per unique value of `by`, enabling stratified
@@ -1133,6 +1172,10 @@ class NelsonAalen:
         weights
             Optional weights (e.g., from survey design or inverse-probability-of-censoring
             adjustments). Must have the same length as `surv`. Default (`None`): unit weights.
+        data
+            A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns
+            named by the response, `by`, and `weights`. When `surv` is an `Outcome` or a formula,
+            rows with a missing value in any column used are dropped before fitting.
 
         Returns
         -------
@@ -1168,7 +1211,7 @@ class NelsonAalen:
 
         # Load data and build a right-censored response
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
         # Fit a single unstratified cumulative hazard curve
         na = gw.NelsonAalen().fit(y)
@@ -1179,10 +1222,24 @@ class NelsonAalen:
 
         ```{python}
         # Fit stratified cumulative hazard curves by sex
-        na_stratified = gw.NelsonAalen().fit(y, by=lung["sex"])
+        na_stratified = gw.NelsonAalen().fit(y, by="sex", data=lung)
         na_stratified
         ```
         """
+        bound = bind_fit_inputs(
+            surv,
+            data=data,
+            labels={"by": by, "weights": weights},
+            rhs_to="by",
+            estimator="NelsonAalen",
+        )
+        surv = bound.surv
+        by = bound.labels["by"]
+        weights = bound.labels["weights"]
+        data = bound.data
+        self._n_input = bound.n_input
+        self.n_dropped_ = bound.n_dropped
+
         z = float(norm.ppf(1.0 - (1.0 - self.conf_level) / 2.0))
         self._blocks = _fit_blocks(surv, by, weights, "log", z)
         self._grouped = by is not None
@@ -1275,7 +1332,7 @@ class NelsonAalen:
 
         # Load data and fit the Nelson-Aalen estimator
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
         na = gw.NelsonAalen().fit(y)
 
         # Export the cumulative hazard as a Polars DataFrame

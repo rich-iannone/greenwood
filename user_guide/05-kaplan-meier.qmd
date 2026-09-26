@@ -26,8 +26,8 @@ import greenwood as gw
 # Load the bundled lung dataset as a Polars DataFrame
 lung = gw.load_dataset("lung", backend="polars")
 
-# Build a right-censored response (status == 2 marks a death)
-y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+# Build a right-censored response, where a status of 2 marks a death
+y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
 # Display the response summary
 y
@@ -45,7 +45,7 @@ familiar fit-then-inspect pattern, so we fit it first and set it aside.
 ```{python}
 # Load data and build the response
 lung = gw.load_dataset("lung", backend="polars")
-y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
 # Fit the Kaplan-Meier estimator
 km = gw.KaplanMeier().fit(y)
@@ -74,7 +74,7 @@ you asked for them.
 
 ```{python}
 # Evaluate the step-function survival curve at specific time points (days)
-km.predict([180, 365, 730])
+km.predict(times=[180, 365, 730])
 ```
 
 ::: {.callout-note}
@@ -109,7 +109,7 @@ You set the transform when you construct the estimator, so we fit a second `Kapl
 ```{python}
 # Load data and build the response
 lung = gw.load_dataset("lung", backend="polars")
-y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
 # Fit with the log-log confidence interval transform
 km_loglog = gw.KaplanMeier(conf_type="log-log").fit(y)
@@ -187,7 +187,7 @@ Choose the transform before fitting and report which you used.
 ```{python}
 # Load data and build the response
 lung = gw.load_dataset("lung", backend="polars")
-y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 km = gw.KaplanMeier().fit(y)
 
 # Return the median survival time with its confidence interval
@@ -199,7 +199,7 @@ band. Other quantiles work the same way through `quantile()`.
 
 ```{python}
 # Return the 25th-percentile survival time
-km.quantile(0.25)
+km.quantile(p=0.25)
 ```
 
 ::: {.callout-tip}
@@ -221,11 +221,11 @@ which makes hazard ratios hard to interpret.
 ```{python}
 # Load data and build the response
 lung = gw.load_dataset("lung", backend="polars")
-y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 km = gw.KaplanMeier().fit(y)
 
 # Average event-free days in the first year, with a 95% confidence interval
-km.rmst(365, ci=True)
+km.rmst(tau=365, ci=True)
 ```
 
 This reports the average number of event-free days during the first year, with a confidence
@@ -243,12 +243,12 @@ at `s`. Setting `s=0` recovers the restricted mean survival time.
 ```{python}
 # Load data and build the response
 lung = gw.load_dataset("lung", backend="polars")
-y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 km = gw.KaplanMeier().fit(y)
 
 # Expected additional event-free days between day 180 and 730 (s and tau values), for
 # survivors at day 180
-km.rmrl(180, 730, ci=True)
+km.rmrl(s=180, tau=730, ci=True)
 ```
 
 Here the value is the expected number of additional event-free days between 180 and 730 days, for a
@@ -264,10 +264,10 @@ point for any subgroup comparison. The tidy output gains a `strata` column.
 ```{python}
 # Load data and build the response
 lung = gw.load_dataset("lung", backend="polars")
-y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
 # Fit a separate Kaplan-Meier curve for each level of sex
-km_sex = gw.KaplanMeier().fit(y, by=lung["sex"])
+km_sex = gw.KaplanMeier().fit(y, by="sex", data=lung)
 
 # Print per-stratum median survival
 km_sex
@@ -361,10 +361,10 @@ influences within each cluster before squaring.
 ```{python}
 # Load data and build the response
 lung = gw.load_dataset("lung", backend="polars")
-y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
 # Cluster by institution (inst column) (NaN rows are dropped automatically)
-km_cluster = gw.KaplanMeier().fit(y, cluster=lung["inst"])
+km_cluster = gw.KaplanMeier().fit(y, cluster="inst", data=lung)
 
 # Compare clustered SE to unclustered robust SE at the midpoint
 km_robust = gw.KaplanMeier(robust=True).fit(y)
@@ -399,10 +399,10 @@ function fills this gap by resampling subjects with replacement.
 ```{python}
 # Load data and build the response
 lung = gw.load_dataset("lung", backend="polars")
-y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
 # Bootstrap CI for the median survival time
-gw.bootstrap(y, "median", n_boot=1000, seed=23)
+gw.bootstrap(y, statistic="median", n_boot=1000, seed=23)
 ```
 
 For two-group comparisons, pass `by=` with a `_diff` statistic. The function resamples within each
@@ -410,7 +410,7 @@ group and computes the difference on every replicate.
 
 ```{python}
 # Bootstrap CI for the difference in median survival between sexes
-gw.bootstrap(y, "median_diff", by=lung["sex"], n_boot=1000, seed=23)
+gw.bootstrap(y, statistic="median_diff", by="sex", n_boot=1000, seed=23, data=lung)
 ```
 
 The RMST difference works the same way. This is particularly useful when survival curves cross,
@@ -418,14 +418,14 @@ making hazard ratios hard to interpret.
 
 ```{python}
 # Bootstrap CI for the difference in 1-year RMST between sexes
-gw.bootstrap(y, "rmst_diff", by=lung["sex"], tau=365.0, n_boot=1000, seed=23)
+gw.bootstrap(y, statistic="rmst_diff", by="sex", tau=365.0, n_boot=1000, seed=23, data=lung)
 ```
 
 For custom statistics, pass a callable that takes a fitted `KaplanMeier` and returns a float.
 
 ```{python}
 # Bootstrap CI for a custom statistic: area under the curve from 180 to 365 days
-gw.bootstrap(y, lambda km: km.rmst(365) - km.rmst(180), n_boot=500, seed=23)
+gw.bootstrap(y, statistic=lambda km: km.rmst(tau=365) - km.rmst(tau=180), n_boot=500, seed=23)
 ```
 
 Three interval types are available via `ci_type=`: `"percentile"` (default), `"normal"` (symmetric
@@ -480,7 +480,7 @@ Pass `by=` to fit separate cumulative hazard curves per group, just as with `Kap
 
 ```{python}
 # Stratified cumulative hazard by sex
-na_strat = gw.NelsonAalen().fit(y, by=lung["sex"])
+na_strat = gw.NelsonAalen().fit(y, by="sex", data=lung)
 na_strat
 ```
 
@@ -548,7 +548,7 @@ falls strictly inside the ambiguous window between 0 and 2.5, so it comes back `
 
 ```{python}
 # Evaluate the survival curve at specific times
-tb.predict([1, 2.5, 5, 7])
+tb.predict(times=[1, 2.5, 5, 7])
 ```
 
 The `quantile()` method follows the same rule, but always returns a 3-tuple
@@ -558,7 +558,7 @@ rather than a confidence bound.
 
 ```{python}
 # First-quartile survival time, or its ambiguity bracket
-tb.quantile(0.25)
+tb.quantile(p=0.25)
 ```
 
 When there is no genuine interval ambiguity in the data (only exact events and right censoring),
@@ -574,7 +574,7 @@ km_check = gw.KaplanMeier().fit(y)
 import numpy as np
 
 # Compare survival at KM's own event times
-np.allclose(tb_right.predict(km_check.time_), km_check.survival_, atol=1e-8)
+np.allclose(tb_right.predict(times=km_check.time_), km_check.survival_, atol=1e-8)
 ```
 
 That equivalence is a useful check on your own data: if `predict()` and `quantile()` never return
@@ -595,7 +595,7 @@ estimator for either, so no confidence interval is available.
 
 ```{python}
 # Restricted mean survival time up to t=7
-tb.rmst(7)
+tb.rmst(tau=7)
 ```
 
 Use `rmst()`/`rmrl()` when you need one reportable number, but check `to_frame()` first to see how

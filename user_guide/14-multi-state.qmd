@@ -116,7 +116,28 @@ for i in range(len(mg)):
 rows = [(a, b, s, e) for a, b, s, e in zip(start, stop, state, event) if b > a]
 start, stop, state, event = map(list, zip(*rows))
 
-ms = gw.MultiState().fit(start, stop, state, event, states=("mgus", "pcm", "death"))
+ms = gw.MultiState().fit(
+    start=start, stop=stop, state=state, event=event, states=("mgus", "pcm", "death")
+)
+```
+
+When the intervals already live in a data frame, name the columns and pass the frame as `data=`
+instead. This works for any backend.
+
+```{python}
+import polars as pl
+
+# The same intervals as a frame, with one row per (start, stop] interval
+intervals = pl.DataFrame({"tstart": start, "tstop": stop, "from": state, "to": event})
+
+ms = gw.MultiState().fit(
+    start="tstart",
+    stop="tstop",
+    state="from",
+    event="to",
+    states=("mgus", "pcm", "death"),
+    data=intervals,
+)
 ```
 
 The fitted estimator holds an occupancy curve for each of the three states. In its data frame
@@ -135,7 +156,7 @@ state. Early on, almost everyone is in the initial `mgus` state; over time, mass
 You can read the occupancy probabilities at specific times with `predict`.
 
 ```{python}
-ms.predict([60, 120, 240], format="polars")
+ms.predict(times=[60, 120, 240], format="polars")
 ```
 
 The full transition-probability matrices, giving the probability of moving from each state to

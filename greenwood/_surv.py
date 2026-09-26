@@ -24,16 +24,17 @@ plain sequence; everything is coerced to NumPy internally.
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
-import narwhals as nw  # pyright: ignore[reportMissingImports]  # installed + typed; pyright quirk
 import numpy as np
 import numpy.typing as npt
 from typing_extensions import Self
 
 from ._backends import to_dataframe
+from ._ingest import as_1d, encode_event, encode_states, resolve_columns
 
 __all__ = ["Surv", "CensoringType"]
 
@@ -78,40 +79,18 @@ class CensoringType(str, Enum):
 
 def _to_1d_array(x: Any, *, dtype: Any = float) -> Array:
     """Coerce a Narwhals series, NumPy array, or sequence to a 1-D NumPy array."""
-    if x is None:
-        raise ValueError("Expected an array-like, got None.")
-    if isinstance(x, (np.ndarray, list, tuple)):
-        arr = np.asarray(x)
-    else:
-        # A Narwhals-native series (pandas, Polars, ...) or anything else array-like.
-        try:
-            arr = nw.from_native(x, series_only=True).to_numpy()
-        except TypeError:
-            arr = np.asarray(x)
-    arr = np.asarray(arr, dtype=dtype)
-    if arr.ndim != 1:
-        raise ValueError(f"Expected a 1-D array-like, got shape {arr.shape}.")
-    return arr
+    return np.asarray(as_1d(x), dtype=dtype)
 
 
-def _coerce_event(event: Any, n: int) -> Array:
+def _coerce_event(
+    event: Any, n: int, *, event_value: Any = None, censor_value: Any = None
+) -> Array:
     """Coerce an event indicator to an int status array (`0` = censored, `1` = event).
 
-    Accepts booleans or `0`/`1` integers. R's `1`/`2` coding (as in `survival::lung`) is *not*
-    auto-detected. Convert it explicitly, e.g., `event=(status == 2)`.
+    Accepts booleans or `0`/`1` integers as they are. Any other coding (R's `1`/`2`, strings, a
+    compound status) needs `event_value=` or `censor_value=` to say which rows are events.
     """
-    if event is None:
-        return np.ones(n, dtype=np.int64)
-    arr = _to_1d_array(event, dtype=float)
-    if not np.all(np.isfinite(arr)):
-        raise ValueError("Event indicator contains missing/non-finite values.")
-    uniq = set(np.unique(arr).tolist())
-    if not uniq <= {0.0, 1.0}:
-        raise ValueError(
-            "Event indicator must be boolean or 0/1. Got values "
-            f"{sorted(uniq)}. R's 1/2 coding must be converted (e.g. event=(status == 2))."
-        )
-    return arr.astype(np.int64)
+    return encode_event(event, n, event_value=event_value, censor_value=censor_value)
 
 
 @dataclass(frozen=True)
@@ -259,7 +238,16 @@ class Surv:
     # -- constructors ---------------------------------------------------------
 
     @classmethod
-    def right(cls, time: Any, event: Any = None, *, weights: Any = None) -> Self:
+    def right(
+        cls,
+        time: Any,
+        event: Any = None,
+        *,
+        weights: Any = None,
+        data: Any = None,
+        event_value: Any = None,
+        censor_value: Any = None,
+    ) -> Self:
         """Right-censored response: the standard and most common form of survival data.
 
         Right censoring is the default in survival analysis. It occurs when follow-up ends before
@@ -281,10 +269,12 @@ class Surv:
         Parameters
         ----------
         time
-            Exit times when follow-up ends (one per subject). Must be finite and non-negative. This
-            is the time of either the event or censoring, whichever came first.
+            Exit times when follow-up ends (one per subject), or the name of a column in `data`.
+            Must be finite and non-negative. This is the time of either the event or censoring,
+            whichever came first.
         event
-            Event indicators:
+            Event indicators, or the name of a column in `data`. Without `event_value` or
+            `censor_value`, the values must be boolean or `0`/`1`:
 
             - `1` = event occurred (fully observed)
             - `0` = censored (event time unknown but > time)
@@ -292,9 +282,21 @@ class Surv:
             If `None`, all subjects are treated as having experienced the event (useful for testing
             or descriptive purposes).
         weights
-            Case weights (strictly positive, one per subject). Used to weight subjects differently
-            in survival analysis (e.g., inverse probability weighting). The default is `None` (all
-            weights are `1`).
+            Case weights (strictly positive, one per subject), or the name of a column in `data`.
+            Used to weight subjects differently in survival analysis (e.g., inverse probability
+            weighting). The default is `None` (all weights are `1`).
+        data
+            A data frame to look up column names in. Any Narwhals-compatible frame works (pandas,
+            Polars, PyArrow, a Polars `LazyFrame`, DuckDB, ...), as does a plain mapping of column
+            names to values. Only the named columns are read.
+        event_value
+            The value (or list of values) in `event` that marks an event. Every other row is
+            censored. For example, `event_value=2` for R's 1/2 coding, `event_value="died"` for a
+            string outcome, or `event_value=[1, 2]` to count two outcomes as the event.
+        censor_value
+            The value (or list of values) in `event` that marks censoring. Every other row is an
+            event. For example, `censor_value=0` treats any nonzero status as an event. Pass this or
+            `event_value`, not both.
 
         Returns
         -------
@@ -322,14 +324,38 @@ class Surv:
         This is the default input format for nearly all survival analysis methods. Right-censored
         data is so ubiquitous that "survival data" often refers specifically to right-censored
         observations.
+
+        With a data frame, name the columns and say which status value marks an event. In the
+        `lung` dataset a `status` of `2` means the patient died:
+
+        ```{python}
+        # Read the columns from the frame and treat status 2 as the event
+        lung = gw.load_dataset("lung")
+        gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+        ```
+
+        The same call works for any data frame backend, because the encoding is given as a value
+        rather than as a DataFrame expression.
         """
-        stop = _to_1d_array(time)
-        status = _coerce_event(event, stop.shape[0])
-        w = _to_1d_array(weights) if weights is not None else None
+        cols = resolve_columns(data, {"time": time, "event": event, "weights": weights})
+        stop = _to_1d_array(cols["time"])
+        status = _coerce_event(
+            cols["event"], stop.shape[0], event_value=event_value, censor_value=censor_value
+        )
+        w = _to_1d_array(cols["weights"]) if cols["weights"] is not None else None
         return cls(type=CensoringType.RIGHT, stop=stop, status=status, weights=w)
 
     @classmethod
-    def left(cls, time: Any, event: Any = None, *, weights: Any = None) -> Self:
+    def left(
+        cls,
+        time: Any,
+        event: Any = None,
+        *,
+        weights: Any = None,
+        data: Any = None,
+        event_value: Any = None,
+        censor_value: Any = None,
+    ) -> Self:
         """Left-censored response: event occurred before the observation time.
 
         Left censoring occurs when all you know is that an event happened *before* you observed the
@@ -355,6 +381,15 @@ class Surv:
         weights
             Case weights (strictly positive, one per subject). Used to weight subjects differently
             in survival analysis. Default is `None` (all weights are `1`).
+        data
+            A data frame to look up column names in. Any of `time`, `event`, and `weights` may be a
+            column name. See `Surv.right()` for the accepted frame types.
+        event_value
+            The value (or list of values) in `event` that marks an event (one that occurred by
+            `time`). Every other row is event-free at `time`. See `Surv.right()`.
+        censor_value
+            The value (or list of values) in `event` that marks an event-free row. Every other row
+            is an event. Pass this or `event_value`, not both.
 
         Returns
         -------
@@ -380,13 +415,26 @@ class Surv:
         - The `+` symbol indicates subjects who were still event-free at the observation time
         - The left-censoring type `"left"` is displayed at the top
         """
-        stop = _to_1d_array(time)
-        status = _coerce_event(event, stop.shape[0])
-        w = _to_1d_array(weights) if weights is not None else None
+        cols = resolve_columns(data, {"time": time, "event": event, "weights": weights})
+        stop = _to_1d_array(cols["time"])
+        status = _coerce_event(
+            cols["event"], stop.shape[0], event_value=event_value, censor_value=censor_value
+        )
+        w = _to_1d_array(cols["weights"]) if cols["weights"] is not None else None
         return cls(type=CensoringType.LEFT, stop=stop, status=status, weights=w)
 
     @classmethod
-    def counting(cls, start: Any, stop: Any, event: Any = None, *, weights: Any = None) -> Self:
+    def counting(
+        cls,
+        start: Any,
+        stop: Any,
+        event: Any = None,
+        *,
+        weights: Any = None,
+        data: Any = None,
+        event_value: Any = None,
+        censor_value: Any = None,
+    ) -> Self:
         """Counting-process response: track subjects entering and exiting the risk set at
         different times.
 
@@ -420,6 +468,15 @@ class Surv:
         weights
             Case weights (strictly positive, one per subject). Used to weight subjects
             differently in survival analysis. Default is `None` (all weights are `1`).
+        data
+            A data frame to look up column names in. Any of `start`, `stop`, `event`, and
+            `weights` may be a column name. See `Surv.right()` for the accepted frame types.
+        event_value
+            The value (or list of values) in `event` that marks an event. Every other row is
+            censored. See `Surv.right()`.
+        censor_value
+            The value (or list of values) in `event` that marks censoring. Every other row is an
+            event. Pass this or `event_value`, not both.
 
         Returns
         -------
@@ -449,16 +506,21 @@ class Surv:
         for studies with time-varying covariates, where you create multiple rows per subject
         as their covariate values change.
         """
-        start_a = _to_1d_array(start)
-        stop_a = _to_1d_array(stop)
-        status = _coerce_event(event, stop_a.shape[0])
-        w = _to_1d_array(weights) if weights is not None else None
+        cols = resolve_columns(
+            data, {"start": start, "stop": stop, "event": event, "weights": weights}
+        )
+        start_a = _to_1d_array(cols["start"])
+        stop_a = _to_1d_array(cols["stop"])
+        status = _coerce_event(
+            cols["event"], stop_a.shape[0], event_value=event_value, censor_value=censor_value
+        )
+        w = _to_1d_array(cols["weights"]) if cols["weights"] is not None else None
         return cls(
             type=CensoringType.COUNTING, stop=stop_a, status=status, start=start_a, weights=w
         )
 
     @classmethod
-    def interval(cls, lower: Any, upper: Any, *, weights: Any = None) -> Self:
+    def interval(cls, lower: Any, upper: Any, *, weights: Any = None, data: Any = None) -> Self:
         """Interval-censored response: event time is known to lie within a range.
 
         Interval censoring occurs when you know the event happened sometime between two observation
@@ -488,6 +550,9 @@ class Surv:
         weights
             Case weights (strictly positive, one per subject). Used to weight subjects differently
             in survival analysis. Default is `None` (all weights are `1`).
+        data
+            A data frame to look up column names in. Any of `lower`, `upper`, and `weights` may be
+            a column name. See `Surv.right()` for the accepted frame types.
 
         Returns
         -------
@@ -519,8 +584,10 @@ class Surv:
         but after time X", which allows for more precise estimation when multiple observations
         bracket the event.
         """
-        lower_a = _to_1d_array(lower)
-        upper_a = _to_1d_array(upper)
+        cols = resolve_columns(data, {"lower": lower, "upper": upper, "weights": weights})
+        weights = cols["weights"]
+        lower_a = _to_1d_array(cols["lower"])
+        upper_a = _to_1d_array(cols["upper"])
         if lower_a.shape[0] != upper_a.shape[0]:
             raise ValueError("`lower` and `upper` must have the same length.")
         # status: 1 = exact event, 0 = right-censored (upper = inf), 2 = interval.
@@ -542,10 +609,12 @@ class Surv:
         cls,
         time: Any,
         event: Any,
-        states: tuple[str, ...],
+        states: Sequence[str] | Mapping[str, Any],
         *,
         start: Any = None,
         weights: Any = None,
+        data: Any = None,
+        censor_value: Any = None,
     ) -> Self:
         """Multi-state or competing-risks response: track which of multiple outcomes occurs.
 
@@ -580,9 +649,16 @@ class Surv:
             - ... and so on for each defined state
 
             Must be in range [0, len(states)].
-        states : tuple[str, ...]
-            Labels for the possible outcomes. Event codes index into this tuple.
-            Example: states=("relapse", "death") means:
+        states
+            The possible outcomes, given in one of two ways.
+
+            A mapping of label to the `event` value (or list of values) that marks it, such as
+            `states={"relapse": 1, "death": 2}` or `states={"relapse": "rel", "death": "dth"}`.
+            The column can then use any coding. Rows matching `censor_value` are censored, and any
+            value not listed raises an error.
+
+            A sequence of labels, such as `states=("relapse", "death")`. The `event` column must
+            then hold integer codes that index into it:
 
             - event code 1 → relapse occurred
             - event code 2 → death occurred
@@ -595,6 +671,12 @@ class Surv:
         weights : array-like, optional
             Case weights (strictly positive, one per subject). Used to weight subjects
             differently in survival analysis. Default is `None` (all weights = 1).
+        data
+            A data frame to look up column names in. Any of `time`, `event`, `start`, and `weights`
+            may be a column name. See `Surv.right()` for the accepted frame types.
+        censor_value
+            The value (or list of values) in `event` that marks censoring, used when `states` is a
+            mapping. The default is `0`.
 
         Returns
         -------
@@ -628,14 +710,141 @@ class Surv:
         You can then estimate the probability of each outcome separately, capturing the
         full picture: not just "will something happen?" but "which specific outcome is most likely?"
         This avoids the bias of artificially grouping competing outcomes together.
+
+        When the outcome column uses its own coding, map each label to its value. Here the
+        outcomes are strings, and both `"alive"` and `"lost"` mean censored:
+
+        ```{python}
+        # Map each state label to the value that marks it in the event column
+        gw.Surv.multistate(
+            time=[5, 6, 7, 8],
+            event=["rel", "dth", "alive", "lost"],
+            states={"relapse": "rel", "death": "dth"},
+            censor_value=["alive", "lost"],
+        )
+        ```
         """
-        stop = _to_1d_array(time)
-        status = _to_1d_array(event, dtype=int).astype(np.int64)
-        start_a = _to_1d_array(start) if start is not None else None
-        w = _to_1d_array(weights) if weights is not None else None
-        ctype = CensoringType.COUNTING if start is not None else CensoringType.RIGHT
-        return cls(
-            type=ctype, stop=stop, status=status, start=start_a, states=tuple(states), weights=w
+        cols = resolve_columns(
+            data, {"time": time, "event": event, "start": start, "weights": weights}
+        )
+        stop = _to_1d_array(cols["time"])
+        status, labels = encode_states(cols["event"], states, censor_value=censor_value)
+        start_a = _to_1d_array(cols["start"]) if cols["start"] is not None else None
+        w = _to_1d_array(cols["weights"]) if cols["weights"] is not None else None
+        ctype = CensoringType.COUNTING if start_a is not None else CensoringType.RIGHT
+        return cls(type=ctype, stop=stop, status=status, start=start_a, states=labels, weights=w)
+
+    @classmethod
+    def first_event(
+        cls,
+        endpoints: Mapping[str, Sequence[Any]],
+        *,
+        data: Any = None,
+        censor_at: Any = None,
+        start: Any = None,
+        weights: Any = None,
+    ) -> Self:
+        """Competing-risks response from several endpoints: the earliest observed event wins.
+
+        Some datasets record each endpoint in its own pair of columns rather than in one outcome
+        column. `mgus2` is an example: `ptime`/`pstat` hold the time to plasma cell malignancy
+        (PCM) and whether it occurred, and `futime`/`death` do the same for death. A
+        competing-risks analysis needs one time and one cause per subject: the first endpoint
+        observed, or censoring if none was.
+
+        `first_event()` combines the pairs. For each row, the endpoint with the earliest observed
+        event becomes the cause and its time becomes the event time. Ties go to the endpoint listed
+        first. Rows with no observed event are censored at the latest endpoint time (the last time
+        the subject was known to be event-free), or at `censor_at` if given.
+
+        Parameters
+        ----------
+        endpoints
+            A mapping of state label to `(time, event)` or `(time, event, event_value)`, in
+            priority order for ties. Each `time` and `event` is a column name in `data` or an
+            array. Without an `event_value`, each event column must be boolean or `0`/`1`.
+        data
+            A data frame to look up column names in. See `Surv.right()` for the accepted frame
+            types.
+        censor_at
+            The time (a column name or an array) at which rows with no observed event are
+            censored. The default is the latest of the endpoint times.
+        start
+            Entry times for late entry (optional).
+        weights
+            Case weights (optional).
+
+        Returns
+        -------
+        Surv
+            A multi-state `Surv` response whose states are the endpoint labels, in order.
+
+        Warns
+        -----
+        UserWarning
+            When a row's event is recorded after another endpoint's follow-up had already ended
+            without an event. For example, a progression at month 80 for a subject whose survival
+            follow-up stopped at month 60. This often means the time columns do not share an
+            origin or a unit. It can also mean one endpoint was followed for less time, in which
+            case the response assumes that endpoint did not occur before the recorded event.
+
+        Examples
+        --------
+        Build the `mgus2` competing-risks response from its two column pairs. PCM is listed first,
+        so a PCM diagnosed at the same time as death counts as PCM:
+
+        ```{python}
+        import greenwood as gw
+
+        mgus2 = gw.load_dataset("mgus2")
+
+        # The first observed endpoint wins, and ties go to the one listed first
+        y = gw.Surv.first_event(
+            endpoints={"pcm": ("ptime", "pstat"), "death": ("futime", "death")},
+            data=mgus2,
+        )
+        y
+        ```
+        """
+        if not endpoints:
+            raise ValueError("`endpoints` must name at least one endpoint.")
+        labels = [str(label) for label in endpoints]
+        arguments: dict[str, Any] = {"censor_at": censor_at, "start": start, "weights": weights}
+        event_values: list[Any] = []
+        for i, (label, spec) in enumerate(endpoints.items()):
+            if isinstance(spec, str) or len(spec) not in (2, 3):
+                raise ValueError(
+                    f"Endpoint {label!r} must be `(time, event)` or `(time, event, event_value)`."
+                )
+            arguments[f"time{i}"] = spec[0]
+            arguments[f"event{i}"] = spec[1]
+            event_values.append(spec[2] if len(spec) == 3 else None)
+        cols = resolve_columns(data, arguments)
+
+        times = [_to_1d_array(cols[f"time{i}"]) for i in range(len(labels))]
+        n = times[0].shape[0]
+        if any(t.shape[0] != n for t in times):
+            raise ValueError("All endpoint columns must have the same length.")
+        events = [
+            _coerce_event(cols[f"event{i}"], n, event_value=event_values[i]).astype(bool)
+            for i in range(len(labels))
+        ]
+        time_matrix = np.column_stack(times)
+        event_matrix = np.column_stack(events)
+
+        # argmin picks the first column among equal times, so ties follow the endpoint order.
+        event_times = np.where(event_matrix, time_matrix, np.inf)
+        first = np.argmin(event_times, axis=1)
+        observed = event_matrix.any(axis=1)
+        if cols["censor_at"] is not None:
+            censor_time = _to_1d_array(cols["censor_at"])
+        else:
+            censor_time = time_matrix.max(axis=1)
+        stop = np.where(observed, event_times[np.arange(n), first], censor_time)
+        status = np.where(observed, first + 1, 0).astype(np.int64)
+        _warn_event_after_follow_up(labels, time_matrix, event_matrix, observed, first, stop)
+        return cls.multistate(
+            stop, status, tuple(labels), start=cols["start"], weights=cols["weights"]
         )
 
     # -- derived views used by the kernel -------------------------------------
@@ -1169,3 +1378,32 @@ class Surv:
         The restored object is an exact copy of the original `Surv` object.
         """
         return cls.from_dict(json.loads(text))
+
+
+def _warn_event_after_follow_up(
+    labels: list[str],
+    times: Array,
+    events: Array,
+    observed: Array,
+    first: Array,
+    stop: Array,
+) -> None:
+    """Warn when an event is recorded after another endpoint's follow-up had already ended."""
+    ended_early = (~events) & (times < stop[:, None])
+    bad = observed & ended_early.any(axis=1)
+    if not bad.any():
+        return
+    row = int(np.flatnonzero(bad)[0])
+    other = int(np.flatnonzero(ended_early[row])[0])
+    import warnings
+
+    warnings.warn(
+        f"{int(bad.sum())} row(s) have an event recorded after another endpoint's follow-up had "
+        f"already ended. For example, row {row} has {labels[int(first[row])]!r} at "
+        f"{stop[row]:g}, but its {labels[other]!r} follow-up stops at {times[row, other]:g}, so "
+        f"{labels[other]!r} was not observed in between. Check that the endpoint time columns "
+        "share an origin and a unit. If one endpoint was simply followed for less time, the "
+        "response treats it as not having occurred before the recorded event.",
+        UserWarning,
+        stacklevel=3,
+    )

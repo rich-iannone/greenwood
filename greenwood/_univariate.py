@@ -30,6 +30,7 @@ from scipy.optimize import minimize
 from scipy.stats import norm
 
 from ._backends import to_dataframe
+from ._outcome import bind_fit_inputs
 from ._parametric import (
     _DISTS,
     _error_quantile,
@@ -37,8 +38,10 @@ from ._parametric import (
     _mean_survival_aft,
     _num_hessian,
 )
+from ._repr import dropped_note
 
 if TYPE_CHECKING:
+    from ._outcome import Outcome
     from ._surv import Surv
 
 __all__ = ["Parametric", "compare_distributions"]
@@ -99,10 +102,10 @@ class Parametric:
 
     # Load data and build a right-censored response
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
     # Fit a Weibull distribution and display the parameter estimates
-    fit = gw.Parametric("weibull").fit(y)
+    fit = gw.Parametric(dist="weibull").fit(y)
     fit
     ```
 
@@ -139,7 +142,7 @@ class Parametric:
                 "",
                 table,
                 "",
-                f"n = {self.n_}, events = {self.n_event_}",
+                f"n = {self.n_}, events = {self.n_event_}{dropped_note(self)}",
                 f"Log-likelihood = {num(self.loglik_)}",
                 f"AIC = {num(self.aic_)}, BIC = {num(self.bic_)}",
             ]
@@ -147,7 +150,7 @@ class Parametric:
 
     # -- fit -----------------------------------------------------------------
 
-    def fit(self, surv: Surv) -> Parametric:
+    def fit(self, surv: Surv | Outcome | str, *, data: Any = None) -> Parametric:
         r"""Fit the distribution to right-censored survival data by maximum likelihood.
 
         Maximises the likelihood of the parametric model $\log T = \mu + \sigma\varepsilon$
@@ -158,6 +161,12 @@ class Parametric:
         ----------
         surv
             A right-censored `Surv` response built with `Surv.right()`.
+            An `Outcome` or a formula string such as `'Surv(time, status == 2)'` is also accepted,
+            with its columns read from `data`.
+        data
+            A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns
+            named by the response. When `surv` is an `Outcome` or a formula, rows with a missing
+            value in any column used are dropped before fitting.
 
         Returns
         -------
@@ -175,12 +184,22 @@ class Parametric:
 
         # Load data and build a right-censored response
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
         # Fit a log-normal distribution
-        gw.Parametric("lognormal").fit(y)
+        gw.Parametric(dist="lognormal").fit(y)
         ```
         """
+        bound = bind_fit_inputs(
+            surv,
+            data=data,
+            estimator="Parametric",
+        )
+        surv = bound.surv
+        data = bound.data
+        self._n_input = bound.n_input
+        self.n_dropped_ = bound.n_dropped
+
         from ._surv import CensoringType
 
         if surv.type is not CensoringType.RIGHT:
@@ -219,6 +238,7 @@ class Parametric:
         self._vcov_raw = vcov_raw  # on (mu, log_sigma) scale
         self.loglik_ = -float(result.fun)
         self.n_ = int(keep.sum())
+        self.n_dropped_ = max(getattr(self, "_n_input", self.n_) - self.n_, 0)
         self.n_event_ = int(event.sum())
 
         # Natural parameters, SEs, and CIs.
@@ -322,10 +342,10 @@ class Parametric:
 
         # Load data and fit a Weibull distribution
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-        fit = gw.Parametric("weibull").fit(y)
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+        fit = gw.Parametric(dist="weibull").fit(y)
         # Evaluate survival probabilities at selected time points
-        fit.survival([100, 200, 365, 500])
+        fit.survival(times=[100, 200, 365, 500])
         ```
         """
         t = np.atleast_1d(np.asarray(times, dtype=float))
@@ -364,11 +384,11 @@ class Parametric:
 
         # Load data and fit a Weibull distribution
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-        fit = gw.Parametric("weibull").fit(y)
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+        fit = gw.Parametric(dist="weibull").fit(y)
 
         # Compute cumulative hazard at selected time points
-        fit.cumulative_hazard([100, 200, 365, 500])
+        fit.cumulative_hazard(times=[100, 200, 365, 500])
         ```
         """
         return -np.log(self.survival(times))
@@ -409,11 +429,11 @@ class Parametric:
 
         # Load data and fit a Weibull distribution
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-        fit = gw.Parametric("weibull").fit(y)
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+        fit = gw.Parametric(dist="weibull").fit(y)
 
         # Evaluate the instantaneous hazard rate at selected time points
-        fit.hazard([100, 200, 365, 500])
+        fit.hazard(times=[100, 200, 365, 500])
         ```
         """
         t = np.atleast_1d(np.asarray(times, dtype=float))
@@ -456,11 +476,11 @@ class Parametric:
 
         # Load data and fit a Weibull distribution
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-        fit = gw.Parametric("weibull").fit(y)
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+        fit = gw.Parametric(dist="weibull").fit(y)
 
         # Evaluate the density at selected time points
-        fit.density([100, 200, 365, 500])
+        fit.density(times=[100, 200, 365, 500])
         ```
         """
         t = np.atleast_1d(np.asarray(times, dtype=float))
@@ -501,11 +521,11 @@ class Parametric:
 
         # Load data and fit a Weibull distribution
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-        fit = gw.Parametric("weibull").fit(y)
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+        fit = gw.Parametric(dist="weibull").fit(y)
 
         # Compute the quartile survival times
-        fit.quantile([0.25, 0.5, 0.75])
+        fit.quantile(p=[0.25, 0.5, 0.75])
         ```
         """
         p_arr = np.atleast_1d(np.asarray(p, dtype=float))
@@ -542,8 +562,8 @@ class Parametric:
 
         # Load data and fit a Weibull distribution
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-        fit = gw.Parametric("weibull").fit(y)
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+        fit = gw.Parametric(dist="weibull").fit(y)
 
         # Compute the expected survival time
         fit.mean()
@@ -573,8 +593,8 @@ class Parametric:
 
         # Load data and fit a Weibull distribution
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-        fit = gw.Parametric("weibull").fit(y)
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+        fit = gw.Parametric(dist="weibull").fit(y)
 
         # Compute the median survival time
         fit.median()
@@ -610,8 +630,8 @@ class Parametric:
 
         # Load data and fit a Weibull distribution
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-        fit = gw.Parametric("weibull").fit(y)
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+        fit = gw.Parametric(dist="weibull").fit(y)
 
         # Export the parameter estimates as a Polars DataFrame
         fit.to_frame(format="polars")
@@ -636,8 +656,9 @@ class Parametric:
 
 
 def compare_distributions(
-    surv: Any,
+    surv: Surv | Outcome | str,
     *,
+    data: Any = None,
     dists: list[str] | None = None,
     format: str | None = None,
 ) -> Any:
@@ -651,7 +672,12 @@ def compare_distributions(
     Parameters
     ----------
     surv
-        A right-censored `Surv` response.
+        A right-censored `Surv` response. An `Outcome` or a formula response such as
+        `'Surv(time, status == 2)'` is also accepted, with its columns read from `data`.
+    data
+        A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns named
+        by the response. When `surv` is an `Outcome` or a formula, rows with a missing value in a
+        response column are dropped first.
     dists
         Distribution families to compare. The default is all four:
         `["weibull", "exponential", "lognormal", "loglogistic"]`.
@@ -682,12 +708,13 @@ def compare_distributions(
 
     # Load data and build a right-censored response
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
     # Compare all four distributions by AIC
     gw.compare_distributions(y, format="polars")
     ```
     """
+    surv = bind_fit_inputs(surv, data=data, estimator="compare_distributions()").surv
     if dists is None:
         dists = ["weibull", "exponential", "lognormal", "loglogistic"]
 

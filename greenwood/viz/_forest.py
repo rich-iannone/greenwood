@@ -121,19 +121,22 @@ def theme_forest() -> Any:
 
     # Load data and fit a Cox model with two covariates
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-    cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+    cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
 
     # Draw a forest plot and apply the minimal forest theme
     gw.plot_forest(cox, backend="plotnine") + gw.theme_forest()
     ```
     """
     try:
-        import plotnine as p9
+        import plotnine
     except ImportError as exc:  # pragma: no cover
         raise ImportError(
             "theme_forest() requires plotnine. Install with `pip install greenwood[plotnine]`."
         ) from exc
+    # plotnine's submodules share names with its classes (plotnine.ggplot, ...), which
+    # pyright resolves to the modules. Treat the package as untyped instead.
+    p9: Any = plotnine
     return p9.theme_minimal() + p9.theme(
         axis_line_y=p9.element_blank(),
         panel_grid_minor=p9.element_blank(),
@@ -208,8 +211,8 @@ def plot_forest(
 
     # Load data and fit a Cox model with three covariates
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-    cox = gw.CoxPH().fit(y, lung[["age", "sex", "ph.ecog"]])
+    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+    cox = gw.CoxPH().fit(y, covariates=["age", "sex", "ph.ecog"], data=lung)
 
     # Draw a forest plot of hazard ratios with confidence intervals
     gw.plot_forest(cox)
@@ -414,12 +417,15 @@ def _plot_forest_plotnine(
 ) -> Any:
     """plotnine implementation of plot_forest."""
     try:
-        import plotnine as p9
+        import plotnine
     except ImportError as exc:  # pragma: no cover
         raise ImportError(  # pragma: no cover
             "plot_forest() with backend='plotnine' requires plotnine. "
             "Install with `pip install greenwood[plotnine]`."
         ) from exc
+    # plotnine's submodules share names with its classes (plotnine.ggplot, ...), which
+    # pyright resolves to the modules. Treat the package as untyped instead.
+    p9: Any = plotnine
 
     import pandas as pd
 

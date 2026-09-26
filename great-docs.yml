@@ -51,10 +51,15 @@ authors:
 # API Reference Structure
 reference:
   - title: The response
-    desc: The Surv object, the spine of every analysis.
+    desc:
+      The Surv object, the spine of every analysis, and Outcome, a reusable description of a
+      response that is bound to data at fit time.
     contents:
       - name: Surv
         members: true
+      - name: Outcome
+        members: true
+      - duration
       - CensoringType
 
   - title: Non-parametric estimators

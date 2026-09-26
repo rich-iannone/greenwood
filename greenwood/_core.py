@@ -21,8 +21,10 @@ import numpy as np
 import numpy.typing as npt
 
 from ._backends import to_dataframe
+from ._outcome import bind_fit_inputs
 
 if TYPE_CHECKING:
+    from ._outcome import Outcome
     from ._surv import Surv
 
 __all__ = ["EventTable", "event_table"]
@@ -48,7 +50,7 @@ class EventTable:
 
     # Load data and build a right-censored response
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
     # Tabulate the risk set at each event time
     et = gw.event_table(y)
@@ -109,7 +111,7 @@ class EventTable:
 
         # Load data and build a right-censored response
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
         et = gw.event_table(y)
 
         # Export the event table as a Polars DataFrame
@@ -156,7 +158,9 @@ def _tabulate_block(
     return times, n_risk, n_event, n_censor
 
 
-def event_table(surv: Surv, *, group: Any = None, weights: Any = None) -> EventTable:
+def event_table(
+    surv: Surv | Outcome | str, *, data: Any = None, group: Any = None, weights: Any = None
+) -> EventTable:
     r"""Tabulate the event history: risk sets and events at each observed time.
 
     Creates a structured summary of the survival data at each unique event time. The table
@@ -179,6 +183,8 @@ def event_table(surv: Surv, *, group: Any = None, weights: Any = None) -> EventT
         A `Surv` response (time-to-event data). Supports right-censored or counting-process
         format. Weighted responses are supported; weights are incorporated into risk-set
         counts.
+        An `Outcome` or a formula string such as `'Surv(time, status == 2) ~ sex'` is also accepted,
+        with its columns read from `data`. The right-hand side names the `group` column(s).
     group
         Optional grouping variable for stratification, one value per subject. Can be a
         Pandas/Polars series, 1-D array, or Python sequence. When provided, the table is
@@ -188,6 +194,11 @@ def event_table(surv: Surv, *, group: Any = None, weights: Any = None) -> EventT
         Optional case weights. Can be a 1-D array or series. If `None` (default), uses
         weights from the `surv` response if present, otherwise treats all subjects as
         weight 1.
+    data
+        A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns named
+        by the response, `group`, and `weights`. When `surv` is an `Outcome` or a formula, rows with
+        a missing value in any column used are dropped first, along with the matching rows of any
+        arrays passed alongside.
 
     Returns
     -------
@@ -234,7 +245,7 @@ def event_table(surv: Surv, *, group: Any = None, weights: Any = None) -> EventT
 
     # Load data and build a right-censored response
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
     # Tabulate risk sets, events, and censorings at each time
     et = gw.event_table(y)
@@ -249,7 +260,7 @@ def event_table(surv: Surv, *, group: Any = None, weights: Any = None) -> EventT
 
     ```{python}
     # Stratify the event table by sex
-    et_sex = gw.event_table(y, group=lung["sex"])
+    et_sex = gw.event_table(y, group="sex", data=lung)
     et_sex.to_frame(format="polars").head(15)
     ```
 
@@ -273,6 +284,17 @@ def event_table(surv: Surv, *, group: Any = None, weights: Any = None) -> EventT
 
     This manual calculation matches the Kaplan-Meier estimate from `KaplanMeier().fit()`.
     """
+    bound = bind_fit_inputs(
+        surv,
+        data=data,
+        labels={"group": group, "weights": weights},
+        rhs_to="group",
+        estimator="event_table()",
+    )
+    surv = bound.surv
+    group = bound.labels["group"]
+    weights = bound.labels["weights"]
+
     from ._surv import CensoringType, _to_1d_array
 
     if surv.type not in (CensoringType.RIGHT, CensoringType.COUNTING):

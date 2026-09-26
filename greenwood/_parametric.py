@@ -28,9 +28,12 @@ from scipy.special import gammaln as _sp_gammaln
 from scipy.stats import logistic, norm
 
 from ._backends import to_dataframe
-from ._cox import _design_matrix
+from ._cox import _design_matrix_spec
+from ._outcome import bind_fit_inputs
+from ._repr import dropped_note
 
 if TYPE_CHECKING:
+    from ._outcome import Outcome
     from ._surv import Surv
 
 __all__ = ["AFT"]
@@ -389,10 +392,10 @@ class AFT:
 
     # Load data and build a right-censored response
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
     # Fit a Weibull AFT model with age and sex as covariates
-    aft = gw.AFT("weibull").fit(y, lung[["age", "sex"]])
+    aft = gw.AFT(dist="weibull").fit(y, covariates=["age", "sex"], data=lung)
     aft
     ```
     """
@@ -455,13 +458,13 @@ class AFT:
             lines.append(f"Threshold = {num(self.threshold_)}")
         lines.extend(
             [
-                f"n = {self.n_}, events = {self.n_event_}",
+                f"n = {self.n_}, events = {self.n_event_}{dropped_note(self)}",
                 f"Log-likelihood = {num(self.loglik_)}",
             ]
         )
         return "\n".join(lines)
 
-    def fit(self, surv: Surv, covariates: Any, *, data: Any = None) -> AFT:
+    def fit(self, surv: Surv | Outcome | str, covariates: Any = None, *, data: Any = None) -> AFT:
         r"""Fit the accelerated failure time model to survival data.
 
         Fits a parametric accelerated failure time (AFT) model to a right-censored response and
@@ -480,12 +483,17 @@ class AFT:
         surv
             A right-censored `Surv` response. Built with `Surv.right()`. Interval-censored or other
             response types raise `NotImplementedError`.
+            An `Outcome` or a formula string such as `'Surv(time, status == 2) ~ age + sex'` is also
+            accepted, with its columns read from `data`. The right-hand side sets `covariates`.
         covariates
             A dataframe (pandas or polars), a 2-D array, or a formula string (e.g., `"age + sex"`)
             evaluated against the `data` argument.
+            A list of column names in `data` also works.
         data
-            A dataframe to evaluate the formula string (ignored if `covariates` is a dataframe or
-            array).
+            A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns
+            named by the response and `covariates`. When `surv` is an `Outcome` or a formula, rows
+            with a missing value in any column used are dropped before fitting. Covariate formula
+            strings and lists of column names are also resolved here.
 
         Returns
         -------
@@ -519,10 +527,10 @@ class AFT:
 
         # Load data and build a right-censored response
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
         # Fit a log-normal AFT model
-        aft = gw.AFT(dist="lognormal").fit(y, lung[["age", "sex"]])
+        aft = gw.AFT(dist="lognormal").fit(y, covariates=["age", "sex"], data=lung)
         aft
         ```
 
@@ -530,10 +538,24 @@ class AFT:
 
         ```{python}
         # Fit via a formula string instead of a DataFrame
-        aft_formula = gw.AFT(dist="weibull").fit(y, "age + sex", data=lung)
+        aft_formula = gw.AFT(dist="weibull").fit(y, covariates="age + sex", data=lung)
         aft_formula
         ```
         """
+        bound = bind_fit_inputs(
+            surv,
+            data=data,
+            designs={"covariates": covariates},
+            rhs_to="covariates",
+            required=("covariates",),
+            estimator="AFT",
+        )
+        surv = bound.surv
+        covariates = bound.designs["covariates"]
+        data = bound.data
+        self._n_input = bound.n_input
+        self.n_dropped_ = bound.n_dropped
+
         from ._surv import CensoringType
 
         if surv.type is not CensoringType.RIGHT:
@@ -541,7 +563,7 @@ class AFT:
                 f"AFT currently supports right-censored responses, not {surv.type.value!r}."
             )
 
-        design, cov_names = _design_matrix(covariates, data)
+        design, cov_names, self._design_spec = _design_matrix_spec(covariates, data)
         if design.shape[0] != surv.n:
             raise ValueError("Covariates and response must have the same number of rows.")
 
@@ -713,6 +735,7 @@ class AFT:
         # method="mps" optimized a different objective, so AIC/BIC stay comparable across methods.
         self.loglik_ = -neg_loglik(params)
         self.n_ = int(keep.sum())
+        self.n_dropped_ = max(getattr(self, "_n_input", self.n_) - self.n_, 0)
         self.n_event_ = int(event.sum())
         self._log_t = _shifted_log_time(self.threshold_)
         self._event = event
@@ -733,7 +756,7 @@ class AFT:
         """Build the intercept-prepended design matrix for `newdata` (or the training data)."""
         if newdata is None:
             return self._x
-        design, _ = _design_matrix(newdata)
+        design = self._design_spec.transform(newdata)
         return np.column_stack([np.ones(design.shape[0]), design])
 
     def _survival_pdf(self, z: Array) -> Array:
@@ -860,14 +883,14 @@ class AFT:
         import greenwood as gw
 
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-        aft = gw.AFT("weibull").fit(y, lung[["age", "sex"]])
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+        aft = gw.AFT(dist="weibull").fit(y, covariates=["age", "sex"], data=lung)
 
-        aft.residuals("martingale")[:5]
+        aft.residuals(type="martingale")[:5]
         ```
 
         ```{python}
-        aft.residuals("dfbeta", format="polars")
+        aft.residuals(type="dfbeta", format="polars")
         ```
         """
         if type == "response":
@@ -975,6 +998,8 @@ class AFT:
             Covariate values for prediction. A DataFrame (Pandas or Polars), 2-D array, or `None`
             (the default). If `None`, uses the training data (design matrix used at fit time). Must
             have the same columns/features as the training data.
+            A data frame may also hold other columns. The covariates are picked out by name and
+            coded as they were at fit time, so the frame the model was fit on can be passed as is.
         type
             Prediction type (default `"survival"`):
 
@@ -1056,11 +1081,11 @@ class AFT:
 
         # Load data and fit a Weibull AFT model
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-        aft = gw.AFT("weibull").fit(y, lung[["age", "sex"]])
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+        aft = gw.AFT(dist="weibull").fit(y, covariates=["age", "sex"], data=lung)
 
         # Predict the linear predictor for the first two subjects
-        aft.predict(lung[["age", "sex"]][:2], type="lp")
+        aft.predict(lung[:2], type="lp")
         ```
 
         Predicted survival-time quantiles for the first two subjects at the lower quartile, median,
@@ -1068,7 +1093,7 @@ class AFT:
 
         ```{python}
         # Predict survival-time quartiles for the first two subjects
-        aft.predict(lung[["age", "sex"]][:2], type="quantile", p=[0.25, 0.5, 0.75],
+        aft.predict(lung[:2], type="quantile", p=[0.25, 0.5, 0.75],
                     format="polars")
         ```
 
@@ -1077,7 +1102,7 @@ class AFT:
 
         ```{python}
         # Predict survival probabilities at 180 and 365 days
-        aft.predict(lung[["age", "sex"]][:2], type="survival", times=[180, 365],
+        aft.predict(lung[:2], type="survival", times=[180, 365],
                     format="polars")
         ```
 
@@ -1085,7 +1110,7 @@ class AFT:
 
         ```{python}
         # Predict conditional survival given survival to 100 days
-        aft.predict(lung[["age", "sex"]][:2], type="survival", times=[180, 365],
+        aft.predict(lung[:2], type="survival", times=[180, 365],
                     conditional_after=100, format="polars")
         ```
 
@@ -1093,7 +1118,7 @@ class AFT:
 
         ```{python}
         # Include confidence intervals for the survival predictions
-        aft.predict(lung[["age", "sex"]][:2], type="survival", times=[180, 365],
+        aft.predict(lung[:2], type="survival", times=[180, 365],
                     ci=True, format="polars")
         ```
 
@@ -1101,14 +1126,14 @@ class AFT:
 
         ```{python}
         # Predict unconditional mean survival time
-        aft.predict(lung[["age", "sex"]][:2], type="mean")
+        aft.predict(lung[:2], type="mean")
         ```
 
         Expected remaining lifetime given the subject has already survived 100 days:
 
         ```{python}
         # Predict expected remaining lifetime given survival past 100 days
-        aft.predict(lung[["age", "sex"]][:2], type="mean_remaining",
+        aft.predict(lung[:2], type="mean_remaining",
                     conditional_after=100)
         ```
 
@@ -1116,7 +1141,7 @@ class AFT:
 
         ```{python}
         # Predict restricted mean survival time up to 365 days
-        aft.predict(lung[["age", "sex"]][:2], type="rmst", tau=365)
+        aft.predict(lung[:2], type="rmst", tau=365)
         ```
         """
         x = self._design(newdata)
@@ -1260,6 +1285,8 @@ class AFT:
         newdata
             Covariate values for prediction. A DataFrame (Pandas or Polars), 2-D array, or `None`
             (the default). If `None`, uses the training data.
+            A data frame may also hold other columns. The covariates are picked out by name and
+            coded as they were at fit time, so the frame the model was fit on can be passed as is.
         p
             Failure probability or probabilities at which to compute quantiles. Can be a scalar
             (e.g., `0.5` for median) or array-like (e.g., `[0.25, 0.5, 0.75]` for quartiles). Must
@@ -1282,17 +1309,17 @@ class AFT:
         import greenwood as gw
 
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-        aft = gw.AFT("weibull").fit(y, lung[["age", "sex"]])
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+        aft = gw.AFT(dist="weibull").fit(y, covariates=["age", "sex"], data=lung)
 
         # Predicted survival-time quartiles for three subjects
-        aft.predict_quantile(lung[["age", "sex"]][:3], p=[0.25, 0.5, 0.75], format="polars")
+        aft.predict_quantile(lung[:3], p=[0.25, 0.5, 0.75], format="polars")
         ```
 
         With confidence intervals at the median:
 
         ```{python}
-        aft.predict_quantile(lung[["age", "sex"]][:3], p=0.5, ci=True, format="polars")
+        aft.predict_quantile(lung[:3], p=0.5, ci=True, format="polars")
         ```
         """
         p_arr = np.atleast_1d(np.asarray(p, dtype=float))
@@ -1345,6 +1372,8 @@ class AFT:
         newdata
             Covariate values for prediction. A DataFrame (Pandas or Polars), 2-D array,
             or `None` (the default). If `None`, uses the training data.
+            A data frame may also hold other columns. The covariates are picked out by name and
+            coded as they were at fit time, so the frame the model was fit on can be passed as is.
         ci
             If `True`, include confidence intervals. Default is `False`.
         format
@@ -1363,16 +1392,16 @@ class AFT:
         import greenwood as gw
 
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-        aft = gw.AFT("weibull").fit(y, lung[["age", "sex"]])
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+        aft = gw.AFT(dist="weibull").fit(y, covariates=["age", "sex"], data=lung)
 
-        aft.predict_median(lung[["age", "sex"]][:3], format="polars")
+        aft.predict_median(lung[:3], format="polars")
         ```
 
         With confidence intervals:
 
         ```{python}
-        aft.predict_median(lung[["age", "sex"]][:3], ci=True, format="polars")
+        aft.predict_median(lung[:3], ci=True, format="polars")
         ```
         """
         return self.predict_quantile(newdata, p=0.5, ci=ci, format=format)
@@ -1400,6 +1429,8 @@ class AFT:
         newdata
             Covariate values for prediction. A DataFrame (Pandas or Polars), 2-D array, or `None`
             (the default). If `None`, uses the training data.
+            A data frame may also hold other columns. The covariates are picked out by name and
+            coded as they were at fit time, so the frame the model was fit on can be passed as is.
         tau
             The restriction time (time horizon). Must be positive.
         ci
@@ -1420,17 +1451,17 @@ class AFT:
         import greenwood as gw
 
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-        aft = gw.AFT("weibull").fit(y, lung[["age", "sex"]])
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+        aft = gw.AFT(dist="weibull").fit(y, covariates=["age", "sex"], data=lung)
 
         # Expected survival time up to one year for three subjects
-        aft.predict_expectation(lung[["age", "sex"]][:3], tau=365, format="polars")
+        aft.predict_expectation(lung[:3], tau=365, format="polars")
         ```
 
         With confidence intervals:
 
         ```{python}
-        aft.predict_expectation(lung[["age", "sex"]][:3], tau=365, ci=True, format="polars")
+        aft.predict_expectation(lung[:3], tau=365, ci=True, format="polars")
         ```
         """
         tau_val = float(tau)
@@ -1510,8 +1541,8 @@ class AFT:
         import greenwood as gw
 
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-        gg = gw.AFT("gengamma").fit(y, lung[["age", "sex"]])
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+        gg = gw.AFT(dist="gengamma").fit(y, covariates=["age", "sex"], data=lung)
         gg.test_distributions(format="polars")
         ```
         """
@@ -1624,8 +1655,8 @@ class AFT:
 
         # Load data and fit a Weibull AFT model
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-        aft = gw.AFT("weibull").fit(y, lung[["age", "sex"]])
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+        aft = gw.AFT(dist="weibull").fit(y, covariates=["age", "sex"], data=lung)
 
         # Export the coefficient table as a Polars DataFrame
         aft.to_frame(format="polars")

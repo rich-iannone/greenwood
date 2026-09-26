@@ -18,8 +18,10 @@ import numpy.typing as npt
 from scipy.stats import chi2
 
 from ._backends import to_dataframe
+from ._outcome import bind_fit_inputs
 
 if TYPE_CHECKING:
+    from ._outcome import Outcome
     from ._surv import Surv
 
 __all__ = [
@@ -81,10 +83,10 @@ class TestResult:
 
     # Load data and build a right-censored response
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
     # Run a log-rank test comparing survival by sex
-    result = gw.logrank_test(y, group=lung["sex"])
+    result = gw.logrank_test(y, group="sex", data=lung)
     result
     ```
 
@@ -280,7 +282,13 @@ def _logrank_statistic(
 
 
 def logrank_test(
-    surv: Surv, group: Any, *, rho: float = 0.0, gamma: float = 0.0, strata: Any = None
+    surv: Surv | Outcome | str,
+    group: Any = None,
+    *,
+    data: Any = None,
+    rho: float = 0.0,
+    gamma: float = 0.0,
+    strata: Any = None,
 ) -> TestResult:
     r"""Compare survival across groups using the weighted log-rank (G-rho) test.
 
@@ -307,6 +315,9 @@ def logrank_test(
         data (standard time-to-event) or counting-process format (interval-based data with
         entry/exit times). Constructed with `Surv.right()`, `Surv.counting()`, or
         `Surv.multistate()`.
+        An `Outcome` or a formula string such as `'Surv(time, status == 2) ~ sex'` is also accepted,
+        with its columns read from `data`. The right-hand side names the `group` column(s) and
+        `strata(x)` terms set `strata`.
     group
         Group labels, one per observation. Can be a Narwhals series (Polars/Pandas), 1-D
         array, or Python sequence. Labels can be strings, integers, or other hashable types.
@@ -326,6 +337,11 @@ def logrank_test(
         (stratified test). Use to control for confounding or variable that affects baseline
         hazard but not group differences. Example: stratify by site to account for
         site-specific differences in survival while testing an overall group effect.
+    data
+        A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns named
+        by the response, `group`, and `strata`. When `surv` is an `Outcome` or a formula, rows with
+        a missing value in any column used are dropped first, along with the matching rows of any
+        arrays passed alongside.
 
     Returns
     -------
@@ -359,10 +375,10 @@ def logrank_test(
 
     # Load data and build a right-censored response
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
     # Test whether survival differs between the two sex groups
-    result = gw.logrank_test(y, group=lung["sex"])
+    result = gw.logrank_test(y, group="sex", data=lung)
     result
     ```
 
@@ -384,7 +400,7 @@ def logrank_test(
 
     ```{python}
     # Use Peto-Peto weighting to emphasize early event times
-    gw.logrank_test(y, group=lung["sex"], rho=1, gamma=0)
+    gw.logrank_test(y, group="sex", rho=1, gamma=0, data=lung)
     ```
 
     Run a stratified test to control for institution (if available in data):
@@ -393,6 +409,18 @@ def logrank_test(
     # gw.logrank_test(y, group=lung["sex"], strata=lung["institution"])
     ```
     """
+    bound = bind_fit_inputs(
+        surv,
+        data=data,
+        labels={"group": group, "strata": strata},
+        rhs_to="group",
+        required=("group",),
+        estimator="logrank_test()",
+    )
+    surv = bound.surv
+    group = bound.labels["group"]
+    strata = bound.labels["strata"]
+
     from ._surv import CensoringType, _to_1d_array
 
     if surv.type not in (CensoringType.RIGHT, CensoringType.COUNTING):
@@ -550,9 +578,10 @@ def _pmvnorm_max_abs(c: float, corr: Array, n_samples: int = 2**18) -> float:
 
 
 def maxcombo_test(
-    surv: Surv,
-    group: Any,
+    surv: Surv | Outcome | str,
+    group: Any = None,
     *,
+    data: Any = None,
     weights: list[tuple[float, float]] | None = None,
     strata: Any = None,
 ) -> MaxComboResult:
@@ -574,6 +603,9 @@ def maxcombo_test(
     ----------
     surv
         A `Surv` response object (right-censored or counting-process).
+        An `Outcome` or a formula string such as `'Surv(time, status == 2) ~ sex'` is also accepted,
+        with its columns read from `data`. The right-hand side names the `group` column(s) and
+        `strata(x)` terms set `strata`.
     group
         Group labels, one per observation. Must have exactly two unique levels.
     weights
@@ -584,6 +616,11 @@ def maxcombo_test(
     strata
         Optional stratifying factor. When provided, each weighted test is stratified
         (computed within each stratum, then combined).
+    data
+        A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns named
+        by the response, `group`, and `strata`. When `surv` is an `Outcome` or a formula, rows with
+        a missing value in any column used are dropped first, along with the matching rows of any
+        arrays passed alongside.
 
     Returns
     -------
@@ -625,9 +662,9 @@ def maxcombo_test(
     import greenwood as gw
 
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
-    result = gw.maxcombo_test(y, group=lung["sex"])
+    result = gw.maxcombo_test(y, group="sex", data=lung)
     result
     ```
 
@@ -640,9 +677,21 @@ def maxcombo_test(
     Use a custom weight set focusing on standard and delayed effects:
 
     ```{python}
-    gw.maxcombo_test(y, group=lung["sex"], weights=[(0, 0), (0, 1)])
+    gw.maxcombo_test(y, group="sex", weights=[(0, 0), (0, 1)], data=lung)
     ```
     """
+    bound = bind_fit_inputs(
+        surv,
+        data=data,
+        labels={"group": group, "strata": strata},
+        rhs_to="group",
+        required=("group",),
+        estimator="maxcombo_test()",
+    )
+    surv = bound.surv
+    group = bound.labels["group"]
+    strata = bound.labels["strata"]
+
     from ._surv import CensoringType, _to_1d_array
 
     if surv.type not in (CensoringType.RIGHT, CensoringType.COUNTING):
@@ -727,9 +776,10 @@ def _p_adjust(pvalues: list[float], method: str) -> list[float]:
 
 
 def pairwise_logrank_test(
-    surv: Surv,
-    group: Any,
+    surv: Surv | Outcome | str,
+    group: Any = None,
     *,
+    data: Any = None,
     rho: float = 0.0,
     gamma: float = 0.0,
     strata: Any = None,
@@ -757,6 +807,9 @@ def pairwise_logrank_test(
         A `Surv` response object representing censored survival times. Supports right-censored
         data or counting-process format. Constructed with `Surv.right()`, `Surv.counting()`,
         or `Surv.multistate()`.
+        An `Outcome` or a formula string such as `'Surv(time, status == 2) ~ sex'` is also accepted,
+        with its columns read from `data`. The right-hand side names the `group` column(s) and
+        `strata(x)` terms set `strata`.
     group
         Group labels, one per observation. Can be a Narwhals series, 1-D array, or Python
         sequence. Must have at least 3 unique levels (to create multiple pairs). Must have
@@ -782,6 +835,11 @@ def pairwise_logrank_test(
     format
         Output format: `None` (default), `"pandas"`, `"polars"`, or `"pyarrow"`. When
         `None`, a backend is auto-detected (Polars, then Pandas, then PyArrow).
+    data
+        A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns named
+        by the response, `group`, and `strata`. When `surv` is an `Outcome` or a formula, rows with
+        a missing value in any column used are dropped first, along with the matching rows of any
+        arrays passed alongside.
 
     Returns
     -------
@@ -816,10 +874,10 @@ def pairwise_logrank_test(
 
     # Load data and build a right-censored response
     vet = gw.load_dataset("veteran", backend="polars")
-    y = gw.Surv.right(vet["time"], event=vet["status"])
+    y = gw.Surv.right(time=vet["time"], event=vet["status"])
 
     # Run a global log-rank test across all cell types
-    gw.logrank_test(y, group=vet["celltype"])
+    gw.logrank_test(y, group="celltype", data=vet)
     ```
 
     The pairwise test compares all six pairs of cell types and returns a table with the
@@ -828,7 +886,7 @@ def pairwise_logrank_test(
 
     ```{python}
     # Compare all pairs of cell types with Holm-adjusted p-values
-    pairs = gw.pairwise_logrank_test(y, group=vet["celltype"], format="polars")
+    pairs = gw.pairwise_logrank_test(y, group="celltype", format="polars", data=vet)
     pairs
     ```
 
@@ -837,7 +895,7 @@ def pairwise_logrank_test(
 
     ```{python}
     # Filter to pairs with statistically significant differences
-    pairs = gw.pairwise_logrank_test(y, group=vet["celltype"], format="pandas")
+    pairs = gw.pairwise_logrank_test(y, group="celltype", format="pandas", data=vet)
     pairs[pairs["p_adjusted"] < 0.05]
     ```
 
@@ -845,7 +903,7 @@ def pairwise_logrank_test(
 
     ```{python}
     # Use Peto-Peto weighting to emphasize early event times
-    gw.pairwise_logrank_test(y, group=vet["celltype"], rho=1, format="polars")
+    gw.pairwise_logrank_test(y, group="celltype", rho=1, format="polars", data=vet)
     ```
 
     Use Benjamini-Hochberg adjustment (less conservative) if you're interested in which pairs
@@ -853,9 +911,21 @@ def pairwise_logrank_test(
 
     ```{python}
     # Use Benjamini-Hochberg correction for false-discovery rate control
-    gw.pairwise_logrank_test(y, group=vet["celltype"], correction="bh", format="polars")
+    gw.pairwise_logrank_test(y, group="celltype", correction="bh", format="polars", data=vet)
     ```
     """
+    bound = bind_fit_inputs(
+        surv,
+        data=data,
+        labels={"group": group, "strata": strata},
+        rhs_to="group",
+        required=("group",),
+        estimator="pairwise_logrank_test()",
+    )
+    surv = bound.surv
+    group = bound.labels["group"]
+    strata = bound.labels["strata"]
+
     from ._surv import CensoringType, _to_1d_array
 
     if surv.type not in (CensoringType.RIGHT, CensoringType.COUNTING):
@@ -904,9 +974,10 @@ def pairwise_logrank_test(
 
 
 def trend_test(
-    surv: Surv,
-    group: Any,
+    surv: Surv | Outcome | str,
+    group: Any = None,
     *,
+    data: Any = None,
     scores: Array | None = None,
     rho: float = 0.0,
     gamma: float = 0.0,
@@ -932,6 +1003,9 @@ def trend_test(
     surv
         A `Surv` response object representing censored survival times. Supports right-censored
         data or counting-process format.
+        An `Outcome` or a formula string such as `'Surv(time, status == 2) ~ sex'` is also accepted,
+        with its columns read from `data`. The right-hand side names the `group` column(s) and
+        `strata(x)` terms set `strata`.
     group
         Group labels (typically ordered categories like 0, 1, 2, 3 for dose levels or stages).
         Can be a Narwhals series, 1-D array, or Python sequence. Must have at least 2 groups.
@@ -955,6 +1029,11 @@ def trend_test(
         Optional stratifying factor. When provided, the trend test is computed separately
         within each stratum, then combined (stratified trend test). Use to control for
         confounding while testing a linear trend.
+    data
+        A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns named
+        by the response, `group`, and `strata`. When `surv` is an `Outcome` or a formula, rows with
+        a missing value in any column used are dropped first, along with the matching rows of any
+        arrays passed alongside.
 
     Returns
     -------
@@ -991,10 +1070,10 @@ def trend_test(
     # Load data and build a right-censored response
     lung = gw.load_dataset("lung", backend="polars")
     lung = lung.filter(pl.col("ph.ecog").is_not_null())
-    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
     # Default: ECOG grades are sorted and assigned scores 0,1,2,3
-    result = gw.trend_test(y, group=lung["ph.ecog"])
+    result = gw.trend_test(y, group="ph.ecog", data=lung)
     result
     ```
 
@@ -1003,30 +1082,42 @@ def trend_test(
     ```{python}
     # Quadratic scores emphasize the steep decline from ECOG 2 to ECOG 3
     scores = {0: 0, 1: 1, 2: 4, 3: 9}
-    gw.trend_test(y, group=lung["ph.ecog"], scores=scores)
+    gw.trend_test(y, group="ph.ecog", scores=scores, data=lung)
     ```
 
     Use Peto-Peto weighting to emphasize early differences:
 
     ```{python}
     # Peto-Peto: rho=1 gives more weight to early event times
-    gw.trend_test(y, group=lung["ph.ecog"], rho=1, gamma=0)
+    gw.trend_test(y, group="ph.ecog", rho=1, gamma=0, data=lung)
     ```
 
     Use Tarone-Ware weighting to emphasize late differences (gamma=1):
 
     ```{python}
     # Tarone-Ware: gamma=1 gives more weight to late event times
-    gw.trend_test(y, group=lung["ph.ecog"], rho=0, gamma=1)
+    gw.trend_test(y, group="ph.ecog", rho=0, gamma=1, data=lung)
     ```
 
     Stratified by sex to control for a confounder:
 
     ```{python}
     # Stratify by sex to adjust for a known confounder
-    gw.trend_test(y, group=lung["ph.ecog"], strata=lung["sex"])
+    gw.trend_test(y, group="ph.ecog", strata="sex", data=lung)
     ```
     """
+    bound = bind_fit_inputs(
+        surv,
+        data=data,
+        labels={"group": group, "strata": strata},
+        rhs_to="group",
+        required=("group",),
+        estimator="trend_test()",
+    )
+    surv = bound.surv
+    group = bound.labels["group"]
+    strata = bound.labels["strata"]
+
     from ._surv import CensoringType, _to_1d_array
 
     if surv.type not in (CensoringType.RIGHT, CensoringType.COUNTING):

@@ -1,7 +1,7 @@
 """DataFrame-agnostic output helpers.
 
 Greenwood never assumes a single DataFrame library is installed. Result objects and the
-functions that return tabular data build a plain ``dict`` of columns and hand it to
+functions that return tabular data build a plain `dict` of columns and hand it to
 `to_dataframe`, which materializes it in the requested backend (or auto-detects one). This
 keeps Pandas from being an unconditional import: a Polars-only user can get Polars output,
 and nothing pulls in Pandas unless it is actually asked for.

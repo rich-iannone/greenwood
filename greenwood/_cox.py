@@ -19,8 +19,9 @@ right-censored data with Breslow ties.
 
 from __future__ import annotations
 
+import re
 import warnings
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -29,8 +30,11 @@ from scipy.special import gammaln
 from scipy.stats import chi2, norm
 
 from ._backends import to_dataframe
+from ._outcome import bind_fit_inputs
+from ._repr import dropped_note
 
 if TYPE_CHECKING:
+    from ._outcome import Outcome
     from ._surv import Surv
 
 __all__ = ["CoxPH", "SmoothHRResult", "ZPHResult", "ZPHWindowResult"]
@@ -100,8 +104,8 @@ class ZPHResult:
 
     # Load data and fit a Cox model
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-    cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+    cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
 
     # Run the proportional-hazards test
     zph = cox.cox_zph()
@@ -169,8 +173,8 @@ class ZPHResult:
         import greenwood as gw
 
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-        cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+        cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
         zph = cox.cox_zph()
         zph.to_frame(format="polars")
         ```
@@ -255,14 +259,14 @@ class SmoothHRResult:
         Parameters
         ----------
         scale
-            ``"log_hr"`` (default) returns log hazard ratios and confidence bounds.
-            ``"hr"`` returns hazard ratios (exponentiated).
+            `"log_hr"` (the default) returns log hazard ratios and confidence bounds.
+            `"hr"` returns hazard ratios (exponentiated).
         format
-            Output format: ``None`` (default), ``"pandas"``, ``"polars"``, or ``"pyarrow"``.
+            Output format: `None` (default), `"pandas"`, `"polars"`, or `"pyarrow"`.
 
         Returns
         -------
-        pandas.DataFrame, polars.DataFrame, or pyarrow.Table
+        `pandas.DataFrame`, `polars.DataFrame`, or `pyarrow.Table`
         """
         return to_dataframe(self._table_columns(scale=scale), format=format)
 
@@ -285,14 +289,14 @@ def _to_labels(values: Any, n: int, name: str) -> Array:
     return labels
 
 
-def _formula_design(formula: str, data: Any) -> tuple[Array, list[str]]:
+def _formula_design_spec(formula: str, data: Any) -> tuple[Array, list[str], DesignSpec]:
     """Build a design matrix from a Wilkinson formula (right-hand side) via formulaic.
 
     `formula` is the right-hand side only (no `~`), for example `"age + sex + ph.ecog"`,
     `"age + C(celltype)"`, or `"age * sex"`. The intercept column that formulaic adds is dropped,
     so the result matches the no-intercept design the models expect (an AFT adds its own intercept).
     Missing values are preserved so the caller's complete-case handling drops the same rows as the
-    response.
+    response. The returned `DesignSpec` keeps formulaic's model spec for `predict()`.
     """
     try:
         from formulaic import model_matrix  # pyright: ignore[reportMissingImports]
@@ -303,15 +307,153 @@ def _formula_design(formula: str, data: Any) -> tuple[Array, list[str]]:
         ) from error
     if data is None:
         raise ValueError("A formula string requires the `data` argument.")
-    import narwhals as nw  # pyright: ignore[reportMissingImports]  # installed + typed; pyright quirk
-
-    # Normalize any backend (pandas, Polars, PyArrow, ...) to pandas for formulaic.
-    frame = nw.from_native(data, eager_only=True).to_pandas()
+    frame = _to_pandas(data)
     matrix = model_matrix(f"~ {formula}", frame, na_action="ignore")
     names = [c for c in matrix.columns if c != "Intercept"]
     if not names:
         raise ValueError("The formula produced no covariates.")
-    return np.asarray(matrix[names].to_numpy(), dtype=float), list(names)
+    used = _formula_source_columns(formula, matrix.model_spec, [str(c) for c in frame.columns])
+    spec = DesignSpec(
+        kind="formula", names=tuple(names), columns=tuple(used), model_spec=matrix.model_spec
+    )
+    x = np.asarray(matrix[names].to_numpy(), dtype=float)
+    return _blank_missing_rows(x, frame, used), list(names), spec
+
+
+def _formula_source_columns(formula: str, model_spec: Any, available: list[str]) -> list[str]:
+    """The data columns a formula reads, including dotted R names such as `ph.ecog`."""
+    from ._outcome import _formula_columns  # pyright: ignore[reportPrivateUsage]
+
+    found = _formula_columns(formula, available)
+    if found is not None:
+        return found
+    variables = {str(v) for v in getattr(model_spec, "required_variables", set())}
+    return [c for c in available if c in variables]
+
+
+def _blank_missing_rows(x: Array, frame: Any, columns: tuple[str, ...] | list[str]) -> Array:
+    """Set a design row to NaN when any source column is missing in it.
+
+    formulaic codes a missing category as all-zero dummies, which would silently treat the row as
+    the reference level. Marking the row NaN lets the models' complete-case step drop it instead,
+    as it does for a missing numeric value.
+    """
+    from ._ingest import as_1d, missing_mask
+
+    missing = np.zeros(x.shape[0], dtype=bool)
+    for name in columns:
+        if name in frame.columns:
+            missing |= missing_mask(as_1d(frame[name].to_numpy()))
+    if missing.any():
+        x = x.copy()
+        x[missing] = np.nan
+    return x
+
+
+def _to_pandas(data: Any) -> Any:
+    """Normalize any backend (pandas, Polars, PyArrow, DuckDB, lazy frames) to pandas."""
+    import narwhals as nw  # pyright: ignore[reportMissingImports]  # installed + typed; pyright quirk
+
+    frame: Any = nw.from_native(data)
+    if isinstance(frame, nw.LazyFrame):
+        frame = frame.collect()
+    return frame.to_pandas()
+
+
+@dataclass(frozen=True)
+class DesignSpec:
+    """How a model's covariate design was built, so `predict()` can rebuild it from new data.
+
+    Recorded at fit time. For a data frame of covariates it keeps the source column names and the
+    levels of each non-numeric column. For a formula it keeps formulaic's model spec. Either way,
+    `transform()` can then build the same design from any frame that holds those columns: extra
+    columns are ignored, columns are matched by name rather than position, and categorical columns
+    are coded with the levels seen at fit time. Array designs pass through unchanged.
+    """
+
+    kind: str
+    names: tuple[str, ...]
+    columns: tuple[str, ...] = ()
+    levels: tuple[tuple[Any, ...] | None, ...] = ()
+    model_spec: Any = field(default=None, compare=False)
+
+    def transform(self, newdata: Any, data: Any = None) -> Array:
+        """Build the fitted design from `newdata` (a frame, an array, or a formula with `data`)."""
+        if isinstance(newdata, str):
+            if self.kind == "formula" and data is not None:
+                newdata = data
+            else:
+                return self._check_width(_design_matrix(newdata, data)[0])
+        if isinstance(newdata, np.ndarray):
+            x = np.asarray(newdata, dtype=float)
+            if x.ndim != 2:
+                raise ValueError("A covariate array must be 2-D (n_obs x n_features).")
+            return self._check_width(x)
+        if self.kind == "array":
+            return self._check_width(_design_matrix(newdata)[0])
+        if self.kind == "formula":
+            frame = _to_pandas(newdata)
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.simplefilter("always")
+                matrix = self.model_spec.get_model_matrix(frame, na_action="ignore")
+            for warning in caught:
+                message = str(warning.message)
+                if "outside of the nominated levels" not in message:
+                    warnings.warn(warning.message, warning.category, stacklevel=2)
+                    continue
+                # A missing value is reported as an unseen `nan` / `None` category. That row is
+                # blanked below, so only a genuinely new level is a problem.
+                reported = re.search(r"\{(.*)\}", message)
+                tokens = {t.strip() for t in reported.group(1).split(",")} if reported else {"?"}
+                new = tokens - {"nan", "None", "<NA>", "NaT", ""}
+                if new:
+                    raise ValueError(
+                        f"`newdata` has categorical level(s) {sorted(new)} that were not present "
+                        "when the model was fit."
+                    )
+            x = np.asarray(matrix[list(self.names)].to_numpy(), dtype=float)
+            return _blank_missing_rows(x, frame, self.columns)
+        return self._frame_design(newdata)
+
+    def _check_width(self, x: Array) -> Array:
+        if x.shape[1] != len(self.names):
+            raise ValueError(
+                f"`newdata` gives {x.shape[1]} covariate column(s), but the model was fit with "
+                f"{len(self.names)}: {list(self.names)}."
+            )
+        return x
+
+    def _frame_design(self, newdata: Any) -> Array:
+        import narwhals as nw  # pyright: ignore[reportMissingImports]  # installed + typed; pyright quirk
+
+        from ._ingest import as_1d, missing_mask, select_columns
+
+        frame: Any = nw.from_native(newdata)
+        available = [str(c) for c in frame.collect_schema().names()]
+        missing = [c for c in self.columns if c not in available]
+        if missing:
+            raise ValueError(
+                f"`newdata` is missing the column(s) {missing} that the model was fit with. It "
+                f"needs every covariate column ({list(self.columns)}), and other columns are "
+                "ignored."
+            )
+        eager = select_columns(frame, list(self.columns))
+        out: list[Array] = []
+        for name, levels in zip(self.columns, self.levels, strict=True):
+            values = eager.get_column(name).to_numpy()
+            if levels is None:
+                out.append(np.asarray(values, dtype=float))
+                continue
+            missing = missing_mask(as_1d(values))
+            seen = {v for v, m in zip(values.tolist(), missing, strict=True) if not m}
+            unseen = sorted(str(v) for v in seen - set(levels))
+            if unseen:
+                raise ValueError(
+                    f"Column {name!r} in `newdata` has level(s) {unseen} that were not present "
+                    f"when the model was fit (known levels: {[str(v) for v in levels]})."
+                )
+            out += _dummies(values, levels, missing)
+        return np.column_stack(out)
 
 
 def _design_matrix(covariates: Any, data: Any = None) -> tuple[Array, list[str]]:
@@ -321,32 +463,59 @@ def _design_matrix(covariates: Any, data: Any = None) -> tuple[Array, list[str]]
     Narwhals-compatible dataframe. Numeric columns pass through; non-numeric columns are
     treatment-coded (drop-first dummies) with names like `celltypesmallcell`.
     """
+    x, names, _ = _design_matrix_spec(covariates, data)
+    return x, names
+
+
+def _dummies(values: Array, levels: tuple[Any, ...], missing: Array) -> list[Array]:
+    """Treatment-coded (drop-first) dummy columns, NaN where the value is missing."""
+    out: list[Array] = []
+    for level in levels[1:]:  # the first level is the reference
+        column = (values == level).astype(float)
+        column[missing] = np.nan
+        out.append(column)
+    return out
+
+
+def _design_matrix_spec(covariates: Any, data: Any = None) -> tuple[Array, list[str], DesignSpec]:
+    """Like `_design_matrix()`, and also return the `DesignSpec` that `predict()` reuses."""
+    from ._ingest import as_1d, missing_mask
+
     if isinstance(covariates, str):
-        return _formula_design(covariates, data)
+        return _formula_design_spec(covariates, data)
     if isinstance(covariates, np.ndarray):
         x = np.asarray(covariates, dtype=float)
         if x.ndim != 2:
             raise ValueError("A covariate array must be 2-D (n_obs x n_features).")
-        return x, [f"x{i}" for i in range(x.shape[1])]
+        names = [f"x{i}" for i in range(x.shape[1])]
+        return x, names, DesignSpec(kind="array", names=tuple(names))
 
     import narwhals as nw  # pyright: ignore[reportMissingImports]  # installed + typed; pyright quirk
 
     frame = nw.from_native(covariates, eager_only=True)
     columns: list[Array] = []
-    names: list[str] = []
+    names = []
+    sources: list[str] = []
+    source_levels: list[tuple[Any, ...] | None] = []
     for name in frame.columns:
         values = frame[name].to_numpy()
+        sources.append(name)
         if values.dtype.kind in "iufb":
             columns.append(values.astype(float))
             names.append(name)
+            source_levels.append(None)
         else:
-            levels = sorted({v for v in values.tolist() if v is not None})
-            for level in levels[1:]:  # drop the first level as the reference
-                columns.append((values == level).astype(float))
-                names.append(f"{name}{level}")
+            missing = missing_mask(as_1d(values))
+            levels = sorted({v for v, m in zip(values.tolist(), missing, strict=True) if not m})
+            source_levels.append(tuple(levels))
+            columns += _dummies(values, tuple(levels), missing)
+            names += [f"{name}{level}" for level in levels[1:]]
     if not columns:
         raise ValueError("No covariates found.")
-    return np.column_stack(columns), names
+    spec = DesignSpec(
+        kind="frame", names=tuple(names), columns=tuple(sources), levels=tuple(source_levels)
+    )
+    return np.column_stack(columns), names, spec
 
 
 def _zph_test(
@@ -736,10 +905,10 @@ class CoxPH:
 
     # Load data and build a right-censored response
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
     # Fit a Cox model with age and sex as covariates
-    cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+    cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
     cox
     ```
 
@@ -782,7 +951,7 @@ class CoxPH:
             "",
             table,
             "",
-            f"n = {self.n_}, events = {self.n_event_}",
+            f"n = {self.n_}, events = {self.n_event_}{dropped_note(self)}",
             f"Likelihood ratio test = {num(self.lr_stat_)} on {self.df_} df, p = {num(lr_p)}",
         ]
         if self.robust:
@@ -800,8 +969,8 @@ class CoxPH:
 
     def fit(
         self,
-        surv: Surv,
-        covariates: Any,
+        surv: Surv | Outcome | str,
+        covariates: Any = None,
         *,
         data: Any = None,
         strata: Any = None,
@@ -827,11 +996,17 @@ class CoxPH:
         surv
             A `Surv` object representing the response (censoring type must be
             right-censored or counting-process).
+            An `Outcome` or a formula string such as `'Surv(time, status == 2) ~ age + sex'` is also
+            accepted, with its columns read from `data`. The right-hand side sets `covariates`.
         covariates
             Covariate design, either a 2-D array, dataframe, or formula string.
+            A list of column names in `data` also works.
         data
-            DataFrame to evaluate formula strings against (required if `covariates=`
-            is a formula string).
+            A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns
+            named by the response, `strata`, `cluster`, `frailty_cluster`, and `covariates`. When
+            `surv` is an `Outcome` or a formula, rows with a missing value in any column used are
+            dropped before fitting. Covariate formula strings and lists of column names are also
+            resolved here.
         strata
             Optional stratification variable, giving each stratum its own baseline
             hazard while sharing coefficients. Can be a 1-D array or series.
@@ -877,10 +1052,10 @@ class CoxPH:
 
         # Load data and build a right-censored response
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
         # Fit a stratified Cox model and export the coefficients
-        gw.CoxPH().fit(y, lung[["age", "ph.ecog"]], strata=lung["sex"]).to_frame(
+        gw.CoxPH().fit(y, covariates=["age", "ph.ecog"], data=lung, strata="sex").to_frame(
             format="polars"
         )
         ```
@@ -888,6 +1063,31 @@ class CoxPH:
         The `covariates` argument also accepts a right-hand-side formula string (for example
         `"age + sex + C(ph.ecog)"`), and `robust=True` reports the Lin-Wei sandwich variance.
         """
+        bound = bind_fit_inputs(
+            surv,
+            data=data,
+            designs={"covariates": covariates},
+            labels={"strata": strata, "cluster": cluster, "frailty_cluster": frailty_cluster},
+            rhs_to="covariates",
+            required=("covariates",),
+            estimator="CoxPH",
+        )
+        surv = bound.surv
+        covariates = bound.designs["covariates"]
+        strata = bound.labels["strata"]
+        cluster = bound.labels["cluster"]
+        frailty_cluster = bound.labels["frailty_cluster"]
+        if "frailty" in bound.options:
+            if frailty is not None and frailty != bound.options["frailty"]:
+                raise ValueError(
+                    f"The formula asks for a {bound.options['frailty']!r} frailty, but "
+                    f"`frailty={frailty!r}` was also given. Use one."
+                )
+            frailty = bound.options["frailty"]
+        data = bound.data
+        self._n_input = bound.n_input
+        self.n_dropped_ = bound.n_dropped
+
         from ._surv import CensoringType
 
         if surv.type not in (CensoringType.RIGHT, CensoringType.COUNTING):
@@ -924,7 +1124,7 @@ class CoxPH:
                     "robust/cluster variance."
                 )
 
-        x, names = _design_matrix(covariates, data)
+        x, names, self._design_spec = _design_matrix_spec(covariates, data)
         if x.shape[0] != surv.n:
             raise ValueError("Covariates and response must have the same number of rows.")
 
@@ -1226,6 +1426,7 @@ class CoxPH:
         self.loglik_ = float(loglik)
         self.loglik_null_ = float(loglik_null)
         self.n_ = int(keep.sum())
+        self.n_dropped_ = max(getattr(self, "_n_input", self.n_) - self.n_, 0)
         self.n_event_ = int(event.sum())
 
         z = float(norm.ppf(1.0 - (1.0 - self.conf_level) / 2.0))
@@ -1410,8 +1611,8 @@ class CoxPH:
 
         # Load data and fit a Cox model
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-        cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+        cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
 
         # Export the baseline cumulative hazard as a Polars DataFrame
         cox.baseline_hazard(format="polars")
@@ -1430,7 +1631,7 @@ class CoxPH:
 
         ```{python}
         # Fit a stratified model and get per-stratum baselines
-        cox_stratified = gw.CoxPH().fit(y, lung[["age", "ph.ecog"]], strata=lung["sex"])
+        cox_stratified = gw.CoxPH().fit(y, covariates=["age", "ph.ecog"], data=lung, strata="sex")
         cox_stratified.baseline_hazard(ci=True, format="polars")
         ```
 
@@ -1605,6 +1806,8 @@ class CoxPH:
         newdata
             Covariate design for prediction. If None, predictions are made on the fitted data. Can
             be a 2-D array or dataframe. Mutually exclusive with `trajectory`.
+            A data frame may also hold other columns. The covariates are picked out by name and
+            coded as they were at fit time, so the frame the model was fit on can be passed as is.
         type
             Type of prediction: `"lp"` (centered linear predictor, default), `"risk"` (exp of linear
             predictor), or `"survival"` (survival probability).
@@ -1655,8 +1858,8 @@ class CoxPH:
 
         # Load data and fit a Cox model
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-        cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+        cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
 
         # Predict the centered linear predictor for the first five subjects
         cox.predict(type="lp")[:5]
@@ -1669,7 +1872,7 @@ class CoxPH:
         ```{python}
         # Predict survival probabilities for three subjects at 180 and 365 days
         cox.predict(
-            lung[["age", "sex"]][:3], type="survival", times=[180, 365], format="polars"
+            lung[:3], type="survival", times=[180, 365], format="polars"
         )
         ```
 
@@ -1682,17 +1885,14 @@ class CoxPH:
         import pandas as pd
 
         pbcseq = gw.load_dataset("pbcseq", backend="pandas")
-        base = (pbcseq.drop_duplicates("id")[["id", "futime", "status"]]
-                      .rename(columns={"futime": "time"}))
         long = gw.split_episodes(
-            base, pbcseq[["id", "day", "bili", "albumin", "protime"]],
-            id="id", time="time", event="status", visit_time="day", format="pandas",
+            baseline=pbcseq, visits=pbcseq, id="id", time="futime", event="status",
+            visit_time="day", covariates=["bili", "albumin", "protime"], format="pandas",
         )
-        long = long.dropna(subset=["bili", "albumin", "protime"])
-        long["event_bin"] = (long["status"] == 2).astype(int)
 
-        y = gw.Surv.counting(long["tstart"], long["tstop"], long["event_bin"])
-        cox = gw.CoxPH().fit(y, long[["bili", "albumin", "protime"]])
+        # A status of 2 marks a death, and rows with missing labs are dropped at fit time
+        tvc = gw.Outcome.counting(start="tstart", stop="tstop", event="status", event_value=2)
+        cox = gw.CoxPH().fit(tvc, covariates=["bili", "albumin", "protime"], data=long)
 
         # Subject 1's covariate path (two visits)
         tvc_path = pd.DataFrame({
@@ -1716,10 +1916,7 @@ class CoxPH:
                 trajectory, times=times, strata=strata, ci=ci, format=format
             )
 
-        if newdata is None:
-            x = self._x
-        else:
-            x, _ = _design_matrix(newdata)
+        x = self._x if newdata is None else self._design_spec.transform(newdata)
 
         if type == "lp":
             return self._linear_predictor(x)
@@ -1857,6 +2054,8 @@ class CoxPH:
         newdata
             Covariate design for prediction. If `None`, predictions are made on the fitted data. Can
             be a 2-D array or DataFrame.
+            A data frame may also hold other columns. The covariates are picked out by name and
+            coded as they were at fit time, so the frame the model was fit on can be passed as is.
         p
             Failure probability or probabilities at which to compute quantiles. Can be a scalar
             (e.g., `0.5` for median) or array-like (e.g., `[0.25, 0.5, 0.75]` for quartiles). Must
@@ -1883,18 +2082,18 @@ class CoxPH:
         import greenwood as gw
 
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-        cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+        cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
 
         # Predicted survival-time quartiles for three subjects
-        cox.predict_quantile(lung[["age", "sex"]][:3], p=[0.25, 0.5, 0.75], format="polars")
+        cox.predict_quantile(lung[:3], p=[0.25, 0.5, 0.75], format="polars")
         ```
 
         With confidence intervals:
 
         ```{python}
         cox.predict_quantile(
-            lung[["age", "sex"]][:3], p=0.5, ci=True, format="polars"
+            lung[:3], p=0.5, ci=True, format="polars"
         )
         ```
         """
@@ -1902,10 +2101,7 @@ class CoxPH:
         if np.any(p_arr <= 0.0) or np.any(p_arr >= 1.0):
             raise ValueError("p must be in (0, 1).")
 
-        if newdata is None:
-            x = self._x
-        else:
-            x, _ = _design_matrix(newdata)
+        x = self._x if newdata is None else self._design_spec.transform(newdata)
 
         baseline_list = self._baseline()
         stratum_baseline: dict[Any, tuple[Array, Array]] = {
@@ -2004,6 +2200,8 @@ class CoxPH:
         newdata
             Covariate design for prediction. If `None`, predictions are made on the fitted data. Can
             be a 2-D array or DataFrame.
+            A data frame may also hold other columns. The covariates are picked out by name and
+            coded as they were at fit time, so the frame the model was fit on can be passed as is.
         strata
             Stratum labels for new subjects (required when `newdata` is provided and the model was
             fitted with `strata=`). One label per row of `newdata`.
@@ -2025,16 +2223,16 @@ class CoxPH:
         import greenwood as gw
 
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-        cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+        cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
 
-        cox.predict_median(lung[["age", "sex"]][:3], format="polars")
+        cox.predict_median(lung[:3], format="polars")
         ```
 
         With confidence intervals:
 
         ```{python}
-        cox.predict_median(lung[["age", "sex"]][:3], ci=True, format="polars")
+        cox.predict_median(lung[:3], ci=True, format="polars")
         ```
         """
         return self.predict_quantile(newdata, p=0.5, strata=strata, ci=ci, format=format)
@@ -2064,6 +2262,8 @@ class CoxPH:
         newdata
             Covariate design for prediction. If `None`, predictions are made on the fitted data. Can
             be a 2-D array or DataFrame.
+            A data frame may also hold other columns. The covariates are picked out by name and
+            coded as they were at fit time, so the frame the model was fit on can be passed as is.
         tau
             The restriction time (time horizon). Must be positive.
         strata
@@ -2088,17 +2288,17 @@ class CoxPH:
         import greenwood as gw
 
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-        cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+        cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
 
         # Expected survival time up to one year for three subjects
-        cox.predict_expectation(lung[["age", "sex"]][:3], tau=365, format="polars")
+        cox.predict_expectation(lung[:3], tau=365, format="polars")
         ```
 
         With confidence intervals:
 
         ```{python}
-        cox.predict_expectation(lung[["age", "sex"]][:3], tau=365, ci=True, format="polars")
+        cox.predict_expectation(lung[:3], tau=365, ci=True, format="polars")
         ```
         """
         tau_val = float(tau)
@@ -2107,10 +2307,7 @@ class CoxPH:
 
         tau_arr = np.atleast_1d(np.asarray(tau_val, dtype=float))
 
-        if newdata is None:
-            x = self._x
-        else:
-            x, _ = _design_matrix(newdata)
+        x = self._x if newdata is None else self._design_spec.transform(newdata)
 
         baseline_list = self._baseline()
         stratum_baseline: dict[Any, tuple[Array, Array]] = {
@@ -2226,7 +2423,7 @@ class CoxPH:
         if not cov_cols:
             raise ValueError("trajectory has no covariate columns (only tstart and tstop).")
 
-        x_traj, _ = _design_matrix(nw.to_native(traj_nw.select(cov_cols)))
+        x_traj = self._design_spec.transform(nw.to_native(traj_nw.select(cov_cols)))
         tstart = np.asarray(traj_nw["tstart"].to_list(), dtype=float)
         tstop = np.asarray(traj_nw["tstop"].to_list(), dtype=float)
 
@@ -2557,14 +2754,14 @@ class CoxPH:
         import greenwood as gw
 
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-        cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+        cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
 
-        cox.residuals("martingale")[:5]
+        cox.residuals(type="martingale")[:5]
         ```
 
         ```{python}
-        cox.residuals("dfbeta", format="polars")
+        cox.residuals(type="dfbeta", format="polars")
         ```
         """
         if type == "martingale":
@@ -2833,8 +3030,8 @@ class CoxPH:
         import greenwood as gw
 
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-        cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+        cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
 
         zph = cox.cox_zph()
         zph
@@ -2962,21 +3159,21 @@ class CoxPH:
     ) -> SmoothHRResult:
         """Smooth non-linear hazard ratio curve for a continuous covariate.
 
-        Refits the Cox model replacing the linear term for ``term`` with a B-spline basis
-        expansion, then computes the log-hazard ratio (and confidence band) across the
-        covariate's range relative to a reference value. The result reveals non-linear
-        covariate effects that a single coefficient cannot capture.
+        Refits the Cox model replacing the linear term for `term=` with a B-spline basis expansion,
+        then computes the log-hazard ratio (and confidence band) across the covariate's range
+        relative to a reference value. The result reveals non-linear covariate effects that a single
+        coefficient cannot capture.
 
         Parameters
         ----------
         term
-            Name of the covariate to expand. Must be one of the fitted model's ``term_names_``.
+            Name of the covariate to expand. Must be one of the fitted model's `term_names_`.
         df
             Degrees of freedom for the spline (number of basis functions). Defaults to 4, which
             gives a cubic spline with one interior knot. Higher values allow more flexible curves
             but risk overfitting.
         n_grid
-            Number of equally spaced points at which to evaluate the curve (default 200).
+            Number of equally spaced points at which to evaluate the curve (the default is `200`).
         reference
             Reference value for the covariate. The log-HR is zero at this point. Defaults to the
             weighted mean of the covariate in the training data.
@@ -2985,7 +3182,7 @@ class CoxPH:
         -------
         SmoothHRResult
             Contains the evaluation grid, log-HR, HR, and pointwise confidence bands. Use
-            ``to_frame()`` for a tidy DataFrame or pass the result to ``plot_smooth_hr()``.
+            `to_frame()` for a tidy DataFrame or pass the result to `plot_smooth_hr()`.
 
         Examples
         --------
@@ -2993,10 +3190,10 @@ class CoxPH:
         import greenwood as gw
 
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-        cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+        cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
 
-        shr = cox.smooth_hr("age")
+        shr = cox.smooth_hr(term="age")
         shr.to_frame(format="polars")
         ```
         """
@@ -3260,8 +3457,8 @@ class CoxPH:
         import greenwood as gw
 
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-        cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+        cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
         cox.concordance()
         ```
         """
@@ -3321,12 +3518,12 @@ class CoxPH:
 
         # Load data and build a right-censored response
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
         # Fit a Cox model with shared gamma frailty by institution
         cox = gw.CoxPH(ties="breslow").fit(
-            y, covariates=lung[["age", "sex"]],
-            frailty="gamma", frailty_cluster=lung["inst"],
+            y, covariates=["age", "sex"], data=lung,
+            frailty="gamma", frailty_cluster="inst",
         )
 
         # Test whether the frailty variance is significant
@@ -3401,8 +3598,8 @@ class CoxPH:
 
         # Load data and fit a Cox model
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-        cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+        cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
 
         # Export the coefficient table as a Polars DataFrame
         cox.to_frame(format="polars")

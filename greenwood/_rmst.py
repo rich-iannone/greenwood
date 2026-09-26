@@ -22,8 +22,10 @@ from scipy.stats import norm
 
 from ._backends import to_dataframe
 from ._nonparametric import _Block, _rmst_block
+from ._outcome import bind_fit_inputs
 
 if TYPE_CHECKING:
+    from ._outcome import Outcome
     from ._surv import Surv
 
 __all__ = ["rmst_test", "rmst_diff", "RMSTResult", "pairwise_rmst_test"]
@@ -86,10 +88,10 @@ class RMSTResult:
 
     # Load data and build a right-censored response
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
     # Compare one-year RMST between sex groups
-    result = gw.rmst_test(y, tau=365, group=lung["sex"])
+    result = gw.rmst_test(y, tau=365, group="sex", data=lung)
     result
     ```
 
@@ -281,10 +283,11 @@ def _rmst_group_values(
 
 
 def rmst_test(
-    surv: Surv,
+    surv: Surv | Outcome | str,
     tau: float,
-    group: Any,
+    group: Any = None,
     *,
+    data: Any = None,
     estimand: str = "difference",
     strata: Any | None = None,
     conf_level: float = 0.95,
@@ -302,6 +305,9 @@ def rmst_test(
     ----------
     surv
         A right-censored `Surv` response (time-to-event data).
+        An `Outcome` or a formula string such as `'Surv(time, status == 2) ~ sex'` is also accepted,
+        with its columns read from `data`. The right-hand side names the `group` column(s) and
+        `strata(x)` terms set `strata`.
     tau
         The restriction time, typically a clinically relevant horizon (e.g., 365, 1825).
     group
@@ -316,6 +322,11 @@ def rmst_test(
         Strata in which either group is absent are skipped.
     conf_level
         Confidence level for confidence intervals (the default is `0.95` for 95% CI).
+    data
+        A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns named
+        by the response, `group`, and `strata`. When `surv` is an `Outcome` or a formula, rows with
+        a missing value in any column used are dropped first, along with the matching rows of any
+        arrays passed alongside.
 
     Returns
     -------
@@ -368,10 +379,10 @@ def rmst_test(
 
     # Load data and build a right-censored response
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
     # Test for one-year RMST difference between sex groups
-    result = gw.rmst_test(y, tau=365, group=lung["sex"])
+    result = gw.rmst_test(y, tau=365, group="sex", data=lung)
     result
     ```
 
@@ -393,9 +404,21 @@ def rmst_test(
 
     ```{python}
     # Compare RMST as a ratio instead of a difference
-    gw.rmst_test(y, tau=365, group=lung["sex"], estimand="ratio")
+    gw.rmst_test(y, tau=365, group="sex", estimand="ratio", data=lung)
     ```
     """
+    bound = bind_fit_inputs(
+        surv,
+        data=data,
+        labels={"group": group, "strata": strata},
+        rhs_to="group",
+        required=("group",),
+        estimator="rmst_test()",
+    )
+    surv = bound.surv
+    group = bound.labels["group"]
+    strata = bound.labels["strata"]
+
     if estimand not in {"difference", "ratio", "percentage_difference"}:
         raise ValueError(
             f"estimand must be 'difference', 'ratio', or 'percentage_difference', got {estimand!r}"
@@ -492,10 +515,11 @@ def rmst_test(
 
 
 def rmst_diff(
-    surv: Surv,
+    surv: Surv | Outcome | str,
     tau: float,
-    group: Any,
+    group: Any = None,
     *,
+    data: Any = None,
     strata: Any | None = None,
     conf_level: float = 0.95,
 ) -> Any:
@@ -509,6 +533,9 @@ def rmst_diff(
     ----------
     surv
         A right-censored `Surv` response built with `Surv.right()`.
+        An `Outcome` or a formula string such as `'Surv(time, status == 2) ~ sex'` is also accepted,
+        with its columns read from `data`. The right-hand side names the `group` column(s) and
+        `strata(x)` terms set `strata`.
     tau
         The restriction time. Should be a clinically meaningful horizon (e.g., 365 days for one-year
         RMST).
@@ -519,6 +546,11 @@ def rmst_diff(
         estimates are computed within each stratum and pooled with inverse-variance weights.
     conf_level
         Confidence level for the confidence interval (the default is `0.95`).
+    data
+        A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns named
+        by the response, `group`, and `strata`. When `surv` is an `Outcome` or a formula, rows with
+        a missing value in any column used are dropped first, along with the matching rows of any
+        arrays passed alongside.
 
     Returns
     -------
@@ -535,12 +567,24 @@ def rmst_diff(
 
     # Load data and build a right-censored response
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
     # Compute the one-year RMST difference as a tidy DataFrame
-    gw.rmst_diff(y, tau=365, group=lung["sex"])
+    gw.rmst_diff(y, tau=365, group="sex", data=lung)
     ```
     """
+    bound = bind_fit_inputs(
+        surv,
+        data=data,
+        labels={"group": group, "strata": strata},
+        rhs_to="group",
+        required=("group",),
+        estimator="rmst_diff()",
+    )
+    surv = bound.surv
+    group = bound.labels["group"]
+    strata = bound.labels["strata"]
+
     result = rmst_test(
         surv, tau, group, estimand="difference", strata=strata, conf_level=conf_level
     )
@@ -588,10 +632,11 @@ def _p_adjust(pvalues: list[float], method: str) -> list[float]:
 
 
 def pairwise_rmst_test(
-    surv: Surv,
+    surv: Surv | Outcome | str,
     tau: float,
-    group: Any,
+    group: Any = None,
     *,
+    data: Any = None,
     estimand: str = "difference",
     strata: Any | None = None,
     correction: str = "holm",
@@ -608,6 +653,9 @@ def pairwise_rmst_test(
     ----------
     surv
         A right-censored `Surv` response (time-to-event data).
+        An `Outcome` or a formula string such as `'Surv(time, status == 2) ~ sex'` is also accepted,
+        with its columns read from `data`. The right-hand side names the `group` column(s) and
+        `strata(x)` terms set `strata`.
     tau
         The restriction time for RMST calculation.
     group
@@ -623,6 +671,11 @@ def pairwise_rmst_test(
         Confidence level for intervals (the default is `0.95`).
     format
         Output format: None (auto-detect), `"pandas"`, `"polars"`, or `"pyarrow"`.
+    data
+        A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns named
+        by the response, `group`, and `strata`. When `surv` is an `Outcome` or a formula, rows with
+        a missing value in any column used are dropped first, along with the matching rows of any
+        arrays passed alongside.
 
     Returns
     -------
@@ -646,12 +699,24 @@ def pairwise_rmst_test(
 
     # Load data and build a right-censored response
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
     # Run pairwise RMST comparisons with Holm-adjusted p-values
-    gw.pairwise_rmst_test(y, tau=365, group=lung["sex"], format="polars")
+    gw.pairwise_rmst_test(y, tau=365, group="sex", format="polars", data=lung)
     ```
     """
+    bound = bind_fit_inputs(
+        surv,
+        data=data,
+        labels={"group": group, "strata": strata},
+        rhs_to="group",
+        required=("group",),
+        estimator="pairwise_rmst_test()",
+    )
+    surv = bound.surv
+    group = bound.labels["group"]
+    strata = bound.labels["strata"]
+
     import itertools
 
     from ._surv import Surv, _to_1d_array

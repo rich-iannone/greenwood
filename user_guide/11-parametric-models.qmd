@@ -30,8 +30,8 @@ import greenwood as gw
 # Load the bundled lung dataset as a Polars DataFrame
 lung = gw.load_dataset("lung", backend="polars")
 
-# Build a right-censored response (status 2 = dead in this R-originating dataset)
-y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+# Build a right-censored response, where a status of 2 marks a death
+y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
 # Display the response summary
 y
@@ -47,7 +47,7 @@ you parameter estimates, standard errors, and model-selection statistics.
 
 ```{python}
 # Fit a Weibull distribution by maximum likelihood (no covariates)
-fit = gw.Parametric("weibull").fit(y)
+fit = gw.Parametric(dist="weibull").fit(y)
 
 # Display parameter estimates, standard errors, and model-selection statistics
 fit
@@ -78,20 +78,20 @@ covariates:
 
 ```{python}
 # Refit the Weibull for prediction
-fit = gw.Parametric("weibull").fit(y)
+fit = gw.Parametric(dist="weibull").fit(y)
 
 # Query the survival function at 6 months, 1 year, and 2 years
-fit.survival([180, 365, 730])
+fit.survival(times=[180, 365, 730])
 ```
 
 ```{python}
 # Instantaneous hazard rate at the same time points (risk of event per unit time)
-fit.hazard([180, 365, 730])
+fit.hazard(times=[180, 365, 730])
 ```
 
 ```{python}
 # Time by which 25%, 50%, and 75% of subjects have experienced the event
-fit.quantile([0.25, 0.5, 0.75])
+fit.quantile(p=[0.25, 0.5, 0.75])
 ```
 
 ```{python}
@@ -109,7 +109,8 @@ distribution.
 
 The `Parametric` class is for exploration: which distribution shape fits my data? Once you've
 chosen, use `AFT` with the same distribution to model covariate effects. For example, if
-`compare_distributions()` picks Weibull, follow up with `gw.AFT("weibull").fit(y, covariates)`.
+`compare_distributions()` picks Weibull, follow up with
+`gw.AFT(dist="weibull").fit(y, covariates=covariates)`.
 :::
 
 ## The accelerated failure time model
@@ -126,10 +127,10 @@ You fit one by naming a distribution. The Weibull is the default and the most co
 ```{python}
 # Fit a Weibull AFT model with age and sex as covariates
 lung = gw.load_dataset("lung", backend="polars")
-y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
 # The model estimates how each covariate stretches or compresses survival time
-aft = gw.AFT("weibull").fit(y, lung[["age", "sex"]])
+aft = gw.AFT(dist="weibull").fit(y, covariates=["age", "sex"], data=lung)
 
 # Display the coefficient table, scale, and log-likelihood
 aft
@@ -161,10 +162,10 @@ remaining parsimonious.
 ```{python}
 # Fit each distribution to the same data and print the log-likelihood and scale
 lung = gw.load_dataset("lung", backend="polars")
-y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
 for dist in ("exponential", "weibull", "lognormal", "loglogistic"):
-    model = gw.AFT(dist).fit(y, lung[["age", "sex"]])
+    model = gw.AFT(dist=dist).fit(y, covariates=["age", "sex"], data=lung)
     print(f"{dist:20s} loglik={model.loglik_:10.3f} scale={model.scale_:.4f}")
 ```
 
@@ -177,7 +178,7 @@ import pandas as pd
 # Collect glance summaries from each distribution into one table
 results = []
 for dist in ("exponential", "weibull", "lognormal", "loglogistic"):
-    model = gw.AFT(dist).fit(y, lung[["age", "sex"]])
+    model = gw.AFT(dist=dist).fit(y, covariates=["age", "sex"], data=lung)
     glance_result = gw.glance(model, format="pandas")
     glance_result["distribution"] = dist
     results.append(glance_result)
@@ -199,11 +200,11 @@ can compare all four distributions systematically:
 ```{python}
 # Fit each distribution and collect glance results for ranking
 lung = gw.load_dataset("lung", backend="polars")
-y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
 comparisons = []
 for dist in ("exponential", "weibull", "lognormal", "loglogistic"):
-    model = gw.AFT(dist).fit(y, lung[["age", "sex"]])
+    model = gw.AFT(dist=dist).fit(y, covariates=["age", "sex"], data=lung)
     result = gw.glance(model, format="pandas")
     result["distribution"] = dist
     comparisons.append(result)
@@ -250,8 +251,8 @@ extrapolate beyond the observed follow-up. We predict for two new subjects, a 50
 ```{python}
 # Fit a Weibull AFT and define two new subjects for prediction
 lung = gw.load_dataset("lung", backend="polars")
-y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-aft = gw.AFT("weibull").fit(y, lung[["age", "sex"]])
+y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+aft = gw.AFT(dist="weibull").fit(y, covariates=["age", "sex"], data=lung)
 
 # Two new subjects: a 50-year-old and a 70-year-old, both sex = 1
 newdata = pd.DataFrame({"age": [50, 70], "sex": [1, 1]})
@@ -280,7 +281,7 @@ evaluated at many time points.
 
 ```{python}
 # Visualize predicted survival for the two new subjects
-gw.plot_predicted_survival(aft, newdata)
+gw.plot_predicted_survival(aft, newdata=newdata)
 ```
 
 The older subject's curve drops faster, reflecting the shorter predicted survival. You can pass
@@ -351,9 +352,9 @@ likelihood ratio test of whether a simpler sub-model is adequate.
 ```{python}
 # Fit a generalized gamma AFT model
 lung = gw.load_dataset("lung", backend="polars")
-y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
-gg = gw.AFT("gengamma").fit(y, lung[["age", "sex"]])
+gg = gw.AFT(dist="gengamma").fit(y, covariates=["age", "sex"], data=lung)
 gg
 ```
 
@@ -413,9 +414,11 @@ to add it.
 ```{python}
 # Fit a Weibull AFT model with a threshold parameter
 lung = gw.load_dataset("lung", backend="polars")
-y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
-aft_threshold = gw.AFT("weibull", method="mps", threshold=True).fit(y, lung[["age", "sex"]])
+aft_threshold = gw.AFT(dist="weibull", method="mps", threshold=True).fit(
+    y, covariates=["age", "sex"], data=lung
+)
 aft_threshold
 ```
 
@@ -436,7 +439,7 @@ import warnings
 
 with warnings.catch_warnings(record=True) as caught:
     warnings.simplefilter("always")
-    gw.AFT("weibull", threshold=True).fit(y, lung[["age", "sex"]])
+    gw.AFT(dist="weibull", threshold=True).fit(y, covariates=["age", "sex"], data=lung)
 print(caught[0].message)
 ```
 
@@ -458,7 +461,7 @@ every time-scale prediction, and survival is exactly 1 for any query time at or 
 # Survival at times before, at, and after the fitted threshold
 query_times = [aft_threshold.threshold_ * 0.5, aft_threshold.threshold_, 100, 365]
 aft_threshold.predict(
-    lung[["age", "sex"]][:2], type="survival", times=query_times, format="polars"
+    lung[:2], type="survival", times=query_times, format="polars"
 )
 ```
 
@@ -473,9 +476,9 @@ number of spline degrees of freedom.
 ```{python}
 # Fit a Royston-Parmar flexible-parametric model (3 spline degrees of freedom)
 lung = gw.load_dataset("lung", backend="polars")
-y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
-rp = gw.RoystonParmar(df=3).fit(y, lung[["age", "sex"]])
+rp = gw.RoystonParmar(df=3).fit(y, covariates=["age", "sex"], data=lung)
 
 # Display the spline and covariate coefficients
 rp.to_frame(format="polars")
@@ -494,7 +497,7 @@ but risks overfitting and unstable extrapolation.
 # Sweep across spline degrees of freedom to find the best-fitting complexity
 results = []
 for df in (1, 2, 3, 4, 5):
-    rp_df = gw.RoystonParmar(df=df).fit(y, lung[["age", "sex"]])
+    rp_df = gw.RoystonParmar(df=df).fit(y, covariates=["age", "sex"], data=lung)
     results.append({"df": df, "loglik": rp_df.loglik_})
 
 # Display the improvement (or lack thereof) as df increases
@@ -571,7 +574,7 @@ automatically for a fitted `RoystonParmar`.
 # Compare AIC and BIC across spline degrees of freedom
 rows = []
 for df in (1, 2, 3, 4, 5):
-    m = gw.RoystonParmar(df=df).fit(y, lung[["age", "sex"]])
+    m = gw.RoystonParmar(df=df).fit(y, covariates=["age", "sex"], data=lung)
     g = gw.glance(m, format="polars")
     rows.append({"df": df, "aic": g["aic"][0], "bic": g["bic"][0]})
 
@@ -620,7 +623,7 @@ constant. Pass `scale="odds"`:
 
 ```{python}
 # Fit a proportional-odds Royston-Parmar model
-rp_odds = gw.RoystonParmar(df=3, scale="odds").fit(y, lung[["age", "sex"]])
+rp_odds = gw.RoystonParmar(df=3, scale="odds").fit(y, covariates=["age", "sex"], data=lung)
 rp_odds
 ```
 
@@ -656,7 +659,7 @@ residuals, then refit by ordinary least squares.
 
 ```{python}
 # Fit a Buckley-James rank-based AFT model
-bj = gw.BuckleyJames().fit(y, lung[["age", "sex"]])
+bj = gw.BuckleyJames().fit(y, covariates=["age", "sex"], data=lung)
 bj
 ```
 
@@ -675,7 +678,7 @@ proportionally more time):
 
 ```{python}
 # Bootstrap standard errors (200 resamples)
-bj_boot = gw.BuckleyJames(n_boot=200, seed=0).fit(y, lung[["age", "sex"]])
+bj_boot = gw.BuckleyJames(n_boot=200, seed=0).fit(y, covariates=["age", "sex"], data=lung)
 bj_boot.to_frame(format="polars")
 ```
 
@@ -717,8 +720,8 @@ Pass `ci=True` to get confidence bounds alongside the survival probability:
 ```{python}
 # Refit the Weibull AFT for confidence interval demonstration
 lung = gw.load_dataset("lung", backend="polars")
-y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-aft = gw.AFT("weibull").fit(y, lung[["age", "sex"]])
+y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+aft = gw.AFT(dist="weibull").fit(y, covariates=["age", "sex"], data=lung)
 
 # Two subjects with different covariate profiles
 newdata = pd.DataFrame({"age": [50, 70], "sex": [1, 2]})
@@ -778,8 +781,8 @@ where $\mu = X\beta$ is the log-time location for each subject and $\sigma$ is t
 ```{python}
 # Fit a log-normal AFT model (different distributional choice for illustration)
 lung = gw.load_dataset("lung", backend="polars")
-y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-aft = gw.AFT("lognormal").fit(y, lung[["age", "sex"]])
+y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+aft = gw.AFT(dist="lognormal").fit(y, covariates=["age", "sex"], data=lung)
 
 # Two subjects for prediction
 newdata = pd.DataFrame({"age": [50, 70], "sex": [1, 1]})
@@ -913,16 +916,16 @@ fit.
 ```{python}
 # Fit a Weibull AFT for residual diagnostics
 lung = gw.load_dataset("lung", backend="polars")
-y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
-aft = gw.AFT("weibull").fit(y, lung[["age", "sex"]])
+y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+aft = gw.AFT(dist="weibull").fit(y, covariates=["age", "sex"], data=lung)
 
 # Response residuals: time - predicted time (one per subject)
-aft.residuals("response")[:5]
+aft.residuals(type="response")[:5]
 ```
 
 ```{python}
 # Cox-Snell residuals: cumulative hazard at observed time (always non-negative)
-aft.residuals("cox_snell")[:5]
+aft.residuals(type="cox_snell")[:5]
 ```
 
 ### Martingale and deviance residuals
@@ -934,12 +937,12 @@ suited for identifying outliers.
 
 ```{python}
 # Martingale residuals: event - Cox-Snell (range: (-inf, 1])
-aft.residuals("martingale")[:5]
+aft.residuals(type="martingale")[:5]
 ```
 
 ```{python}
 # Deviance residuals: symmetric, better for spotting outliers
-aft.residuals("deviance")[:5]
+aft.residuals(type="deviance")[:5]
 ```
 
 ### Score, dfbeta, and dfbetas residuals
@@ -952,17 +955,17 @@ covariates on different scales.
 
 ```{python}
 # Score residuals: derivative of each observation's log-likelihood contribution
-aft.residuals("score", format="polars")
+aft.residuals(type="score", format="polars")
 ```
 
 ```{python}
 # Dfbeta: approximate leave-one-out influence on each coefficient
-aft.residuals("dfbeta", format="polars")
+aft.residuals(type="dfbeta", format="polars")
 ```
 
 ```{python}
 # Dfbetas: standardized dfbeta, comparable across covariates
-aft.residuals("dfbetas", format="polars")
+aft.residuals(type="dfbetas", format="polars")
 ```
 
 Use martingale and deviance residuals to check whether the distributional assumption is reasonable
@@ -992,7 +995,7 @@ log-log) transform: $\log(t)$ on the x-axis and $\log(-\log(S(t)))$ on the y-axi
 ```{python}
 # Load data and build the response
 lung = gw.load_dataset("lung", backend="polars")
-y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
 # Fit an unstratified KM and draw the Weibull diagnostic plot
 km = gw.KaplanMeier().fit(y)
@@ -1011,7 +1014,7 @@ with the same slope). Fit a stratified Kaplan-Meier and pass it to `plot_weibull
 
 ```{python}
 # Stratified KM by sex: parallel lines suggest proportional hazards
-km_sex = gw.KaplanMeier().fit(y, by=lung["sex"])
+km_sex = gw.KaplanMeier().fit(y, by="sex", data=lung)
 gw.plot_weibull(km_sex, title="Weibull plot by sex")
 ```
 
@@ -1028,7 +1031,7 @@ as the `aft=` argument:
 ```{python}
 # Fit a Weibull AFT and overlay the theoretical line on the KM scatter
 km_overall = gw.KaplanMeier().fit(y)
-aft = gw.AFT("weibull").fit(y, lung[["age", "sex"]])
+aft = gw.AFT(dist="weibull").fit(y, covariates=["age", "sex"], data=lung)
 
 gw.plot_weibull(km_overall, aft=aft, title="Weibull fit: KM vs. parametric")
 ```
@@ -1102,15 +1105,15 @@ submodel and one for the latency submodel. The covariates can overlap or differ.
 ```{python}
 # Load the E1684 melanoma interferon trial
 e1684 = gw.load_dataset("e1684", backend="polars")
-y_mel = gw.Surv.right(e1684["FAILTIME"], event=(e1684["FAILCENS"] == 1))
+y_mel = gw.Surv.right(time="FAILTIME", event="FAILCENS", data=e1684, event_value=1)
 
 # Fit a mixture cure model:
 #   - Incidence (cure) submodel: treatment and age predict who is cured
 #   - Latency submodel: treatment and age predict when susceptible subjects fail
 mc = gw.MixtureCure().fit(
     y_mel,
-    latency=e1684[["AGE", "TRT"]],
-    cure=e1684[["AGE", "TRT"]],
+    latency=["AGE", "TRT"], data=e1684,
+    cure=["AGE", "TRT"],
     nboot=200,
 )
 
@@ -1133,7 +1136,7 @@ based on their incidence covariates. Subtract from 1 to get the cure probability
 
 ```{python}
 # Susceptibility probability for three subjects
-suscept = mc.predict_cure_prob(e1684[["AGE", "TRT"]][:3])
+suscept = mc.predict_cure_prob(cure_covariates=e1684[:3])
 
 # Cure probability = 1 - susceptibility
 import numpy as np
@@ -1159,7 +1162,9 @@ than falling to zero.
 ```{python}
 # Population survival at 1, 2, 5, and 10 years for three subjects
 times = [1.0, 2.0, 5.0, 10.0]
-surv = mc.predict_survival(times, e1684[["AGE", "TRT"]][:3], e1684[["AGE", "TRT"]][:3])
+surv = mc.predict_survival(
+    times=times, latency_covariates=e1684[:3], cure_covariates=e1684[:3]
+)
 
 pd.DataFrame(surv, columns=[f"t={t}" for t in times],
              index=["Subject 1", "Subject 2", "Subject 3"])

@@ -83,9 +83,9 @@ Here's a simple example that loads survival data, estimates a survival curve, an
 ```python
 import greenwood as gw
 
-# Load the data and represent it as a survival object
+# Load the data and represent it as a survival object (a status of 2 marks a death)
 lung = gw.load_dataset("lung", backend="polars")
-y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
 # Estimate the Kaplan-Meier survival curve
 km = gw.KaplanMeier().fit(y)
@@ -93,9 +93,12 @@ km = gw.KaplanMeier().fit(y)
 # Visualize it
 gw.plot_survival(km)
 
-# Fit a Cox proportional hazards model
-cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
+# Fit a Cox proportional hazards model, written as an R-style formula
+cox = gw.CoxPH().fit("Surv(time, status == 2) ~ age + sex", data=lung)
 ```
+
+The same calls work on Pandas, Polars, PyArrow, and DuckDB data, because columns are named and the
+event coding is declared as a value rather than written as a data frame expression.
 
 That's it! See the [user guide](user-guide/quick-start.qmd) for more details on each step, and scroll down for a comprehensive example covering more of Greenwood's capabilities.
 
@@ -107,64 +110,69 @@ Here's a comprehensive example showcasing more of Greenwood's capabilities:
 import greenwood as gw
 
 df = gw.load_dataset("lung", backend="polars")
-y = gw.Surv.right(df["time"], event=(df["status"] == 2))
+
+# Describe the endpoint once, then fit anything from the frame
+death = gw.Outcome.right(time="time", event="status", event_value=2)
+y = death.bind(df)
 
 # Kaplan-Meier with stratification and detailed summaries
-km = gw.KaplanMeier(conf_type="log-log").fit(y, by=df["sex"])
+km = gw.KaplanMeier(conf_type="log-log").fit(death, by="sex", data=df)
 km.to_frame(format="polars")  # tidy: strata, time, n_risk, n_event, estimate, conf_low, conf_high
 km.median(ci=True)         # median survival with confidence limits, per stratum
-km.rmst(365, ci=True)      # restricted mean survival time up to 365 days
-km.predict([180, 365])     # survival probability at specific times
+km.rmst(tau=365, ci=True)      # restricted mean survival time up to 365 days
+km.predict(times=[180, 365])     # survival probability at specific times
 
 # Statistical tests
-gw.logrank_test(y, group=df["sex"])          # standard log-rank test
-gw.logrank_test(y, group=df["sex"], rho=1)   # Peto-Peto (G-rho) test
+gw.logrank_test(death, group="sex", data=df)          # standard log-rank test
+gw.logrank_test(death, group="sex", data=df, rho=1)   # Peto-Peto (G-rho) test
 
 # Visualization with risk tables
 gw.plot_survival(km, risk_table=True)
 
 # Cox proportional hazards regression
-cox = gw.CoxPH().fit(y, df[["age", "sex"]])
+cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=df)
 gw.tidy(cox, exponentiate=True, format="polars")  # hazard ratios with confidence intervals
 gw.glance(cox, format="polars")              # model-level stats (loglik, AIC, concordance)
 cox.cox_zph()                                # proportional-hazards test
 cox.concordance()                            # C-statistic
-cox.predict(df[["age", "sex"]].head(), type="survival", times=[180, 365], format="polars")
+cox.predict(df.head(), type="survival", times=[180, 365], format="polars")
 
-# Penalized Cox: elastic-net with cross-validated lambda
-coxnet = gw.CoxNet(l1_ratio=1.0).fit(y, df[["age", "sex", "ph.ecog", "wt.loss"]].drop_nulls())
-cv_result = gw.cv_coxnet(y, df[["age", "sex", "ph.ecog", "wt.loss"]].drop_nulls())
-cv_result.lambda_min   # penalty that minimizes cross-validated partial likelihood
+# Penalized Cox: elastic-net with cross-validated lambda (rows with missing values are dropped)
+coxnet = gw.CoxNet(l1_ratio=1.0).fit(
+    death, covariates=["age", "sex", "ph.ecog", "wt.loss"], data=df
+)
+cv_result = gw.cv_coxnet(death, covariates=["age", "sex", "ph.ecog", "wt.loss"], data=df)
+cv_result.best_penalizer_   # penalty with the best cross-validated score
 
 # Flexible parametric model (spline-based, proportional hazards)
-rp = gw.RoystonParmar(df=3).fit(y, df[["age", "sex"]])
+rp = gw.RoystonParmar(df=3).fit(y, covariates=["age", "sex"], data=df)
 gw.tidy(rp, format="polars")
 
 # Parametric accelerated failure time models
-aft = gw.AFT("weibull").fit(y, df[["age", "sex"]])
+aft = gw.AFT(dist="weibull").fit(y, covariates=["age", "sex"], data=df)
 gw.tidy(aft, format="polars")           # coefficients on the log-time scale
 
 # Univariate distribution fitting and comparison
-gw.compare_distributions(y, format="polars")   # rank Weibull / exponential / lognormal / loglogistic by AIC
+gw.compare_distributions(
+    y, format="polars"
+)  # rank Weibull / exponential / lognormal / loglogistic by AIC
 
 # Study design: events and sample size for an 80% powered log-rank test
 gw.logrank_n_events(hazard_ratio=0.7)          # events needed
-gw.logrank_sample_size(hazard_ratio=0.7, event_prob=0.6)  # total enrollment
+gw.logrank_sample_size(hazard_ratio=0.7, prob_event=0.6)  # total enrollment
 
-# Competing risks: cumulative incidence per cause
-# (mgus2 loaded with Pandas here for the Series `.where` construction below)
-mg = gw.load_dataset("mgus2", backend="pandas")
-etime = mg["ptime"].where(mg["pstat"] == 1, mg["futime"])
-cause = mg["pstat"].where(mg["pstat"] == 1, 2 * mg["death"])
-cr = gw.Surv.multistate(etime, event=cause, states=("pcm", "death"))
-gw.AalenJohansen().fit(cr).to_frame(format="polars")
-gw.FineGray("pcm").fit(cr, mg[["age", "sex"]]).to_frame(format="polars")
+# Competing risks: cumulative incidence per cause, where the first observed endpoint wins
+mg = gw.load_dataset("mgus2", backend="polars")
+cr = gw.Outcome.first_event(endpoints={"pcm": ("ptime", "pstat"), "death": ("futime", "death")})
+gw.AalenJohansen().fit(cr, data=mg).to_frame(format="polars")
+gw.FineGray(cause="pcm").fit(cr, covariates=["age", "sex"], data=mg).to_frame(format="polars")
 
 # Model performance and prediction
-gw.concordance_index(y, cox.predict(type="lp"))
-S = cox.predict(df[["age", "sex"]], type="survival", times=[180, 365], format="pandas").iloc[:, 1:].to_numpy().T
-gw.brier_score(y, S, times=[180, 365])
-gw.time_dependent_auc(y, cox.predict(type="lp"), times=[180, 365])
+gw.concordance_index(y, risk=cox.predict(type="lp"))
+# One row per time, one column per subject: drop the time column and transpose
+S = cox.predict(df, type="survival", times=[180, 365], format="polars").drop("time").to_numpy().T
+gw.brier_score(y, survival_prob=S, times=[180, 365])
+gw.time_dependent_auc(y, marker=cox.predict(type="lp"), times=[180, 365])
 ```
 
 ## License
