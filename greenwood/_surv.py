@@ -779,6 +779,15 @@ class Surv:
         Surv
             A multi-state `Surv` response whose states are the endpoint labels, in order.
 
+        Warns
+        -----
+        UserWarning
+            When a row's event is recorded after another endpoint's follow-up had already ended
+            without an event. For example, a progression at month 80 for a subject whose survival
+            follow-up stopped at month 60. This often means the time columns do not share an
+            origin or a unit. It can also mean one endpoint was followed for less time, in which
+            case the response assumes that endpoint did not occur before the recorded event.
+
         Examples
         --------
         Build the `mgus2` competing-risks response from its two column pairs. PCM is listed first,
@@ -833,6 +842,7 @@ class Surv:
             censor_time = time_matrix.max(axis=1)
         stop = np.where(observed, event_times[np.arange(n), first], censor_time)
         status = np.where(observed, first + 1, 0).astype(np.int64)
+        _warn_event_after_follow_up(labels, time_matrix, event_matrix, observed, first, stop)
         return cls.multistate(
             stop, status, tuple(labels), start=cols["start"], weights=cols["weights"]
         )
@@ -1368,3 +1378,32 @@ class Surv:
         The restored object is an exact copy of the original `Surv` object.
         """
         return cls.from_dict(json.loads(text))
+
+
+def _warn_event_after_follow_up(
+    labels: list[str],
+    times: Array,
+    events: Array,
+    observed: Array,
+    first: Array,
+    stop: Array,
+) -> None:
+    """Warn when an event is recorded after another endpoint's follow-up had already ended."""
+    ended_early = (~events) & (times < stop[:, None])
+    bad = observed & ended_early.any(axis=1)
+    if not bad.any():
+        return
+    row = int(np.flatnonzero(bad)[0])
+    other = int(np.flatnonzero(ended_early[row])[0])
+    import warnings
+
+    warnings.warn(
+        f"{int(bad.sum())} row(s) have an event recorded after another endpoint's follow-up had "
+        f"already ended. For example, row {row} has {labels[int(first[row])]!r} at "
+        f"{stop[row]:g}, but its {labels[other]!r} follow-up stops at {times[row, other]:g}, so "
+        f"{labels[other]!r} was not observed in between. Check that the endpoint time columns "
+        "share an origin and a unit. If one endpoint was simply followed for less time, the "
+        "response treats it as not having occurred before the recorded event.",
+        UserWarning,
+        stacklevel=3,
+    )
