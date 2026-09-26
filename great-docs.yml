@@ -60,7 +60,6 @@ reference:
       - name: Outcome
         members: true
       - duration
-      - Duration
       - CensoringType
 
   - title: Non-parametric estimators
