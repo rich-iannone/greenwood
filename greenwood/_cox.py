@@ -1077,6 +1077,13 @@ class CoxPH:
         strata = bound.labels["strata"]
         cluster = bound.labels["cluster"]
         frailty_cluster = bound.labels["frailty_cluster"]
+        if "frailty" in bound.options:
+            if frailty is not None and frailty != bound.options["frailty"]:
+                raise ValueError(
+                    f"The formula asks for a {bound.options['frailty']!r} frailty, but "
+                    f"`frailty={frailty!r}` was also given. Use one."
+                )
+            frailty = bound.options["frailty"]
         data = bound.data
         self._n_input = bound.n_input
         self.n_dropped_ = bound.n_dropped
@@ -1878,17 +1885,14 @@ class CoxPH:
         import pandas as pd
 
         pbcseq = gw.load_dataset("pbcseq", backend="pandas")
-        base = (pbcseq.drop_duplicates("id")[["id", "futime", "status"]]
-                      .rename(columns={"futime": "time"}))
         long = gw.split_episodes(
-            baseline=base, visits=pbcseq[["id", "day", "bili", "albumin", "protime"]],
-            id="id", time="time", event="status", visit_time="day", format="pandas",
+            baseline=pbcseq, visits=pbcseq, id="id", time="futime", event="status",
+            visit_time="day", covariates=["bili", "albumin", "protime"], format="pandas",
         )
-        long = long.dropna(subset=["bili", "albumin", "protime"])
-        long["event_bin"] = (long["status"] == 2).astype(int)
 
-        y = gw.Surv.counting(start=long["tstart"], stop=long["tstop"], event=long["event_bin"])
-        cox = gw.CoxPH().fit(y, covariates=["bili", "albumin", "protime"], data=long)
+        # A status of 2 marks a death, and rows with missing labs are dropped at fit time
+        tvc = gw.Outcome.counting(start="tstart", stop="tstop", event="status", event_value=2)
+        cox = gw.CoxPH().fit(tvc, covariates=["bili", "albumin", "protime"], data=long)
 
         # Subject 1's covariate path (two visits)
         tvc_path = pd.DataFrame({
