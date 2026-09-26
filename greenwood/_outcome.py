@@ -677,6 +677,35 @@ def _parse_response(text: str) -> Outcome:
             "names and literal values are allowed in a formula response."
         )
 
+    def time_of(node: ast.expr, what: str) -> str | Duration:
+        """A time column, or `duration(start, end, unit)` computed from two date columns."""
+        if not (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "duration"
+        ):
+            return name_of(node, what)
+        params = ("start", "end", "unit")
+        given: dict[str, ast.expr] = dict(zip(params, node.args, strict=False))
+        for kw in node.keywords:
+            if kw.arg not in params or kw.arg in given:
+                raise ValueError(
+                    "`duration()` in a formula takes (start, end) columns and an optional unit, "
+                    'as in `duration(enroll, exit, unit="years")`.'
+                )
+            given[kw.arg] = kw.value
+        if len(node.args) > 3 or "start" not in given or "end" not in given:
+            raise ValueError(
+                "`duration()` in a formula takes (start, end) columns and an optional unit, as "
+                'in `duration(enroll, exit, unit="years")`.'
+            )
+        unit = literal(given["unit"], "the duration unit") if "unit" in given else "days"
+        return Duration(
+            name_of(given["start"], "the duration start"),
+            name_of(given["end"], "the duration end"),
+            unit,
+        )
+
     def literal(node: ast.expr, what: str) -> Any:
         # R's c(1, 2) becomes a tuple.
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "c":
@@ -738,10 +767,10 @@ def _parse_response(text: str) -> Outcome:
         if inline_event is not None or event_value is not None:
             raise ValueError("Multi-state responses map values with `states=`, not `event_value`.")
         return Outcome.multistate(
-            name_of(args[-2], "the time"),
+            time_of(args[-2], "the time"),
             event_col,
             states,
-            start=name_of(args[0], "the start time") if n == 3 else None,
+            start=time_of(args[0], "the start time") if n == 3 else None,
             weights=weights,
             censor_value=merged(inline_censor, censor_value, "censor_value"),
         )
@@ -752,8 +781,8 @@ def _parse_response(text: str) -> Outcome:
         if event_value is not None or censor_value is not None:
             raise ValueError("An interval-censored response has no event encoding.")
         return Outcome.interval(
-            name_of(args[0], "the lower bound"),
-            name_of(args[1], "the upper bound"),
+            time_of(args[0], "the lower bound"),
+            time_of(args[1], "the upper bound"),
             weights=weights,
         )
 
@@ -777,8 +806,8 @@ def _parse_response(text: str) -> Outcome:
 
     if n == 3:
         return Outcome.counting(
-            name_of(args[0], "the start time"),
-            name_of(args[1], "the stop time"),
+            time_of(args[0], "the start time"),
+            time_of(args[1], "the stop time"),
             event_col,
             weights=weights,
             event_value=ev,
@@ -786,7 +815,7 @@ def _parse_response(text: str) -> Outcome:
         )
     build = Outcome.left if ctype == "left" else Outcome.right
     return build(
-        name_of(args[0], "the time"), event_col, weights=weights, event_value=ev, censor_value=cv
+        time_of(args[0], "the time"), event_col, weights=weights, event_value=ev, censor_value=cv
     )
 
 
@@ -815,16 +844,51 @@ def split_terms(rhs: str) -> list[str]:
 
 
 # R's special terms: `strata(inst)` and `cluster(id)` route columns to the matching argument.
-_SPECIAL = re.compile(r"(strata|cluster)\((.*)\)", flags=re.S)
+_SPECIAL = re.compile(r"(strata|cluster|frailty(?:\.(?:gamma|gaussian))?)\((.*)\)", flags=re.S)
+
+# The label argument each special term fills.
+_SPECIAL_TARGET = {"strata": "strata", "cluster": "cluster", "frailty": "frailty_cluster"}
+
+# R's frailty distributions and their Greenwood names.
+_FRAILTY_DIST = {"gamma": "gamma", "gaussian": "lognormal", "lognormal": "lognormal"}
 
 
-def _special_term(term: str) -> tuple[str, list[str]] | None:
-    """Recognize `strata(a, b)` / `cluster(id)` and return the argument name and its columns."""
+def _special_term(term: str) -> tuple[str, str, list[str], dict[str, Any]] | None:
+    """Recognize `strata(a, b)`, `cluster(id)`, and `frailty(id)` terms.
+
+    Returns the term name, the label argument it fills, its columns, and any options (the frailty
+    distribution). `frailty(id)` is gamma, as in R. `frailty(id, distribution="gaussian")`,
+    `frailty.gaussian(id)`, and `frailty.gamma(id)` choose the distribution explicitly.
+    """
     match = _SPECIAL.fullmatch(term)
     if match is None:
         return None
-    names = [_plain_name(n) for n in match.group(2).split(",")]
-    return match.group(1), names
+    head = match.group(1)
+    name = head.split(".")[0]
+    columns: list[str] = []
+    options: dict[str, Any] = {}
+    for part in (p.strip() for p in match.group(2).split(",")):
+        if "=" in part and name == "frailty":
+            key, _, value = (x.strip() for x in part.partition("="))
+            dist = value.strip("\"'")
+            if key != "distribution" or dist not in _FRAILTY_DIST:
+                raise ValueError(
+                    f"`{term}` is not supported. Use `frailty(id)`, or choose the distribution "
+                    'with `distribution="gamma"` or `distribution="gaussian"` (lognormal).'
+                )
+            options["frailty"] = _FRAILTY_DIST[dist]
+        else:
+            columns.append(_plain_name(part))
+    if name == "frailty":
+        dist = head.split(".")[1] if "." in head else None
+        if dist is not None:
+            if options.get("frailty", _FRAILTY_DIST[dist]) != _FRAILTY_DIST[dist]:
+                raise ValueError(f"`{term}` names two different frailty distributions.")
+            options["frailty"] = _FRAILTY_DIST[dist]
+        options.setdefault("frailty", "gamma")
+        if len(columns) != 1:
+            raise ValueError(f"`{term}` must name exactly one cluster column.")
+    return name, _SPECIAL_TARGET[name], columns, options
 
 
 def _plain_name(term: str) -> str:
@@ -857,6 +921,7 @@ class BoundInputs:
     data: Any
     n_dropped: int = 0
     n_input: int = 0
+    options: dict[str, Any] = field(default_factory=lambda: {})
 
 
 @dataclass(frozen=True)
@@ -891,6 +956,7 @@ def bind_fit_inputs(
     """
     designs = dict(designs or {})
     labels = dict(labels or {})
+    options: dict[str, Any] = {}
 
     outcome: Outcome | None
     if isinstance(surv, Surv):
@@ -900,7 +966,7 @@ def bind_fit_inputs(
     elif isinstance(surv, str):
         outcome, rhs = parse_formula(surv)
         if rhs is not None:
-            _place_rhs(rhs, rhs_to, designs, labels, estimator)
+            _place_rhs(rhs, rhs_to, designs, labels, estimator, options)
     else:
         raise TypeError(
             "The response must be a `Surv`, an `Outcome`, or a formula string such as "
@@ -917,17 +983,25 @@ def bind_fit_inputs(
 
     if outcome is None:
         assert isinstance(surv, Surv)
-        return _bind_plain(surv, data, designs, labels)
-    if data is None:
+        bound = _bind_plain(surv, data, designs, labels)
+    elif data is None:
         raise ValueError(
             "An `Outcome` or formula names columns, so `fit()` needs the frame that holds them. "
             "Pass `data=`."
         )
-    return _bind_outcome(outcome, data, designs, labels)
+    else:
+        bound = _bind_outcome(outcome, data, designs, labels)
+    bound.options = options
+    return bound
 
 
 def _place_rhs(
-    rhs: str, rhs_to: str | None, designs: dict[str, Any], labels: dict[str, Any], estimator: str
+    rhs: str,
+    rhs_to: str | None,
+    designs: dict[str, Any],
+    labels: dict[str, Any],
+    estimator: str,
+    options: dict[str, Any],
 ) -> None:
     if rhs_to is None:
         raise ValueError(
@@ -941,18 +1015,19 @@ def _place_rhs(
         if special is None:
             terms.append(term)
             continue
-        target, names = special
+        term_name, target, names, term_options = special
         if target not in labels:
-            if grouping and target == "strata":
+            if grouping and term_name == "strata":
                 # survfit() treats `strata(x)` as an ordinary grouping term.
                 terms += names
                 continue
-            raise ValueError(f"{estimator} does not support `{target}()` terms in a formula.")
+            raise ValueError(f"{estimator} does not support `{term_name}()` terms in a formula.")
         if labels[target] is not None:
             raise ValueError(
                 f"`{target}` was given both in the formula and as `{target}=`. Use one."
             )
         labels[target] = _GroupTerms(tuple(names))
+        options.update(term_options)
 
     if not grouping:
         if designs[rhs_to] is not None:
