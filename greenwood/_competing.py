@@ -1757,6 +1757,13 @@ class CauseSpecificCox:
         strata = bound.labels["strata"]
         cluster = bound.labels["cluster"]
         frailty_cluster = bound.labels["frailty_cluster"]
+        if "frailty" in bound.options:
+            if frailty is not None and frailty != bound.options["frailty"]:
+                raise ValueError(
+                    f"The formula asks for a {bound.options['frailty']!r} frailty, but "
+                    f"`frailty={frailty!r}` was also given. Use one."
+                )
+            frailty = bound.options["frailty"]
         data = bound.data
         self._n_input = bound.n_input
         self.n_dropped_ = bound.n_dropped
@@ -2001,7 +2008,14 @@ class MultiState:
         )
 
     def fit(
-        self, start: Any, stop: Any, state: Any, event: Any, *, states: Any = None
+        self,
+        start: Any,
+        stop: Any,
+        state: Any,
+        event: Any,
+        *,
+        states: Any = None,
+        data: Any = None,
     ) -> MultiState:
         """Fit a multi-state model using counting-process intervals.
 
@@ -2016,7 +2030,7 @@ class MultiState:
           observations.
         - **Chronic-disease progression**: Modeling progression through stages (e.g., MGUS -> PCM ->
           death).
-        - **Multi-event data**: Non-absorbing or semi-absorbing intermediate states.
+        - **Multi-event data**: Non-absorbing sor semi-absorbing intermediate states.
         - **Irregular follow-up**: Each subject's observation times may differ.
 
         The model estimates without distributional assumptions via non-parametric maximum
@@ -2043,6 +2057,10 @@ class MultiState:
             provided, must include all unique states in `state` and `event`. Useful for enforcing a
             specific state ordering (e.g., disease progression order) or including states with no
             observed transitions.
+        data
+            A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) to look up column
+            names in. Any of `start`, `stop`, `state`, and `event` may then be a column name, such
+            as `fit(start="tstart", stop="tstop", state="from", event="to", data=intervals)`.
 
         Returns
         -------
@@ -2109,12 +2127,14 @@ class MultiState:
         ms.predict(times=[60, 120, 240], format="polars")
         ```
         """
+        from ._ingest import resolve_columns
         from ._surv import _to_1d_array
 
-        t0 = _to_1d_array(start)
-        t1 = _to_1d_array(stop)
-        frm = _to_1d_array(state, dtype=object)
-        evt = _to_1d_array(event, dtype=object)
+        cols = resolve_columns(data, {"start": start, "stop": stop, "state": state, "event": event})
+        t0 = _to_1d_array(cols["start"])
+        t1 = _to_1d_array(cols["stop"])
+        frm = _to_1d_array(cols["state"], dtype=object)
+        evt = _to_1d_array(cols["event"], dtype=object)
         if not (t0.shape[0] == t1.shape[0] == frm.shape[0] == evt.shape[0]):
             raise ValueError("start, stop, state, and event must have the same length.")
 
