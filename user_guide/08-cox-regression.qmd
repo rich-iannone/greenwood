@@ -509,6 +509,15 @@ cox_frailty = gw.CoxPH(ties="breslow").fit(
 cox_frailty
 ```
 
+The same model can be written as an R-style formula with a `frailty()` term, as in R's
+`coxph()`. `frailty(inst)` is a gamma frailty, and
+`frailty(inst, distribution="gaussian")` (or `frailty.gaussian(inst)`) is the lognormal one.
+
+```{python}
+# The same shared gamma frailty, written as a formula
+gw.CoxPH(ties="breslow").fit("Surv(time, status == 2) ~ age + sex + frailty(inst)", data=lung)
+```
+
 To get the frailty-variance inference directly, call `frailty_test()`:
 
 ```{python}

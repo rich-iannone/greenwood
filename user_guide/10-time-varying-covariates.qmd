@@ -49,29 +49,30 @@ subject.
 
 ## Building the counting-process dataset
 
-`split_episodes()` takes the per-subject baseline table and the repeated-measurements
-table and merges them into the counting-process long format. The `id` column links the two.
-`visit_time` names the column in `visits` that carries measurement times.
+`split_episodes()` takes a per-subject baseline table and a repeated-measurements table and
+merges them into the counting-process long format. The `id` column links the two, and
+`visit_time` names the column in `visits` that carries measurement times. `covariates=` chooses
+which columns of `visits` become time-varying covariates.
+
+`pbcseq` already repeats each subject's follow-up time and status on every visit row, so the same
+table can serve as both inputs. `split_episodes()` then uses the first row of each subject as its
+baseline, after checking that `futime` and `status` really are constant within the subject.
 
 ```{python}
 import pandas as pd
 
-# Build a per-subject baseline: one row per subject with follow-up time and outcome.
-# pbcseq repeats futime/status for every visit, so drop_duplicates gives one row per id.
+# One long table: one row per visit, with follow-up and status repeated for each subject
 pbcseq_pd = gw.load_dataset("pbcseq", backend="pandas")
-base = (
-    pbcseq_pd.drop_duplicates("id")[["id", "futime", "status"]]
-             .rename(columns={"futime": "time"})
-)
 
-# Split into counting-process intervals, carrying bilirubin, albumin, and protime forward.
+# Split into counting-process intervals, carrying bilirubin, albumin, and protime forward
 long = gw.split_episodes(
-    baseline=base,
-    visits=pbcseq_pd[["id", "day", "bili", "albumin", "protime"]],
+    baseline=pbcseq_pd,
+    visits=pbcseq_pd,
     id="id",
-    time="time",
+    time="futime",
     event="status",
     visit_time="day",
+    covariates=["bili", "albumin", "protime"],
     format="pandas",
 )
 
@@ -230,7 +231,7 @@ are identical. The divergence begins exactly where the trajectory changes.
 | Step | Code |
 |---|---|
 | Load repeated-measurement data | `gw.load_dataset("pbcseq")` |
-| Build counting-process dataset | `gw.split_episodes(base, visits, id=, time=, event=, visit_time=)` |
+| Build counting-process dataset | `gw.split_episodes(baseline=, visits=, id=, time=, event=, visit_time=, covariates=[...])` |
 | Describe the response | `gw.Outcome.counting(start="tstart", stop="tstop", event="status", event_value=2)` |
 | Fit the TVC Cox model | `gw.CoxPH().fit(tvc, covariates=["bili", ...], data=long)` |
 | Predict along a trajectory | `cox.predict(trajectory=path, times=...)` |

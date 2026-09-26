@@ -286,9 +286,11 @@ gw.CoxPH().fit("Surv(time, status == 2) ~ age + sex + strata(inst)", data=lung)
 The response accepts the same encodings as the arguments: `status == 2`, `status != 0`,
 `status in (1, 2)` (R's `%in% c(1, 2)` works too), and a plain `event` column that is already
 `0`/`1`. `Surv(start, stop, event)` gives the counting-process form, and `type="left"` or
-`type="interval2"` select the other censoring types. On the right-hand side, `strata()` and
-`cluster()` terms route columns to the `strata=` and `cluster=` arguments. For the non-parametric
-estimators and the hypothesis tests, the right-hand side names the grouping column(s).
+`type="interval2"` select the other censoring types. A time can also be computed from two date
+columns with `duration(enroll, exit, unit="years")`. On the right-hand side, `strata()`,
+`cluster()`, and `frailty()` terms route columns to the `strata=`, `cluster=`, and
+`frailty_cluster=` arguments. For the non-parametric estimators and the hypothesis tests, the
+right-hand side names the grouping column(s).
 
 ```{python}
 # A formula for a grouped Kaplan-Meier curve and for the log-rank test

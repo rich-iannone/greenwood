@@ -74,6 +74,10 @@ y = gw.Surv.multistate(etime, cause, states={"pcm": 1, "death": 2})
 Both give identical responses on `mgus2`. The helper states the rule once, and it also works when
 the data arrives as a DuckDB relation or a lazy frame. To bind the response at fit time instead,
 describe it with `gw.Outcome.first_event()` and pass `data=`.
+
+`first_event()` also checks the data. If a subject's event is recorded after another endpoint's
+follow-up had already ended (a progression at month 80 when survival follow-up stopped at month
+60, say), it warns. That usually means the time columns do not share an origin or a unit.
 :::
 
 ## Cumulative incidence, not one-minus-survival

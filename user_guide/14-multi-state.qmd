@@ -121,6 +121,25 @@ ms = gw.MultiState().fit(
 )
 ```
 
+When the intervals already live in a data frame, name the columns and pass the frame as `data=`
+instead. This works for any backend.
+
+```{python}
+import polars as pl
+
+# The same intervals as a frame, with one row per (start, stop] interval
+intervals = pl.DataFrame({"tstart": start, "tstop": stop, "from": state, "to": event})
+
+ms = gw.MultiState().fit(
+    start="tstart",
+    stop="tstop",
+    state="from",
+    event="to",
+    states=("mgus", "pcm", "death"),
+    data=intervals,
+)
+```
+
 The fitted estimator holds an occupancy curve for each of the three states. In its data frame
 the columns after `time` give the occupancy probability of `mgus`, `pcm`, and `death`
 respectively, and the preview reports the full number of time points.
