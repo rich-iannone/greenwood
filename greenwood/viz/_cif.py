@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
+import numpy.typing as npt
 
 from .._backends import to_dataframe
 
@@ -60,14 +61,14 @@ def _default_times_aj(aj: AalenJohansen) -> list[float]:
     return sorted({round(float(t)) for t in raw})
 
 
-def _n_at_risk_aj(aj: AalenJohansen, query: np.ndarray) -> dict[str, np.ndarray]:
+def _n_at_risk_aj(aj: AalenJohansen, query: npt.NDArray[Any]) -> dict[str, npt.NDArray[Any]]:
     """At-risk counts per group at each query time.
 
     Because all competing causes share one at-risk set, we use the first cause's `n_risk` array.
     Logic mirrors `_shared._n_at_risk` for KaplanMeier.
     """
     first_cause = aj._causes[0]
-    out: dict[str, np.ndarray] = {}
+    out: dict[str, npt.NDArray[Any]] = {}
     for label, block in aj._blocks.items():
         group_name = str(label) if label is not None else "Overall"
         event_times = block[first_cause]["time"]

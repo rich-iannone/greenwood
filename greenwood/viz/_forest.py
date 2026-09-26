@@ -129,11 +129,14 @@ def theme_forest() -> Any:
     ```
     """
     try:
-        import plotnine as p9
+        import plotnine
     except ImportError as exc:  # pragma: no cover
         raise ImportError(
             "theme_forest() requires plotnine. Install with `pip install greenwood[plotnine]`."
         ) from exc
+    # plotnine's submodules share names with its classes (plotnine.ggplot, ...), which
+    # pyright resolves to the modules. Treat the package as untyped instead.
+    p9: Any = plotnine
     return p9.theme_minimal() + p9.theme(
         axis_line_y=p9.element_blank(),
         panel_grid_minor=p9.element_blank(),
@@ -414,12 +417,15 @@ def _plot_forest_plotnine(
 ) -> Any:
     """plotnine implementation of plot_forest."""
     try:
-        import plotnine as p9
+        import plotnine
     except ImportError as exc:  # pragma: no cover
         raise ImportError(  # pragma: no cover
             "plot_forest() with backend='plotnine' requires plotnine. "
             "Install with `pip install greenwood[plotnine]`."
         ) from exc
+    # plotnine's submodules share names with its classes (plotnine.ggplot, ...), which
+    # pyright resolves to the modules. Treat the package as untyped instead.
+    p9: Any = plotnine
 
     import pandas as pd
 

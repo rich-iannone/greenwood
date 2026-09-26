@@ -245,12 +245,15 @@ def _plot_schoenfeld_plotnine(
     height: int,
 ) -> Any:
     try:
-        import plotnine as p9
+        import plotnine
     except ImportError as exc:  # pragma: no cover
         raise ImportError(
             "plot_schoenfeld() with backend='plotnine' requires plotnine. "
             "Install with `pip install greenwood[plotnine]`."
         ) from exc
+    # plotnine's submodules share names with its classes (plotnine.ggplot, ...), which
+    # pyright resolves to the modules. Treat the package as untyped instead.
+    p9: Any = plotnine
 
     import pandas as pd
 
