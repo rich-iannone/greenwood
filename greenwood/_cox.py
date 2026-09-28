@@ -46,6 +46,10 @@ Array = npt.NDArray[Any]
 class ZPHWindowResult:
     """Test results for a single time window within a windowed proportional-hazards test.
 
+    When `cox_zph()` is called with `breaks=`, it partitions events into time windows and
+    runs a separate proportional-hazards test in each window. Each `ZPHWindowResult`
+    holds the test statistics for one window.
+
     Attributes
     ----------
     interval
@@ -56,6 +60,28 @@ class ZPHWindowResult:
         Dictionary mapping each covariate name to `{chisq, df, p_value}` dict.
     global_test
         Dictionary with `{chisq, df, p_value}` for the joint test across all terms.
+
+    Examples
+    --------
+    Fit a Cox model on the `lung` dataset and run a windowed proportional-hazards test.
+    Each element of the `windows` list is a `ZPHWindowResult`:
+
+    ```{python}
+    import greenwood as gw
+
+    lung = gw.load_dataset("lung", backend="polars")
+    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+    cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
+
+    zph = cox.cox_zph(breaks=[365])
+    zph.windows[0]
+    ```
+
+    Inspect the per-term results for the first window:
+
+    ```{python}
+    zph.windows[0].per_term
+    ```
     """
 
     interval: tuple[float, float]
@@ -217,6 +243,29 @@ class SmoothHRResult:
         Interior knot positions used for the B-spline basis.
     adjustment
         Dictionary of covariate names and the values they were held at.
+
+    Examples
+    --------
+    Estimate a smooth hazard ratio curve for age from a Cox model fit on the `lung`
+    dataset. The curve shows how the hazard changes across the range of age, relative
+    to the median:
+
+    ```{python}
+    import greenwood as gw
+
+    lung = gw.load_dataset("lung", backend="polars")
+    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+    cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
+
+    shr = cox.smooth_hr(term="age")
+    shr
+    ```
+
+    Convert the curve to a DataFrame on the hazard-ratio scale:
+
+    ```{python}
+    shr.to_frame(scale="hr", format="polars")
+    ```
     """
 
     term: str
@@ -267,6 +316,27 @@ class SmoothHRResult:
         Returns
         -------
         `pandas.DataFrame`, `polars.DataFrame`, or `pyarrow.Table`
+
+        Examples
+        --------
+        Export the smooth hazard ratio curve on the log-HR scale (the default):
+
+        ```{python}
+        import greenwood as gw
+
+        lung = gw.load_dataset("lung", backend="polars")
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+        cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
+
+        shr = cox.smooth_hr(term="age")
+        shr.to_frame(format="polars")
+        ```
+
+        Switch to the exponentiated hazard-ratio scale:
+
+        ```{python}
+        shr.to_frame(scale="hr", format="polars")
+        ```
         """
         return to_dataframe(self._table_columns(scale=scale), format=format)
 
@@ -2827,6 +2897,29 @@ class CoxPH:
         DataFrame
             One row per observation with columns: `leverage`, `martingale`, `deviance`,
             `dfbeta_<term>`, `dfbetas_<term>`, and `ld` (likelihood displacement).
+
+        Examples
+        --------
+        Compute influence diagnostics for a Cox model fit on the `lung` dataset. High
+        values of `ld` (likelihood displacement) flag observations whose removal would
+        most change the fitted coefficients:
+
+        ```{python}
+        import greenwood as gw
+
+        lung = gw.load_dataset("lung", backend="polars")
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+        cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
+
+        diag = cox.influence_diagnostics(format="polars")
+        diag
+        ```
+
+        Sort by likelihood displacement to find the most influential subjects:
+
+        ```{python}
+        diag.sort("ld", descending=True).head(5)
+        ```
         """
         scores = self._score_residuals(self.coef_)
         dfb = scores @ self.naive_vcov_
