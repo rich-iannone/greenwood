@@ -38,6 +38,10 @@ _VALID_CI_TYPES = frozenset({"percentile", "normal", "bca"})
 class BootstrapResult:
     """Result of a bootstrap confidence interval computation.
 
+    Holds the point estimate, bootstrap standard error, and confidence interval for a
+    Kaplan-Meier summary statistic. The full bootstrap distribution is retained for
+    diagnostics or custom interval construction.
+
     Attributes
     ----------
     estimate
@@ -56,6 +60,27 @@ class BootstrapResult:
         Number of bootstrap replicates.
     distribution
         The full bootstrap distribution (array of length `n_boot=`).
+
+    Examples
+    --------
+    Bootstrap a 95% confidence interval for the median survival time on the `lung`
+    dataset:
+
+    ```{python}
+    import greenwood as gw
+
+    lung = gw.load_dataset("lung", backend="polars")
+    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+
+    result = gw.bootstrap(y, statistic="median", n_boot=500, seed=0)
+    result
+    ```
+
+    Export as a single-row DataFrame:
+
+    ```{python}
+    result.to_frame(format="polars")
+    ```
     """
 
     estimate: float
@@ -88,6 +113,18 @@ class BootstrapResult:
         format
             Backend format: `"pandas"`, `"polars"`, or `"pyarrow"`. Default (`None`) uses the first
             available backend.
+
+        Examples
+        --------
+        ```{python}
+        import greenwood as gw
+
+        lung = gw.load_dataset("lung", backend="polars")
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+
+        result = gw.bootstrap(y, statistic="median", n_boot=500, seed=0)
+        result.to_frame(format="polars")
+        ```
         """
         from ._backends import to_dataframe
 
@@ -302,6 +339,39 @@ def bootstrap(
     -------
     BootstrapResult
         Point estimate, standard error, confidence interval, and the full bootstrap distribution.
+
+    Examples
+    --------
+    Bootstrap a 95% percentile confidence interval for the median survival time:
+
+    ```{python}
+    import greenwood as gw
+
+    lung = gw.load_dataset("lung", backend="polars")
+    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+
+    gw.bootstrap(y, statistic="median", n_boot=500, seed=0)
+    ```
+
+    Bootstrap the difference in restricted mean survival time (RMST) between two
+    groups. The `by=` argument defines the grouping variable and `tau=` sets the time
+    horizon:
+
+    ```{python}
+    gw.bootstrap(
+        y, statistic="rmst_diff", by="sex", data=lung,
+        tau=365, n_boot=500, seed=0
+    )
+    ```
+
+    Use a BCa (bias-corrected and accelerated) interval for better small-sample
+    coverage:
+
+    ```{python}
+    gw.bootstrap(
+        y, statistic="median", n_boot=500, ci_type="bca", seed=0
+    )
+    ```
     """
     bound = bind_fit_inputs(
         surv,
