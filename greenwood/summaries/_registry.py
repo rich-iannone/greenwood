@@ -257,7 +257,7 @@ def augment(model: object, data: Any = None, **kwargs: Any) -> Any:
     Once an augment adapter is registered for a model class, call `augment()` to get
     observation-level predictions or residuals:
 
-    ```python
+    ```{python}
     import greenwood as gw
 
     lung = gw.load_dataset("lung", backend="polars")
