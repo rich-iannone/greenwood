@@ -409,6 +409,26 @@ class CompetingRiskForest:
         self
             The fitted estimator with attributes `trees_`, `event_times_`,
             `states_`, `cause_codes_`, and `oob_score_`.
+
+        Examples
+        --------
+        Fit a competing-risk forest on the `mgus2` dataset. The response has two causes
+        (plasma-cell malignancy and death) and the model learns per-cause CIF curves:
+
+        ```{python}
+        import greenwood as gw
+        import numpy as np
+
+        mg = gw.load_dataset("mgus2", backend="pandas")
+        etime = np.where(mg["pstat"] == 1, mg["ptime"], mg["futime"])
+        cause = np.where(mg["pstat"] == 1, 1, 2 * mg["death"])
+        y = gw.Surv.multistate(time=etime, event=cause, states=("pcm", "death"))
+
+        crf = gw.CompetingRiskForest(
+            n_estimators=50, oob_score=True, random_state=0
+        ).fit(y, covariates=["age", "sex"], data=mg)
+        crf
+        ```
         """
         bound = bind_fit_inputs(
             surv,
