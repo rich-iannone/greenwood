@@ -482,6 +482,35 @@ class SurvivalTree:
         SurvivalTree
             The fitted estimator (for method chaining), with cached attributes such as
             `event_times_`, `n_features_in_`, and `feature_names_in_`.
+
+        Examples
+        --------
+        Grow a survival tree on the `lung` dataset with a formula interface. The formula
+        specifies both the response and the covariates in a single string:
+
+        ```{python}
+        import greenwood as gw
+
+        lung = gw.load_dataset("lung", backend="pandas").dropna(
+            subset=["ph.ecog", "ph.karno"]
+        )
+
+        tree = gw.SurvivalTree(max_depth=3, random_state=0).fit(
+            "Surv(time, status == 2) ~ age + sex + ph.ecog + ph.karno",
+            data=lung,
+        )
+        tree
+        ```
+
+        The same fit can be done by passing the response and covariates separately:
+
+        ```{python}
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+        tree2 = gw.SurvivalTree(max_depth=3, random_state=0).fit(
+            y, covariates=["age", "sex", "ph.ecog", "ph.karno"], data=lung
+        )
+        tree2
+        ```
         """
         if surv is not None:
             bound = bind_fit_inputs(
@@ -632,6 +661,31 @@ class SurvivalTree:
         -------
         numpy.ndarray or DataFrame
             A risk vector, or a curve frame with a `time` column and one column per subject.
+
+        Examples
+        --------
+        Compute the ensemble-mortality risk score for each subject (a 1-D array where higher
+        values indicate higher risk):
+
+        ```{python}
+        import greenwood as gw
+
+        lung = gw.load_dataset("lung", backend="pandas").dropna(
+            subset=["ph.ecog", "ph.karno"]
+        )
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+        cols = ["age", "sex", "ph.ecog", "ph.karno", "wt.loss"]
+
+        tree = gw.SurvivalTree(max_depth=3, random_state=0).fit(y, covariates=lung[cols])
+        tree.predict(lung[cols])[:5]
+        ```
+
+        Predict survival curves at specific time points. The result is a DataFrame with a
+        `time` column and one column per subject:
+
+        ```{python}
+        tree.predict(lung[cols], type="survival", times=[180, 365, 730])
+        ```
         """
         if type not in _PREDICT_TYPES:
             raise ValueError(f"Unknown predict type {type!r}; use one of {_PREDICT_TYPES}.")
@@ -750,6 +804,34 @@ class _BaseSurvivalForest:
         self
             The fitted estimator, with cached attributes including `trees_`, `event_times_`,
             `oob_score_`, `n_features_in_`, and `feature_names_in_`.
+
+        Examples
+        --------
+        Fit a random survival forest and inspect the out-of-bag concordance:
+
+        ```{python}
+        import greenwood as gw
+
+        lung = gw.load_dataset("lung", backend="pandas").dropna(
+            subset=["ph.ecog", "ph.karno"]
+        )
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+
+        rsf = gw.RandomSurvivalForest(
+            n_estimators=100, oob_score=True, random_state=0
+        ).fit(y, covariates=["age", "sex", "ph.ecog", "ph.karno"], data=lung)
+        rsf
+        ```
+
+        The formula interface combines the response and covariates in a single string:
+
+        ```{python}
+        rsf2 = gw.RandomSurvivalForest(n_estimators=50, random_state=0).fit(
+            "Surv(time, status == 2) ~ age + sex + ph.ecog + ph.karno",
+            data=lung,
+        )
+        rsf2
+        ```
         """
         bound = bind_fit_inputs(
             surv,
@@ -878,6 +960,31 @@ class _BaseSurvivalForest:
         -------
         numpy.ndarray or DataFrame
             A risk vector, or a curve frame with a `time` column and one column per subject.
+
+        Examples
+        --------
+        Score every subject with the ensemble-mortality risk:
+
+        ```{python}
+        import greenwood as gw
+
+        lung = gw.load_dataset("lung", backend="pandas").dropna(
+            subset=["ph.ecog", "ph.karno"]
+        )
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+        cols = ["age", "sex", "ph.ecog", "ph.karno", "wt.loss"]
+
+        rsf = gw.RandomSurvivalForest(
+            n_estimators=100, random_state=0
+        ).fit(y, covariates=lung[cols])
+        rsf.predict(lung[cols])[:5]
+        ```
+
+        Retrieve ensemble survival curves evaluated at one and two years:
+
+        ```{python}
+        rsf.predict(lung[cols], type="survival", times=[365, 730])
+        ```
         """
         if type not in _PREDICT_TYPES:
             raise ValueError(f"Unknown predict type {type!r}; use one of {_PREDICT_TYPES}.")
