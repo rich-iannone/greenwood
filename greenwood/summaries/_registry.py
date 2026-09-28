@@ -254,15 +254,25 @@ def augment(model: object, data: Any = None, **kwargs: Any) -> Any:
 
     Examples
     --------
-    Once an augment adapter is registered for a model class, call `augment()` to get
-    observation-level predictions or residuals:
+    Register a custom augment adapter, then call `augment()`. The adapter receives the
+    fitted model and the original data and returns a DataFrame with observation-level
+    diagnostics:
 
     ```{python}
     import greenwood as gw
+    from greenwood.summaries import register_augment
 
     lung = gw.load_dataset("lung", backend="polars")
     y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-    cox = gw.CoxPH().fit(y, covariates=lung[["age", "sex"]])
+    cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
+
+    def _augment_cox(model, data=None, *, format=None, **kwargs):
+        resid = model.residuals(type="martingale")
+        return gw._backends.to_dataframe(
+            {"martingale": resid}, format=format,
+        )
+
+    register_augment("greenwood._cox.CoxPH", _augment_cox)
     gw.augment(cox, data=lung, format="polars")
     ```
     """
