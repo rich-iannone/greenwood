@@ -308,6 +308,37 @@ class GradientBoostingSurvivalAnalysis:
         self
             The fitted estimator, with cached attributes including `trees_`, `event_times_`,
             `feature_importances_`, `n_features_in_`, and `feature_names_in_`.
+
+        Examples
+        --------
+        Fit a gradient-boosted model on the `lung` dataset and inspect the feature
+        importances. Importances are normalized so they sum to one:
+
+        ```{python}
+        import greenwood as gw
+
+        lung = gw.load_dataset("lung", backend="pandas").dropna(
+            subset=["ph.ecog", "ph.karno"]
+        )
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+
+        gbm = gw.GradientBoostingSurvivalAnalysis(
+            n_estimators=200, learning_rate=0.05, max_depth=2, random_state=0
+        ).fit(y, covariates=["age", "sex", "ph.ecog", "ph.karno", "wt.loss"], data=lung)
+        gbm
+        ```
+
+        The formula interface works the same way:
+
+        ```{python}
+        gbm2 = gw.GradientBoostingSurvivalAnalysis(
+            n_estimators=100, random_state=0
+        ).fit(
+            "Surv(time, status == 2) ~ age + sex + ph.ecog + ph.karno",
+            data=lung,
+        )
+        gbm2
+        ```
         """
         bound = bind_fit_inputs(
             surv,
