@@ -68,8 +68,50 @@ _UNIT_SECONDS: dict[str, float] = {
 class Duration:
     """A time argument computed as the elapsed time between two date or datetime columns.
 
-    Create one with `duration()`. It can be passed anywhere a `Surv` or `Outcome` constructor takes
-    a time column.
+    A `Duration` is a frozen specification that names two date or datetime columns and a
+    time unit. When passed to a `Surv` or `Outcome` constructor as the `time` (or `start`
+    / `stop`) argument, Greenwood computes the elapsed time automatically when the data
+    is read.
+
+    Create a `Duration` with the `duration()` helper rather than constructing it directly.
+
+    Parameters
+    ----------
+    start
+        Column name holding the origin date or datetime (e.g., enrollment date).
+    end
+        Column name holding the exit date or datetime (e.g., date of event or last contact).
+    unit
+        Time unit for the elapsed duration: `"days"` (default), `"weeks"`, `"months"`,
+        `"years"`, `"hours"`, `"minutes"`, or `"seconds"`. Months and years use average
+        Gregorian lengths (30.4375 and 365.25 days).
+
+    Examples
+    --------
+    Create a `Duration` that computes follow-up time in days between two date columns,
+    and use it as the time argument in a `Surv` response:
+
+    ```{python}
+    import greenwood as gw
+    import polars as pl
+
+    df = pl.DataFrame({
+        "enroll": ["2020-01-01", "2020-03-15", "2020-06-01"],
+        "last_contact": ["2021-06-15", "2020-12-01", "2022-01-10"],
+        "event": [1, 0, 1],
+    }).with_columns(
+        pl.col("enroll").str.to_date(),
+        pl.col("last_contact").str.to_date(),
+    )
+
+    d = gw.duration(start="enroll", end="last_contact", unit="days")
+    d
+    ```
+
+    ```{python}
+    y = gw.Surv.right(time=d, event="event", data=df)
+    y
+    ```
     """
 
     start: str
