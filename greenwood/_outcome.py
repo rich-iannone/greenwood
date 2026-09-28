@@ -83,7 +83,24 @@ class Outcome:
 
     Examples
     --------
-    Describe the `lung` endpoint once, where a `status` of `2` means the patient died:
+    We'll use the bundled `lung` dataset, from a North Central Cancer Treatment Group trial in
+    advanced lung cancer. `time` is days of follow-up and `status` is `1` (censored) or `2` (died).
+    Here is what the dataset looks like:
+
+    ```{python}
+    #| echo: false
+    import great_docs as gd
+    import greenwood as gw
+
+    gd.tbl_preview(
+        gw.load_dataset("lung"),
+        n_head=5,
+        n_tail=3,
+        caption="lung: NCCTG advanced lung cancer, 228 patients",
+    )
+    ```
+
+    Describe the endpoint once. A `status` of `2` means the patient died:
 
     ```{python}
     import greenwood as gw
@@ -93,8 +110,8 @@ class Outcome:
     death
     ```
 
-    Pass the description to an estimator along with the frame. Column names work for covariates
-    and for `by=` too:
+    Pass the description to an estimator along with the frame. Column names work for covariates and
+    for `by=` too:
 
     ```{python}
     lung = gw.load_dataset("lung")
@@ -392,6 +409,25 @@ class Outcome:
 
         Examples
         --------
+        We'll use the bundled `mgus2` dataset, which follows patients with monoclonal gammopathy.
+        Each endpoint has its own column pair: `ptime` and `pstat` for progression to plasma-cell
+        malignancy (PCM), and `futime` and `death` for death. Here is what the dataset looks like:
+
+        ```{python}
+        #| echo: false
+        import great_docs as gd
+        import greenwood as gw
+
+        gd.tbl_preview(
+            gw.load_dataset("mgus2"),
+            n_head=5,
+            n_tail=3,
+            caption="mgus2: monoclonal gammopathy, 1,384 patients",
+        )
+        ```
+
+        Describe the competing-risks response from the two column pairs, then fit it from the frame:
+
         ```{python}
         import greenwood as gw
 
@@ -577,6 +613,25 @@ class Outcome:
 
         Examples
         --------
+        We'll use the bundled `lung` dataset, from a North Central Cancer Treatment Group trial in
+        advanced lung cancer. `time` is days of follow-up and `status` is `1` (censored) or `2`
+        (died). Here is what the dataset looks like:
+
+        ```{python}
+        #| echo: false
+        import great_docs as gd
+        import greenwood as gw
+
+        gd.tbl_preview(
+            gw.load_dataset("lung"),
+            n_head=5,
+            n_tail=3,
+            caption="lung: NCCTG advanced lung cancer, 228 patients",
+        )
+        ```
+
+        Bind the description to the frame to get a `Surv`:
+
         ```{python}
         import greenwood as gw
 
