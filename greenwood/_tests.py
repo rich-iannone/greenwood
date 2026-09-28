@@ -139,6 +139,11 @@ class TestResult:
 class MaxComboResult:
     """The outcome of a MaxCombo weighted log-rank test.
 
+    The MaxCombo test is designed to detect survival differences under non-proportional
+    hazards by combining multiple Fleming-Harrington weight functions. The test statistic
+    is the maximum absolute Z across the weight set, and the p-value accounts for the
+    correlation between the Z-statistics.
+
     Attributes
     ----------
     statistic
@@ -153,6 +158,27 @@ class MaxComboResult:
         Correlation matrix between the Z-statistics under H0, as a NumPy array.
     method
         Human-readable description of the test.
+
+    Examples
+    --------
+    Run a MaxCombo test on the `lung` dataset, comparing survival by sex. The result
+    holds the Z-statistics for each weight function and the combined p-value:
+
+    ```{python}
+    import greenwood as gw
+
+    lung = gw.load_dataset("lung", backend="polars")
+    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+
+    mc = gw.maxcombo_test(y, by="sex", data=lung)
+    mc
+    ```
+
+    Inspect the per-weight Z-statistics:
+
+    ```{python}
+    mc.z_statistics
+    ```
     """
 
     statistic: float
