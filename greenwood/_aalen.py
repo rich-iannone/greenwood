@@ -154,6 +154,30 @@ class AalenAdditive:
         -------
         AalenAdditive
             The fitted estimator.
+
+        Examples
+        --------
+        Fit the Aalen additive model on the `lung` dataset with two covariates. The
+        summary shows the cumulative-regression test for each covariate:
+
+        ```{python}
+        import greenwood as gw
+
+        lung = gw.load_dataset("lung", backend="polars")
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+
+        aalen = gw.AalenAdditive().fit(y, covariates=["age", "sex"], data=lung)
+        aalen
+        ```
+
+        The formula interface combines the response and covariates in a single string:
+
+        ```{python}
+        aalen2 = gw.AalenAdditive().fit(
+            "Surv(time, status == 2) ~ age + sex", data=lung
+        )
+        aalen2
+        ```
         """
         bound = bind_fit_inputs(
             surv,
