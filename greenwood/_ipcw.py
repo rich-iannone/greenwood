@@ -124,6 +124,20 @@ class CensoringDistribution:
         -------
         ndarray
             $\hat{G}(t)$ at each query time, shape `(len(times),)`.
+
+        Examples
+        --------
+        Evaluate the probability of remaining uncensored at one year and two years:
+
+        ```{python}
+        import greenwood as gw
+
+        lung = gw.load_dataset("lung", backend="polars")
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+
+        cens = gw.CensoringDistribution(y)
+        cens.survival([365, 730])
+        ```
         """
         t = np.atleast_1d(np.asarray(times, dtype=float))
         if self._times.shape[0] == 0:
@@ -146,6 +160,21 @@ class CensoringDistribution:
         -------
         ndarray
             $\hat{G}(t^-)$ at each query time, shape `(len(times),)`.
+
+        Examples
+        --------
+        The left-continuous version evaluates the censoring survival just before each
+        time point, which is what IPC weights use as denominator:
+
+        ```{python}
+        import greenwood as gw
+
+        lung = gw.load_dataset("lung", backend="polars")
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+
+        cens = gw.CensoringDistribution(y)
+        cens.survival_left([365, 730])
+        ```
         """
         t = np.atleast_1d(np.asarray(times, dtype=float))
         if self._times.shape[0] == 0:
@@ -197,6 +226,20 @@ class CensoringDistribution:
         -------
         DataFrame
             Columns: `time`, `survival`.
+
+        Examples
+        --------
+        Export the full censoring survival curve as a Polars DataFrame:
+
+        ```{python}
+        import greenwood as gw
+
+        lung = gw.load_dataset("lung", backend="polars")
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+
+        cens = gw.CensoringDistribution(y)
+        cens.to_frame(format="polars")
+        ```
         """
         return to_dataframe(
             {"time": self._times, "survival": self._surv},
