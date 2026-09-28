@@ -99,91 +99,122 @@ class Surv:
 
     `Surv` represents the outcome in survival models: a time at which each subject either
     experienced an event (observed) or was censored (did not experience the event during follow-up).
-    `Surv` supports multiple censoring types:
+    Build one with the class method for its censoring type:
 
-    - **Right-censored** (most common): The event time is at or after the recorded time. Use
-    `Surv.right(time, event)`.
-    - **Left-censored**: The event time is before the recorded time. Use `Surv.left(time, event)`.
-    - **Counting-process** (left truncation, time-varying): Each subject enters the risk set at
-    `start` and exits at `stop`. Use `Surv.counting(start, stop, event)`.
-    - **Interval-censored**: The event occurred within a time interval `[lower, upper)`. Use
-    `Surv.interval(lower, upper)`.
-    - **Multi-state / competing risks**: Multiple mutually exclusive events. Use
-    `Surv.multistate(time, event, states)`.
+    - **Right-censored** (most common): the event time is at or after the recorded time. Use
+    `Surv.right()`.
+    - **Left-censored**: the event time is before the recorded time. Use `Surv.left()`.
+    - **Counting-process** (left truncation, time-varying covariates): each row enters the risk set
+    at `start` and exits at `stop`. Use `Surv.counting()`.
+    - **Interval-censored**: the event occurred within a time interval `[lower, upper)`. Use
+    `Surv.interval()`.
+    - **Multi-state / competing risks**: several mutually exclusive events. Use
+    `Surv.multistate()`, or `Surv.first_event()` when each endpoint has its own pair of columns.
 
-    **Use the class methods** (`right`, `left`, `counting`, `interval`, `multistate`) to construct
-    `Surv` objects. They validate your input and set the censoring type appropriately. As such,
-    direct instantiation is not recommended.
+    The usual way to call them is with column names and the frame that holds them, as in
+    `Surv.right(time="time", event="status", data=lung, event_value=2)`. The event coding is
+    declared as a value (`event_value=` or `censor_value=`) rather than written as a data frame
+    expression, so the same call works on pandas, Polars, PyArrow, DuckDB, and lazy frames. Every
+    constructor also accepts plain lists or arrays, which suit small examples and values computed
+    by hand. To describe a response once and bind it to data when a model is fit (dropping
+    incomplete rows together with the covariates), use `Outcome` instead.
 
-    Attributes
+    The class methods validate their input and set the censoring type. Direct instantiation with
+    the parameters below is possible but rarely needed.
+
+    Parameters
     ----------
     type
-        The `CensoringType` enum indicating the censoring mechanism.
+        The `CensoringType` of the response: `RIGHT`, `LEFT`, `COUNTING`, or `INTERVAL`.
     stop
-        Exit time (for interval censoring, the upper bound).
+        Exit time of each observation (for interval censoring, the upper bound).
     status
-        Integer event code per observation: 0 = censored, 1+ = event code (for multi-state, codes
-        >= 1 index into `states`).
+        Integer event code per observation: `0` = censored, `1` or more = event. For a multi-state
+        response, code `k` is the `k`-th entry of `states`. For interval censoring, `status` holds
+        the kind of observation (`0` right-censored, `1` exact, `2` interval).
     start
-        Entry time for the counting-process form (left truncation) (`None` otherwise).
+        Entry time of each observation, for the counting-process form (left truncation). `None`
+        otherwise.
     lower
-        Lower bound for interval censoring (`None` otherwise).
+        Lower bound of each interval, for interval censoring. `None` otherwise.
     states
-        Event-state labels for multi-state/competing-risks endpoints (`None` for the single-event
-        case).
+        Event-state labels for a multi-state or competing-risks response. `None` for a single
+        event type.
     weights
-        Optional case weights (strictly positive) (`None` if no weights provided).
+        Case weights (strictly positive), or `None` for unit weights.
+
+    Notes
+    -----
+    Each parameter is stored as an attribute of the same name. Derived views such as `n`,
+    `n_events`, `n_censored`, `entry`, `event`, and `is_truncated` are listed under Attributes
+    below.
 
     Examples
     --------
-    Here's an example of direct instantiation of `Surv`:
+    Build a right-censored response from a data frame. In the `lung` dataset, a `status` of `2`
+    means the patient died:
 
     ```{python}
     import greenwood as gw
-    import numpy as np
 
-    # Build a right-censored response via direct instantiation
-    y = gw.Surv(
-        type=gw.CensoringType.RIGHT,
-        stop=np.array([5, 6, 4, 9]),
-        status=np.array([1, 0, 1, 0])
+    lung = gw.load_dataset("lung")
+
+    # Name the columns, and say which status value marks the event
+    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+    y
+    ```
+
+    A multi-state response maps each state to the value that marks it. In `pbc`, `status` is `0`
+    for censored, `1` for transplant, and `2` for death:
+
+    ```{python}
+    pbc = gw.load_dataset("pbc")
+
+    # Map each competing outcome to its code, and 0 is censored
+    gw.Surv.multistate(time="time", event="status", data=pbc, states={"transplant": 1, "death": 2})
+    ```
+
+    When each endpoint has its own time and event columns, as in `mgus2`, `first_event()` combines
+    them. The first observed endpoint becomes the cause:
+
+    ```{python}
+    mgus2 = gw.load_dataset("mgus2")
+
+    # One (time, event) column pair per endpoint
+    gw.Surv.first_event(
+        endpoints={"pcm": ("ptime", "pstat"), "death": ("futime", "death")}, data=mgus2
     )
-    y
     ```
 
-    While this is fine, the preferred approach is to use the class method constructors for each
-    censoring type. They handle validation and conversion automatically.
-
-    Right-censored (the most common case): each subject has an exit time and an event indicator.
+    Counting-process and interval-censored responses name their columns the same way:
 
     ```{python}
-    # Build a right-censored response
-    y = gw.Surv.right(time=[5, 6, 4, 9], event=[1, 0, 1, 0])
-    y
+    import numpy as np
+    import polars as pl
+
+    visits = pl.DataFrame({"tstart": [0.0, 2.0, 1.0], "tstop": [5.0, 6.0, 4.0], "died": [1, 0, 1]})
+    windows = pl.DataFrame({"last_negative": [1.0, 3.0], "first_positive": [3.0, np.inf]})
+
+    # Late entry: each row is at risk from tstart to tstop
+    print(gw.Surv.counting(start="tstart", stop="tstop", event="died", data=visits))
+
+    # The event happened somewhere in each window, and inf marks right censoring
+    print(gw.Surv.interval(lower="last_negative", upper="first_positive", data=windows))
     ```
 
-    Counting-process form with left truncation (late entry):
+    For small examples, pass the values directly as lists or arrays:
 
     ```{python}
-    # Build a counting-process response with late entry
-    y = gw.Surv.counting(start=[0, 2, 1], stop=[5, 6, 4], event=[1, 0, 1])
-    y
+    # Four subjects: events at 5 and 4, censored at 6 and 9
+    gw.Surv.right(time=[5, 6, 4, 9], event=[1, 0, 1, 0])
     ```
 
-    Interval-censored (event known to occur in a time window):
+    Direct instantiation skips the constructors' coercion and conveniences, so it expects NumPy
+    arrays with the internal coding described under Parameters:
 
     ```{python}
-    # Build an interval-censored response
-    y = gw.Surv.interval(lower=[1, 3], upper=[3, 8])
-    y
-    ```
-
-    Multi-state (competing risks, multiple mutually exclusive events):
-
-    ```{python}
-    # Build a multi-state competing-risks response
-    y = gw.Surv.multistate(time=[5, 6, 4], event=[1, 0, 2], states=("pcm", "death"))
-    y
+    # Build the same response from its fields
+    gw.Surv(type=gw.CensoringType.RIGHT, stop=np.array([5, 6, 4, 9]), status=np.array([1, 0, 1, 0]))
     ```
     """
 
@@ -305,37 +336,38 @@ class Surv:
 
         Examples
         --------
-        The most common case: subjects have an exit `time` and an `event` indicator (`1` if event
-        occurred, `0` if censored):
+        Build a right-censored response from a data frame by naming its columns. In the `lung`
+        dataset, a `status` of `2` means the patient died (R's 1/2 coding), so `event_value=2`
+        says which rows are events:
 
         ```{python}
         import greenwood as gw
 
-        # Build a right-censored response with two events and two censorings
-        y = gw.Surv.right(time=[5, 6, 4, 9], event=[1, 0, 1, 0])
+        lung = gw.load_dataset("lung")
+
+        # Name the columns, and say which status value marks a death
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
         y
         ```
 
-        The display shows 4 observations with 2 events and 2 censored observations:
-
-        - Subjects 1 and 3: Event observed (no marker or `*` depending on visualization)
-        - Subjects 2 and 4: Censored (indicated by a `/` marker, still event-free at times 6 and 9)
-
-        This is the default input format for nearly all survival analysis methods. Right-censored
-        data is so ubiquitous that "survival data" often refers specifically to right-censored
-        observations.
-
-        With a data frame, name the columns and say which status value marks an event. In the
-        `lung` dataset a `status` of `2` means the patient died:
+        The same call works for any data frame backend (pandas, Polars, PyArrow, DuckDB), because
+        the encoding is a value rather than a data frame expression. When several values count as
+        an event, name the censoring value instead. In `pbc`, `status` is `0` (censored), `1`
+        (transplant), or `2` (death), so an all-cause endpoint is:
 
         ```{python}
-        # Read the columns from the frame and treat status 2 as the event
-        lung = gw.load_dataset("lung")
-        gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+        pbc = gw.load_dataset("pbc")
+
+        # Anything other than 0 is an event
+        gw.Surv.right(time="time", event="status", data=pbc, censor_value=0)
         ```
 
-        The same call works for any data frame backend, because the encoding is given as a value
-        rather than as a DataFrame expression.
+        For small examples, pass the values directly. Here two subjects have events (at times 5
+        and 4) and two are censored (at 6 and 9):
+
+        ```{python}
+        gw.Surv.right(time=[5, 6, 4, 9], event=[1, 0, 1, 0])
+        ```
         """
         cols = resolve_columns(data, {"time": time, "event": event, "weights": weights})
         stop = _to_1d_array(cols["time"])
@@ -369,18 +401,20 @@ class Surv:
         Parameters
         ----------
         time
-            Observation times (the upper bound on when the event occurred). Must be finite and
-            non-negative. Each value represents "the event happened by this time".
+            Observation times (the upper bound on when the event occurred), or the name of a
+            column in `data`. Must be finite and non-negative. Each value represents "the event
+            happened by this time".
         event
-            Event indicators:
+            Event indicators, or the name of a column in `data`. Without `event_value` or
+            `censor_value`, the values must be boolean or `0`/`1`:
 
             - `1` = event occurred before `time` (left-censored)
             - `0` = subject was event-free at `time` (not censored)
 
             If `None`, all subjects are treated as having experienced the event.
         weights
-            Case weights (strictly positive, one per subject). Used to weight subjects differently
-            in survival analysis. Default is `None` (all weights are `1`).
+            Case weights (strictly positive, one per subject), or the name of a column in `data`.
+            Default is `None` (all weights are `1`).
         data
             A data frame to look up column names in. Any of `time`, `event`, and `weights` may be a
             column name. See `Surv.right()` for the accepted frame types.
@@ -398,22 +432,28 @@ class Surv:
 
         Examples
         --------
-        Here we have 3 subjects. Two experienced the event before the recorded time (event=1), and
-        one was event-free at observation (event=0):
+        Left censoring arises when a test shows the event has already happened, without saying
+        when. Here each subject is tested once. A positive test means the event occurred by
+        `test_day`, and a negative test means the subject was still event-free then:
 
         ```{python}
         import greenwood as gw
+        import polars as pl
 
-        # Build a left-censored response
-        y = gw.Surv.left(time=[5, 6, 4], event=[1, 0, 1])
-        y
+        screening = pl.DataFrame({
+            "test_day": [5.0, 6.0, 4.0, 9.0],
+            "result": ["positive", "negative", "positive", "negative"],
+        })
+
+        # A positive result marks an event that happened by test_day
+        gw.Surv.left(time="test_day", event="result", data=screening, event_value="positive")
         ```
 
-        The display shows the data structure:
+        For small examples, pass the values directly:
 
-        - The `<` symbol indicates left-censored observations (event occurred before time)
-        - The `+` symbol indicates subjects who were still event-free at the observation time
-        - The left-censoring type `"left"` is displayed at the top
+        ```{python}
+        gw.Surv.left(time=[5, 6, 4], event=[1, 0, 1])
+        ```
         """
         cols = resolve_columns(data, {"time": time, "event": event, "weights": weights})
         stop = _to_1d_array(cols["time"])
@@ -435,8 +475,7 @@ class Surv:
         event_value: Any = None,
         censor_value: Any = None,
     ) -> Self:
-        """Counting-process response: track subjects entering and exiting the risk set at
-        different times.
+        """Counting-process response: each row enters and leaves the risk set at its own times.
 
         The counting-process form handles two important real-world complexities:
 
@@ -455,19 +494,19 @@ class Surv:
         Parameters
         ----------
         start
-            Entry times (when each subject becomes at risk). Must be finite and non-negative.
-            Represents when the subject enters the risk set. In standard studies this is `0`.
-            In studies with late entry, it is the age or time at enrollment.
+            Entry times (when each row becomes at risk), or the name of a column in `data`. Must be
+            finite and non-negative. In standard studies this is `0`. In studies with late entry,
+            it is the age or time at enrollment.
         stop
-            Exit times (when follow-up ends). Must be finite, non-negative, and strictly
-            greater than the corresponding `start`. Represents when the subject leaves follow-up
-            (event, censoring, or end of study).
+            Exit times (when follow-up for the row ends), or the name of a column in `data`. Must
+            be finite, non-negative, and strictly greater than the corresponding `start`.
         event
-            Event indicators (`1` = event occurred, `0` = censored at `stop` time).
-            If `None`, all subjects are treated as having experienced the event.
+            Event indicators, or the name of a column in `data`. Without `event_value` or
+            `censor_value`, the values must be boolean or `0`/`1` (`1` = event at `stop`,
+            `0` = censored at `stop`). If `None`, every row is treated as ending in an event.
         weights
-            Case weights (strictly positive, one per subject). Used to weight subjects
-            differently in survival analysis. Default is `None` (all weights are `1`).
+            Case weights (strictly positive, one per row), or the name of a column in `data`.
+            Default is `None` (all weights are `1`).
         data
             A data frame to look up column names in. Any of `start`, `stop`, `event`, and
             `weights` may be a column name. See `Surv.right()` for the accepted frame types.
@@ -485,26 +524,33 @@ class Surv:
 
         Examples
         --------
-        Here we have 3 subjects with different entry times:
+        The counting-process form is what `split_episodes()` produces from repeated measurements:
+        one row per `(tstart, tstop]` interval, with the event on each subject's last interval.
+        In `pbcseq`, a `status` of `2` means death:
 
         ```{python}
         import greenwood as gw
 
-        # Build a counting-process response with different entry times
-        y = gw.Surv.counting(start=[0, 2, 1], stop=[5, 6, 4], event=[1, 0, 1])
-        y
+        pbcseq = gw.load_dataset("pbcseq", backend="pandas")
+
+        # One row per interval between lab visits
+        long = gw.split_episodes(
+            baseline=pbcseq, visits=pbcseq, id="id", time="futime", event="status",
+            visit_time="day", covariates=["bili"], format="pandas",
+        )
+
+        # Name the interval columns, and say which status value marks a death
+        gw.Surv.counting(start="tstart", stop="tstop", event="status", data=long, event_value=2)
         ```
 
-        The display shows:
+        The same form expresses late entry (left truncation), where subjects join the risk set
+        after time 0. For small examples, pass the values directly. Here subject 1 enters at 0 and
+        has an event at 5, subject 2 enters late at 2 and is censored at 6, and subject 3 enters
+        at 1 and has an event at 4:
 
-        - Subject 1: Entered at time 0, exited with an event at time 5
-        - Subject 2: Entered at time 2 (late entry), exited censored at time 6
-        - Subject 3: Entered at time 1, experienced an event at time 4
-
-        Only subjects 2 and 3 benefit from the late entry handling, but the counting-process
-        form elegantly handles all cases uniformly. This representation is also essential
-        for studies with time-varying covariates, where you create multiple rows per subject
-        as their covariate values change.
+        ```{python}
+        gw.Surv.counting(start=[0, 2, 1], stop=[5, 6, 4], event=[1, 0, 1])
+        ```
         """
         cols = resolve_columns(
             data, {"start": start, "stop": stop, "event": event, "weights": weights}
@@ -540,16 +586,17 @@ class Surv:
         Parameters
         ----------
         lower
-            Interval lower bounds (one per subject). Must be finite and non-negative. Event happened
-            *after* this time (possibly at this time). Set to `0` to mark left-censored subjects
-            (event happened before first observation).
+            Interval lower bounds (one per subject), or the name of a column in `data`. Must be
+            finite and non-negative. The event happened *after* this time (possibly at this time).
+            Set to `0` to mark left-censored subjects (event happened before first observation).
         upper
-            Interval upper bounds (one per subject). Must be finite, non-negative, and >= `lower`.
-            Event happened *by* this time. Set to `numpy.inf` to mark right-censored subjects (no
-            event observed by end of study).
+            Interval upper bounds (one per subject), or the name of a column in `data`. Must be
+            non-negative and >= `lower`. The event happened *by* this time. Use `numpy.inf` to mark
+            right-censored subjects (no event observed by the end of the study), and set it equal
+            to `lower` for an exactly observed event.
         weights
-            Case weights (strictly positive, one per subject). Used to weight subjects differently
-            in survival analysis. Default is `None` (all weights are `1`).
+            Case weights (strictly positive, one per subject), or the name of a column in `data`.
+            Default is `None` (all weights are `1`).
         data
             A data frame to look up column names in. Any of `lower`, `upper`, and `weights` may be
             a column name. See `Surv.right()` for the accepted frame types.
@@ -561,28 +608,32 @@ class Surv:
 
         Examples
         --------
-        Here we have 3 subjects with different levels of observation precision:
+        Interval censoring arises with periodic inspections: the event is known only to have
+        happened between the last visit where it was absent and the first where it was present.
+        Here the columns hold those two visit times, with `inf` for a subject whose event was
+        never seen:
 
         ```{python}
         import greenwood as gw
         import numpy as np
+        import polars as pl
 
-        # Build an interval-censored response with mixed precision
-        y = gw.Surv.interval(lower=[1, 2, 3], upper=[2, np.inf, 5])
-        y
+        inspections = pl.DataFrame({
+            "last_negative": [1.0, 2.0, 3.0],
+            "first_positive": [2.0, np.inf, 5.0],
+        })
+
+        # The event happened somewhere in (last_negative, first_positive]
+        gw.Surv.interval(lower="last_negative", upper="first_positive", data=inspections)
         ```
 
-        The display shows:
+        Subject 1's event fell between times 1 and 2, subject 2 was still event-free at the last
+        visit (time 2, so right-censored), and subject 3's event fell between 3 and 5. For small
+        examples, pass the values directly, with `lower == upper` for an exactly observed event:
 
-        - Subject 1: Exact event at time 2 (lower == upper)
-        - Subject 2: Right-censored at time 2 (upper = infinity means event never observed)
-        - Subject 3: Interval-censored between times 3 and 5 (event happened somewhere in that
-        window)
-
-        Interval censoring gives you more information than right censoring alone. Rather than
-        just knowing "no event by time X," you may know "event was definitely before time Y
-        but after time X", which allows for more precise estimation when multiple observations
-        bracket the event.
+        ```{python}
+        gw.Surv.interval(lower=[1, 2, 3], upper=[1, np.inf, 5])
+        ```
         """
         cols = resolve_columns(data, {"lower": lower, "upper": upper, "weights": weights})
         weights = cols["weights"]
@@ -638,17 +689,13 @@ class Surv:
         Parameters
         ----------
         time
-            Event or censoring times (one per subject). Must be finite and non-negative.
-            Represents when the subject experienced an outcome (or was censored).
+            Event or censoring times (one per subject), or the name of a column in `data`. Must be
+            finite and non-negative.
         event
-            Event codes indicating which state occurred:
-
-            - 0 = censored (no event observed)
-            - 1 = transitioned to states[0] (first outcome)
-            - 2 = transitioned to states[1] (second outcome)
-            - ... and so on for each defined state
-
-            Must be in range [0, len(states)].
+            The outcome of each subject, or the name of a column in `data`. With a `states`
+            mapping, the column may use any coding (numbers or strings), and `censor_value` marks
+            censoring. With a sequence of `states`, it must hold integer codes: `0` for censored,
+            `1` for `states[0]`, `2` for `states[1]`, and so on.
         states
             The possible outcomes, given in one of two ways.
 
@@ -664,13 +711,13 @@ class Surv:
             - event code 2 → death occurred
 
             Labels are arbitrary strings describing what the transition represents.
-        start : array-like, optional
-            Optional entry times (for late entry / left truncation). If provided, each subject
-            is only at risk from `start` until `time`. Default is `None` (all subjects enter at
-            time 0).
-        weights : array-like, optional
-            Case weights (strictly positive, one per subject). Used to weight subjects
-            differently in survival analysis. Default is `None` (all weights = 1).
+        start
+            Entry times for late entry (left truncation), or the name of a column in `data`. If
+            given, each subject is at risk from `start` until `time`. Default is `None` (all
+            subjects enter at time 0).
+        weights
+            Case weights (strictly positive, one per subject), or the name of a column in `data`.
+            Default is `None` (all weights are `1`).
         data
             A data frame to look up column names in. Any of `time`, `event`, `start`, and `weights`
             may be a column name. See `Surv.right()` for the accepted frame types.
@@ -685,43 +732,49 @@ class Surv:
 
         Examples
         --------
-        Here we have 4 subjects with 2 competing outcomes (relapse and death):
+        Build a competing-risks response from a data frame by mapping each outcome to the value
+        that marks it. In `pbc`, `status` is `0` (censored), `1` (transplant), or `2` (death):
 
         ```{python}
         import greenwood as gw
 
-        # Build a competing-risks response with two outcomes
-        y = gw.Surv.multistate(
-            time=[5, 6, 7, 8],
-            event=[1, 2, 0, 1],
-            states=("relapse", "death")
-        )
+        pbc = gw.load_dataset("pbc")
 
+        # Map each competing outcome to its code, and 0 is censored
+        y = gw.Surv.multistate(
+            time="time", event="status", data=pbc, states={"transplant": 1, "death": 2}
+        )
         y
         ```
 
-        The display shows:
-
-        - Subject 1: Transitioned to "relapse" (event code 1) at time 5
-        - Subject 2: Transitioned to "death" (event code 2) at time 6
-        - Subject 3: Censored (event code 0) at time 7
-        - Subject 4: Transitioned to "relapse" (event code 1) at time 8
-
-        You can then estimate the probability of each outcome separately, capturing the
-        full picture: not just "will something happen?" but "which specific outcome is most likely?"
-        This avoids the bias of artificially grouping competing outcomes together.
-
-        When the outcome column uses its own coding, map each label to its value. Here the
-        outcomes are strings, and both `"alive"` and `"lost"` mean censored:
+        The column can use any coding, strings included. List every value that means censored in
+        `censor_value=`. A value that is assigned to no state and not listed as censoring raises an
+        error, so a typo cannot silently become censoring:
 
         ```{python}
-        # Map each state label to the value that marks it in the event column
+        import polars as pl
+
+        trial = pl.DataFrame({
+            "months": [5.0, 6.0, 7.0, 8.0],
+            "outcome": ["relapse", "death", "alive", "lost"],
+        })
+
+        # "alive" and "lost" both mean the subject was censored
         gw.Surv.multistate(
-            time=[5, 6, 7, 8],
-            event=["rel", "dth", "alive", "lost"],
-            states={"relapse": "rel", "death": "dth"},
+            time="months",
+            event="outcome",
+            data=trial,
+            states={"relapse": "relapse", "death": "death"},
             censor_value=["alive", "lost"],
         )
+        ```
+
+        When each outcome has its own time and event columns instead of one outcome column, use
+        `Surv.first_event()`. For small examples with integer codes already in place, pass the
+        values and a sequence of state labels, where code `k` means `states[k - 1]`:
+
+        ```{python}
+        gw.Surv.multistate(time=[5, 6, 7, 8], event=[1, 2, 0, 1], states=("relapse", "death"))
         ```
         """
         cols = resolve_columns(
