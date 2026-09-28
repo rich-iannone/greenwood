@@ -526,6 +526,24 @@ class CoxNet:
         -------
         float
             Effective number of parameters consumed by the fit.
+
+        Examples
+        --------
+        Fit a ridge-penalized Cox model and check how many effective parameters it uses.
+        Ridge shrinks coefficients but never sets them to exactly zero, so the effective
+        degrees of freedom is typically between 0 and the number of covariates:
+
+        ```{python}
+        import greenwood as gw
+
+        lung = gw.load_dataset("lung", backend="polars")
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+
+        ridge = gw.CoxNet(penalizer=0.1, l1_ratio=0.0).fit(
+            y, covariates=["age", "sex", "ph.ecog", "ph.karno"], data=lung
+        )
+        ridge.effective_df()
+        ```
         """
         ridge_weight = self.penalizer * (1.0 - self.l1_ratio)
 
@@ -554,6 +572,22 @@ class CoxNet:
         -------
         float
             AIC value.
+
+        Examples
+        --------
+        Compare AIC across different penalty strengths to select the best model:
+
+        ```{python}
+        import greenwood as gw
+
+        lung = gw.load_dataset("lung", backend="polars")
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+        cols = ["age", "sex", "ph.ecog", "ph.karno"]
+
+        for lam in [0.01, 0.05, 0.1]:
+            m = gw.CoxNet(penalizer=lam, l1_ratio=0.5).fit(y, covariates=cols, data=lung)
+            print(f"lambda={lam}: AIC={m.aic():.1f}, edf={m.effective_df():.2f}")
+        ```
         """
         return -2.0 * self.loglik_ + 2.0 * self.effective_df()
 
@@ -568,6 +602,20 @@ class CoxNet:
         -------
         float
             BIC value.
+
+        Examples
+        --------
+        ```{python}
+        import greenwood as gw
+
+        lung = gw.load_dataset("lung", backend="polars")
+        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+
+        ridge = gw.CoxNet(penalizer=0.1, l1_ratio=0.0).fit(
+            y, covariates=["age", "sex", "ph.ecog", "ph.karno"], data=lung
+        )
+        ridge.bic()
+        ```
         """
         return -2.0 * self.loglik_ + np.log(self.n_event_) * self.effective_df()
 
