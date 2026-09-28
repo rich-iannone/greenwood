@@ -245,6 +245,24 @@ class SurvivalBoost:
         -------
         self
             The fitted estimator.
+
+        Examples
+        --------
+        Fit a boosted CIF model to synthetic competing-risks data and inspect the
+        result. The model learns a separate tree per class at each round:
+
+        ```{python}
+        import greenwood as gw
+
+        sim = gw.simulate_competing_risks(
+            n=500, n_causes=2, n_covariates=3, seed=42
+        )
+
+        sb = gw.SurvivalBoost(
+            n_estimators=50, learning_rate=0.1, max_depth=3, random_state=0
+        ).fit(sim.surv, covariates=sim.covariates)
+        sb
+        ```
         """
         bound = bind_fit_inputs(
             surv,
