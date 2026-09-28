@@ -328,6 +328,30 @@ class MixtureCure:
         -------
         MixtureCure
             The fitted estimator.
+
+        Examples
+        --------
+        Fit a mixture cure model on the `e1684` melanoma dataset. The incidence (cure)
+        submodel and the latency (survival) submodel each receive their own covariates:
+
+        ```{python}
+        import greenwood as gw
+
+        e1684 = gw.load_dataset("e1684", backend="polars")
+        y = gw.Surv.right(time=e1684["FAILTIME"], event=e1684["FAILCENS"])
+
+        cure = gw.MixtureCure().fit(
+            y, latency=["TRT"], data=e1684, cure=["TRT"]
+        )
+        cure
+        ```
+
+        Inspect the cure-fraction coefficients. A negative intercept in the cure
+        submodel indicates a large estimated cured fraction:
+
+        ```{python}
+        gw.tidy(cure, format="polars")
+        ```
         """
         bound = bind_fit_inputs(
             surv,
