@@ -40,6 +40,25 @@ class EventTable:
     stratum (each stratum's times are ascending). Counts are weighted when case weights
     are supplied, so they may be floats.
 
+    Attributes
+    ----------
+    time
+        Unique exit times at which events or censorings occur, in ascending order within
+        each stratum. Shape `(k,)` where `k` is the total number of unique exit times
+        across all strata.
+    n_risk
+        Number of subjects (or total weight) in the risk set at each time. A subject is
+        at risk at time `t` if they entered before `t` and have not yet exited. Shape
+        `(k,)`.
+    n_event
+        Number of events (or total event weight) at each time. Shape `(k,)`.
+    n_censor
+        Number of censorings (or total censoring weight) at each time. Shape `(k,)`.
+    strata
+        Stratum labels for each row, or `None` when no stratification is used. When
+        present, the arrays are grouped by stratum (each stratum's times are ascending).
+        Shape `(k,)`.
+
     Examples
     --------
     An `EventTable` is produced by `event_table`. Build one from the bundled `lung`
