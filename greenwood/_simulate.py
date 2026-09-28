@@ -19,6 +19,10 @@ Array = npt.NDArray[Any]
 class SimulatedCompetingRisks:
     """Result of :func:`simulate_competing_risks`.
 
+    Bundles the simulated survival response, covariate matrix, and latent ground-truth
+    times into a single object. This makes it easy to pass synthetic data directly to
+    competing-risks estimators and metrics.
+
     Attributes
     ----------
     surv
@@ -32,6 +36,26 @@ class SimulatedCompetingRisks:
     censoring_time
         The censoring time for each subject, shape `(n,)`. The observed time is
         `min(min(latent_times, axis=1), censoring_time)`.
+
+    Examples
+    --------
+    Generate synthetic competing-risks data with two causes and three covariates. The
+    result holds a ready-to-use `Surv` response and covariate matrix:
+
+    ```{python}
+    import greenwood as gw
+
+    sim = gw.simulate_competing_risks(
+        n=500, n_causes=2, n_covariates=3, seed=42
+    )
+    sim.surv
+    ```
+
+    The covariates and latent times are available for oracle comparisons:
+
+    ```{python}
+    sim.covariates.shape, sim.latent_times.shape
+    ```
     """
 
     surv: Surv
