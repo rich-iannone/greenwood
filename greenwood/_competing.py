@@ -1407,6 +1407,26 @@ class PenalizedFineGray:
         -------
         PenalizedFineGray
             The fitted estimator with penalized coefficients in `coef_`.
+
+        Examples
+        --------
+        Fit a lasso-penalized Fine-Gray model on the `mgus2` competing-risks data. With
+        `l1_ratio=1.0` (pure lasso), some coefficients are driven to exactly zero:
+
+        ```{python}
+        import greenwood as gw
+        import numpy as np
+
+        mg = gw.load_dataset("mgus2", backend="pandas")
+        etime = np.where(mg["pstat"] == 1, mg["ptime"], mg["futime"])
+        cause = np.where(mg["pstat"] == 1, 1, 2 * mg["death"])
+        cr = gw.Surv.multistate(time=etime, event=cause, states=("pcm", "death"))
+
+        pfg = gw.PenalizedFineGray(
+            cause="pcm", penalizer=0.1, l1_ratio=1.0
+        ).fit(cr, covariates=["age", "sex"], data=mg)
+        pfg
+        ```
         """
         bound = bind_fit_inputs(
             surv,
@@ -1742,6 +1762,32 @@ class CauseSpecificCox:
         -------
         CauseSpecificCox
             The fitted estimator.
+
+        Examples
+        --------
+        Fit a cause-specific Cox model for plasma-cell malignancy (pcm) in the `mgus2`
+        dataset. Competing events (death) are treated as censored:
+
+        ```{python}
+        import greenwood as gw
+        import numpy as np
+
+        mg = gw.load_dataset("mgus2", backend="pandas")
+        etime = np.where(mg["pstat"] == 1, mg["ptime"], mg["futime"])
+        cause = np.where(mg["pstat"] == 1, 1, 2 * mg["death"])
+        cr = gw.Surv.multistate(time=etime, event=cause, states=("pcm", "death"))
+
+        csc = gw.CauseSpecificCox(cause="pcm").fit(
+            cr, covariates=["age", "sex"], data=mg
+        )
+        csc
+        ```
+
+        Exponentiated coefficients give cause-specific hazard ratios:
+
+        ```{python}
+        gw.tidy(csc, exponentiate=True, format="polars")
+        ```
         """
         bound = bind_fit_inputs(
             surv,
