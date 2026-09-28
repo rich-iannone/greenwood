@@ -151,8 +151,25 @@ class Surv:
 
     Examples
     --------
-    Build a right-censored response from a data frame. In the `lung` dataset, a `status` of `2`
-    means the patient died:
+    We'll use the bundled `lung` dataset, from a North Central Cancer Treatment Group trial in
+    advanced lung cancer. `time` is days of follow-up and `status` is `1` (censored) or `2` (died).
+    Here is what the dataset looks like:
+
+    ```{python}
+    #| echo: false
+    import great_docs as gd
+    import greenwood as gw
+
+    gd.tbl_preview(
+        gw.load_dataset("lung"),
+        n_head=5,
+        n_tail=3,
+        caption="lung: NCCTG advanced lung cancer, 228 patients",
+    )
+    ```
+
+    Build a right-censored response by naming the columns and saying which status value marks the
+    event:
 
     ```{python}
     import greenwood as gw
@@ -164,8 +181,23 @@ class Surv:
     y
     ```
 
-    A multi-state response maps each state to the value that marks it. In `pbc`, `status` is `0`
-    for censored, `1` for transplant, and `2` for death:
+    We'll use the bundled `pbc` dataset, from a Mayo Clinic trial in primary biliary cholangitis.
+    `time` is days of follow-up and `status` is `0` (censored), `1` (transplant), or `2` (died).
+    Here is what the dataset looks like:
+
+    ```{python}
+    #| echo: false
+    import great_docs as gd
+
+    gd.tbl_preview(
+        gw.load_dataset("pbc"),
+        n_head=5,
+        n_tail=3,
+        caption="pbc: Mayo Clinic primary biliary cholangitis, 418 patients",
+    )
+    ```
+
+    A multi-state response maps each state to the value that marks it:
 
     ```{python}
     pbc = gw.load_dataset("pbc")
@@ -174,8 +206,23 @@ class Surv:
     gw.Surv.multistate(time="time", event="status", data=pbc, states={"transplant": 1, "death": 2})
     ```
 
-    When each endpoint has its own time and event columns, as in `mgus2`, `first_event()` combines
-    them. The first observed endpoint becomes the cause:
+    We'll use the bundled `mgus2` dataset, which follows patients with monoclonal gammopathy. Each
+    endpoint has its own column pair: `ptime` and `pstat` for progression to plasma-cell malignancy
+    (PCM), and `futime` and `death` for death. Here is what the dataset looks like:
+
+    ```{python}
+    #| echo: false
+    import great_docs as gd
+
+    gd.tbl_preview(
+        gw.load_dataset("mgus2"),
+        n_head=5,
+        n_tail=3,
+        caption="mgus2: monoclonal gammopathy, 1,384 patients",
+    )
+    ```
+
+    `first_event()` combines the column pairs. The first observed endpoint becomes the cause:
 
     ```{python}
     mgus2 = gw.load_dataset("mgus2")
@@ -186,7 +233,8 @@ class Surv:
     )
     ```
 
-    Counting-process and interval-censored responses name their columns the same way:
+    Counting-process and interval-censored responses name their columns the same way. Here are two
+    small frames, one of at-risk intervals and one of inspection windows:
 
     ```{python}
     import numpy as np
@@ -194,7 +242,23 @@ class Surv:
 
     visits = pl.DataFrame({"tstart": [0.0, 2.0, 1.0], "tstop": [5.0, 6.0, 4.0], "died": [1, 0, 1]})
     windows = pl.DataFrame({"last_negative": [1.0, 3.0], "first_positive": [3.0, np.inf]})
+    ```
 
+    ```{python}
+    #| echo: false
+    import great_docs as gd
+
+    gd.tbl_preview(visits)
+    ```
+
+    ```{python}
+    #| echo: false
+    import great_docs as gd
+
+    gd.tbl_preview(windows)
+    ```
+
+    ```{python}
     # Late entry: each row is at risk from tstart to tstop
     print(gw.Surv.counting(start="tstart", stop="tstop", event="died", data=visits))
 
@@ -336,9 +400,25 @@ class Surv:
 
         Examples
         --------
-        Build a right-censored response from a data frame by naming its columns. In the `lung`
-        dataset, a `status` of `2` means the patient died (R's 1/2 coding), so `event_value=2`
-        says which rows are events:
+        We'll use the bundled `lung` dataset, from a North Central Cancer Treatment Group trial in
+        advanced lung cancer. `time` is days of follow-up and `status` is `1` (censored) or `2`
+        (died). Here is what the dataset looks like:
+
+        ```{python}
+        #| echo: false
+        import great_docs as gd
+        import greenwood as gw
+
+        gd.tbl_preview(
+            gw.load_dataset("lung"),
+            n_head=5,
+            n_tail=3,
+            caption="lung: NCCTG advanced lung cancer, 228 patients",
+        )
+        ```
+
+        Build a right-censored response by naming its columns. Because a `status` of `2` means the
+        patient died (R's 1/2 coding), `event_value=2` says which rows are events:
 
         ```{python}
         import greenwood as gw
@@ -351,9 +431,26 @@ class Surv:
         ```
 
         The same call works for any data frame backend (pandas, Polars, PyArrow, DuckDB), because
-        the encoding is a value rather than a data frame expression. When several values count as
-        an event, name the censoring value instead. In `pbc`, `status` is `0` (censored), `1`
-        (transplant), or `2` (death), so an all-cause endpoint is:
+        the encoding is a value rather than a data frame expression.
+
+        We'll use the bundled `pbc` dataset, from a Mayo Clinic trial in primary biliary
+        cholangitis. `time` is days of follow-up and `status` is `0` (censored), `1` (transplant),
+        or `2` (died). Here is what the dataset looks like:
+
+        ```{python}
+        #| echo: false
+        import great_docs as gd
+
+        gd.tbl_preview(
+            gw.load_dataset("pbc"),
+            n_head=5,
+            n_tail=3,
+            caption="pbc: Mayo Clinic primary biliary cholangitis, 418 patients",
+        )
+        ```
+
+        When several values count as an event, name the censoring value instead. An all-cause
+        endpoint for `pbc` is:
 
         ```{python}
         pbc = gw.load_dataset("pbc")
@@ -362,8 +459,8 @@ class Surv:
         gw.Surv.right(time="time", event="status", data=pbc, censor_value=0)
         ```
 
-        For small examples, pass the values directly. Here two subjects have events (at times 5
-        and 4) and two are censored (at 6 and 9):
+        For small examples, pass the values directly. Here two subjects have events (at times 5 and
+        4) and two are censored (at 6 and 9):
 
         ```{python}
         gw.Surv.right(time=[5, 6, 4, 9], event=[1, 0, 1, 0])
@@ -432,9 +529,10 @@ class Surv:
 
         Examples
         --------
-        Left censoring arises when a test shows the event has already happened, without saying
-        when. Here each subject is tested once. A positive test means the event occurred by
-        `test_day`, and a negative test means the subject was still event-free then:
+        Left censoring arises when a test shows the event has already happened, without saying when.
+        We'll use a small screening study where each subject is tested once. A positive test means
+        the event occurred by `test_day`, and a negative test means the subject was still event-free
+        then:
 
         ```{python}
         import greenwood as gw
@@ -444,7 +542,16 @@ class Surv:
             "test_day": [5.0, 6.0, 4.0, 9.0],
             "result": ["positive", "negative", "positive", "negative"],
         })
+        ```
 
+        ```{python}
+        #| echo: false
+        import great_docs as gd
+
+        gd.tbl_preview(screening)
+        ```
+
+        ```{python}
         # A positive result marks an event that happened by test_day
         gw.Surv.left(time="test_day", event="result", data=screening, event_value="positive")
         ```
@@ -524,9 +631,26 @@ class Surv:
 
         Examples
         --------
-        The counting-process form is what `split_episodes()` produces from repeated measurements:
-        one row per `(tstart, tstop]` interval, with the event on each subject's last interval.
-        In `pbcseq`, a `status` of `2` means death:
+        We'll use the bundled `pbcseq` dataset, which records repeated lab visits for the `pbc`
+        patients. Each row is one visit (`day`), and `futime` and `status` repeat each subject's
+        final outcome (`2` = died). Here is what the dataset looks like:
+
+        ```{python}
+        #| echo: false
+        import great_docs as gd
+        import greenwood as gw
+
+        gd.tbl_preview(
+            gw.load_dataset("pbcseq"),
+            n_head=5,
+            n_tail=3,
+            caption="pbcseq: repeated lab visits for the pbc patients",
+        )
+        ```
+
+        `split_episodes()` turns the visits into the counting-process form: one row per `(tstart,
+        tstop]` interval, with the event on each subject's last interval. Name the interval columns
+        and say which status value marks a death:
 
         ```{python}
         import greenwood as gw
@@ -539,14 +663,13 @@ class Surv:
             visit_time="day", covariates=["bili"], format="pandas",
         )
 
-        # Name the interval columns, and say which status value marks a death
         gw.Surv.counting(start="tstart", stop="tstop", event="status", data=long, event_value=2)
         ```
 
-        The same form expresses late entry (left truncation), where subjects join the risk set
-        after time 0. For small examples, pass the values directly. Here subject 1 enters at 0 and
-        has an event at 5, subject 2 enters late at 2 and is censored at 6, and subject 3 enters
-        at 1 and has an event at 4:
+        The same form expresses late entry (left truncation), where subjects join the risk set after
+        time 0. For small examples, pass the values directly. Here subject 1 enters at 0 and has an
+        event at 5, subject 2 enters late at 2 and is censored at 6, and subject 3 enters at 1 and
+        has an event at 4:
 
         ```{python}
         gw.Surv.counting(start=[0, 2, 1], stop=[5, 6, 4], event=[1, 0, 1])
@@ -610,8 +733,8 @@ class Surv:
         --------
         Interval censoring arises with periodic inspections: the event is known only to have
         happened between the last visit where it was absent and the first where it was present.
-        Here the columns hold those two visit times, with `inf` for a subject whose event was
-        never seen:
+        We'll use a small inspection record with those two visit times, and `inf` for a subject
+        whose event was never seen:
 
         ```{python}
         import greenwood as gw
@@ -622,7 +745,16 @@ class Surv:
             "last_negative": [1.0, 2.0, 3.0],
             "first_positive": [2.0, np.inf, 5.0],
         })
+        ```
 
+        ```{python}
+        #| echo: false
+        import great_docs as gd
+
+        gd.tbl_preview(inspections)
+        ```
+
+        ```{python}
         # The event happened somewhere in (last_negative, first_positive]
         gw.Surv.interval(lower="last_negative", upper="first_positive", data=inspections)
         ```
@@ -732,8 +864,24 @@ class Surv:
 
         Examples
         --------
-        Build a competing-risks response from a data frame by mapping each outcome to the value
-        that marks it. In `pbc`, `status` is `0` (censored), `1` (transplant), or `2` (death):
+        We'll use the bundled `pbc` dataset, from a Mayo Clinic trial in primary biliary
+        cholangitis. `time` is days of follow-up and `status` is `0` (censored), `1` (transplant),
+        or `2` (died). Here is what the dataset looks like:
+
+        ```{python}
+        #| echo: false
+        import great_docs as gd
+        import greenwood as gw
+
+        gd.tbl_preview(
+            gw.load_dataset("pbc"),
+            n_head=5,
+            n_tail=3,
+            caption="pbc: Mayo Clinic primary biliary cholangitis, 418 patients",
+        )
+        ```
+
+        Build a competing-risks response by mapping each outcome to the value that marks it:
 
         ```{python}
         import greenwood as gw
@@ -747,9 +895,8 @@ class Surv:
         y
         ```
 
-        The column can use any coding, strings included. List every value that means censored in
-        `censor_value=`. A value that is assigned to no state and not listed as censoring raises an
-        error, so a typo cannot silently become censoring:
+        The column can use any coding, strings included. Here is a small trial where the outcome is
+        a string:
 
         ```{python}
         import polars as pl
@@ -758,7 +905,20 @@ class Surv:
             "months": [5.0, 6.0, 7.0, 8.0],
             "outcome": ["relapse", "death", "alive", "lost"],
         })
+        ```
 
+        ```{python}
+        #| echo: false
+        import great_docs as gd
+
+        gd.tbl_preview(trial)
+        ```
+
+        List every value that means censored in `censor_value=`. A value that is assigned to no
+        state and not listed as censoring raises an error, so a typo cannot silently become
+        censoring:
+
+        ```{python}
         # "alive" and "lost" both mean the subject was censored
         gw.Surv.multistate(
             time="months",
@@ -843,8 +1003,25 @@ class Surv:
 
         Examples
         --------
-        Build the `mgus2` competing-risks response from its two column pairs. PCM is listed first,
-        so a PCM diagnosed at the same time as death counts as PCM:
+        We'll use the bundled `mgus2` dataset, which follows patients with monoclonal gammopathy.
+        Each endpoint has its own column pair: `ptime` and `pstat` for progression to plasma-cell
+        malignancy (PCM), and `futime` and `death` for death. Here is what the dataset looks like:
+
+        ```{python}
+        #| echo: false
+        import great_docs as gd
+        import greenwood as gw
+
+        gd.tbl_preview(
+            gw.load_dataset("mgus2"),
+            n_head=5,
+            n_tail=3,
+            caption="mgus2: monoclonal gammopathy, 1,384 patients",
+        )
+        ```
+
+        Build the competing-risks response from the two column pairs. PCM is listed first, so a PCM
+        diagnosed at the same time as death counts as PCM:
 
         ```{python}
         import greenwood as gw
