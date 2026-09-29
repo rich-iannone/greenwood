@@ -39,6 +39,7 @@ import greenwood as gw
 pbc    = gw.load_dataset("pbc",    backend="polars")
 pbcseq = gw.load_dataset("pbcseq", backend="polars")
 
+# Preview the repeated lab measurements
 pbcseq.select(["id", "day", "bili", "albumin", "protime"])
 ```
 
@@ -76,6 +77,7 @@ long = gw.split_episodes(
     format="pandas",
 )
 
+# Preview the counting-process dataset
 long
 ```
 
@@ -110,6 +112,7 @@ cox_tvc
 For comparison, fit the same model using only the baseline lab values from `pbc`.
 
 ```{python}
+# Fit the same covariates using only baseline values from the cross-sectional dataset
 pbc = gw.load_dataset("pbc", backend="pandas")
 
 # The same death endpoint, now with one row per subject
@@ -133,6 +136,7 @@ interval are used to accumulate hazard up to any requested time point.
 Subject 1 of the PBC study had two visits. Their trajectory therefore has two rows.
 
 ```{python}
+# Build subject 1's two-visit covariate trajectory
 tvc_path = pd.DataFrame({
     "tstart":  [0.0,   192.0],
     "tstop":   [192.0, 400.0],
@@ -166,6 +170,7 @@ static_path = pd.DataFrame({
     "bili": [14.5], "albumin": [2.60], "protime": [12.2]
 })
 
+# Predict survival with covariates fixed at baseline values
 surv_static = cox_tvc.predict(
     static_path,
     type="survival",
@@ -173,7 +178,7 @@ surv_static = cox_tvc.predict(
     format="pandas",
 )
 
-# Side-by-side comparison
+# Side-by-side comparison of TVC vs. static predictions
 import polars as pl
 
 comparison = pl.from_pandas(surv_tvc).rename({"subject_1": "tvc"}).with_columns(
@@ -196,6 +201,7 @@ pass it to Altair to draw overlapping survival curves.
 import altair as alt
 import polars as pl
 
+# Predict at fine resolution for smooth plotting
 times = list(range(0, 421, 5))
 
 surv_tvc_fine = cox_tvc.predict(
@@ -215,6 +221,7 @@ plot_data = (
     .unpivot(index="time", variable_name="model", value_name="survival")
 )
 
+# Draw the two survival curves
 alt.Chart(plot_data).mark_line().encode(
     x=alt.X("time:Q", title="Time (days)"),
     y=alt.Y("survival:Q", title="Survival probability", scale=alt.Scale(domain=[0, 1])),

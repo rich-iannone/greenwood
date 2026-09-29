@@ -220,6 +220,7 @@ for aj, name in [(aj_plain, "plain"), (aj_log, "log"), (aj_loglog, "log-log")]:
         .with_columns(pl.lit(name).alias("transform"))
     )
 
+# Assemble the comparison across all three transforms
 pl.concat(rows)
 ```
 
@@ -349,6 +350,7 @@ fg_death = gw.FineGray(cause="death").fit(y, covariates=["age", "sex"], data=mg)
 pcm_tidy = gw.tidy(fg_pcm, exponentiate=True, format="pandas")
 death_tidy = gw.tidy(fg_death, exponentiate=True, format="pandas")
 
+# Label each table by cause and stack them for comparison
 pcm_tidy["cause"] = "PCM"
 death_tidy["cause"] = "Death"
 

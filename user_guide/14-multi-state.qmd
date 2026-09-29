@@ -42,8 +42,10 @@ as the absorbing state.
 ```{python}
 import greenwood as gw
 
+# Load the mgus2 dataset
 mg = gw.load_dataset("mgus2", backend="polars")
 
+# Build multi-state intervals: each subject gets one or two rows
 start, stop, state, event = [], [], [], []
 for i in range(len(mg)):
     pt, ft = mg["ptime"][i], mg["futime"][i]
@@ -59,7 +61,7 @@ for i in range(len(mg)):
         state += ["mgus"]
         event += ["death" if died else ("pcm" if progressed else None)]
 
-# Keep only positive-length intervals.
+# Keep only positive-length intervals
 rows = [(a, b, s, e) for a, b, s, e in zip(start, stop, state, event) if b > a]
 start, stop, state, event = map(list, zip(*rows))
 ```
@@ -71,6 +73,7 @@ how many intervals we ended up with, which is more than the number of subjects b
 progressing subjects contribute two rows each.
 
 ```{python}
+# Total number of intervals (more than subjects due to progressors)
 len(start)
 ```
 
@@ -78,6 +81,7 @@ Reading the four lists position by position is easier if we zip them back togeth
 the first several intervals as `(start, stop, state, event)` tuples.
 
 ```{python}
+# Preview the first six intervals as (start, stop, state, event) tuples
 list(zip(start, stop, state, event))[:6]
 ```
 
@@ -95,6 +99,7 @@ matrices and reports, at each time, the probability of occupying each state. Thi
 multi-state generalization of the survival curve.
 
 ```{python}
+# Rebuild the intervals from scratch for a self-contained example
 mg = gw.load_dataset("mgus2", backend="polars")
 
 start, stop, state, event = [], [], [], []
@@ -112,10 +117,11 @@ for i in range(len(mg)):
         state += ["mgus"]
         event += ["death" if died else ("pcm" if progressed else None)]
 
-# Keep only positive-length intervals.
+# Keep only positive-length intervals
 rows = [(a, b, s, e) for a, b, s, e in zip(start, stop, state, event) if b > a]
 start, stop, state, event = map(list, zip(*rows))
 
+# Fit the multi-state Aalen-Johansen estimator from lists
 ms = gw.MultiState().fit(
     start=start, stop=stop, state=state, event=event, states=("mgus", "pcm", "death")
 )
@@ -127,9 +133,10 @@ instead. This works for any backend.
 ```{python}
 import polars as pl
 
-# The same intervals as a frame, with one row per (start, stop] interval
+# Package the same intervals as a Polars DataFrame
 intervals = pl.DataFrame({"tstart": start, "tstop": stop, "from": state, "to": event})
 
+# Fit using column names and data= instead of raw lists
 ms = gw.MultiState().fit(
     start="tstart",
     stop="tstop",
@@ -145,6 +152,7 @@ the columns after `time` give the occupancy probability of `mgus`, `pcm`, and `d
 respectively, and the preview reports the full number of time points.
 
 ```{python}
+# Occupancy probabilities over time for each state
 ms.to_frame(format="polars")
 ```
 
@@ -156,6 +164,7 @@ state. Early on, almost everyone is in the initial `mgus` state; over time, mass
 You can read the occupancy probabilities at specific times with `predict`.
 
 ```{python}
+# Read occupancy probabilities at specific time points
 ms.predict(times=[60, 120, 240], format="polars")
 ```
 

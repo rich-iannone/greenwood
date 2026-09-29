@@ -324,6 +324,7 @@ for this by computing each subject's influence on the survival estimate and summ
 ```{python}
 import numpy as np
 
+# Generate non-integer weights for demonstration
 np.random.seed(23)
 weights = np.random.uniform(0.5, 2.0, len(y))
 
@@ -488,6 +489,7 @@ The stratified fit reports one curve per group. The `to_frame()` output includes
 so you can filter or plot each group separately.
 
 ```{python}
+# Export the stratified cumulative hazard table with a strata column
 na_strat.to_frame(format="polars")
 ```
 
@@ -569,6 +571,7 @@ comparable, since Turnbull's atom table also carries a few near-zero-mass artifa
 construction.
 
 ```{python}
+# Fit Turnbull and Kaplan-Meier to the same right-censored data
 tb_right = gw.Turnbull().fit(y)
 km_check = gw.KaplanMeier().fit(y)
 import numpy as np

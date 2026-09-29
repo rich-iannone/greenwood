@@ -137,14 +137,17 @@ standard deviation `1`:
 ```{python}
 import numpy as np
 
+# Load data and build the response
 lung = gw.load_dataset("lung", backend="pandas")
 y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
+# Select the covariates to standardize
 cols = lung[["age", "sex"]].copy()
 
 # Standardize to zero mean, unit variance
 cols_std = (cols - cols.mean()) / cols.std()
 
+# Fit with standardized covariates and show the coefficient table
 gw.CoxPH().fit(y, covariates=cols_std).to_frame(format="polars")[
     ["term", "estimate", "conf_low", "conf_high"]
 ]
@@ -521,12 +524,14 @@ gw.CoxPH(ties="breslow").fit("Surv(time, status == 2) ~ age + sex + frailty(inst
 To get the frailty-variance inference directly, call `frailty_test()`:
 
 ```{python}
+# Retrieve the frailty variance test (theta, LR statistic, p-value)
 cox_frailty.frailty_test()
 ```
 
 You can also retrieve these fields in `glance()` output:
 
 ```{python}
+# Extract frailty-specific fields from the model-level summary
 gw.glance(cox_frailty, format="polars")[
     ["frailty_theta", "frailty_lrt_statistic", "frailty_lrt_p_value"]
 ]
@@ -559,6 +564,7 @@ cox_ln
 ```
 
 ```{python}
+# Retrieve the log-normal frailty variance test
 cox_ln.frailty_test()
 ```
 
@@ -971,6 +977,7 @@ Pass `exponentiate=True` to express the estimates as hazard ratios directly, whi
 interpret:
 
 ```{python}
+# Exponentiate to show hazard ratios (zero-coefficient terms are clearly visible)
 gw.tidy(final, exponentiate=True, format="polars")
 ```
 
@@ -1110,6 +1117,7 @@ cumcoef_pd = cumcoef.to_pandas()
 long = cumcoef_pd.melt(id_vars="time", value_vars=["age", "sex"],
                        var_name="term", value_name="cumulative_coefficient")
 
+# Plot the cumulative coefficient curves over time
 alt.Chart(long).mark_line().encode(
     x=alt.X("time:Q", title="Time"),
     y=alt.Y("cumulative_coefficient:Q", title="Cumulative coefficient"),

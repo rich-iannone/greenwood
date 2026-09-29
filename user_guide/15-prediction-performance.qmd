@@ -25,6 +25,7 @@ we will judge.
 ```{python}
 import greenwood as gw
 
+# Load the lung dataset and build the survival response
 lung = gw.load_dataset("lung", backend="polars")
 
 y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
@@ -36,6 +37,7 @@ aside: everything below needs only `y` and the risk scores and survival probabil
 produces.
 
 ```{python}
+# Fit a Cox model with age and sex as covariates
 cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
 ```
 
@@ -52,11 +54,13 @@ for comparing an external score. Here we use the Cox model's linear predictor. A
 `type="lp"` returns one number per subject, where a larger value means higher predicted risk.
 
 ```{python}
+# Rebuild the dataset, response, and Cox fit for this section
 lung = gw.load_dataset("lung", backend="polars")
 
 y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
 
+# Extract the linear predictor (risk score) for each subject
 risk = cox.predict(type="lp")
 risk[:8]
 ```
@@ -76,6 +80,7 @@ should correspond to earlier failure, we pass a score where larger means higher 
 linear predictor or its exponential.
 
 ```{python}
+# Compute Harrell's concordance index from the risk scores
 gw.concordance_index(y, risk=risk)
 ```
 
@@ -100,11 +105,13 @@ when many others have already been censored receive higher weight, compensating 
 lost to censoring. The result is a consistent estimator of the true concordance probability.
 
 ```{python}
+# Rebuild the dataset, response, and Cox fit
 lung = gw.load_dataset("lung", backend="polars")
 
 y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
 
+# IPCW concordance index corrected for censoring bias
 risk = cox.predict(type="lp")
 gw.concordance_index_ipcw(y, risk=risk)
 ```
@@ -118,6 +125,7 @@ instability from very small censoring probabilities in the tail, where few subje
 observation. It also focuses discrimination on a clinically relevant horizon.
 
 ```{python}
+# Restrict evaluation to events before one year
 gw.concordance_index_ipcw(y, risk=risk, tau=365.0)
 ```
 
@@ -139,11 +147,13 @@ bootstrapping. The confidence interval is constructed on the logit scale (the de
 respects the [0, 1] bounds and provides better coverage when the estimate is near either extreme.
 
 ```{python}
+# Rebuild the dataset, response, and Cox fit
 lung = gw.load_dataset("lung", backend="polars")
 
 y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
 
+# Concordance with standard error and confidence interval
 risk = cox.predict(type="lp")
 gw.concordance_index_ci(y, risk=risk)
 ```
@@ -152,6 +162,7 @@ The result is a `ConcordanceResult` with the point estimate, standard error, and
 You can convert it to a one-row DataFrame with `to_frame()`.
 
 ```{python}
+# Convert the result to a one-row DataFrame
 gw.concordance_index_ci(y, risk=risk).to_frame()
 ```
 
@@ -160,6 +171,7 @@ is recommended because it keeps the interval inside [0, 1] even when the estimat
 boundary. The `"log"` and `"identity"` options are available for comparison.
 
 ```{python}
+# Same concordance with an identity-scale confidence interval
 gw.concordance_index_ci(y, risk=risk, transform="identity")
 ```
 
@@ -170,6 +182,7 @@ competing-event pairs.
 ```{python}
 import numpy as np
 
+# Load competing-risks data
 mgus2 = gw.load_dataset("mgus2", backend="polars")
 
 # The first observed endpoint (PCM at `ptime`, or death at `futime`) is the event
@@ -178,11 +191,13 @@ y_cr = gw.Surv.first_event(
     data=mgus2,
 )
 
+# Fit a Fine-Gray model for PCM and predict CIF at 240 months
 fg = gw.FineGray(cause="pcm").fit(y_cr, covariates=["age", "sex"], data=mgus2)
 cif_at_tau = fg.predict_cumulative_incidence(
     mgus2, times=np.array([240.0]), format="pandas"
 ).drop(columns="time").values.flatten()
 
+# Cause-specific concordance with confidence interval
 gw.concordance_index_ci(y_cr, risk=cif_at_tau, cause=1, tau=240.0)
 ```
 
@@ -195,16 +210,20 @@ it computes the difference in concordance indices and derives the standard error
 influence function, which properly accounts for the shared subjects.
 
 ```{python}
+# Rebuild the dataset and response
 lung = gw.load_dataset("lung", backend="polars")
 
 y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
+# Fit two competing Cox models
 cox_full = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
 cox_age = gw.CoxPH().fit(y, covariates=["age"], data=lung)
 
+# Extract linear predictors from each model
 lp_full = cox_full.predict(type="lp")
 lp_age = cox_age.predict(type="lp")
 
+# Paired comparison of concordance indices
 gw.concordance_index_compare(y, risk_a=lp_full, risk_b=lp_age)
 ```
 
@@ -214,6 +233,7 @@ detectably different discrimination on this data. The result also has a `to_fram
 tabular output.
 
 ```{python}
+# Tabular output of the paired comparison
 gw.concordance_index_compare(y, risk_a=lp_full, risk_b=lp_age).to_frame()
 ```
 
@@ -235,9 +255,11 @@ censoring process. Greenwood uses it internally for all IPCW metrics, but you ca
 directly when you need the censoring probabilities or IPC weights for a custom analysis.
 
 ```{python}
+# Rebuild the dataset and response
 lung = gw.load_dataset("lung", backend="polars")
 y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
+# Estimate the censoring distribution from the response
 cens = gw.CensoringDistribution(y)
 cens
 ```
@@ -246,6 +268,7 @@ The `survival()` method evaluates the censoring survival function G(t), which is
 not being censored by time t, at any set of query times.
 
 ```{python}
+# Evaluate the censoring survival function G(t) at three times
 cens.survival(times=[180, 365, 540])
 ```
 
@@ -259,6 +282,7 @@ whose events occur when censoring is heavy get larger weights because they repre
 individuals.
 
 ```{python}
+# IPC weights: 1/G(t-) for uncensored, 0 for censored
 w = cens.weights()
 w[:10]
 ```
@@ -267,12 +291,14 @@ You can restrict weights to a time horizon with `tau`. Subjects with events afte
 weight, which avoids instability from very small censoring probabilities in the tail.
 
 ```{python}
+# Restrict weights to events before one year
 cens.weights(tau=365.0)[:10]
 ```
 
 The full censoring curve is available as a DataFrame via `to_frame()`.
 
 ```{python}
+# Full censoring curve as a DataFrame
 cens.to_frame()
 ```
 
@@ -287,11 +313,13 @@ To compute it you supply predicted survival probabilities for each subject at ea
 Start by asking the Cox model for survival curves at three fixed times.
 
 ```{python}
+# Rebuild the dataset, response, and Cox fit
 lung = gw.load_dataset("lung", backend="polars")
 
 y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
 
+# Predict survival probabilities at three fixed times
 times = [180, 365, 540]
 surv = cox.predict(lung, type="survival", times=times, format="polars")
 surv.shape
@@ -303,6 +331,7 @@ the transpose of this: an array with one row per subject and one column per time
 column and transpose to get there.
 
 ```{python}
+# Transpose to (n_subjects, n_times) for the Brier score
 probs = surv.drop("time").to_numpy().T
 probs.shape
 ```
@@ -310,6 +339,7 @@ probs.shape
 With the probabilities in the expected `(n_subjects, n_times)` shape, we can score them.
 
 ```{python}
+# IPCW Brier score at each evaluation time
 gw.brier_score(y, survival_prob=probs, times=times)
 ```
 
@@ -321,6 +351,7 @@ To summarize accuracy across a range of times in a single number, integrate the 
 time.
 
 ```{python}
+# Integrated Brier score across the three time horizons
 gw.integrated_brier_score(y, survival_prob=probs, times=times)
 ```
 
@@ -350,6 +381,7 @@ progress to plasma cell malignancy (PCM) or die without progression.
 ```{python}
 import numpy as np
 
+# Load competing-risks data
 mgus2 = gw.load_dataset("mgus2", backend="polars")
 
 # The first observed endpoint (PCM at `ptime`, or death at `futime`) is the event
@@ -364,16 +396,19 @@ As a baseline, we use the marginal Aalen-Johansen CIF as a naive model that pred
 for every subject.
 
 ```{python}
+# Fit Aalen-Johansen and extract the marginal PCM incidence curve
 aj = gw.AalenJohansen().fit(y_cr)
 cif_df = aj.to_frame(format="polars")
 pcm_cif = cif_df.filter(cif_df["cause"] == "pcm")
 
+# Interpolate the marginal CIF at the evaluation times
 times_cr = np.array([60, 120, 240])
 marginal = np.array(
     [float(np.interp(t, pcm_cif["time"].to_numpy(), pcm_cif["estimate"].to_numpy()))
      for t in times_cr]
 )
 
+# Tile the marginal CIF across all subjects and compute the Brier score
 probs_cr = np.tile(marginal, (y_cr.n, 1))
 gw.brier_score_incidence(y_cr, incidence_prob=probs_cr, times=times_cr, cause=1)
 ```
@@ -385,6 +420,7 @@ As with the survival Brier score, you can summarize accuracy over a range of tim
 number with the integrated version.
 
 ```{python}
+# Evaluate the integrated Brier score on a finer grid
 times_fine = np.linspace(30, 360, 12)
 marginal_fine = np.array(
     [float(np.interp(t, pcm_cif["time"].to_numpy(), pcm_cif["estimate"].to_numpy()))
@@ -418,6 +454,7 @@ marginal_at_tau = float(
 )
 pred_flat = np.full(y_cr.n, marginal_at_tau)
 
+# Concordance for the flat prediction (expected to be 0.5)
 gw.concordance_index_incidence(y_cr, incidence_prob=pred_flat, cause=1, tau=tau)
 ```
 
@@ -448,7 +485,7 @@ probability. The metric reports the proportion of uncensored subjects whose pred
 the observed outcome.
 
 ```{python}
-# Build prediction array: (n_subjects, n_causes, n_times)
+# Interpolate both CIFs at the evaluation times
 death_cif = cif_df.filter(cif_df["cause"] == "death")
 pcm_vals = np.array(
     [float(np.interp(t, pcm_cif["time"].to_numpy(), pcm_cif["estimate"].to_numpy()))
@@ -458,6 +495,7 @@ death_vals = np.array(
     [float(np.interp(t, death_cif["time"].to_numpy(), death_cif["estimate"].to_numpy()))
      for t in times_cr]
 )
+# Stack into (n_subjects, n_causes, n_times) and compute accuracy
 probs_3d = np.stack(
     [np.tile(pcm_vals, (y_cr.n, 1)), np.tile(death_vals, (y_cr.n, 1))], axis=1
 )
@@ -479,6 +517,7 @@ The Brier rows report point estimates only.
 ```{python}
 import numpy as np
 
+# Load data and build competing-risks response
 mgus2 = gw.load_dataset("mgus2", backend="polars")
 
 # The first observed endpoint (PCM at `ptime`, or death at `futime`) is the event
@@ -487,6 +526,7 @@ y_cr = gw.Surv.first_event(
     data=mgus2,
 )
 
+# Fit Fine-Gray for PCM and predict CIF at three horizons
 fg = gw.FineGray(cause="pcm").fit(y_cr, covariates=["age", "sex"], data=mgus2)
 
 eval_times = np.array([120, 240, 360])
@@ -494,6 +534,7 @@ cif_pred = fg.predict_cumulative_incidence(
     mgus2, times=eval_times, format="pandas"
 ).drop(columns="time").values.T
 
+# Bundle concordance, Brier, and integrated Brier into one summary
 gw.score_cr(y_cr, incidence_prob=cif_pred, cause=1, times=eval_times)
 ```
 
@@ -521,6 +562,7 @@ observed to the end of follow-up. The marker must be on a scale where larger mea
 the Cox linear predictor is a natural choice.
 
 ```{python}
+# Time-dependent AUC at three horizons using the Cox linear predictor
 lp = cox.predict(type="lp")
 gw.time_dependent_auc(y, marker=lp, times=[180, 365, 540])
 ```
@@ -533,6 +575,7 @@ To reduce these to a single number for model comparison, `integrated_auc()` comp
 time-averaged AUC using the trapezoidal rule over the supplied time range.
 
 ```{python}
+# Time-averaged AUC across the three horizons
 gw.integrated_auc(y, marker=lp, times=[180, 365, 540])
 ```
 
@@ -547,10 +590,12 @@ fits a fresh copy of the model on each set of training folds and scores its pred
 held-out fold. Pass an unfitted model, the response, and the covariates.
 
 ```{python}
+# Rebuild the dataset and response
 lung = gw.load_dataset("lung", backend="polars")
 
 y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
+# Five-fold cross-validated concordance
 gw.cross_validate(
     gw.CoxPH(), surv=y, covariates=["age", "sex"], data=lung, k=5, metric="concordance", seed=23
 )
@@ -563,6 +608,7 @@ to cross-validate the integrated Brier score instead. The same call works for `A
 `RoystonParmar` models.
 
 ```{python}
+# Cross-validated integrated Brier score at three time points
 gw.cross_validate(
     gw.CoxPH(), surv=y, covariates=["age", "sex"], data=lung, k=5,
     metric="brier", times=[180, 365, 540], seed=23
@@ -576,6 +622,7 @@ The model is fit once per fold and scored on every requested metric, so you get 
 assignments and avoid redundant refitting.
 
 ```{python}
+# Multi-metric cross-validation: concordance, Brier, and AUC in one pass
 result_multi = gw.cross_validate(
     gw.CoxPH(), surv=y, covariates=["age", "sex"], data=lung, k=5,
     metrics=["concordance", "brier", "auc"],
@@ -587,10 +634,12 @@ result_multi
 The return value is a keyed dictionary. Each metric has its own `scores`, `mean`, and `std`:
 
 ```{python}
+# Mean cross-validated concordance
 result_multi["results"]["concordance"]["mean"]
 ```
 
 ```{python}
+# Mean cross-validated integrated Brier score
 result_multi["results"]["brier"]["mean"]
 ```
 
@@ -630,15 +679,19 @@ keeping the same `seed`, and compare their mean scores directly. The model with 
 concordance (or lower mean Brier score) generalizes better to unseen subjects.
 
 ```{python}
+# Rebuild the dataset and response
 lung = gw.load_dataset("lung", backend="polars")
 y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
+# Define two covariate sets: simple and full
 cols_simple = ["age", "sex"]
 cols_full = ["age", "sex", "ph.ecog"]
 
+# Cross-validate both models with the same seed for matched folds
 simple_cv = gw.cross_validate(gw.CoxPH(), surv=y, covariates=cols_simple, data=lung, seed=1)
 full_cv = gw.cross_validate(gw.CoxPH(), surv=y, covariates=cols_full, data=lung, seed=1)
 
+# Compare mean concordance and fold-to-fold variability
 print(f"Simple model  C-index: {simple_cv['mean']:.3f} ± {simple_cv['std']:.3f}")
 print(f"Full model    C-index: {full_cv['mean']:.3f} ± {full_cv['std']:.3f}")
 ```
@@ -656,15 +709,18 @@ at a horizon, then compares the mean prediction in each bin against the observed
 Kaplan-Meier estimate for that bin.
 
 ```{python}
+# Rebuild the dataset, response, and Cox fit
 lung = gw.load_dataset("lung", backend="polars")
 
 y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
 
+# Predict one-year survival for each subject
 surv_at_year = cox.predict(
     lung, type="survival", times=[365.0], format="polars"
 )
 
+# Extract predictions as a flat array and compute calibration by quintile
 predicted = surv_at_year.slice(0, 1).drop("time").to_numpy().flatten()
 
 gw.calibration(y, predicted=predicted, time=365.0, n_bins=5, format="polars")

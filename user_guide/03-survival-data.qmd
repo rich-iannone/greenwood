@@ -206,6 +206,7 @@ This covers the codings you meet in practice. The `pbc` dataset codes `status` a
 apart:
 
 ```{python}
+# Load the pbc dataset, whose status has three levels (0, 1, 2)
 pbc = gw.load_dataset("pbc", backend="polars")
 
 # All-cause: anything other than 0 is an event
@@ -220,6 +221,7 @@ Strings work the same way, which saves recoding an outcome column by hand:
 ```{python}
 import polars as pl
 
+# Build a small example with string outcomes
 study = pl.DataFrame({
     "time": [12.0, 5.5, 20.0, 8.0],
     "outcome": ["died", "withdrew", "censored", "died"],

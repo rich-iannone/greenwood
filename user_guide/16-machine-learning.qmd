@@ -31,6 +31,7 @@ lung = gw.load_dataset("lung", backend="polars").drop_nulls(
     subset=["ph.ecog", "ph.karno", "wt.loss"]
 )
 
+# Define the survival response and covariate list
 y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 covariates = ["age", "sex", "ph.ecog", "ph.karno", "wt.loss"]
 y
@@ -166,6 +167,7 @@ when censoring is heavy receive greater influence. The result is a simple linear
 assume proportional hazards.
 
 ```{python}
+# Fit an IPC-weighted ridge regression model
 ridge = gw.IPCRidge(alpha=1.0).fit(y, covariates=lung[covariates])
 ridge
 ```
@@ -178,16 +180,19 @@ Predictions are on the log-time scale by default (`type="lp"`). Pass `type="resp
 predicted survival times on the original scale.
 
 ```{python}
+# Predict survival times on the original scale for the first five subjects
 ridge.predict(lung[covariates][:5], type="response")
 ```
 
 The coefficient table is available via `tidy()`, and model-level summaries via `glance()`.
 
 ```{python}
+# Coefficient table for the ridge model
 gw.tidy(ridge)
 ```
 
 ```{python}
+# Model-level summary statistics
 gw.glance(ridge)
 ```
 
@@ -195,7 +200,10 @@ Because the linear predictor is on the log-time scale (higher means longer survi
 get a risk score compatible with `concordance_index()`.
 
 ```{python}
+# Negate the linear predictor so higher values mean higher risk
 risk = -ridge.predict(lung[covariates], type="lp")
+
+# Compute concordance for the ridge model
 gw.concordance_index(y, risk=risk)
 ```
 
@@ -290,6 +298,7 @@ Index 0 along the class axis is the survival probability (the probability that n
 by time $t$). Indices 1 through $K$ are the cause-specific CIFs.
 
 ```{python}
+# Predict CIFs at four time points; result is (n_subjects, n_classes, n_times)
 times = np.array([2.0, 5.0, 10.0, 15.0])
 cif = sb.predict_cumulative_incidence(sim.covariates, times=times)
 cif.shape
@@ -308,6 +317,7 @@ The survival function alone is available via `predict_survival_function`, which 
 of shape `(n_subjects, n_times)`.
 
 ```{python}
+# Extract the survival function alone as a 2-D array
 surv_pred = sb.predict_survival_function(sim.covariates, times=times)
 surv_pred[:3, :]  # first three subjects
 ```
@@ -327,6 +337,7 @@ Both prediction methods accept a `format=` parameter for DataFrame output. For
 `subject`, and `probability`.
 
 ```{python}
+# Long-format CIF DataFrame for three subjects at two time points
 sb.predict_cumulative_incidence(
     sim.covariates[:3], times=np.array([5.0, 10.0]), format="polars"
 ).head(6)
@@ -336,6 +347,7 @@ For `predict_survival_function`, the result is a wide-format table with one colu
 matching the format used by `GradientBoostingSurvivalAnalysis`.
 
 ```{python}
+# Wide-format survival DataFrame with one column per subject
 sb.predict_survival_function(
     sim.covariates[:3], times=np.array([5.0, 10.0]), format="polars"
 )
@@ -379,6 +391,7 @@ and accuracy in time (classification accuracy at each horizon). See
 one-row summary with the model's key parameters and counts.
 
 ```{python}
+# One-row summary of the fitted SurvivalBoost model
 gw.glance(sb)
 ```
 
@@ -420,7 +433,7 @@ than interpretability, `SurvivalBoost` is the stronger choice.
 $K + 1$ (one per cause, plus the survival class).
 
 ```{python}
-# Three competing causes
+# Simulate data with three competing causes and fit SurvivalBoost
 sim3 = gw.simulate_competing_risks(n=400, n_causes=3, n_covariates=2, seed=7)
 sb3 = gw.SurvivalBoost(n_estimators=30, learning_rate=0.1, max_depth=2, random_state=0)
 sb3.fit(sim3.surv, covariates=sim3.covariates)

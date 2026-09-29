@@ -138,6 +138,7 @@ statistic. The p-value accounts for the multiplicity by using the joint multivar
 distribution of the Z-statistics under the null hypothesis.
 
 ```{python}
+# Run the MaxCombo test with the default four-weight set
 gw.maxcombo_test(y, group="sex", data=lung)
 ```
 
@@ -146,6 +147,7 @@ The default weight set covers the four standard scenarios: `(0,0)` for proportio
 hazards. You can also supply a custom set.
 
 ```{python}
+# Custom weight set: proportional hazards and late-difference weights only
 gw.maxcombo_test(y, group="sex", weights=[(0, 0), (0, 1)], data=lung)
 ```
 
@@ -155,6 +157,7 @@ the multiplicity penalty is mild. The MaxCombo p-value is often close to the bes
 p-value rather than dramatically larger.
 
 ```{python}
+# Retrieve the per-weight Z-statistics to see which weight drove the signal
 result = gw.maxcombo_test(y, group="sex", data=lung)
 result.z_statistics
 ```
@@ -512,6 +515,7 @@ of events, so Greenwood provides Schoenfeld's calculators. To detect a given haz
 target power, the `logrank_n_events()` function returns the events required.
 
 ```{python}
+# Events needed to detect a halving of the hazard at 90% power
 gw.logrank_n_events(hazard_ratio=0.5, power=0.9, alpha=0.05)
 ```
 
@@ -519,6 +523,7 @@ Running it the other way, `logrank_power()` gives the power a planned study woul
 number of events, which is useful for checking whether an existing dataset can support a comparison.
 
 ```{python}
+# Power available from 60 events for the same hazard ratio
 gw.logrank_power(hazard_ratio=0.5, n_events=60)
 ```
 
@@ -527,6 +532,7 @@ probability that a subject has the event during the study, which you estimate fr
 survival and the planned follow-up. The `logrank_sample_size()` function does this.
 
 ```{python}
+# Total subjects needed, given that 40% will have the event during follow-up
 gw.logrank_sample_size(hazard_ratio=0.5, prob_event=0.4, power=0.9)
 ```
 

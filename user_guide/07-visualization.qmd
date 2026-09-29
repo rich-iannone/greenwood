@@ -93,6 +93,7 @@ If you have fit a `CoxPH` model, you can extract the baseline hazard with confid
 plot it to visualize the estimated survival trajectory for a reference subject:
 
 ```{python}
+# Fit a Cox model and extract the baseline hazard with 95% CI
 cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
 baseline = cox.baseline_hazard(ci=True, format="polars")
 
@@ -108,15 +109,19 @@ for the curve draws the same style of confidence band as `plot_survival()`:
 ```{python}
 import altair as alt
 
+# Shaded confidence band (area between lower and upper survival bounds)
 band = alt.Chart(baseline).mark_area(opacity=0.2).encode(
     x=alt.X("time:Q", title="Days"),
     y=alt.Y("survival_lower:Q", title="Baseline survival probability"),
     y2=alt.Y2("survival_upper:Q"),
 )
+
+# Step-function line for the point estimate
 line = alt.Chart(baseline).mark_line(interpolate="step-after").encode(
     x="time:Q", y="survival:Q",
 )
 
+# Layer the band and line into a single chart
 (band + line).properties(title="Baseline survival with 95% CI", width=640, height=360)
 ```
 
@@ -295,6 +300,7 @@ hr_df = pd.DataFrame({
     "ci_upper": [0.99, 1.18, 1.18],
 })
 
+# Plot on a log scale (appropriate for hazard ratios)
 gw.plot_forest(hr_df, scale="log", title="Hazard Ratios: Treatment vs. Reference")
 ```
 
@@ -307,6 +313,7 @@ rmst_df = pd.DataFrame({
     "ci_upper": [95, 70],
 })
 
+# Plot on a linear scale (the default for difference-type estimates)
 gw.plot_forest(rmst_df, title="RMST Differences vs. Placebo")
 ```
 
@@ -342,6 +349,8 @@ y = gw.Surv.first_event(
 
 # Fit the Aalen-Johansen estimator for the whole population (no grouping variable)
 aj = gw.AalenJohansen().fit(y)
+
+# Draw the cumulative incidence chart, one panel per competing cause
 gw.plot_cif(aj)
 ```
 
@@ -363,7 +372,7 @@ its own panel so you can see both differences side by side.
 # Stratify by sex: fit separate CIF curves for each group
 aj_sex = gw.AalenJohansen().fit(y, by="sex", data=mg)
 
-# plot_cif detects the grouping and draws one colored line per group per panel
+# Draw CIF with one colored line per sex group, faceted by cause
 gw.plot_cif(aj_sex, title="Cumulative incidence by sex")
 ```
 

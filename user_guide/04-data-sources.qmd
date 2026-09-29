@@ -131,6 +131,7 @@ show this, we fit one `Outcome` to both frames. Because the call names columns r
 backend-specific expressions, it is identical for the two.
 
 ```{python}
+# Describe the endpoint once
 death = gw.Outcome.right(time="time", event="status", event_value=2)
 
 # The same call on each backend
@@ -289,6 +290,7 @@ combines the pairs: the earliest observed event becomes the cause, ties go to th
 first, and subjects with no event are censored at their last follow-up time.
 
 ```{python}
+# Load the mgus2 competing-risks dataset
 mgus2 = gw.load_dataset("mgus2", backend="polars")
 
 # One (time, event) pair per endpoint, in priority order for ties
