@@ -72,8 +72,9 @@ def decode_input(encoded: dict[str, Any] | None) -> Any:
     | logical     | `list[bool | None]`                            |
     | character   | `list[str | None]`                             |
     | list        | `list` of the decoded elements                 |
+    | factor      | pandas `Series` with a categorical dtype       |
 
-    Factors have no Python equivalent and raise `NotImplementedError`. Callers skip those cases.
+    Greenwood treats categorical input the way etd treats R factors (spec/event_time.md).
     """
     if encoded is None:
         return None
@@ -88,7 +89,9 @@ def decode_input(encoded: dict[str, Any] | None) -> Any:
     if r_type == "list":
         return [decode_input(v) for v in values]
     if r_type == "factor":
-        raise NotImplementedError("R factors have no direct Python equivalent.")
+        import pandas as pd
+
+        return pd.Series(pd.Categorical(values, categories=encoded["levels"]))
     raise ValueError(f"Unknown R input type {r_type!r}.")
 
 
