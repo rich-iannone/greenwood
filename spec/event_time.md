@@ -34,7 +34,7 @@ outcome is a change in the contract.
 | `new_event_time(time = list(), status = character())` | `gw.new_event_time(time=(), status=())` |
 | `extract_time(x)` | `gw.extract_time(x)` |
 | `extract_status(x)` | `gw.extract_status(x)` |
-| `as_surv(x)` | `gw.as_surv(x)` |
+| `as_surv(x)` | `gw.as_surv(x)` (arrives with the Phase 2 `Surv` realignment) |
 | `as_tibble(x)` | `x.to_frame(format=None)` |
 | class `event_time` | class `EventTime` |
 | `length(x)`, `x[i]`, `print(x)`, `format(x)`, `is.na(x)` | `len(x)`, `x[i]`, `repr(x)`, `x.format()`, `x.is_na()` |
@@ -114,32 +114,38 @@ Where Python cannot match R literally, it matches the meaning:
 | 1-based locations | 0-based locations | Users index their data with the number. |
 | logical NA vs character NA | both `None` | A status of `[None]` is a missing character status in Python. |
 | atomic vector vs list (`new_event_time`) | a sequence of floats or 2-tuples | Python sequences don't make R's distinction, so `time_not_list` applies only to non-sequences. |
-| factor `status` | not applicable | Python has no factor type. Handling of categorical input is decided in Phase 1. |
+| factor `status` (rejected) | categorical `status` (pandas, Polars, Arrow dictionary) is rejected with `status_not_character` | Same meaning: categorical data isn't character data. |
+| scalar inputs | a bare number or string is a length-1 vector | R has no scalars, so `event_time(3, "e")` is the usual R spelling. |
 | `call =` argument | omitted | Python tracebacks identify the caller. |
 | `print()` with `[1]` prefixes | `repr()` with the `<event_time[n]>` header and the same tokens | `format()` itself matches exactly. |
 | pillar / tibble column display | not ported | |
 
 The conformance harness skips the cases that exercise the R-only distinctions, naming the reason.
 
-## Vector behaviour (inventory)
+## Vector behaviour
 
 `conformance/event_time/vector_ops.json` records what base R and vctrs do with an `event_time`
-vector. Phase 1 decides which of these Python mirrors. Summary of etd's behaviour at the pinned
-commit:
+vector at the pinned commit. Python mirrors the operations that have a natural Python spelling and
+leaves the rest out, rather than inventing APIs etd doesn't have:
 
-| Operation | etd behaviour |
-|---|---|
-| `length`, `is.na`, `anyNA` | work. `is.na` is true when any time component is missing |
-| `x[i]` with ranges, scalars, logical masks, negative indices | work, returning `event_time` |
-| `x[i]` past the end | error |
-| `x[[i]]` | works, returning a length-1 `event_time` |
-| `c(x, y)`, `vec_c(x, y)` | work. Combining with a double is an error |
-| `==`, `!=` | elementwise, missing when either side is missing |
-| `rev`, `rep`, `unique`, `duplicated`, `head` | work |
-| `sort`, `order` | run without error but don't order by time (see upstream issues) |
-| `as.character`, `as.double` | error |
-| `z[i] <- value` | works for `event_time` values, error for doubles |
-| `summary` | not implemented |
+| Operation | etd behaviour | Python |
+|---|---|---|
+| `length`, `is.na` | work. `is.na` is true when any time component is missing | `len(x)`, `x.is_na()` |
+| `anyNA` | works | `x.is_na().any()` |
+| `x[i]` with ranges, scalars, logical masks | work, returning `event_time` | `x[i]` with slices, integers, integer arrays, boolean masks, always returning `EventTime` |
+| `x[-i]` (drop elements) | works | not mirrored. Negative integers follow Python and count from the end |
+| `x[i]` past the end | error | `IndexError` |
+| `x[NA]` | creates a broken element (upstream issue 2) | not applicable |
+| `x[[i]]` | works, returning a length-1 `event_time` | `x[i]` with an integer |
+| `c(x, y)`, `vec_c(x, y)` | work. Combining with a double is an error | `EventTime.concat([x, y])`. Combining with anything else is a `TypeError` |
+| `==`, `!=` | elementwise, missing when either side is missing | whole-vector equality returning one `bool`, as for Python containers. `EventTime` is unhashable |
+| `rev`, `head` | work | `x[::-1]`, `x[:n]` |
+| `rep`, `unique`, `duplicated` | work | not mirrored |
+| `sort`, `order` | run but don't order by time (upstream issue 3) | not mirrored |
+| `as.character`, `as.double` | error | no conversions (`str(x)` is the `repr`) |
+| `z[i] <- value` | works for `event_time` values | not mirrored. `EventTime` is immutable, like other Greenwood responses |
+| `summary` | not implemented | not mirrored |
+| `data.frame(times = x)` | stores the vector as one column | `x.to_frame()` gives the three component columns |
 
 ## Upstream issues
 
