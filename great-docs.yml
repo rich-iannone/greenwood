@@ -52,11 +52,18 @@ authors:
 reference:
   - title: The response
     desc:
-      The Surv object, the spine of every analysis, and Outcome, a reusable description of a
-      response that is bound to data at fit time.
+      The Surv object, the spine of every analysis, event_time vectors for exact and right-,
+      left-, or interval-censored times (a port of the etd package), and Outcome, a reusable
+      description of a response that is bound to data at fit time.
     contents:
       - name: Surv
         members: true
+      - event_time
+      - new_event_time
+      - name: EventTime
+        members: true
+      - extract_time
+      - extract_status
       - name: Outcome
         members: true
       - duration
