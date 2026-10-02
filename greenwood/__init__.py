@@ -21,6 +21,13 @@ from ._core import EventTable, event_table
 from ._cox import CoxPH, SmoothHRResult, ZPHResult, ZPHWindowResult
 from ._cr_forest import CompetingRiskForest
 from ._cure import MixtureCure
+from ._event_time import (
+    EventTime,
+    event_time,
+    extract_status,
+    extract_time,
+    new_event_time,
+)
 from ._flexible import RoystonParmar
 from ._forest import ExtraSurvivalTrees, RandomSurvivalForest, SurvivalTree
 from ._ingest import Duration, duration
@@ -90,6 +97,11 @@ except PackageNotFoundError:  # pragma: no cover - source tree without metadata
 __all__ = [
     "__version__",
     "Surv",
+    "event_time",
+    "new_event_time",
+    "EventTime",
+    "extract_time",
+    "extract_status",
     "Outcome",
     "duration",
     "Duration",
