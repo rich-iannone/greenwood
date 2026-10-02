@@ -57,7 +57,6 @@ CHECKS: dict[str, type[Exception]] = {
 # Cases whose R input has no faithful Python equivalent. These are documented adaptations
 # (spec/event_time.md, "Python adaptations"), not failures.
 ADAPTATIONS: dict[str, str] = {
-    "constructor/status_factor": "R factors have no direct Python equivalent.",
     "constructor/status_logical": (
         "R distinguishes a logical NA from a character NA. In Python both are None, so a status "
         "of [None] is a missing character status, not a non-character one."
@@ -258,7 +257,7 @@ def test_format_matches_etd(case: dict[str, Any]) -> None:
     assert list(_build(case).format()) == expected["value"]
 
 
-@requires_event_time
+@requires_as_surv
 @pytest.mark.parametrize("case", _params("conversion"))
 def test_as_surv_rejects_unsupported_input(case: dict[str, Any]) -> None:
     with pytest.raises(Exception) as excinfo:
