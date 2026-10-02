@@ -1,0 +1,1618 @@
+[
+  {
+    "id": "length",
+    "r_code": "length(x)",
+    "result": {
+      "ok": true,
+      "kind": "integer",
+      "values": [5],
+      "warnings": []
+    }
+  },
+  {
+    "id": "is_na",
+    "r_code": "is.na(x)",
+    "result": {
+      "ok": true,
+      "kind": "logical",
+      "values": [
+        false,
+        false,
+        false,
+        false,
+        true
+      ],
+      "warnings": []
+    }
+  },
+  {
+    "id": "any_na",
+    "r_code": "anyNA(x)",
+    "result": {
+      "ok": true,
+      "kind": "logical",
+      "values": [
+        true
+      ],
+      "warnings": []
+    }
+  },
+  {
+    "id": "subset_range",
+    "r_code": "x[2:4]",
+    "result": {
+      "ok": true,
+      "kind": "event_time",
+      "length": 3,
+      "fields": {
+        "time": [
+          [5],
+          [3],
+          [2, 4]
+        ],
+        "status": [
+          "r",
+          "l",
+          "i"
+        ]
+      },
+      "is_na": {
+        "ok": true,
+        "value": [false, false, false],
+        "warnings": []
+      },
+      "format": {
+        "ok": true,
+        "value": [
+          "5+",
+          "3-",
+          "[2, 4]"
+        ],
+        "warnings": []
+      },
+      "print": {
+        "ok": true,
+        "value": ["<event_time[3]>", "[1] 5+     3-     [2, 4]"],
+        "warnings": []
+      },
+      "extract_time": {
+        "ok": true,
+        "value": {
+          "shape": "matrix",
+          "columns": {
+            "time": [5, 3, 2],
+            "time_max": ["NA", "NA", 4]
+          }
+        },
+        "warnings": []
+      },
+      "extract_status": {
+        "ok": true,
+        "value": [
+          "r",
+          "l",
+          "i"
+        ],
+        "warnings": []
+      },
+      "as_surv": {
+        "ok": true,
+        "value": {
+          "type": "interval",
+          "columns": {
+            "time1": [5, 3, 2],
+            "time2": [1, 1, 4],
+            "status": [0, 2, 3]
+          }
+        },
+        "warnings": []
+      },
+      "as_tibble": {
+        "ok": true,
+        "value": {
+          "time": [5, 3, 2],
+          "status": [
+            "r",
+            "l",
+            "i"
+          ],
+          "time_max": ["NA", "NA", 4]
+        },
+        "warnings": []
+      },
+      "warnings": []
+    }
+  },
+  {
+    "id": "subset_scalar",
+    "r_code": "x[2]",
+    "result": {
+      "ok": true,
+      "kind": "event_time",
+      "length": 1,
+      "fields": {
+        "time": [
+          [5]
+        ],
+        "status": [
+          "r"
+        ]
+      },
+      "is_na": {
+        "ok": true,
+        "value": [false],
+        "warnings": []
+      },
+      "format": {
+        "ok": true,
+        "value": [
+          "5+"
+        ],
+        "warnings": []
+      },
+      "print": {
+        "ok": true,
+        "value": ["<event_time[1]>", "[1] 5+"],
+        "warnings": []
+      },
+      "extract_time": {
+        "ok": true,
+        "value": {
+          "shape": "vector",
+          "values": [5]
+        },
+        "warnings": []
+      },
+      "extract_status": {
+        "ok": true,
+        "value": [
+          "r"
+        ],
+        "warnings": []
+      },
+      "as_surv": {
+        "ok": true,
+        "value": {
+          "type": "right",
+          "columns": {
+            "time": [5],
+            "status": [0]
+          }
+        },
+        "warnings": []
+      },
+      "as_tibble": {
+        "ok": true,
+        "value": {
+          "time": [5],
+          "status": [
+            "r"
+          ],
+          "time_max": ["NA"]
+        },
+        "warnings": []
+      },
+      "warnings": []
+    }
+  },
+  {
+    "id": "subset_na_row",
+    "r_code": "x[5]",
+    "result": {
+      "ok": true,
+      "kind": "event_time",
+      "length": 1,
+      "fields": {
+        "time": [
+          ["NA"]
+        ],
+        "status": [
+          null
+        ]
+      },
+      "is_na": {
+        "ok": true,
+        "value": [true],
+        "warnings": []
+      },
+      "format": {
+        "ok": true,
+        "value": [
+          null
+        ],
+        "warnings": []
+      },
+      "print": {
+        "ok": true,
+        "value": ["<event_time[1]>", "[1] <NA>"],
+        "warnings": []
+      },
+      "extract_time": {
+        "ok": true,
+        "value": {
+          "shape": "vector",
+          "values": ["NA"]
+        },
+        "warnings": []
+      },
+      "extract_status": {
+        "ok": true,
+        "value": [
+          null
+        ],
+        "warnings": []
+      },
+      "as_surv": {
+        "ok": true,
+        "value": {
+          "type": "right",
+          "columns": {
+            "time": ["NA"],
+            "status": ["NA"]
+          }
+        },
+        "warnings": ["no non-missing arguments to max; returning -Inf"]
+      },
+      "as_tibble": {
+        "ok": true,
+        "value": {
+          "time": ["NA"],
+          "status": [
+            null
+          ],
+          "time_max": ["NA"]
+        },
+        "warnings": []
+      },
+      "warnings": []
+    }
+  },
+  {
+    "id": "subset_logical",
+    "r_code": "x[c(TRUE, FALSE, TRUE, FALSE, TRUE)]",
+    "result": {
+      "ok": true,
+      "kind": "event_time",
+      "length": 3,
+      "fields": {
+        "time": [
+          [7],
+          [3],
+          ["NA"]
+        ],
+        "status": [
+          "e",
+          "l",
+          null
+        ]
+      },
+      "is_na": {
+        "ok": true,
+        "value": [false, false, true],
+        "warnings": []
+      },
+      "format": {
+        "ok": true,
+        "value": [
+          "7 ",
+          "3-",
+          null
+        ],
+        "warnings": []
+      },
+      "print": {
+        "ok": true,
+        "value": ["<event_time[3]>", "[1] 7    3-   <NA>"],
+        "warnings": []
+      },
+      "extract_time": {
+        "ok": true,
+        "value": {
+          "shape": "vector",
+          "values": [7, 3, "NA"]
+        },
+        "warnings": []
+      },
+      "extract_status": {
+        "ok": true,
+        "value": [
+          "e",
+          "l",
+          null
+        ],
+        "warnings": []
+      },
+      "as_surv": {
+        "ok": true,
+        "value": {
+          "type": "left",
+          "columns": {
+            "time": [7, 3, "NA"],
+            "status": [1, 0, "NA"]
+          }
+        },
+        "warnings": []
+      },
+      "as_tibble": {
+        "ok": true,
+        "value": {
+          "time": [7, 3, "NA"],
+          "status": [
+            "e",
+            "l",
+            null
+          ],
+          "time_max": ["NA", "NA", "NA"]
+        },
+        "warnings": []
+      },
+      "warnings": []
+    }
+  },
+  {
+    "id": "subset_negative",
+    "r_code": "x[-1]",
+    "result": {
+      "ok": true,
+      "kind": "event_time",
+      "length": 4,
+      "fields": {
+        "time": [
+          [5],
+          [3],
+          [2, 4],
+          ["NA"]
+        ],
+        "status": [
+          "r",
+          "l",
+          "i",
+          null
+        ]
+      },
+      "is_na": {
+        "ok": true,
+        "value": [false, false, false, true],
+        "warnings": []
+      },
+      "format": {
+        "ok": true,
+        "value": [
+          "5+",
+          "3-",
+          "[2, 4]",
+          null
+        ],
+        "warnings": []
+      },
+      "print": {
+        "ok": true,
+        "value": ["<event_time[4]>", "[1] 5+     3-     [2, 4] <NA>  "],
+        "warnings": []
+      },
+      "extract_time": {
+        "ok": true,
+        "value": {
+          "shape": "matrix",
+          "columns": {
+            "time": [5, 3, 2, "NA"],
+            "time_max": ["NA", "NA", 4, "NA"]
+          }
+        },
+        "warnings": []
+      },
+      "extract_status": {
+        "ok": true,
+        "value": [
+          "r",
+          "l",
+          "i",
+          null
+        ],
+        "warnings": []
+      },
+      "as_surv": {
+        "ok": true,
+        "value": {
+          "type": "interval",
+          "columns": {
+            "time1": [5, 3, 2, "NA"],
+            "time2": [1, 1, 4, 1],
+            "status": [0, 2, 3, "NA"]
+          }
+        },
+        "warnings": []
+      },
+      "as_tibble": {
+        "ok": true,
+        "value": {
+          "time": [5, 3, 2, "NA"],
+          "status": [
+            "r",
+            "l",
+            "i",
+            null
+          ],
+          "time_max": ["NA", "NA", 4, "NA"]
+        },
+        "warnings": []
+      },
+      "warnings": []
+    }
+  },
+  {
+    "id": "subset_empty",
+    "r_code": "x[integer()]",
+    "result": {
+      "ok": true,
+      "kind": "event_time",
+      "length": 0,
+      "fields": {
+        "time": [],
+        "status": []
+      },
+      "is_na": {
+        "ok": true,
+        "value": [],
+        "warnings": []
+      },
+      "format": {
+        "ok": false,
+        "message": "group length is 0 but data length > 0",
+        "warnings": []
+      },
+      "print": {
+        "ok": true,
+        "value": ["<event_time[0]>"],
+        "warnings": []
+      },
+      "extract_time": {
+        "ok": true,
+        "value": {
+          "shape": "vector",
+          "values": []
+        },
+        "warnings": []
+      },
+      "extract_status": {
+        "ok": true,
+        "value": [],
+        "warnings": []
+      },
+      "as_surv": {
+        "ok": true,
+        "value": {
+          "type": "right",
+          "columns": {
+            "time": [],
+            "status": []
+          }
+        },
+        "warnings": []
+      },
+      "as_tibble": {
+        "ok": true,
+        "value": {
+          "time": [],
+          "status": [],
+          "time_max": []
+        },
+        "warnings": []
+      },
+      "warnings": []
+    }
+  },
+  {
+    "id": "subset_out_of_bounds",
+    "r_code": "x[10]",
+    "result": {
+      "ok": false,
+      "message": "Can't subset elements past the end.\ni Location 10 doesn't exist.\ni There are only 5 elements.",
+      "warnings": []
+    }
+  },
+  {
+    "id": "subset_na_index",
+    "r_code": "x[NA_integer_]",
+    "result": {
+      "ok": true,
+      "kind": "event_time",
+      "length": 1,
+      "fields": {
+        "time": [
+          null
+        ],
+        "status": [
+          null
+        ]
+      },
+      "is_na": {
+        "ok": true,
+        "value": [false],
+        "warnings": []
+      },
+      "format": {
+        "ok": false,
+        "message": "group length is 0 but data length > 0",
+        "warnings": []
+      },
+      "print": {
+        "ok": false,
+        "message": "group length is 0 but data length > 0",
+        "warnings": []
+      },
+      "extract_time": {
+        "ok": false,
+        "message": "values must be length 1,\n but FUN(X[[1]]) result is length 0",
+        "warnings": []
+      },
+      "extract_status": {
+        "ok": true,
+        "value": [
+          null
+        ],
+        "warnings": []
+      },
+      "as_surv": {
+        "ok": false,
+        "message": "values must be length 1,\n but FUN(X[[1]]) result is length 0",
+        "warnings": []
+      },
+      "as_tibble": {
+        "ok": false,
+        "message": "values must be length 1,\n but FUN(X[[1]]) result is length 0",
+        "warnings": []
+      },
+      "warnings": []
+    }
+  },
+  {
+    "id": "subset_double_bracket",
+    "r_code": "x[[2]]",
+    "result": {
+      "ok": true,
+      "kind": "event_time",
+      "length": 1,
+      "fields": {
+        "time": [
+          [5]
+        ],
+        "status": [
+          "r"
+        ]
+      },
+      "is_na": {
+        "ok": true,
+        "value": [false],
+        "warnings": []
+      },
+      "format": {
+        "ok": true,
+        "value": [
+          "5+"
+        ],
+        "warnings": []
+      },
+      "print": {
+        "ok": true,
+        "value": ["<event_time[1]>", "[1] 5+"],
+        "warnings": []
+      },
+      "extract_time": {
+        "ok": true,
+        "value": {
+          "shape": "vector",
+          "values": [5]
+        },
+        "warnings": []
+      },
+      "extract_status": {
+        "ok": true,
+        "value": [
+          "r"
+        ],
+        "warnings": []
+      },
+      "as_surv": {
+        "ok": true,
+        "value": {
+          "type": "right",
+          "columns": {
+            "time": [5],
+            "status": [0]
+          }
+        },
+        "warnings": []
+      },
+      "as_tibble": {
+        "ok": true,
+        "value": {
+          "time": [5],
+          "status": [
+            "r"
+          ],
+          "time_max": ["NA"]
+        },
+        "warnings": []
+      },
+      "warnings": []
+    }
+  },
+  {
+    "id": "combine",
+    "r_code": "c(x, y)",
+    "result": {
+      "ok": true,
+      "kind": "event_time",
+      "length": 7,
+      "fields": {
+        "time": [
+          [7],
+          [5],
+          [3],
+          [2, 4],
+          ["NA"],
+          [1],
+          [9, 12]
+        ],
+        "status": [
+          "e",
+          "r",
+          "l",
+          "i",
+          null,
+          "r",
+          "i"
+        ]
+      },
+      "is_na": {
+        "ok": true,
+        "value": [false, false, false, false, true, false, false],
+        "warnings": []
+      },
+      "format": {
+        "ok": true,
+        "value": [
+          "7 ",
+          "5+",
+          "3-",
+          "[2, 4]",
+          null,
+          "1+",
+          "[9, 12]"
+        ],
+        "warnings": []
+      },
+      "print": {
+        "ok": true,
+        "value": ["<event_time[7]>", "[1] 7       5+      3-      [2, 4]  <NA>    1+      [9, 12]"],
+        "warnings": []
+      },
+      "extract_time": {
+        "ok": true,
+        "value": {
+          "shape": "matrix",
+          "columns": {
+            "time": [7, 5, 3, 2, "NA", 1, 9],
+            "time_max": ["NA", "NA", "NA", 4, "NA", "NA", 12]
+          }
+        },
+        "warnings": []
+      },
+      "extract_status": {
+        "ok": true,
+        "value": [
+          "e",
+          "r",
+          "l",
+          "i",
+          null,
+          "r",
+          "i"
+        ],
+        "warnings": []
+      },
+      "as_surv": {
+        "ok": true,
+        "value": {
+          "type": "interval",
+          "columns": {
+            "time1": [7, 5, 3, 2, "NA", 1, 9],
+            "time2": [1, 1, 1, 4, 1, 1, 12],
+            "status": [1, 0, 2, 3, "NA", 0, 3]
+          }
+        },
+        "warnings": []
+      },
+      "as_tibble": {
+        "ok": true,
+        "value": {
+          "time": [7, 5, 3, 2, "NA", 1, 9],
+          "status": [
+            "e",
+            "r",
+            "l",
+            "i",
+            null,
+            "r",
+            "i"
+          ],
+          "time_max": ["NA", "NA", "NA", 4, "NA", "NA", 12]
+        },
+        "warnings": []
+      },
+      "warnings": []
+    }
+  },
+  {
+    "id": "combine_empty",
+    "r_code": "c(x[0], y)",
+    "result": {
+      "ok": true,
+      "kind": "event_time",
+      "length": 2,
+      "fields": {
+        "time": [
+          [1],
+          [9, 12]
+        ],
+        "status": [
+          "r",
+          "i"
+        ]
+      },
+      "is_na": {
+        "ok": true,
+        "value": [false, false],
+        "warnings": []
+      },
+      "format": {
+        "ok": true,
+        "value": [
+          "1+",
+          "[9, 12]"
+        ],
+        "warnings": []
+      },
+      "print": {
+        "ok": true,
+        "value": ["<event_time[2]>", "[1] 1+      [9, 12]"],
+        "warnings": []
+      },
+      "extract_time": {
+        "ok": true,
+        "value": {
+          "shape": "matrix",
+          "columns": {
+            "time": [1, 9],
+            "time_max": ["NA", 12]
+          }
+        },
+        "warnings": []
+      },
+      "extract_status": {
+        "ok": true,
+        "value": [
+          "r",
+          "i"
+        ],
+        "warnings": []
+      },
+      "as_surv": {
+        "ok": true,
+        "value": {
+          "type": "interval",
+          "columns": {
+            "time1": [1, 9],
+            "time2": [1, 12],
+            "status": [0, 3]
+          }
+        },
+        "warnings": []
+      },
+      "as_tibble": {
+        "ok": true,
+        "value": {
+          "time": [1, 9],
+          "status": [
+            "r",
+            "i"
+          ],
+          "time_max": ["NA", 12]
+        },
+        "warnings": []
+      },
+      "warnings": []
+    }
+  },
+  {
+    "id": "combine_double",
+    "r_code": "c(x, 1)",
+    "result": {
+      "ok": false,
+      "message": "Can't combine `..1` <event_time> and `..2` <double>.",
+      "warnings": []
+    }
+  },
+  {
+    "id": "combine_vec_c",
+    "r_code": "vctrs::vec_c(y, x)",
+    "result": {
+      "ok": true,
+      "kind": "event_time",
+      "length": 7,
+      "fields": {
+        "time": [
+          [1],
+          [9, 12],
+          [7],
+          [5],
+          [3],
+          [2, 4],
+          ["NA"]
+        ],
+        "status": [
+          "r",
+          "i",
+          "e",
+          "r",
+          "l",
+          "i",
+          null
+        ]
+      },
+      "is_na": {
+        "ok": true,
+        "value": [false, false, false, false, false, false, true],
+        "warnings": []
+      },
+      "format": {
+        "ok": true,
+        "value": [
+          "1+",
+          "[9, 12]",
+          "7 ",
+          "5+",
+          "3-",
+          "[2, 4]",
+          null
+        ],
+        "warnings": []
+      },
+      "print": {
+        "ok": true,
+        "value": ["<event_time[7]>", "[1] 1+      [9, 12] 7       5+      3-      [2, 4]  <NA>   "],
+        "warnings": []
+      },
+      "extract_time": {
+        "ok": true,
+        "value": {
+          "shape": "matrix",
+          "columns": {
+            "time": [1, 9, 7, 5, 3, 2, "NA"],
+            "time_max": ["NA", 12, "NA", "NA", "NA", 4, "NA"]
+          }
+        },
+        "warnings": []
+      },
+      "extract_status": {
+        "ok": true,
+        "value": [
+          "r",
+          "i",
+          "e",
+          "r",
+          "l",
+          "i",
+          null
+        ],
+        "warnings": []
+      },
+      "as_surv": {
+        "ok": true,
+        "value": {
+          "type": "interval",
+          "columns": {
+            "time1": [1, 9, 7, 5, 3, 2, "NA"],
+            "time2": [1, 12, 1, 1, 1, 4, 1],
+            "status": [0, 3, 1, 0, 2, 3, "NA"]
+          }
+        },
+        "warnings": []
+      },
+      "as_tibble": {
+        "ok": true,
+        "value": {
+          "time": [1, 9, 7, 5, 3, 2, "NA"],
+          "status": [
+            "r",
+            "i",
+            "e",
+            "r",
+            "l",
+            "i",
+            null
+          ],
+          "time_max": ["NA", 12, "NA", "NA", "NA", 4, "NA"]
+        },
+        "warnings": []
+      },
+      "warnings": []
+    }
+  },
+  {
+    "id": "equal_self",
+    "r_code": "x == x",
+    "result": {
+      "ok": true,
+      "kind": "logical",
+      "values": [
+        true,
+        true,
+        true,
+        true,
+        null
+      ],
+      "warnings": []
+    }
+  },
+  {
+    "id": "equal_scalar",
+    "r_code": "x == x[1]",
+    "result": {
+      "ok": true,
+      "kind": "logical",
+      "values": [
+        true,
+        false,
+        false,
+        false,
+        false
+      ],
+      "warnings": []
+    }
+  },
+  {
+    "id": "not_equal_other",
+    "r_code": "x[1:2] != y",
+    "result": {
+      "ok": true,
+      "kind": "logical",
+      "values": [
+        true,
+        true
+      ],
+      "warnings": []
+    }
+  },
+  {
+    "id": "identical",
+    "r_code": "identical(x, x[seq_along(x)])",
+    "result": {
+      "ok": true,
+      "kind": "logical",
+      "values": [
+        true
+      ],
+      "warnings": []
+    }
+  },
+  {
+    "id": "rev",
+    "r_code": "rev(x)",
+    "result": {
+      "ok": true,
+      "kind": "event_time",
+      "length": 5,
+      "fields": {
+        "time": [
+          ["NA"],
+          [2, 4],
+          [3],
+          [5],
+          [7]
+        ],
+        "status": [
+          null,
+          "i",
+          "l",
+          "r",
+          "e"
+        ]
+      },
+      "is_na": {
+        "ok": true,
+        "value": [true, false, false, false, false],
+        "warnings": []
+      },
+      "format": {
+        "ok": true,
+        "value": [
+          null,
+          "[2, 4]",
+          "3-",
+          "5+",
+          "7 "
+        ],
+        "warnings": []
+      },
+      "print": {
+        "ok": true,
+        "value": ["<event_time[5]>", "[1] <NA>   [2, 4] 3-     5+     7     "],
+        "warnings": []
+      },
+      "extract_time": {
+        "ok": true,
+        "value": {
+          "shape": "matrix",
+          "columns": {
+            "time": ["NA", 2, 3, 5, 7],
+            "time_max": ["NA", 4, "NA", "NA", "NA"]
+          }
+        },
+        "warnings": []
+      },
+      "extract_status": {
+        "ok": true,
+        "value": [
+          null,
+          "i",
+          "l",
+          "r",
+          "e"
+        ],
+        "warnings": []
+      },
+      "as_surv": {
+        "ok": true,
+        "value": {
+          "type": "interval",
+          "columns": {
+            "time1": ["NA", 2, 3, 5, 7],
+            "time2": [1, 4, 1, 1, 1],
+            "status": ["NA", 3, 2, 0, 1]
+          }
+        },
+        "warnings": []
+      },
+      "as_tibble": {
+        "ok": true,
+        "value": {
+          "time": ["NA", 2, 3, 5, 7],
+          "status": [
+            null,
+            "i",
+            "l",
+            "r",
+            "e"
+          ],
+          "time_max": ["NA", 4, "NA", "NA", "NA"]
+        },
+        "warnings": []
+      },
+      "warnings": []
+    }
+  },
+  {
+    "id": "rep",
+    "r_code": "rep(y, 2)",
+    "result": {
+      "ok": true,
+      "kind": "event_time",
+      "length": 4,
+      "fields": {
+        "time": [
+          [1],
+          [9, 12],
+          [1],
+          [9, 12]
+        ],
+        "status": [
+          "r",
+          "i",
+          "r",
+          "i"
+        ]
+      },
+      "is_na": {
+        "ok": true,
+        "value": [false, false, false, false],
+        "warnings": []
+      },
+      "format": {
+        "ok": true,
+        "value": [
+          "1+",
+          "[9, 12]",
+          "1+",
+          "[9, 12]"
+        ],
+        "warnings": []
+      },
+      "print": {
+        "ok": true,
+        "value": ["<event_time[4]>", "[1] 1+      [9, 12] 1+      [9, 12]"],
+        "warnings": []
+      },
+      "extract_time": {
+        "ok": true,
+        "value": {
+          "shape": "matrix",
+          "columns": {
+            "time": [1, 9, 1, 9],
+            "time_max": ["NA", 12, "NA", 12]
+          }
+        },
+        "warnings": []
+      },
+      "extract_status": {
+        "ok": true,
+        "value": [
+          "r",
+          "i",
+          "r",
+          "i"
+        ],
+        "warnings": []
+      },
+      "as_surv": {
+        "ok": true,
+        "value": {
+          "type": "interval",
+          "columns": {
+            "time1": [1, 9, 1, 9],
+            "time2": [1, 12, 1, 12],
+            "status": [0, 3, 0, 3]
+          }
+        },
+        "warnings": []
+      },
+      "as_tibble": {
+        "ok": true,
+        "value": {
+          "time": [1, 9, 1, 9],
+          "status": [
+            "r",
+            "i",
+            "r",
+            "i"
+          ],
+          "time_max": ["NA", 12, "NA", 12]
+        },
+        "warnings": []
+      },
+      "warnings": []
+    }
+  },
+  {
+    "id": "unique",
+    "r_code": "unique(c(x, x))",
+    "result": {
+      "ok": true,
+      "kind": "event_time",
+      "length": 5,
+      "fields": {
+        "time": [
+          [7],
+          [5],
+          [3],
+          [2, 4],
+          ["NA"]
+        ],
+        "status": [
+          "e",
+          "r",
+          "l",
+          "i",
+          null
+        ]
+      },
+      "is_na": {
+        "ok": true,
+        "value": [false, false, false, false, true],
+        "warnings": []
+      },
+      "format": {
+        "ok": true,
+        "value": [
+          "7 ",
+          "5+",
+          "3-",
+          "[2, 4]",
+          null
+        ],
+        "warnings": []
+      },
+      "print": {
+        "ok": true,
+        "value": ["<event_time[5]>", "[1] 7      5+     3-     [2, 4] <NA>  "],
+        "warnings": []
+      },
+      "extract_time": {
+        "ok": true,
+        "value": {
+          "shape": "matrix",
+          "columns": {
+            "time": [7, 5, 3, 2, "NA"],
+            "time_max": ["NA", "NA", "NA", 4, "NA"]
+          }
+        },
+        "warnings": []
+      },
+      "extract_status": {
+        "ok": true,
+        "value": [
+          "e",
+          "r",
+          "l",
+          "i",
+          null
+        ],
+        "warnings": []
+      },
+      "as_surv": {
+        "ok": true,
+        "value": {
+          "type": "interval",
+          "columns": {
+            "time1": [7, 5, 3, 2, "NA"],
+            "time2": [1, 1, 1, 4, 1],
+            "status": [1, 0, 2, 3, "NA"]
+          }
+        },
+        "warnings": []
+      },
+      "as_tibble": {
+        "ok": true,
+        "value": {
+          "time": [7, 5, 3, 2, "NA"],
+          "status": [
+            "e",
+            "r",
+            "l",
+            "i",
+            null
+          ],
+          "time_max": ["NA", "NA", "NA", 4, "NA"]
+        },
+        "warnings": []
+      },
+      "warnings": []
+    }
+  },
+  {
+    "id": "duplicated",
+    "r_code": "duplicated(c(y, y))",
+    "result": {
+      "ok": true,
+      "kind": "logical",
+      "values": [
+        false,
+        false,
+        true,
+        true
+      ],
+      "warnings": []
+    }
+  },
+  {
+    "id": "sort",
+    "r_code": "sort(x[1:4])",
+    "result": {
+      "ok": true,
+      "kind": "event_time",
+      "length": 4,
+      "fields": {
+        "time": [
+          [7],
+          [5],
+          [3],
+          [2, 4]
+        ],
+        "status": [
+          "e",
+          "r",
+          "l",
+          "i"
+        ]
+      },
+      "is_na": {
+        "ok": true,
+        "value": [false, false, false, false],
+        "warnings": []
+      },
+      "format": {
+        "ok": true,
+        "value": [
+          "7 ",
+          "5+",
+          "3-",
+          "[2, 4]"
+        ],
+        "warnings": []
+      },
+      "print": {
+        "ok": true,
+        "value": ["<event_time[4]>", "[1] 7      5+     3-     [2, 4]"],
+        "warnings": []
+      },
+      "extract_time": {
+        "ok": true,
+        "value": {
+          "shape": "matrix",
+          "columns": {
+            "time": [7, 5, 3, 2],
+            "time_max": ["NA", "NA", "NA", 4]
+          }
+        },
+        "warnings": []
+      },
+      "extract_status": {
+        "ok": true,
+        "value": [
+          "e",
+          "r",
+          "l",
+          "i"
+        ],
+        "warnings": []
+      },
+      "as_surv": {
+        "ok": true,
+        "value": {
+          "type": "interval",
+          "columns": {
+            "time1": [7, 5, 3, 2],
+            "time2": [1, 1, 1, 4],
+            "status": [1, 0, 2, 3]
+          }
+        },
+        "warnings": []
+      },
+      "as_tibble": {
+        "ok": true,
+        "value": {
+          "time": [7, 5, 3, 2],
+          "status": [
+            "e",
+            "r",
+            "l",
+            "i"
+          ],
+          "time_max": ["NA", "NA", "NA", 4]
+        },
+        "warnings": []
+      },
+      "warnings": []
+    }
+  },
+  {
+    "id": "order",
+    "r_code": "order(x[1:4])",
+    "result": {
+      "ok": true,
+      "kind": "integer",
+      "values": [1, 2, 3, 4],
+      "warnings": []
+    }
+  },
+  {
+    "id": "as_character",
+    "r_code": "as.character(x)",
+    "result": {
+      "ok": false,
+      "message": "Can't convert `x` <event_time> to <character>.",
+      "warnings": []
+    }
+  },
+  {
+    "id": "as_double",
+    "r_code": "as.double(x)",
+    "result": {
+      "ok": false,
+      "message": "Can't convert `x` <event_time> to <double>.",
+      "warnings": []
+    }
+  },
+  {
+    "id": "assign_element",
+    "r_code": "{ z <- x; z[1] <- y[2]; z }",
+    "result": {
+      "ok": true,
+      "kind": "event_time",
+      "length": 5,
+      "fields": {
+        "time": [
+          [9, 12],
+          [5],
+          [3],
+          [2, 4],
+          ["NA"]
+        ],
+        "status": [
+          "i",
+          "r",
+          "l",
+          "i",
+          null
+        ]
+      },
+      "is_na": {
+        "ok": true,
+        "value": [false, false, false, false, true],
+        "warnings": []
+      },
+      "format": {
+        "ok": true,
+        "value": [
+          "[9, 12]",
+          "5+",
+          "3-",
+          "[2, 4]",
+          null
+        ],
+        "warnings": []
+      },
+      "print": {
+        "ok": true,
+        "value": ["<event_time[5]>", "[1] [9, 12] 5+      3-      [2, 4]  <NA>   "],
+        "warnings": []
+      },
+      "extract_time": {
+        "ok": true,
+        "value": {
+          "shape": "matrix",
+          "columns": {
+            "time": [9, 5, 3, 2, "NA"],
+            "time_max": [12, "NA", "NA", 4, "NA"]
+          }
+        },
+        "warnings": []
+      },
+      "extract_status": {
+        "ok": true,
+        "value": [
+          "i",
+          "r",
+          "l",
+          "i",
+          null
+        ],
+        "warnings": []
+      },
+      "as_surv": {
+        "ok": true,
+        "value": {
+          "type": "interval",
+          "columns": {
+            "time1": [9, 5, 3, 2, "NA"],
+            "time2": [12, 1, 1, 4, 1],
+            "status": [3, 0, 2, 3, "NA"]
+          }
+        },
+        "warnings": []
+      },
+      "as_tibble": {
+        "ok": true,
+        "value": {
+          "time": [9, 5, 3, 2, "NA"],
+          "status": [
+            "i",
+            "r",
+            "l",
+            "i",
+            null
+          ],
+          "time_max": [12, "NA", "NA", 4, "NA"]
+        },
+        "warnings": []
+      },
+      "warnings": []
+    }
+  },
+  {
+    "id": "assign_double",
+    "r_code": "{ z <- x; z[1] <- 3; z }",
+    "result": {
+      "ok": false,
+      "message": "Can't convert `value` <double> to <event_time>.",
+      "warnings": []
+    }
+  },
+  {
+    "id": "in_data_frame",
+    "r_code": "data.frame(times = x)",
+    "result": {
+      "ok": true,
+      "kind": "data.frame",
+      "print": ["   times", "1     7 ", "2     5+", "3     3-", "4 [2, 4]", "5   <NA>"],
+      "warnings": []
+    }
+  },
+  {
+    "id": "head",
+    "r_code": "head(x, 2)",
+    "result": {
+      "ok": true,
+      "kind": "event_time",
+      "length": 2,
+      "fields": {
+        "time": [
+          [7],
+          [5]
+        ],
+        "status": [
+          "e",
+          "r"
+        ]
+      },
+      "is_na": {
+        "ok": true,
+        "value": [false, false],
+        "warnings": []
+      },
+      "format": {
+        "ok": true,
+        "value": [
+          "7 ",
+          "5+"
+        ],
+        "warnings": []
+      },
+      "print": {
+        "ok": true,
+        "value": ["<event_time[2]>", "[1] 7  5+"],
+        "warnings": []
+      },
+      "extract_time": {
+        "ok": true,
+        "value": {
+          "shape": "vector",
+          "values": [7, 5]
+        },
+        "warnings": []
+      },
+      "extract_status": {
+        "ok": true,
+        "value": [
+          "e",
+          "r"
+        ],
+        "warnings": []
+      },
+      "as_surv": {
+        "ok": true,
+        "value": {
+          "type": "right",
+          "columns": {
+            "time": [7, 5],
+            "status": [1, 0]
+          }
+        },
+        "warnings": []
+      },
+      "as_tibble": {
+        "ok": true,
+        "value": {
+          "time": [7, 5],
+          "status": [
+            "e",
+            "r"
+          ],
+          "time_max": ["NA", "NA"]
+        },
+        "warnings": []
+      },
+      "warnings": []
+    }
+  },
+  {
+    "id": "summary",
+    "r_code": "summary(x)",
+    "result": {
+      "ok": false,
+      "message": "`summary.event_time()` not implemented.",
+      "warnings": []
+    }
+  }
+]

@@ -1,0 +1,430 @@
+[
+  {
+    "id": "doc_example",
+    "description": "The new_event_time() documentation example.",
+    "input": {
+      "time": {
+        "r_type": "list",
+        "values": [
+          {
+            "r_type": "double",
+            "values": [7]
+          },
+          {
+            "r_type": "double",
+            "values": [2, 4]
+          }
+        ]
+      },
+      "status": {
+        "r_type": "character",
+        "values": [
+          "e",
+          "i"
+        ]
+      }
+    },
+    "result": {
+      "ok": true,
+      "length": 2,
+      "fields": {
+        "time": [
+          [7],
+          [2, 4]
+        ],
+        "status": [
+          "e",
+          "i"
+        ]
+      },
+      "is_na": {
+        "ok": true,
+        "value": [false, false],
+        "warnings": []
+      },
+      "format": {
+        "ok": true,
+        "value": [
+          "7 ",
+          "[2, 4]"
+        ],
+        "warnings": []
+      },
+      "print": {
+        "ok": true,
+        "value": ["<event_time[2]>", "[1] 7      [2, 4]"],
+        "warnings": []
+      },
+      "extract_time": {
+        "ok": true,
+        "value": {
+          "shape": "matrix",
+          "columns": {
+            "time": [7, 2],
+            "time_max": ["NA", 4]
+          }
+        },
+        "warnings": []
+      },
+      "extract_status": {
+        "ok": true,
+        "value": [
+          "e",
+          "i"
+        ],
+        "warnings": []
+      },
+      "as_surv": {
+        "ok": true,
+        "value": {
+          "type": "interval",
+          "columns": {
+            "time1": [7, 2],
+            "time2": [1, 4],
+            "status": [1, 3]
+          }
+        },
+        "warnings": []
+      },
+      "as_tibble": {
+        "ok": true,
+        "value": {
+          "time": [7, 2],
+          "status": [
+            "e",
+            "i"
+          ],
+          "time_max": ["NA", 4]
+        },
+        "warnings": []
+      }
+    }
+  },
+  {
+    "id": "empty",
+    "description": "The zero-length default.",
+    "input": {
+      "time": {
+        "r_type": "list",
+        "values": []
+      },
+      "status": {
+        "r_type": "character",
+        "values": []
+      }
+    },
+    "result": {
+      "ok": true,
+      "length": 0,
+      "fields": {
+        "time": [],
+        "status": []
+      },
+      "is_na": {
+        "ok": true,
+        "value": [],
+        "warnings": []
+      },
+      "format": {
+        "ok": false,
+        "message": "group length is 0 but data length > 0",
+        "warnings": []
+      },
+      "print": {
+        "ok": true,
+        "value": ["<event_time[0]>"],
+        "warnings": []
+      },
+      "extract_time": {
+        "ok": true,
+        "value": {
+          "shape": "vector",
+          "values": []
+        },
+        "warnings": []
+      },
+      "extract_status": {
+        "ok": true,
+        "value": [],
+        "warnings": []
+      },
+      "as_surv": {
+        "ok": true,
+        "value": {
+          "type": "right",
+          "columns": {
+            "time": [],
+            "status": []
+          }
+        },
+        "warnings": []
+      },
+      "as_tibble": {
+        "ok": true,
+        "value": {
+          "time": [],
+          "status": [],
+          "time_max": []
+        },
+        "warnings": []
+      }
+    }
+  },
+  {
+    "id": "unsorted_interval",
+    "description": "No validation: an interval stored in reverse order is accepted as given.",
+    "input": {
+      "time": {
+        "r_type": "list",
+        "values": [
+          {
+            "r_type": "double",
+            "values": [4, 2]
+          }
+        ]
+      },
+      "status": {
+        "r_type": "character",
+        "values": [
+          "i"
+        ]
+      }
+    },
+    "result": {
+      "ok": true,
+      "length": 1,
+      "fields": {
+        "time": [
+          [4, 2]
+        ],
+        "status": [
+          "i"
+        ]
+      },
+      "is_na": {
+        "ok": true,
+        "value": [false],
+        "warnings": []
+      },
+      "format": {
+        "ok": true,
+        "value": [
+          "[4, 2]"
+        ],
+        "warnings": []
+      },
+      "print": {
+        "ok": true,
+        "value": ["<event_time[1]>", "[1] [4, 2]"],
+        "warnings": []
+      },
+      "extract_time": {
+        "ok": true,
+        "value": {
+          "shape": "matrix",
+          "columns": {
+            "time": [4],
+            "time_max": [2]
+          }
+        },
+        "warnings": []
+      },
+      "extract_status": {
+        "ok": true,
+        "value": [
+          "i"
+        ],
+        "warnings": []
+      },
+      "as_surv": {
+        "ok": true,
+        "value": {
+          "type": "interval",
+          "columns": {
+            "time1": [4],
+            "time2": [1],
+            "status": ["NA"]
+          }
+        },
+        "warnings": ["Invalid interval: start > stop, NA created"]
+      },
+      "as_tibble": {
+        "ok": true,
+        "value": {
+          "time": [4],
+          "status": [
+            "i"
+          ],
+          "time_max": [2]
+        },
+        "warnings": []
+      }
+    }
+  },
+  {
+    "id": "unknown_status",
+    "description": "No validation: an unknown status code is accepted as given.",
+    "input": {
+      "time": {
+        "r_type": "list",
+        "values": [
+          {
+            "r_type": "double",
+            "values": [1]
+          }
+        ]
+      },
+      "status": {
+        "r_type": "character",
+        "values": [
+          "x"
+        ]
+      }
+    },
+    "result": {
+      "ok": true,
+      "length": 1,
+      "fields": {
+        "time": [
+          [1]
+        ],
+        "status": [
+          "x"
+        ]
+      },
+      "is_na": {
+        "ok": true,
+        "value": [false],
+        "warnings": []
+      },
+      "format": {
+        "ok": true,
+        "value": [
+          "1NA"
+        ],
+        "warnings": []
+      },
+      "print": {
+        "ok": true,
+        "value": ["<event_time[1]>", "[1] 1NA"],
+        "warnings": []
+      },
+      "extract_time": {
+        "ok": true,
+        "value": {
+          "shape": "vector",
+          "values": [1]
+        },
+        "warnings": []
+      },
+      "extract_status": {
+        "ok": true,
+        "value": [
+          "x"
+        ],
+        "warnings": []
+      },
+      "as_surv": {
+        "ok": true,
+        "value": {
+          "type": "interval",
+          "columns": {
+            "time1": [1],
+            "time2": [1],
+            "status": ["NA"]
+          }
+        },
+        "warnings": []
+      },
+      "as_tibble": {
+        "ok": true,
+        "value": {
+          "time": [1],
+          "status": [
+            "x"
+          ],
+          "time_max": ["NA"]
+        },
+        "warnings": []
+      }
+    }
+  },
+  {
+    "id": "time_not_list",
+    "description": "time must be a list.",
+    "input": {
+      "time": {
+        "r_type": "double",
+        "values": [1]
+      },
+      "status": {
+        "r_type": "character",
+        "values": [
+          "e"
+        ]
+      }
+    },
+    "result": {
+      "ok": false,
+      "check": "time_not_list",
+      "locations": null,
+      "message": "`time` must be a list, not a number."
+    }
+  },
+  {
+    "id": "status_not_character",
+    "description": "status must be character.",
+    "input": {
+      "time": {
+        "r_type": "list",
+        "values": [
+          {
+            "r_type": "double",
+            "values": [1]
+          }
+        ]
+      },
+      "status": {
+        "r_type": "double",
+        "values": [1]
+      }
+    },
+    "result": {
+      "ok": false,
+      "check": "status_not_character",
+      "locations": null,
+      "message": "`status` must be a character vector, not a number."
+    }
+  },
+  {
+    "id": "fields_size",
+    "description": "time and status of different lengths.",
+    "input": {
+      "time": {
+        "r_type": "list",
+        "values": [
+          {
+            "r_type": "double",
+            "values": [1]
+          },
+          {
+            "r_type": "double",
+            "values": [2]
+          }
+        ]
+      },
+      "status": {
+        "r_type": "character",
+        "values": [
+          "e"
+        ]
+      }
+    },
+    "result": {
+      "ok": false,
+      "check": "fields_size",
+      "locations": null,
+      "message": "All fields must be the same size."
+    }
+  }
+]

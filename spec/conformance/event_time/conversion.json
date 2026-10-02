@@ -1,0 +1,36 @@
+[
+  {
+    "id": "as_surv_numeric",
+    "description": "as_surv() on a plain number has no method.",
+    "input": {
+      "x": {
+        "r_type": "double",
+        "values": [1]
+      }
+    },
+    "result": {
+      "ok": false,
+      "check": "as_surv_unsupported",
+      "locations": null,
+      "message": "Can't convert a number to a <Surv> object."
+    }
+  },
+  {
+    "id": "as_surv_character",
+    "description": "as_surv() on a character vector has no method.",
+    "input": {
+      "x": {
+        "r_type": "character",
+        "values": [
+          "e"
+        ]
+      }
+    },
+    "result": {
+      "ok": false,
+      "check": "as_surv_unsupported",
+      "locations": null,
+      "message": "Can't convert a string to a <Surv> object."
+    }
+  }
+]

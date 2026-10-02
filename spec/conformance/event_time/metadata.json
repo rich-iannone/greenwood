@@ -1,0 +1,10 @@
+{
+  "etd_sha": "3d5caff4f03d771a6b65b9605c9b0e48a912482f",
+  "etd_version": "0.0.0.9000",
+  "vctrs_version": "0.7.1",
+  "survival_version": "3.5.3",
+  "r_version": "R version 4.2.3 (2023-03-15)",
+  "digits_option": 7,
+  "locations": "1-based, as reported by etd",
+  "generated_by": "scripts/generate_event_time_conformance.R"
+}
