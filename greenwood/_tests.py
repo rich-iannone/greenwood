@@ -81,12 +81,11 @@ class TestResult:
     ```{python}
     import greenwood as gw
 
-    # Load data and build a right-censored response
+    # Load the data
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
     # Run a log-rank test comparing survival by sex
-    result = gw.logrank_test(y, group="sex", data=lung)
+    result = gw.logrank_test("Surv(time, status) ~ sex", data=lung)
     result
     ```
 
@@ -168,9 +167,8 @@ class MaxComboResult:
     import greenwood as gw
 
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
-    mc = gw.maxcombo_test(y, by="sex", data=lung)
+    mc = gw.maxcombo_test("Surv(time, status) ~ sex", data=lung)
     mc
     ```
 
@@ -312,6 +310,7 @@ def logrank_test(
     group: Any = None,
     *,
     data: Any = None,
+    weights: Any = None,
     rho: float = 0.0,
     gamma: float = 0.0,
     strata: Any = None,
@@ -339,8 +338,8 @@ def logrank_test(
     surv
         A `Surv` response object representing censored survival times. Supports right-censored
         data (standard time-to-event) or counting-process format (interval-based data with
-        entry/exit times). Constructed with `Surv.right()`, `Surv.counting()`, or
-        `Surv.multistate()`.
+        entry/exit times). Constructed with `gw.Surv()`, for example
+        `gw.Surv(time=..., event=...)` or `gw.Surv(time=..., time2=..., event=...)`.
         An `Outcome` or a formula string such as `'Surv(time, status == 2) ~ sex'` is also accepted,
         with its columns read from `data`. The right-hand side names the `group` column(s) and
         `strata(x)` terms set `strata`.
@@ -368,6 +367,9 @@ def logrank_test(
         by the response, `group`, and `strata`. When `surv` is an `Outcome` or a formula, rows with
         a missing value in any column used are dropped first, along with the matching rows of any
         arrays passed alongside.
+    weights
+        Case weights, one per row (a column name in `data`, or an array). Must be finite
+        and strictly positive. Default is `None` (all weights `1`).
 
     Returns
     -------
@@ -399,12 +401,11 @@ def logrank_test(
     ```{python}
     import greenwood as gw
 
-    # Load data and build a right-censored response
+    # Load the data
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
     # Test whether survival differs between the two sex groups
-    result = gw.logrank_test(y, group="sex", data=lung)
+    result = gw.logrank_test("Surv(time, status) ~ sex", data=lung)
     result
     ```
 
@@ -426,19 +427,21 @@ def logrank_test(
 
     ```{python}
     # Use Peto-Peto weighting to emphasize early event times
-    gw.logrank_test(y, group="sex", rho=1, gamma=0, data=lung)
+    gw.logrank_test("Surv(time, status) ~ sex", rho=1, gamma=0, data=lung)
     ```
 
-    Run a stratified test to control for institution (if available in data):
+    Run a stratified test to control for institution. A `strata()` term on the right-hand side
+    sets `strata`:
 
     ```{python}
-    # gw.logrank_test(y, group=lung["sex"], strata=lung["institution"])
+    # Compare the sexes within each institution
+    gw.logrank_test("Surv(time, status) ~ sex + strata(inst)", data=lung)
     ```
     """
     bound = bind_fit_inputs(
         surv,
         data=data,
-        labels={"group": group, "strata": strata},
+        labels={"weights": weights, "group": group, "strata": strata},
         rhs_to="group",
         required=("group",),
         estimator="logrank_test()",
@@ -447,7 +450,8 @@ def logrank_test(
     group = bound.labels["group"]
     strata = bound.labels["strata"]
 
-    from ._surv import CensoringType, _to_1d_array
+    from ._ingest import to_1d_array as _to_1d_array
+    from ._surv import CensoringType
 
     if surv.type not in (CensoringType.RIGHT, CensoringType.COUNTING):
         raise NotImplementedError(
@@ -467,7 +471,7 @@ def logrank_test(
     entry = surv.entry
     exit_ = surv.stop
     event = surv.event
-    weight = surv.weights if surv.weights is not None else np.ones(surv.n)
+    weight = bound.labels["weights"] if bound.labels["weights"] is not None else np.ones(surv.n)
 
     groups = sorted(set(labels_all.tolist()), key=lambda v: (str(type(v)), v))
     if len(groups) < 2:
@@ -608,6 +612,7 @@ def maxcombo_test(
     group: Any = None,
     *,
     data: Any = None,
+    case_weights: Any = None,
     weights: list[tuple[float, float]] | None = None,
     strata: Any = None,
 ) -> MaxComboResult:
@@ -647,6 +652,9 @@ def maxcombo_test(
         by the response, `group`, and `strata`. When `surv` is an `Outcome` or a formula, rows with
         a missing value in any column used are dropped first, along with the matching rows of any
         arrays passed alongside.
+    case_weights
+        Case weights, one per row (a column name in `data`, or an array). Must be finite
+        and strictly positive. Default is `None` (all weights `1`).
 
     Returns
     -------
@@ -688,9 +696,8 @@ def maxcombo_test(
     import greenwood as gw
 
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
-    result = gw.maxcombo_test(y, group="sex", data=lung)
+    result = gw.maxcombo_test("Surv(time, status) ~ sex", data=lung)
     result
     ```
 
@@ -703,13 +710,13 @@ def maxcombo_test(
     Use a custom weight set focusing on standard and delayed effects:
 
     ```{python}
-    gw.maxcombo_test(y, group="sex", weights=[(0, 0), (0, 1)], data=lung)
+    gw.maxcombo_test("Surv(time, status) ~ sex", weights=[(0, 0), (0, 1)], data=lung)
     ```
     """
     bound = bind_fit_inputs(
         surv,
         data=data,
-        labels={"group": group, "strata": strata},
+        labels={"weights": case_weights, "group": group, "strata": strata},
         rhs_to="group",
         required=("group",),
         estimator="maxcombo_test()",
@@ -718,7 +725,8 @@ def maxcombo_test(
     group = bound.labels["group"]
     strata = bound.labels["strata"]
 
-    from ._surv import CensoringType, _to_1d_array
+    from ._ingest import to_1d_array as _to_1d_array
+    from ._surv import CensoringType
 
     if surv.type not in (CensoringType.RIGHT, CensoringType.COUNTING):
         raise NotImplementedError(
@@ -739,7 +747,7 @@ def maxcombo_test(
     entry = surv.entry
     exit_ = surv.stop
     event = surv.event
-    obs_weight = surv.weights if surv.weights is not None else np.ones(surv.n)
+    obs_weight = bound.labels["weights"] if bound.labels["weights"] is not None else np.ones(surv.n)
 
     groups = sorted(set(labels_all.tolist()), key=lambda v: (str(type(v)), v))
     if len(groups) != 2:
@@ -806,6 +814,7 @@ def pairwise_logrank_test(
     group: Any = None,
     *,
     data: Any = None,
+    weights: Any = None,
     rho: float = 0.0,
     gamma: float = 0.0,
     strata: Any = None,
@@ -831,8 +840,8 @@ def pairwise_logrank_test(
     ----------
     surv
         A `Surv` response object representing censored survival times. Supports right-censored
-        data or counting-process format. Constructed with `Surv.right()`, `Surv.counting()`,
-        or `Surv.multistate()`.
+        data or counting-process format. Constructed with `gw.Surv()`, for example
+        `gw.Surv(time=..., event=...)` or `gw.Surv(time=..., time2=..., event=...)`.
         An `Outcome` or a formula string such as `'Surv(time, status == 2) ~ sex'` is also accepted,
         with its columns read from `data`. The right-hand side names the `group` column(s) and
         `strata(x)` terms set `strata`.
@@ -866,6 +875,9 @@ def pairwise_logrank_test(
         by the response, `group`, and `strata`. When `surv` is an `Outcome` or a formula, rows with
         a missing value in any column used are dropped first, along with the matching rows of any
         arrays passed alongside.
+    weights
+        Case weights, one per row (a column name in `data`, or an array). Must be finite
+        and strictly positive. Default is `None` (all weights `1`).
 
     Returns
     -------
@@ -898,12 +910,11 @@ def pairwise_logrank_test(
     ```{python}
     import greenwood as gw
 
-    # Load data and build a right-censored response
+    # Load the data
     vet = gw.load_dataset("veteran", backend="polars")
-    y = gw.Surv.right(time=vet["time"], event=vet["status"])
 
     # Run a global log-rank test across all cell types
-    gw.logrank_test(y, group="celltype", data=vet)
+    gw.logrank_test("Surv(time, status) ~ celltype", data=vet)
     ```
 
     The pairwise test compares all six pairs of cell types and returns a table with the
@@ -912,7 +923,7 @@ def pairwise_logrank_test(
 
     ```{python}
     # Compare all pairs of cell types with Holm-adjusted p-values
-    pairs = gw.pairwise_logrank_test(y, group="celltype", format="polars", data=vet)
+    pairs = gw.pairwise_logrank_test("Surv(time, status) ~ celltype", data=vet, format="polars")
     pairs
     ```
 
@@ -921,7 +932,7 @@ def pairwise_logrank_test(
 
     ```{python}
     # Filter to pairs with statistically significant differences
-    pairs = gw.pairwise_logrank_test(y, group="celltype", format="pandas", data=vet)
+    pairs = gw.pairwise_logrank_test("Surv(time, status) ~ celltype", data=vet, format="pandas")
     pairs[pairs["p_adjusted"] < 0.05]
     ```
 
@@ -929,7 +940,7 @@ def pairwise_logrank_test(
 
     ```{python}
     # Use Peto-Peto weighting to emphasize early event times
-    gw.pairwise_logrank_test(y, group="celltype", rho=1, format="polars", data=vet)
+    gw.pairwise_logrank_test("Surv(time, status) ~ celltype", rho=1, data=vet, format="polars")
     ```
 
     Use Benjamini-Hochberg adjustment (less conservative) if you're interested in which pairs
@@ -937,13 +948,15 @@ def pairwise_logrank_test(
 
     ```{python}
     # Use Benjamini-Hochberg correction for false-discovery rate control
-    gw.pairwise_logrank_test(y, group="celltype", correction="bh", format="polars", data=vet)
+    gw.pairwise_logrank_test(
+        "Surv(time, status) ~ celltype", correction="bh", data=vet, format="polars"
+    )
     ```
     """
     bound = bind_fit_inputs(
         surv,
         data=data,
-        labels={"group": group, "strata": strata},
+        labels={"weights": weights, "group": group, "strata": strata},
         rhs_to="group",
         required=("group",),
         estimator="pairwise_logrank_test()",
@@ -952,7 +965,8 @@ def pairwise_logrank_test(
     group = bound.labels["group"]
     strata = bound.labels["strata"]
 
-    from ._surv import CensoringType, _to_1d_array
+    from ._ingest import to_1d_array as _to_1d_array
+    from ._surv import CensoringType
 
     if surv.type not in (CensoringType.RIGHT, CensoringType.COUNTING):
         raise NotImplementedError(
@@ -969,7 +983,7 @@ def pairwise_logrank_test(
             raise ValueError("`strata` must have the same length as the response.")
 
     entry, exit_, event = surv.entry, surv.stop, surv.event
-    weight = surv.weights if surv.weights is not None else np.ones(surv.n)
+    weight = bound.labels["weights"] if bound.labels["weights"] is not None else np.ones(surv.n)
     groups = sorted(set(labels_all.tolist()), key=lambda v: (str(type(v)), v))
     if len(groups) < 2:
         raise ValueError("pairwise_logrank_test needs at least two groups.")
@@ -1004,6 +1018,7 @@ def trend_test(
     group: Any = None,
     *,
     data: Any = None,
+    weights: Any = None,
     scores: Array | None = None,
     rho: float = 0.0,
     gamma: float = 0.0,
@@ -1060,6 +1075,9 @@ def trend_test(
         by the response, `group`, and `strata`. When `surv` is an `Outcome` or a formula, rows with
         a missing value in any column used are dropped first, along with the matching rows of any
         arrays passed alongside.
+    weights
+        Case weights, one per row (a column name in `data`, or an array). Must be finite
+        and strictly positive. Default is `None` (all weights `1`).
 
     Returns
     -------
@@ -1091,15 +1109,12 @@ def trend_test(
 
     ```{python}
     import greenwood as gw
-    import polars as pl
 
-    # Load data and build a right-censored response
+    # Load the data (rows with a missing ECOG grade are dropped when the test runs)
     lung = gw.load_dataset("lung", backend="polars")
-    lung = lung.filter(pl.col("ph.ecog").is_not_null())
-    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
     # Default: ECOG grades are sorted and assigned scores 0,1,2,3
-    result = gw.trend_test(y, group="ph.ecog", data=lung)
+    result = gw.trend_test("Surv(time, status) ~ ph.ecog", data=lung)
     result
     ```
 
@@ -1108,34 +1123,34 @@ def trend_test(
     ```{python}
     # Quadratic scores emphasize the steep decline from ECOG 2 to ECOG 3
     scores = {0: 0, 1: 1, 2: 4, 3: 9}
-    gw.trend_test(y, group="ph.ecog", scores=scores, data=lung)
+    gw.trend_test("Surv(time, status) ~ ph.ecog", scores=scores, data=lung)
     ```
 
     Use Peto-Peto weighting to emphasize early differences:
 
     ```{python}
     # Peto-Peto: rho=1 gives more weight to early event times
-    gw.trend_test(y, group="ph.ecog", rho=1, gamma=0, data=lung)
+    gw.trend_test("Surv(time, status) ~ ph.ecog", rho=1, gamma=0, data=lung)
     ```
 
     Use Tarone-Ware weighting to emphasize late differences (gamma=1):
 
     ```{python}
     # Tarone-Ware: gamma=1 gives more weight to late event times
-    gw.trend_test(y, group="ph.ecog", rho=0, gamma=1, data=lung)
+    gw.trend_test("Surv(time, status) ~ ph.ecog", rho=0, gamma=1, data=lung)
     ```
 
     Stratified by sex to control for a confounder:
 
     ```{python}
     # Stratify by sex to adjust for a known confounder
-    gw.trend_test(y, group="ph.ecog", strata="sex", data=lung)
+    gw.trend_test("Surv(time, status) ~ ph.ecog + strata(sex)", data=lung)
     ```
     """
     bound = bind_fit_inputs(
         surv,
         data=data,
-        labels={"group": group, "strata": strata},
+        labels={"weights": weights, "group": group, "strata": strata},
         rhs_to="group",
         required=("group",),
         estimator="trend_test()",
@@ -1144,7 +1159,8 @@ def trend_test(
     group = bound.labels["group"]
     strata = bound.labels["strata"]
 
-    from ._surv import CensoringType, _to_1d_array
+    from ._ingest import to_1d_array as _to_1d_array
+    from ._surv import CensoringType
 
     if surv.type not in (CensoringType.RIGHT, CensoringType.COUNTING):
         raise NotImplementedError(
@@ -1165,7 +1181,7 @@ def trend_test(
     entry = surv.entry
     exit_ = surv.stop
     event = surv.event
-    weight = surv.weights if surv.weights is not None else np.ones(surv.n)
+    weight = bound.labels["weights"] if bound.labels["weights"] is not None else np.ones(surv.n)
 
     groups = sorted(set(labels_all.tolist()), key=lambda v: (str(type(v)), v))
     if len(groups) < 2:
