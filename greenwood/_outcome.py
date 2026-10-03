@@ -486,54 +486,87 @@ class Outcome:
     ) -> Outcome:
         """Describe a `Surv()` response by column names and expressions.
 
-        The arguments are those of `Surv()` (and of R's `survival::Surv()`), written as they
-        would be inside a formula. When the `Outcome` is bound to data, each one is evaluated and
-        the results are passed to `Surv()`, so R's type inference and status rules apply: `1`/`2`
-        status passes through, `type=` selects left or interval data, and a factor gives a
-        multi-state response.
+        The arguments are those of `Surv()` (and of R's `survival::Surv()`), each written as it
+        would be inside a formula: a column name, or an expression such as `"status == 2"`. Nothing
+        is read yet. When the `Outcome` is bound to data, at fit time or with
+        `~~greenwood.Outcome.bind()`, each argument is evaluated on the data's own backend and the
+        results are passed to `Surv()`. R's rules then apply unchanged:
+
+        - `1`/`2` status coding passes through, and other codings are written as a comparison.
+        - A second argument without `event=` is read as the status, so
+          `Outcome.surv(time="t", time2="d")` means the same as `Outcome.surv(time="t", event="d")`.
+        - `type=` selects left-censored or interval data. Without it, the type is inferred:
+          right-censored from a time and a status, counting-process from a start and a stop time,
+          and multi-state from a `factor()` status.
+
+        This is the same description that the formula response `"Surv(time, status == 2)"` gives,
+        and the two compare equal.
 
         Parameters
         ----------
         time
-            The time column (or start time for counting data, or lower bound for interval data),
-            or `duration(...)` for a time computed from two date columns.
+            The time column: the follow-up time for right-censored data, the start time for
+            counting-process data, or the lower bound for interval data. Can also be
+            `duration(...)` (or a `gw.duration()` object) for a time computed from two date columns.
         time2
-            The stop time for counting data, or the upper bound for interval data. As in R, a
-            second argument without `event=` is the status.
+            The stop time for counting-process data, or the upper bound for interval data. Without
+            `event=`, a second argument is the status, as in R.
         event
-            The status: a column, a comparison such as `"status == 2"`, or
-            `"factor(cause, c(0, 1, 2), c('censor', 'pcm', 'death'))"` for a multi-state response.
+            The status: a column name, a comparison such as `"status == 2"` or
+            `"status %in% c(1, 2)"`, or `"factor(cause, c(0, 1, 2), c('censor', 'pcm', 'death'))"`
+            for a multi-state response whose first label means censored.
         type
             As in `Surv()`: `"right"`, `"left"`, `"interval"`, `"counting"`, `"interval2"`, or
-            `"mstate"`. The default infers it from the arguments.
+            `"mstate"`. The default (`None`) infers the type from the arguments when the data is
+            bound.
         origin
-            Subtracted from every time, as in `Surv()`.
+            A time subtracted from every time when the data is bound, as in `Surv()`.
 
         Returns
         -------
         Outcome
             A data-free description of the response.
 
+        Raises
+        ------
+        TypeError
+            If an argument is not a string or a `gw.duration()` object. To build a response from
+            values instead of column names, use `Surv()`.
+        ValueError
+            If `type=` is not one of the types above, an expression uses an unsupported operator,
+            or the status is a `duration()`.
+
         Examples
         --------
+        We'll use the bundled `pbc` dataset, from a Mayo Clinic trial in primary biliary
+        cholangitis. `time` is days of follow-up and status is `0` (censored), `1` (transplant), or
+        `2` (died). Death is the event, so the status is a comparison:
+
         ```{python}
         import greenwood as gw
 
-        # pbc's status is 0 (censored), 1 (transplant), or 2 (died)
-        gw.Outcome.surv(time="time", event="status == 2")
+        death = gw.Outcome.surv(time="time", event="status == 2")
+        death
         ```
 
-        A counting-process response and a multi-state one:
+        Pass it to an estimator together with the data. Rows with a missing value in any column
+        used are dropped first:
 
         ```{python}
-        gw.Outcome.surv(time="tstart", time2="tstop", event="status == 2")
+        pbc = gw.load_dataset("pbc")
+
+        gw.KaplanMeier().fit(death, by="trt", data=pbc)
         ```
 
+        A `factor()` status gives a multi-state response, here with transplant and death as
+        competing events:
+
         ```{python}
-        gw.Outcome.surv(
+        competing = gw.Outcome.surv(
             time="time",
             event="factor(status, c(0, 1, 2), c('censor', 'transplant', 'death'))",
         )
+        competing.bind(pbc)
         ```
         """
         if type is not None and type not in _SURV_TYPES:
@@ -555,30 +588,58 @@ class Outcome:
     ) -> Outcome:
         """Describe an `event_time()` response by column names.
 
-        When bound to data, the columns are passed to `event_time()`, so its validation applies:
-        status codes are `"e"` (exact), `"r"` (right-censored), `"l"` (left-censored), or `"i"`
-        (interval-censored, with the upper bound in `time_max`).
+        `event_time()` writes each observation as a time and a one-letter status: `"e"` (exact
+        event), `"r"` (right-censored), `"l"` (left-censored), or `"i"` (interval-censored, with the
+        upper bound in a second time column). This constructor names the columns that hold those
+        values. When the `Outcome` is bound to data, the columns are passed to `event_time()`, so
+        its validation applies, and the result is converted to a `Surv` with `as_surv()`.
+
+        This is the same description that the formula response `"event_time(time, status)"` gives.
 
         Parameters
         ----------
         time
-            The time column (the lower bound for interval-censored rows), or `duration(...)`.
+            The time column (the lower bound for interval-censored rows), or `duration(...)` for a
+            time computed from two date columns.
         status
-            The column of status codes.
+            The column of status codes: `"e"`, `"r"`, `"l"`, or `"i"`.
         time_max
-            The column of interval upper bounds, missing for other rows.
+            The column of interval upper bounds, missing for rows that are not interval-censored.
+            Needed only when some rows are interval-censored.
 
         Returns
         -------
         Outcome
             A data-free description of the response.
 
+        Raises
+        ------
+        TypeError
+            If an argument is not a string or a `gw.duration()` object.
+
         Examples
         --------
+        A small study where the event time is known for some subjects and only bracketed for
+        others:
+
         ```{python}
         import greenwood as gw
+        import polars as pl
 
-        gw.Outcome.event_time(time="time", status="code", time_max="upper")
+        visits = pl.DataFrame({
+            "time": [7.0, 5.0, 3.0, 2.0],
+            "code": ["e", "r", "l", "i"],
+            "upper": [None, None, None, 4.0],
+        })
+
+        observed = gw.Outcome.event_time(time="time", status="code", time_max="upper")
+        observed.bind(visits)
+        ```
+
+        Interval-censored responses fit with `Turnbull`:
+
+        ```{python}
+        gw.Turnbull().fit(observed, data=visits)
         ```
         """
         arguments = [
@@ -599,31 +660,59 @@ class Outcome:
     ) -> Outcome:
         """Describe a `first_event()` competing-risks response by column names.
 
-        Each endpoint is a `(time, event)` pair of a time column and an event column or
-        comparison (such as `"pstat == 1"`), in priority order for ties. When bound to data, the
-        pairs are evaluated and passed to `first_event()`.
+        Some datasets record each endpoint in its own pair of columns: a time and whether the
+        endpoint was observed. A competing-risks analysis needs one time and one cause per subject:
+        the first endpoint observed, or censoring if none was. This constructor names the column
+        pairs. When the `Outcome` is bound to data, the pairs are evaluated and passed to
+        `first_event()`, which keeps the earliest observed event for each row.
 
         Parameters
         ----------
         endpoints
-            A mapping of state name to `(time, event)`.
+            A mapping of state name to a `(time, event)` pair, in priority order: when two
+            endpoints happen at the same time, the one listed first wins. The time is a column
+            name (or `duration(...)`), and the event is a column or a comparison such as
+            `"pstat == 1"`.
         censor_at
-            The column at which rows with no observed event are censored. The default is the
-            latest endpoint time.
+            The column holding the time at which rows with no observed event are censored. The
+            default is the latest of the endpoint times.
         start
-            The column of entry times, for late entry.
+            The column of entry times, for late entry. Gives a multi-state counting-process
+            response.
 
         Returns
         -------
         Outcome
             A data-free description of the response.
 
+        Raises
+        ------
+        TypeError
+            If a time or event is not a string or a `gw.duration()` object.
+        ValueError
+            If `endpoints` is empty, or an endpoint is not a `(time, event)` pair.
+
         Examples
         --------
+        We'll use the bundled `mgus2` dataset, which follows patients with monoclonal gammopathy.
+        `ptime` and `pstat` record progression to plasma-cell malignancy (PCM), and `futime` and
+        `death` record death:
+
         ```{python}
         import greenwood as gw
 
-        gw.Outcome.first_event(endpoints={"pcm": ("ptime", "pstat"), "death": ("futime", "death")})
+        cr = gw.Outcome.first_event(
+            endpoints={"pcm": ("ptime", "pstat"), "death": ("futime", "death")}
+        )
+        cr
+        ```
+
+        Fit the cumulative incidence of each cause:
+
+        ```{python}
+        mgus2 = gw.load_dataset("mgus2")
+
+        gw.AalenJohansen().fit(cr, data=mgus2)
         ```
         """
         if not endpoints:
@@ -646,13 +735,18 @@ class Outcome:
 
     @classmethod
     def from_formula(cls, formula: str) -> Outcome:
-        """Parse a formula response such as `"Surv(time, status == 2)"`.
+        """Parse a formula response such as `"Surv(time, status == 2)"` into an `Outcome`.
 
-        The response is a call to `Surv()` or `event_time()`, with the arguments R's functions
-        take: `Surv(time, time2, event, type=, origin=)` and `event_time(time, status, time_max)`.
-        Arguments are column names and the expressions listed under `Outcome`. Column names that
-        aren't valid Python identifiers are quoted with backticks, and dotted R names such as
-        `ph.ecog` work without quoting.
+        The response is a call to `Surv()` or `event_time()`, with the arguments R's functions take:
+        `Surv(time, time2, event, type=, origin=)` and `event_time(time, status, time_max)`.
+        Arguments bind by position or by name, as in R. Each one is a column name or one of the
+        expressions listed under `Outcome`. Column names that aren't valid Python identifiers are
+        quoted with backticks, and dotted R names such as `ph.ecog` work without quoting.
+
+        The formula is parsed, not evaluated: only column names, literal values, comparisons, and
+        the functions `duration()`, `factor()`, and `c()` are accepted. Estimators parse full
+        formulas the same way, so `fit("Surv(time, status == 2) ~ age", data=df)` uses exactly this
+        response.
 
         Parameters
         ----------
@@ -663,7 +757,17 @@ class Outcome:
         Returns
         -------
         Outcome
-            A data-free description of the response.
+            A data-free description of the response, equal to the one built with
+            `~~greenwood.Outcome.surv()` or `~~greenwood.Outcome.event_time()` from the same
+            arguments.
+
+        Raises
+        ------
+        ValueError
+            If the formula can't be parsed, the response is not a call to `Surv()` or
+            `event_time()`, it has an unknown or repeated argument (such as the removed
+            `event_value=`), it has a right-hand side other than `1`, or an expression is not
+            supported.
 
         Examples
         --------
@@ -671,6 +775,14 @@ class Outcome:
         import greenwood as gw
 
         gw.Outcome.from_formula(formula="Surv(time, status == 2)")
+        ```
+
+        It equals the `Outcome` built from the same arguments:
+
+        ```{python}
+        gw.Outcome.from_formula(formula="Surv(time, status == 2)") == gw.Outcome.surv(
+            time="time", event="status == 2"
+        )
         ```
 
         R's other forms work too:
@@ -876,31 +988,65 @@ class Outcome:
     # -- binding --------------------------------------------------------------------------------
 
     def bind(self, data: Any) -> Surv:
-        """Build the `Surv` response for the columns of `data`.
+        """Build the `Surv` response from the columns of `data`.
 
-        Each argument is evaluated against `data` and the results go through `Surv()`,
-        `event_time()` (then `as_surv()`), or `first_event()`. Missing values are kept, as they are
-        by `Surv()`. To drop incomplete rows together with the covariates, pass the `Outcome` to an
-        estimator's fit method with `data=` instead.
+        Each argument is evaluated against `data` on its own backend, and the results go through
+        `Surv()`, through `event_time()` and then `as_surv()`, or through `first_event()`, depending
+        on `~~greenwood.Outcome.kind`. `bind()` is what an estimator does internally when it is
+        given an `Outcome` and `data=`, apart from one difference. `bind()` keeps rows with missing
+        values, as `Surv()` does, while fitting first drops rows with a missing value in any column
+        the model uses, so the response and the covariates stay aligned.
+
+        Use `bind()` to inspect the response a description produces, or to pass the `Surv` to a
+        function that takes values rather than an `Outcome`.
 
         Parameters
         ----------
         data
             A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) or a mapping of
-            column names to values.
+            column names to values. Only the columns the `Outcome` names are read.
 
         Returns
         -------
         Surv
-            The response for this frame.
+            The response for this data.
+
+        Raises
+        ------
+        KeyError
+            If a column named by the `Outcome` is not in `data`. The message suggests the closest
+            column name.
+        TypeError
+            If `data` is not a data frame or a mapping, or `Surv()` or `event_time()` rejects the
+            values (for example, a text status column used without a comparison).
+        ValueError
+            If `Surv()`, `event_time()`, or `first_event()` rejects the values.
+
+        Warns
+        -----
+        UserWarning
+            When `Surv()` turns invalid values into missing ones, such as a status code R doesn't
+            accept. The affected rows are missing in the result.
 
         Examples
         --------
+        We'll use the bundled `lung` dataset, where status is `1` (censored) or `2` (died). R's
+        `1`/`2` coding passes through:
+
         ```{python}
         import greenwood as gw
 
         lung = gw.load_dataset("lung")
-        gw.Outcome.surv(time="time", event="status").bind(lung)
+        death = gw.Outcome.surv(time="time", event="status")
+
+        y = death.bind(lung)
+        y
+        ```
+
+        The bound response is an ordinary `Surv`, with R's columns:
+
+        ```{python}
+        y.to_frame(format="polars").head(3)
         ```
         """
         get = _column_getter(data, list(self.column_names))
