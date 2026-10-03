@@ -22,8 +22,8 @@ The counting-process form of the Cox model handles time-varying covariates natur
 of one row per subject you create one row per *interval*: each row records when the subject
 entered the risk set (`tstart`), when they exited (`tstop`), the event indicator for that
 interval, and the covariate values that were constant during it. The `split_episodes()`
-function builds this dataset from the raw repeated-measurement data, and `Outcome.counting()`
-describes the response over it.
+function builds this dataset from the raw repeated-measurement data, and the formula response
+`Surv(tstart, tstop, status)` describes it, just as in R.
 
 ## The data
 
@@ -92,20 +92,22 @@ long[long["id"] == 1][["id", "tstart", "tstop", "status", "bili", "albumin", "pr
 ```
 
 A few intervals have missing lab values, and `status` uses the `pbc` coding (`2` is death). Neither
-needs a manual cleaning step. We describe the response once with an `Outcome`, and when the model is
-fit, every row with a missing value in a column it uses is dropped. The printout reports how many.
+needs a manual cleaning step. The comparison `status == 2` in the formula marks deaths, and when the
+model is fit, every row with a missing value in a column it uses is dropped. The printout reports how
+many.
 
 ## Fitting the TVC Cox model
 
-The counting-process `Outcome` names `tstart` and `tstop` alongside the event column. Pass it to
-`CoxPH` with the covariate columns and the frame, exactly as with a right-censored model.
+The counting-process response names `tstart` and `tstop` before the event, as R's
+`Surv(start, stop, event)` does. Pass the formula to `CoxPH` with the frame, exactly as with a
+right-censored model.
 
 ```{python}
-# Describe the counting-process response: a status of 2 marks a death at the end of an interval
-tvc = gw.Outcome.counting(start="tstart", stop="tstop", event="status", event_value=2)
-
-# Fit from the long frame, and rows with missing lab values are dropped at fit time
-cox_tvc = gw.CoxPH().fit(tvc, covariates=["bili", "albumin", "protime"], data=long)
+# A status of 2 marks a death at the end of an interval, and rows with missing lab values are
+# dropped at fit time
+cox_tvc = gw.CoxPH().fit(
+    "Surv(tstart, tstop, status == 2) ~ bili + albumin + protime", data=long
+)
 cox_tvc
 ```
 
@@ -116,8 +118,7 @@ For comparison, fit the same model using only the baseline lab values from `pbc`
 pbc = gw.load_dataset("pbc", backend="pandas")
 
 # The same death endpoint, now with one row per subject
-death = gw.Outcome.right(time="time", event="status", event_value=2)
-cox_static = gw.CoxPH().fit(death, covariates=["bili", "albumin", "protime"], data=pbc)
+cox_static = gw.CoxPH().fit("Surv(time, status == 2) ~ bili + albumin + protime", data=pbc)
 cox_static
 ```
 
@@ -239,8 +240,7 @@ are identical. The divergence begins exactly where the trajectory changes.
 |---|---|
 | Load repeated-measurement data | `gw.load_dataset("pbcseq")` |
 | Build counting-process dataset | `gw.split_episodes(baseline=, visits=, id=, time=, event=, visit_time=, covariates=[...])` |
-| Describe the response | `gw.Outcome.counting(start="tstart", stop="tstop", event="status", event_value=2)` |
-| Fit the TVC Cox model | `gw.CoxPH().fit(tvc, covariates=["bili", ...], data=long)` |
+| Fit the TVC Cox model | `gw.CoxPH().fit("Surv(tstart, tstop, status == 2) ~ bili + ...", data=long)` |
 | Predict along a trajectory | `cox.predict(trajectory=path, times=...)` |
 
 Time-varying covariates require more data preparation than a static model, but the tradeoff
