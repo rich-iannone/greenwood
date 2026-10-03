@@ -164,18 +164,18 @@ def plot_weibull(
     import greenwood as gw
 
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+    death = gw.Outcome.surv(time="time", event="status")
 
     # Stratified KM where parallel lines suggest PH holds
-    km = gw.KaplanMeier().fit(y, by="sex", data=lung)
+    km = gw.KaplanMeier().fit(death, by="sex", data=lung)
     gw.plot_weibull(km)
     ```
 
     Overlay a fitted Weibull AFT on an unstratified KM:
 
     ```{python}
-    km_overall = gw.KaplanMeier().fit(y)
-    aft = gw.AFT(dist="weibull").fit(y, covariates=["age", "sex"], data=lung)
+    km_overall = gw.KaplanMeier().fit(death, data=lung)
+    aft = gw.AFT(dist="weibull").fit("Surv(time, status) ~ age + sex", data=lung)
     gw.plot_weibull(km_overall, aft=aft)
     ```
     """
