@@ -215,9 +215,8 @@ class PiecewiseExponential:
     import greenwood as gw
 
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
-    pem = gw.PiecewiseExponential().fit(y, covariates=["age", "sex"], data=lung)
+    pem = gw.PiecewiseExponential().fit("Surv(time, status) ~ age + sex", data=lung)
     pem
     ```
 
@@ -225,7 +224,7 @@ class PiecewiseExponential:
 
     ```{python}
     pem_manual = gw.PiecewiseExponential(breaks=[180, 365]).fit(
-        y, covariates=["age", "sex"], data=lung
+        "Surv(time, status) ~ age + sex", data=lung
     )
     pem_manual.to_frame(format="polars")
     ```
@@ -286,6 +285,7 @@ class PiecewiseExponential:
         covariates: Any = None,
         *,
         data: Any = None,
+        weights: Any = None,
         max_iter: int = 50,
         tol: float = 1e-9,
     ) -> PiecewiseExponential:
@@ -305,6 +305,9 @@ class PiecewiseExponential:
             named by the response and `covariates`. When `surv` is an `Outcome` or a formula, rows
             with a missing value in any column used are dropped before fitting. Covariate formula
             strings and lists of column names are also resolved here.
+        weights
+            Case weights, one per row (a column name in `data`, or an array). Must be finite
+            and strictly positive. Default is `None` (all weights `1`).
         max_iter
             Maximum IRLS iterations (default 50).
         tol
@@ -321,9 +324,8 @@ class PiecewiseExponential:
         import greenwood as gw
 
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
         pem = gw.PiecewiseExponential(breaks=[180, 365]).fit(
-            y, covariates=["age", "sex"], data=lung
+            "Surv(time, status) ~ age + sex", data=lung
         )
         pem.to_frame(format="polars")
         ```
@@ -331,6 +333,7 @@ class PiecewiseExponential:
         bound = bind_fit_inputs(
             surv,
             data=data,
+            labels={"weights": weights},
             designs={"covariates": covariates},
             rhs_to="covariates",
             required=("covariates",),
@@ -357,7 +360,7 @@ class PiecewiseExponential:
         exit_ = surv.stop
         entry = surv.entry
         event = surv.event.astype(float)
-        weight = surv.weights if surv.weights is not None else np.ones(surv.n)
+        weight = bound.labels["weights"] if bound.labels["weights"] is not None else np.ones(surv.n)
 
         keep = ~np.isnan(design).any(axis=1) & (exit_ > 0)
         if np.isfinite(entry).all():
@@ -497,9 +500,8 @@ class PiecewiseExponential:
         import greenwood as gw
 
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
         pem = gw.PiecewiseExponential(breaks=[180, 365]).fit(
-            y, covariates=["age", "sex"], data=lung
+            "Surv(time, status) ~ age + sex", data=lung
         )
         pem.baseline_hazard(format="polars")
         ```
@@ -620,9 +622,8 @@ class PiecewiseExponential:
         import greenwood as gw
 
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
         pem = gw.PiecewiseExponential(breaks=[180, 365]).fit(
-            y, covariates=["age", "sex"], data=lung
+            "Surv(time, status) ~ age + sex", data=lung
         )
         pem.to_frame(format="polars")
         ```
