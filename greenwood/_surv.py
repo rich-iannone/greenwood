@@ -856,17 +856,33 @@ class Surv:
     def is_na(self) -> npt.NDArray[np.bool_]:
         """Return which rows have a missing value in any column, as R's `is.na()` does.
 
+        A row is missing when any of its columns is `nan`: a missing time, a missing status, or (for
+        counting data) a missing start time. `Surv()` keeps such rows rather than dropping them, as
+        R does. They come from missing input values, and also from values R turns into missing when
+        the response is built: an invalid status code, a start time that is not before its stop
+        time, or an interval that runs backwards. Estimators drop these rows when fitting and report
+        how many in `n_dropped_`.
+
         Returns
         -------
         numpy.ndarray
-            A boolean array, one entry per row.
+            A boolean array with one value per row, `True` where the row has a missing value.
 
         Examples
         --------
+        The second subject's time is missing:
+
         ```{python}
         import greenwood as gw
 
-        gw.Surv(time=[5, None, 4], event=[1, 0, 3]).is_na()
+        y = gw.Surv(time=[5, None, 4], event=[1, 0, 1])
+        y.is_na()
+        ```
+
+        Select the complete rows with the inverted mask:
+
+        ```{python}
+        y[~y.is_na()]
         ```
         """
         missing = np.zeros(self.n, dtype=np.bool_)
@@ -880,7 +896,45 @@ class Surv:
         return self.n
 
     def __getitem__(self, key: Any) -> Surv:
-        """Select rows with an integer, a slice, an integer array, or a boolean mask."""
+        """Select rows, returning a new response of the same type.
+
+        Indexing works like indexing a NumPy array and always returns a `Surv`, even for a single
+        row (as subsetting an R `Surv` with `y[i]` does). Every column is subset together, and the
+        type and state names are kept. Negative integers count from the end, as usual in Python.
+
+        Parameters
+        ----------
+        key
+            An integer, a slice, an array of integer positions, or a boolean mask with one value
+            per row.
+
+        Returns
+        -------
+        Surv
+            The selected rows.
+
+        Raises
+        ------
+        IndexError
+            If an integer position is out of range.
+        TypeError
+            If `key` is not an integer, a slice, an integer array, or a boolean mask.
+
+        Examples
+        --------
+        ```{python}
+        import greenwood as gw
+
+        y = gw.Surv(time=[5, 6, 4, 9], event=[1, 0, 1, 0])
+        y[1:3]
+        ```
+
+        A boolean mask keeps the rows where it is `True`, here the events:
+
+        ```{python}
+        y[y.event]
+        ```
+        """
         if isinstance(key, (int, np.integer)):
             i = int(key)  # pyright: ignore[reportUnknownArgumentType]
             if not -self.n <= i < self.n:
@@ -943,10 +997,16 @@ class Surv:
     def to_frame(self, *, format: str | None = None) -> Any:
         """Return the response as a table with the same columns as R's `Surv` matrix.
 
-        The columns are `time` and `status` for right, left, and multi-state data, `start`,
-        `stop`, and `status` for counting data, and `time1`, `time2`, and `status` for interval
-        data (where, as in R, `time2` is `1` for rows that aren't interval-censored). Missing
-        values are nulls.
+        Each row of the table is one row of the response. The columns depend on the type, and match
+        the columns of the matrix R's `Surv()` returns:
+
+        - Right, left, and multi-state data: `time` and `status`.
+        - Counting-process data: `start`, `stop`, and `status`.
+        - Interval data: `time1`, `time2`, and `status`. As in R, `time2` is `1` for rows that are
+          not interval-censored.
+
+        Status is stored as a float, as in R. Missing values are nulls. Use this table to inspect a
+        response, to join it back onto other data, or to export it.
 
         Parameters
         ----------
@@ -957,7 +1017,13 @@ class Surv:
         Returns
         -------
         pandas.DataFrame, polars.DataFrame, or pyarrow.Table
-            One row per observation.
+            One row per observation, with the columns listed above.
+
+        Raises
+        ------
+        ImportError
+            If the requested DataFrame library (or, with `format=None`, any of them) is not
+            installed.
 
         Examples
         --------
@@ -965,6 +1031,14 @@ class Surv:
         import greenwood as gw
 
         gw.Surv(time=[0, 2, 1], time2=[5, 6, 4], event=[1, 0, 1]).to_frame(format="polars")
+        ```
+
+        Interval data uses R's interval columns:
+
+        ```{python}
+        import numpy as np
+
+        gw.Surv(time=[1, 2, 3], time2=[2, np.inf, 5], type="interval2").to_frame(format="polars")
         ```
         """
         return to_dataframe(
@@ -974,11 +1048,17 @@ class Surv:
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-ready mapping that fully describes the response.
 
+        The mapping holds only plain Python values (strings, floats, lists, and `None`), so it can
+        be written with `json.dumps()`, stored, or sent to another process, and turned back into
+        an equal response with `~~greenwood.Surv.from_dict()`. Missing values become `None`. The
+        layout is versioned: version 2 stores R's `Surv` columns.
+
         Returns
         -------
         dict
-            Keys `version`, `type`, `states`, and `columns` (R's column names mapped to lists,
-            with `None` for missing values).
+            A mapping with the keys `"version"` (the layout version), `"type"` (the response type,
+            as one of R's type names), `"states"` (the state names, or `None`), and `"columns"` (R's
+            column names mapped to lists of values).
 
         Examples
         --------
@@ -997,17 +1077,28 @@ class Surv:
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> Self:
-        """Rebuild a response from `to_dict()` output.
+        """Rebuild a response from the output of `~~greenwood.Surv.to_dict()`.
+
+        The mapping is read as it was written, without applying `Surv()`'s rules again: the stored
+        type, columns, and state names are used directly. The result compares equal to the
+        response that produced the mapping.
 
         Parameters
         ----------
         data
-            A mapping produced by `to_dict()`.
+            A mapping produced by `~~greenwood.Surv.to_dict()`, possibly after a round trip through
+            JSON.
 
         Returns
         -------
         Surv
-            The response.
+            The rebuilt response.
+
+        Raises
+        ------
+        ValueError
+            If the mapping has an unsupported layout version, such as one written by an earlier
+            Greenwood release.
 
         Examples
         --------
@@ -1015,7 +1106,8 @@ class Surv:
         import greenwood as gw
 
         y = gw.Surv(time=[5, 6], event=[1, 0])
-        gw.Surv.from_dict(y.to_dict()) == y
+        data = y.to_dict()
+        gw.Surv.from_dict(data) == y
         ```
         """
         if data.get("version") != _DICT_VERSION:
@@ -1043,12 +1135,17 @@ class Surv:
         )
 
     def to_json(self, *, indent: int | None = 2) -> str:
-        """Serialize the response to a JSON string (see `to_dict()`).
+        """Serialize the response to a JSON string.
+
+        The string is the JSON encoding of `~~greenwood.Surv.to_dict()`: the layout version, the
+        type, the state names, and R's columns, with missing values as `null`. Turn it back into a
+        response with `~~greenwood.Surv.from_json()`.
 
         Parameters
         ----------
         indent
-            Indentation passed to `json.dumps()`. `None` gives a compact string.
+            Indentation passed to `json.dumps()`. The default `2` is readable, and `None` gives a
+            compact single-line string.
 
         Returns
         -------
@@ -1067,17 +1164,26 @@ class Surv:
 
     @classmethod
     def from_json(cls, text: str) -> Self:
-        """Rebuild a response from `to_json()` output.
+        """Rebuild a response from the output of `~~greenwood.Surv.to_json()`.
+
+        The text is parsed with `json.loads()` and passed to `~~greenwood.Surv.from_dict()`, so the
+        same rules apply: the stored type, columns, and state names are used as they are, and the
+        result compares equal to the response that was serialized.
 
         Parameters
         ----------
         text
-            A JSON string produced by `to_json()`.
+            A JSON string produced by `~~greenwood.Surv.to_json()`.
 
         Returns
         -------
         Surv
-            The response.
+            The rebuilt response.
+
+        Raises
+        ------
+        ValueError
+            If the text is not valid JSON, or has an unsupported layout version.
 
         Examples
         --------
@@ -1085,7 +1191,8 @@ class Surv:
         import greenwood as gw
 
         y = gw.Surv(time=[5, 6], event=[1, 0])
-        gw.Surv.from_json(y.to_json()) == y
+        text = y.to_json()
+        gw.Surv.from_json(text) == y
         ```
         """
         return cls.from_dict(json.loads(text))
