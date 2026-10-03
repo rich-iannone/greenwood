@@ -11,13 +11,255 @@ import great_docs as gd
 gd.enable_tbl_preview(n_head=8, n_tail=3)
 ```
 
+```{=html}
+<style>
+.gw-fig { --gw-event: #2a78d6; --gw-window: #eb6834; --gw-entry: #1baf7a;
+  --gw-surface: #fcfeff; --gw-muted: rgba(0, 0, 0, 0.62); --gw-faint: rgba(0, 0, 0, 0.16); --gw-box: rgba(0, 0, 0, 0.035);
+  margin: 1.5rem 0; }
+body.quarto-dark .gw-fig { --gw-surface: #1a1a1a; --gw-event: #3987e5; --gw-window: #d95926; --gw-entry: #199e70;
+  --gw-muted: rgba(255, 255, 255, 0.66); --gw-faint: rgba(255, 255, 255, 0.2);
+  --gw-box: rgba(255, 255, 255, 0.05); }
+.gw-fig svg { display: block; width: 100%; height: auto; overflow: visible; }
+.gw-fig text { fill: currentColor; font-family: inherit; }
+.gw-fig .t-muted { fill: var(--gw-muted); }
+.gw-fig .t-mono { font-family: var(--bs-font-monospace, ui-monospace, SFMono-Regular, Menlo, monospace); }
+.gw-fig .t-bold { font-weight: 600; }
+.gw-fig .ink { stroke: currentColor; fill: none; }
+.gw-fig .muted { stroke: var(--gw-muted); fill: none; }
+.gw-fig .faint { stroke: var(--gw-faint); fill: none; }
+.gw-fig .event { fill: var(--gw-event); stroke: none; }
+.gw-fig .event-line { stroke: var(--gw-event); fill: none; }
+.gw-fig .censor { fill: var(--gw-surface, Canvas); stroke: currentColor; }
+.gw-fig .window { fill: var(--gw-window); stroke: none; opacity: 0.45; }
+.gw-fig .window-line { stroke: var(--gw-window); fill: none; }
+.gw-fig .entry-line { stroke: var(--gw-entry); fill: none; }
+.gw-fig .box { fill: var(--gw-box); stroke: var(--gw-faint); }
+.gw-fig .arrowhead { fill: var(--gw-muted); }
+.gw-fig .arrowhead-window { fill: var(--gw-window); }
+body.quarto-dark .gw-fig .window { opacity: 0.75; }
+.gw-fig .group { fill: none; stroke: var(--gw-faint); stroke-dasharray: 5 5; }
+</style>
+```
+
 The Kaplan-Meier estimator is the workhorse of survival analysis. It answers the most basic question
 you can ask of time-to-event data: what fraction of subjects are still event-free at each point in
 time? The result is the survival curve, a step function that starts at 1.0 and drops at each
 observed event. This page shows how to estimate it, quantify its uncertainty, summarize it with
 medians and restricted means, and compare subgroups.
 
-Every example here uses the bundled `lung` dataset and the survival response introduced in
+## How the curve is built: a small example
+
+Before using real data, it helps to work through a tiny example by hand. @fig-km-patients shows six
+patients followed after a diagnosis. Four of them died during follow-up. Two were still alive the
+last time they were seen: patient 2 at month 5 and patient 6 at month 14. Those two are censored,
+exactly like patients B and C in [Survival data and the Surv object](03-survival-data.qmd).
+
+::: {#fig-km-patients}
+```{=html}
+<div class="gw-fig">
+<svg viewBox="0 0 720 368" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Six patients, with the number at risk at each death">
+<defs><marker id="gw-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrowhead" d="M0,0 L10,5 L0,10 z"/></marker><marker id="gw-arrow-window" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path class="arrowhead-window" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<text x="116.0" y="34.0" font-size="13" text-anchor="end" class="t-bold">At risk:</text>
+<line x1="220.0" y1="44.0" x2="220.0" y2="268.0" class="faint" stroke-width="1.5" stroke-linecap="round" stroke-dasharray="4 4"/>
+<text x="220.0" y="34.0" font-size="14" text-anchor="middle" class="t-bold">6</text>
+<line x1="340.0" y1="44.0" x2="340.0" y2="268.0" class="faint" stroke-width="1.5" stroke-linecap="round" stroke-dasharray="4 4"/>
+<text x="340.0" y="34.0" font-size="14" text-anchor="middle" class="t-bold">4</text>
+<line x1="400.0" y1="44.0" x2="400.0" y2="268.0" class="faint" stroke-width="1.5" stroke-linecap="round" stroke-dasharray="4 4"/>
+<text x="400.0" y="34.0" font-size="14" text-anchor="middle" class="t-bold">3</text>
+<line x1="460.0" y1="44.0" x2="460.0" y2="268.0" class="faint" stroke-width="1.5" stroke-linecap="round" stroke-dasharray="4 4"/>
+<text x="460.0" y="34.0" font-size="14" text-anchor="middle" class="t-bold">2</text>
+<text x="116.0" y="67.0" font-size="14" text-anchor="end">Patient 1</text>
+<line x1="130.0" y1="62.0" x2="220.0" y2="62.0" class="ink" stroke-width="3" stroke-linecap="round"/>
+<circle cx="220.0" cy="62.0" r="7" class="event"/>
+<text x="116.0" y="105.0" font-size="14" text-anchor="end">Patient 2</text>
+<line x1="130.0" y1="100.0" x2="280.0" y2="100.0" class="ink" stroke-width="3" stroke-linecap="round"/>
+<circle cx="280.0" cy="100.0" r="7" class="censor" stroke-width="2.5"/>
+<text x="116.0" y="143.0" font-size="14" text-anchor="end">Patient 3</text>
+<line x1="130.0" y1="138.0" x2="340.0" y2="138.0" class="ink" stroke-width="3" stroke-linecap="round"/>
+<circle cx="340.0" cy="138.0" r="7" class="event"/>
+<text x="116.0" y="181.0" font-size="14" text-anchor="end">Patient 4</text>
+<line x1="130.0" y1="176.0" x2="400.0" y2="176.0" class="ink" stroke-width="3" stroke-linecap="round"/>
+<circle cx="400.0" cy="176.0" r="7" class="event"/>
+<text x="116.0" y="219.0" font-size="14" text-anchor="end">Patient 5</text>
+<line x1="130.0" y1="214.0" x2="460.0" y2="214.0" class="ink" stroke-width="3" stroke-linecap="round"/>
+<circle cx="460.0" cy="214.0" r="7" class="event"/>
+<text x="116.0" y="257.0" font-size="14" text-anchor="end">Patient 6</text>
+<line x1="130.0" y1="252.0" x2="550.0" y2="252.0" class="ink" stroke-width="3" stroke-linecap="round"/>
+<circle cx="550.0" cy="252.0" r="7" class="censor" stroke-width="2.5"/>
+<line x1="130.0" y1="282.0" x2="580.0" y2="282.0" class="muted" stroke-width="1.5" stroke-linecap="round"/>
+<line x1="130.0" y1="282.0" x2="130.0" y2="288.0" class="muted" stroke-width="1.5" stroke-linecap="round"/>
+<text x="130.0" y="304.0" font-size="13" text-anchor="middle" class="t-muted">0</text>
+<line x1="220.0" y1="282.0" x2="220.0" y2="288.0" class="muted" stroke-width="1.5" stroke-linecap="round"/>
+<text x="220.0" y="304.0" font-size="13" text-anchor="middle" class="t-muted">3</text>
+<line x1="310.0" y1="282.0" x2="310.0" y2="288.0" class="muted" stroke-width="1.5" stroke-linecap="round"/>
+<text x="310.0" y="304.0" font-size="13" text-anchor="middle" class="t-muted">6</text>
+<line x1="400.0" y1="282.0" x2="400.0" y2="288.0" class="muted" stroke-width="1.5" stroke-linecap="round"/>
+<text x="400.0" y="304.0" font-size="13" text-anchor="middle" class="t-muted">9</text>
+<line x1="490.0" y1="282.0" x2="490.0" y2="288.0" class="muted" stroke-width="1.5" stroke-linecap="round"/>
+<text x="490.0" y="304.0" font-size="13" text-anchor="middle" class="t-muted">12</text>
+<line x1="580.0" y1="282.0" x2="580.0" y2="288.0" class="muted" stroke-width="1.5" stroke-linecap="round"/>
+<text x="580.0" y="304.0" font-size="13" text-anchor="middle" class="t-muted">15</text>
+<text x="355.0" y="322.0" font-size="13" text-anchor="middle" class="t-muted">Months since diagnosis</text>
+<circle cx="137.0" cy="349.0" r="6" class="event"/>
+<text x="156.0" y="354.0" font-size="13" text-anchor="start">Died</text>
+<circle cx="218.6" cy="349.0" r="6" class="censor" stroke-width="2.5"/>
+<text x="237.6" y="354.0" font-size="13" text-anchor="start">Censored: alive when last seen</text>
+</svg>
+</div>
+```
+
+Six patients, sorted by follow-up time. The dashed lines mark the four deaths. The numbers along
+the top count the patients **at risk** at each death: those still being followed just before it, so
+the ones whose line reaches that far.
+:::
+
+The Kaplan-Meier estimate is built one death at a time. At each death it asks a simple question:
+of the patients still at risk, what fraction made it past this moment? Then it multiplies those
+fractions together.
+
+| Month | At risk | Deaths | Censored | Survived this step | Survival so far |
+|------:|--------:|-------:|---------:|:-------------------|----------------:|
+| 3     | 6       | 1      | 0        | 5 of 6             | 0.83            |
+| 5     | 5       | 0      | 1        | (no death, no step) | 0.83           |
+| 7     | 4       | 1      | 0        | 3 of 4             | 0.83 × 3/4 = 0.63 |
+| 9     | 3       | 1      | 0        | 2 of 3             | 0.63 × 2/3 = 0.42 |
+| 11    | 2       | 1      | 0        | 1 of 2             | 0.42 × 1/2 = 0.21 |
+| 14    | 1       | 0      | 1        | (no death, no step) | 0.21          |
+
+Notice what happens to patient 2, censored at month 5. They count as at risk at month 3, because
+they were alive and being followed then. After month 5 they simply leave the risk set: the next
+death is shared among 4 patients instead of 5. The censoring never pulls the curve down, because
+nobody died. It only changes how many patients the later deaths are divided among.
+
+### Reading the curve
+
+Drawing the "survival so far" column against time gives the Kaplan-Meier curve in @fig-km-curve.
+
+::: {#fig-km-curve}
+```{=html}
+<div class="gw-fig">
+<svg viewBox="0 0 720 360" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Annotated Kaplan-Meier curve for the six patients">
+<defs><marker id="gw-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrowhead" d="M0,0 L10,5 L0,10 z"/></marker><marker id="gw-arrow-window" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path class="arrowhead-window" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<line x1="90.0" y1="300.0" x2="540.0" y2="300.0" class="faint" stroke-width="1" stroke-linecap="round"/>
+<text x="80.0" y="304.0" font-size="12.5" text-anchor="end" class="t-muted">0.00</text>
+<line x1="90.0" y1="232.5" x2="540.0" y2="232.5" class="faint" stroke-width="1" stroke-linecap="round"/>
+<text x="80.0" y="236.5" font-size="12.5" text-anchor="end" class="t-muted">0.25</text>
+<line x1="90.0" y1="165.0" x2="540.0" y2="165.0" class="faint" stroke-width="1" stroke-linecap="round"/>
+<text x="80.0" y="169.0" font-size="12.5" text-anchor="end" class="t-muted">0.50</text>
+<line x1="90.0" y1="97.5" x2="540.0" y2="97.5" class="faint" stroke-width="1" stroke-linecap="round"/>
+<text x="80.0" y="101.5" font-size="12.5" text-anchor="end" class="t-muted">0.75</text>
+<line x1="90.0" y1="30.0" x2="540.0" y2="30.0" class="faint" stroke-width="1" stroke-linecap="round"/>
+<text x="80.0" y="34.0" font-size="12.5" text-anchor="end" class="t-muted">1.00</text>
+<line x1="90.0" y1="304.0" x2="540.0" y2="304.0" class="muted" stroke-width="1.5" stroke-linecap="round"/>
+<line x1="90.0" y1="304.0" x2="90.0" y2="310.0" class="muted" stroke-width="1.5" stroke-linecap="round"/>
+<text x="90.0" y="326.0" font-size="13" text-anchor="middle" class="t-muted">0</text>
+<line x1="180.0" y1="304.0" x2="180.0" y2="310.0" class="muted" stroke-width="1.5" stroke-linecap="round"/>
+<text x="180.0" y="326.0" font-size="13" text-anchor="middle" class="t-muted">3</text>
+<line x1="270.0" y1="304.0" x2="270.0" y2="310.0" class="muted" stroke-width="1.5" stroke-linecap="round"/>
+<text x="270.0" y="326.0" font-size="13" text-anchor="middle" class="t-muted">6</text>
+<line x1="360.0" y1="304.0" x2="360.0" y2="310.0" class="muted" stroke-width="1.5" stroke-linecap="round"/>
+<text x="360.0" y="326.0" font-size="13" text-anchor="middle" class="t-muted">9</text>
+<line x1="450.0" y1="304.0" x2="450.0" y2="310.0" class="muted" stroke-width="1.5" stroke-linecap="round"/>
+<text x="450.0" y="326.0" font-size="13" text-anchor="middle" class="t-muted">12</text>
+<line x1="540.0" y1="304.0" x2="540.0" y2="310.0" class="muted" stroke-width="1.5" stroke-linecap="round"/>
+<text x="540.0" y="326.0" font-size="13" text-anchor="middle" class="t-muted">15</text>
+<text x="315.0" y="346.0" font-size="13" text-anchor="middle" class="t-muted">Months since diagnosis</text>
+<text x="22" y="165.0" font-size="13" text-anchor="middle" class="t-muted" transform="rotate(-90 22 165.0)">Probability still alive</text>
+<path d="M90.0,30.0H180.0V75.0H300.0V131.2H360.0V187.5H420.0V243.8H510.0" class="event-line" stroke-width="3" stroke-linejoin="round"/>
+<line x1="240.0" y1="66.0" x2="240.0" y2="84.0" class="ink" stroke-width="2.5" stroke-linecap="round"/>
+<line x1="510.0" y1="234.8" x2="510.0" y2="252.8" class="ink" stroke-width="2.5" stroke-linecap="round"/>
+<text x="192.0" y="42.0" font-size="12.5" text-anchor="start">Death at month 3: 1 of 6 at risk</text>
+<text x="192.0" y="58.0" font-size="12.5" text-anchor="start" class="t-mono">1 × 5/6 = 0.83</text>
+<text x="98.0" y="132.6" font-size="12.5" text-anchor="start">Censored at month 5:</text>
+<text x="98.0" y="148.6" font-size="12.5" text-anchor="start">no drop, one fewer</text>
+<text x="98.0" y="164.6" font-size="12.5" text-anchor="start">at risk from here on</text>
+<line x1="190.0" y1="120.6" x2="234.0" y2="87.0" class="muted" stroke-width="1.2" stroke-linecap="round"/>
+<text x="312.0" y="101.1" font-size="12.5" text-anchor="start">Death at month 7: 1 of 4 at risk</text>
+<text x="312.0" y="117.1" font-size="12.5" text-anchor="start" class="t-mono">0.83 × 3/4 = 0.63</text>
+<text x="372.0" y="157.2" font-size="12.5" text-anchor="start">Steps get bigger as fewer remain:</text>
+<text x="372.0" y="173.2" font-size="12.5" text-anchor="start" class="t-mono">× 2/3 at month 9, × 1/2 at month 11</text>
+<text x="432.0" y="209.8" font-size="12.5" text-anchor="start">Last patient censored at month 14:</text>
+<text x="432.0" y="225.8" font-size="12.5" text-anchor="start">the curve stops at 0.21, not at 0</text>
+</svg>
+</div>
+```
+
+The Kaplan-Meier curve for the six patients. It starts at 1 (everyone alive) and steps down at each
+death. Small vertical ticks mark censored patients, where the curve does not drop.
+:::
+
+Here is how to read any Kaplan-Meier plot:
+
+- **The vertical axis** is the estimated probability of still being event-free (here, alive). It
+  starts at 1, because nobody has had the event at time zero.
+- **The horizontal axis** is time since the starting point (diagnosis, treatment, enrolment).
+- **Flat stretches** are periods with no events. The estimate does not change until someone has
+  the event.
+- **Each drop** is an event. Its size depends on how many are still at risk: one death among 6 is a
+  small step, one death among 2 is a big one. That is why the steps grow towards the right, and
+  why the right-hand end of a curve is the least certain part.
+- **Tick marks** are censored subjects. The curve carries on through them without dropping.
+- **The end of the curve** is the last follow-up time. A curve that stops above zero, as this one
+  does at 0.21, means some subjects were still event-free when last seen. It does not mean the
+  probability falls to zero afterwards. We simply have no information beyond that point.
+- **The median survival time** is where the curve first drops to 0.5 or below. Here that happens at
+  month 9, so half of these patients are estimated to survive past 9 months.
+
+### Why not simply ignore the censored patients?
+
+It is tempting to treat censored patients in a simpler way. Here is what that would give for the
+probability of being alive at month 10, which Kaplan-Meier estimates as 0.42:
+
+- **Drop them.** Of the 4 patients whose death we saw, 1 was alive at month 10, giving 0.25. But
+  patient 6 was alive at month 14, and patient 2 survived at least 5 months. Dropping them throws
+  that information away and makes survival look worse.
+- **Count them as deaths.** Of all 6 patients, 2 were known to be alive at month 10, giving 0.33.
+  This pretends patient 2 died at month 5, which we have no reason to believe.
+
+Kaplan-Meier uses each censored patient for exactly as long as they were followed and no longer.
+That is fair under one assumption: that being censored has nothing to do with how likely someone is
+to have the event. A patient who moves away should be no healthier and no sicker than one who
+stays.
+
+::: {.callout-warning}
+## When censoring is not random
+
+If patients drop out *because* they are getting worse (too unwell to attend visits, say), the
+patients who remain look healthier than the whole group, and the curve will be too optimistic. This
+is called informative censoring. No estimator can fix it from the data alone, so it is worth asking
+why people were censored before trusting any survival curve.
+:::
+
+### The same example in Greenwood
+
+Greenwood reproduces the table above. The six times and their status go straight into `gw.Surv()`,
+with `1` for a death and `0` for a censored patient.
+
+```{python}
+import greenwood as gw
+
+# The six patients from the example: 1 = died, 0 = censored
+y = gw.Surv(time=[3, 5, 7, 9, 11, 14], event=[1, 0, 1, 1, 1, 0])
+
+# Fit the Kaplan-Meier estimator and show the step-by-step table
+km_small = gw.KaplanMeier().fit(y)
+km_small.to_frame(format="polars")
+```
+
+The `n_risk`, `n_event`, `n_censor`, and `estimate` columns are the "At risk", "Deaths",
+"Censored", and "Survival so far" columns of the hand-worked table. The remaining columns give the
+uncertainty around each estimate, which the next sections explain. Printing the fit shows the median
+of 9 months.
+
+```{python}
+# The median survival time and its 95% confidence interval
+km_small
+```
+
+## The lung data
+
+The rest of this page uses the bundled `lung` dataset: 228 patients with advanced lung cancer,
+followed for up to about three years. The response is built as in
 [Survival data and the Surv object](03-survival-data.qmd).
 
 ```{python}
@@ -85,6 +327,21 @@ A survival probability of `0.41` at 365 days means the estimator predicts that 4
 subjects remain event-free one year in. Because the curve is a step function, the value holds
 constant between event times.
 :::
+
+### Plotting the curve
+
+`gw.plot_survival()` draws the fitted curve. With `risk_table=True` it adds the number of patients
+still at risk underneath, which tells you how much data supports each part of the curve.
+
+```{python}
+# The survival curve with its confidence band, censoring marks, and a numbers-at-risk table
+gw.plot_survival(km, risk_table=True)
+```
+
+Everything from the small example carries over. The curve drops at each death and passes through
+the censoring marks without dropping. The shaded band is the 95% confidence interval, and it widens
+to the right as fewer patients remain at risk. The curve crosses 0.5 at 310 days, which is the median
+survival reported when the fit was printed.
 
 ## Confidence intervals
 
