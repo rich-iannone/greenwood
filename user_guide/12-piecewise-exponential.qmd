@@ -27,10 +27,12 @@ We use the lung dataset throughout:
 ```{python}
 import greenwood as gw
 
-# Load the lung dataset and build the survival response
+# Load the lung dataset
 lung = gw.load_dataset("lung", backend="polars")
-y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 ```
+
+Each model names its response and covariates in a formula, `Surv(time, status) ~ age + sex`, where a
+status of 2 marks a death.
 
 ## Fitting with manual break points
 
@@ -39,7 +41,7 @@ starting point: early, middle, and late follow-up.
 
 ```{python}
 # Fit a PEM with breaks at 180 and 365 days
-pem = gw.PiecewiseExponential(breaks=[180, 365]).fit(y, covariates=["age", "sex"], data=lung)
+pem = gw.PiecewiseExponential(breaks=[180, 365]).fit("Surv(time, status) ~ age + sex", data=lung)
 pem
 ```
 
@@ -72,7 +74,7 @@ quantiles of the event-time distribution.
 ```{python}
 # Let AIC choose the best number of knots automatically
 pem_auto = gw.PiecewiseExponential(knot_strategy="aic", max_knots=8).fit(
-    y, covariates=["age", "sex"], data=lung
+    "Surv(time, status) ~ age + sex", data=lung
 )
 pem_auto
 ```
@@ -119,7 +121,7 @@ baseline is parameterized.
 
 ```{python}
 # Cox model coefficients for reference
-cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
+cox = gw.CoxPH().fit("Surv(time, status) ~ age + sex", data=lung)
 cox.to_frame(format="polars")
 ```
 
