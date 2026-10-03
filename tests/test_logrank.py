@@ -13,7 +13,7 @@ def test_identical_groups_give_near_zero_statistic() -> None:
     time = [1, 2, 3, 4, 1, 2, 3, 4]
     event = [1, 1, 1, 1, 1, 1, 1, 1]
     group = ["a", "a", "a", "a", "b", "b", "b", "b"]
-    result = logrank_test(Surv.right(time, event), group)
+    result = logrank_test(Surv(time=time, event=event), group)
     assert result.statistic == pytest.approx(0.0, abs=1e-12)
     assert result.p_value == pytest.approx(1.0)
     assert result.df == 1
@@ -24,19 +24,19 @@ def test_separated_groups_give_large_statistic() -> None:
     time = [1, 2, 3, 10, 11, 12]
     event = [1, 1, 1, 1, 1, 1]
     group = ["a", "a", "a", "b", "b", "b"]
-    result = logrank_test(Surv.right(time, event), group)
+    result = logrank_test(Surv(time=time, event=event), group)
     assert result.statistic > 3.0
 
 
 def test_method_string_reflects_weights() -> None:
-    y = Surv.right([1, 2, 3, 4], [1, 1, 1, 1])
+    y = Surv(time=[1, 2, 3, 4], event=[1, 1, 1, 1])
     g = ["a", "a", "b", "b"]
     assert logrank_test(y, g).method == "Log-rank test"
     assert "rho=1" in logrank_test(y, g, rho=1).method
 
 
 def test_observed_events_sum_to_total() -> None:
-    y = Surv.right([1, 2, 3, 4], [1, 0, 1, 1])
+    y = Surv(time=[1, 2, 3, 4], event=[1, 0, 1, 1])
     g = ["a", "a", "b", "b"]
     result = logrank_test(y, g)
     # Standard log-rank (weight 1): observed events per group are plain counts.
@@ -46,23 +46,23 @@ def test_observed_events_sum_to_total() -> None:
 
 def test_requires_two_groups() -> None:
     with pytest.raises(ValueError, match="at least two groups"):
-        logrank_test(Surv.right([1, 2, 3], [1, 1, 1]), ["a", "a", "a"])
+        logrank_test(Surv(time=[1, 2, 3], event=[1, 1, 1]), ["a", "a", "a"])
 
 
 def test_group_length_checked() -> None:
     with pytest.raises(ValueError, match="same length"):
-        logrank_test(Surv.right([1, 2, 3], [1, 1, 1]), ["a", "b"])
+        logrank_test(Surv(time=[1, 2, 3], event=[1, 1, 1]), ["a", "b"])
 
 
 def test_repr_is_informative() -> None:
-    y = Surv.right([1, 2, 3, 4], [1, 1, 1, 1])
+    y = Surv(time=[1, 2, 3, 4], event=[1, 1, 1, 1])
     text = repr(logrank_test(y, ["a", "a", "b", "b"]))
     assert "TestResult" in text
     assert "p_value" in text
 
 
 def test_stratified_reduces_to_unstratified_with_one_stratum() -> None:
-    y = Surv.right([1, 2, 3, 4, 5, 6], [1, 1, 1, 1, 1, 1])
+    y = Surv(time=[1, 2, 3, 4, 5, 6], event=[1, 1, 1, 1, 1, 1])
     group = ["a", "a", "a", "b", "b", "b"]
     plain = logrank_test(y, group)
     one_stratum = logrank_test(y, group, strata=["s"] * 6)
@@ -71,7 +71,7 @@ def test_stratified_reduces_to_unstratified_with_one_stratum() -> None:
 
 
 def test_pairwise_shape_and_correction() -> None:
-    y = Surv.right([1, 2, 3, 4, 5, 6, 7, 8, 9], [1, 1, 1, 1, 1, 1, 1, 1, 1])
+    y = Surv(time=[1, 2, 3, 4, 5, 6, 7, 8, 9], event=[1, 1, 1, 1, 1, 1, 1, 1, 1])
     group = ["a", "a", "a", "b", "b", "b", "c", "c", "c"]
     pw = pairwise_logrank_test(y, group, correction="none")
     assert list(pw.columns) == ["group1", "group2", "statistic", "p_value", "p_adjusted"]
@@ -80,14 +80,14 @@ def test_pairwise_shape_and_correction() -> None:
 
 
 def test_pairwise_bonferroni_scales_raw() -> None:
-    y = Surv.right([1, 2, 3, 4, 5, 6, 7, 8, 9], [1, 1, 1, 1, 1, 1, 1, 1, 1])
+    y = Surv(time=[1, 2, 3, 4, 5, 6, 7, 8, 9], event=[1, 1, 1, 1, 1, 1, 1, 1, 1])
     group = ["a", "a", "a", "b", "b", "b", "c", "c", "c"]
     pw = pairwise_logrank_test(y, group, correction="bonferroni")
     np.testing.assert_allclose(pw["p_adjusted"], np.minimum(pw["p_value"] * 3, 1.0))
 
 
 def test_pairwise_invalid_correction_raises() -> None:
-    y = Surv.right([1, 2, 3, 4], [1, 1, 1, 1])
+    y = Surv(time=[1, 2, 3, 4], event=[1, 1, 1, 1])
     with pytest.raises(ValueError, match="correction"):
         pairwise_logrank_test(y, ["a", "a", "b", "b"], correction="nope")
 
@@ -103,7 +103,7 @@ def test_trend_identical_groups_give_zero_statistic() -> None:
     time = [1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4]
     event = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
     group = [0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2]
-    result = trend_test(Surv.right(time, event), group)
+    result = trend_test(Surv(time=time, event=event), group)
     assert result.statistic == pytest.approx(0.0, abs=1e-12)
     assert result.p_value == pytest.approx(1.0)
     assert result.df == 1
@@ -117,7 +117,7 @@ def test_trend_linear_deterioration_gives_significant_result() -> None:
     time = [10, 11, 12, 5, 6, 7, 1, 2, 3]
     event = [1, 1, 1, 1, 1, 1, 1, 1, 1]
     group = [0, 0, 0, 1, 1, 1, 2, 2, 2]
-    result = trend_test(Surv.right(time, event), group)
+    result = trend_test(Surv(time=time, event=event), group)
     # Strong negative trend: higher group number = earlier events
     assert result.statistic > 3.0
     assert result.p_value < 0.05
@@ -125,7 +125,7 @@ def test_trend_linear_deterioration_gives_significant_result() -> None:
 
 def test_trend_default_scores_are_zero_one_two() -> None:
     """Default scores should be 0, 1, 2, ... for sorted groups."""
-    y = Surv.right([1, 2, 3, 4, 5, 6], [1, 1, 1, 1, 1, 1])
+    y = Surv(time=[1, 2, 3, 4, 5, 6], event=[1, 1, 1, 1, 1, 1])
     # Group 'a': events at 1,2 | Group 'b': events at 3,4 | Group 'c': events at 5,6
     g = ["a", "a", "b", "b", "c", "c"]
     result_default = trend_test(y, g)
@@ -144,10 +144,10 @@ def test_trend_custom_scores_are_scale_invariant() -> None:
     group = ["low", "low", "low", "high", "high", "high"]
 
     # Linear scores: 0, 1
-    result_linear = trend_test(Surv.right(time, event), group, scores={"low": 0, "high": 1})
+    result_linear = trend_test(Surv(time=time, event=event), group, scores={"low": 0, "high": 1})
 
     # Scaled scores: 0, 10 (10x scaling)
-    result_scaled = trend_test(Surv.right(time, event), group, scores={"low": 0, "high": 10})
+    result_scaled = trend_test(Surv(time=time, event=event), group, scores={"low": 0, "high": 10})
 
     # Chi-square should be identical (scale-invariant)
     np.testing.assert_allclose(result_scaled.statistic, result_linear.statistic, rtol=1e-10)
@@ -155,7 +155,7 @@ def test_trend_custom_scores_are_scale_invariant() -> None:
 
 def test_trend_negative_scores_work() -> None:
     """Negative scores should work correctly."""
-    y = Surv.right([1, 2, 3, 4, 5, 6], [1, 1, 1, 1, 1, 1])
+    y = Surv(time=[1, 2, 3, 4, 5, 6], event=[1, 1, 1, 1, 1, 1])
     g = [1, 1, 2, 2, 3, 3]
 
     # All positive scores
@@ -171,7 +171,7 @@ def test_trend_negative_scores_work() -> None:
 
 def test_trend_method_string_reflects_weights() -> None:
     """Method description should reflect weights and stratification."""
-    y = Surv.right([1, 2, 3, 4, 5, 6], [1, 1, 1, 1, 1, 1])
+    y = Surv(time=[1, 2, 3, 4, 5, 6], event=[1, 1, 1, 1, 1, 1])
     g = [0, 0, 1, 1, 2, 2]
 
     assert trend_test(y, g).method == "Linear trend test"
@@ -185,8 +185,8 @@ def test_trend_with_fleming_harrington_weights() -> None:
     event = [1, 1, 1, 1, 1, 1, 1, 1, 1]
     group = [0, 0, 0, 1, 1, 1, 2, 2, 2]
 
-    result_default = trend_test(Surv.right(time, event), group)
-    result_peto = trend_test(Surv.right(time, event), group, rho=1)  # Peto-Peto
+    result_default = trend_test(Surv(time=time, event=event), group)
+    result_peto = trend_test(Surv(time=time, event=event), group, rho=1)  # Peto-Peto
 
     # Different weights should give different statistics
     assert result_default.statistic != pytest.approx(result_peto.statistic)
@@ -199,8 +199,8 @@ def test_trend_stratified_reduces_to_unstratified() -> None:
     event = [1, 1, 1, 1, 1, 1]
     group = [0, 0, 0, 1, 1, 1]
 
-    result_unstrat = trend_test(Surv.right(time, event), group)
-    result_strat = trend_test(Surv.right(time, event), group, strata=[0] * 6)
+    result_unstrat = trend_test(Surv(time=time, event=event), group)
+    result_strat = trend_test(Surv(time=time, event=event), group, strata=[0] * 6)
 
     # Should be identical
     np.testing.assert_allclose(result_strat.statistic, result_unstrat.statistic)
@@ -210,30 +210,30 @@ def test_trend_stratified_reduces_to_unstratified() -> None:
 def test_trend_requires_two_groups() -> None:
     """Trend test needs at least two groups."""
     with pytest.raises(ValueError, match="at least two"):
-        trend_test(Surv.right([1, 2, 3], [1, 1, 1]), [0, 0, 0])
+        trend_test(Surv(time=[1, 2, 3], event=[1, 1, 1]), [0, 0, 0])
 
 
 def test_trend_requires_events() -> None:
     """Trend test needs at least one event."""
     with pytest.raises(ValueError, match="No events"):
-        trend_test(Surv.right([1, 2, 3], [0, 0, 0]), [0, 1, 2])
+        trend_test(Surv(time=[1, 2, 3], event=[0, 0, 0]), [0, 1, 2])
 
 
 def test_trend_group_length_checked() -> None:
     """Group length must match response length."""
     with pytest.raises(ValueError, match="same length"):
-        trend_test(Surv.right([1, 2, 3], [1, 1, 1]), [0, 1])
+        trend_test(Surv(time=[1, 2, 3], event=[1, 1, 1]), [0, 1])
 
 
 def test_trend_strata_length_checked() -> None:
     """Strata length must match response length."""
     with pytest.raises(ValueError, match="same length"):
-        trend_test(Surv.right([1, 2, 3], [1, 1, 1]), [0, 1, 2], strata=[0, 1])
+        trend_test(Surv(time=[1, 2, 3], event=[1, 1, 1]), [0, 1, 2], strata=[0, 1])
 
 
 def test_trend_scores_dict_validation() -> None:
     """Scores dict must contain all group labels."""
-    y = Surv.right([1, 2, 3, 4], [1, 1, 1, 1])
+    y = Surv(time=[1, 2, 3, 4], event=[1, 1, 1, 1])
     g = [0, 0, 1, 1]
 
     # Missing group 1
@@ -243,7 +243,7 @@ def test_trend_scores_dict_validation() -> None:
 
 def test_trend_scores_array_length_validation() -> None:
     """Scores array must have same length as number of groups."""
-    y = Surv.right([1, 2, 3, 4], [1, 1, 1, 1])
+    y = Surv(time=[1, 2, 3, 4], event=[1, 1, 1, 1])
     g = [0, 0, 1, 1]
 
     # Wrong length
@@ -253,7 +253,7 @@ def test_trend_scores_array_length_validation() -> None:
 
 def test_trend_observed_expected_in_result() -> None:
     """Result should contain observed and expected event counts."""
-    y = Surv.right([1, 2, 3, 4, 5, 6], [1, 1, 1, 1, 1, 1])
+    y = Surv(time=[1, 2, 3, 4, 5, 6], event=[1, 1, 1, 1, 1, 1])
     g = [0, 0, 1, 1, 2, 2]
     result = trend_test(y, g)
 
@@ -265,7 +265,7 @@ def test_trend_observed_expected_in_result() -> None:
 
 def test_trend_always_df_1() -> None:
     """Trend test should always have df=1."""
-    y = Surv.right([1, 2, 3, 4, 5, 6], [1, 1, 1, 1, 1, 1])
+    y = Surv(time=[1, 2, 3, 4, 5, 6], event=[1, 1, 1, 1, 1, 1])
 
     # 2 groups
     result2 = trend_test(y, [0, 0, 1, 1, 1, 1])
@@ -282,7 +282,7 @@ def test_trend_always_df_1() -> None:
 
 def test_trend_with_right_censored_data() -> None:
     """Trend test with typical right-censored survival data."""
-    y = Surv.right([10, 20, 30, 15, 25, 35, 12, 22, 32], event=[1, 0, 1, 1, 0, 0, 1, 1, 1])
+    y = Surv(time=[10, 20, 30, 15, 25, 35, 12, 22, 32], event=[1, 0, 1, 1, 0, 0, 1, 1, 1])
     groups = [0, 0, 0, 1, 1, 1, 2, 2, 2]
 
     result = trend_test(y, groups)
@@ -296,7 +296,7 @@ def test_trend_with_counting_process_data() -> None:
     entry = [0, 1, 0, 1, 0, 2]
     exit = [1, 2, 1, 2, 2, 3]
     event = [0, 1, 1, 1, 0, 1]
-    y = Surv.counting(entry, exit, event)
+    y = Surv(time=entry, time2=exit, event=event)
     g = [0, 0, 1, 1, 2, 2]
 
     result = trend_test(y, g)
@@ -306,19 +306,17 @@ def test_trend_with_counting_process_data() -> None:
 
 def test_trend_with_weighted_observations() -> None:
     """Trend test should handle weighted observations."""
-    y = Surv.right(
-        time=[1, 2, 3, 4, 5, 6], event=[1, 1, 1, 1, 1, 1], weights=[0.5, 1.0, 1.5, 0.5, 1.0, 1.5]
-    )
+    y = Surv(time=[1, 2, 3, 4, 5, 6], event=[1, 1, 1, 1, 1, 1])
     g = [0, 0, 0, 1, 1, 1]
 
-    result = trend_test(y, g)
+    result = trend_test(y, g, weights=[0.5, 1.0, 1.5, 0.5, 1.0, 1.5])
     assert result.df == 1
     assert result.statistic > 0
 
 
 def test_trend_identical_to_logrank_for_two_groups() -> None:
     """Trend test with two groups should be similar in behavior to logrank."""
-    y = Surv.right([1, 2, 3, 4, 5, 6], [1, 1, 1, 1, 1, 1])
+    y = Surv(time=[1, 2, 3, 4, 5, 6], event=[1, 1, 1, 1, 1, 1])
     g = [0, 0, 0, 1, 1, 1]
 
     trend_result = trend_test(y, g)
@@ -332,13 +330,13 @@ def test_trend_identical_to_logrank_for_two_groups() -> None:
 
 
 def test_trend_test_rejects_interval() -> None:
-    y = Surv.interval(lower=[1, 2, 3, 4], upper=[2, 3, 4, 5])
+    y = Surv(time=[1, 2, 3, 4], time2=[2, 3, 4, 5], type="interval2")
     with pytest.raises(NotImplementedError, match="right-censored"):
         trend_test(y, group=["A", "A", "B", "B"])
 
 
 def test_trend_test_array_scores() -> None:
-    y = Surv.right([1, 2, 3, 4, 5, 6], [1, 1, 1, 1, 1, 1])
+    y = Surv(time=[1, 2, 3, 4, 5, 6], event=[1, 1, 1, 1, 1, 1])
     group = ["A", "A", "B", "B", "C", "C"]
     result = trend_test(y, group=group, scores=[0.0, 1.0, 2.0])
     assert result.statistic >= 0
@@ -352,7 +350,7 @@ def test_maxcombo_basic() -> None:
     import greenwood as gw
 
     lung = gw.load_dataset("lung", backend="pandas")
-    y = Surv.right(lung["time"], event=(lung["status"] == 2))
+    y = Surv(time=lung["time"], event=lung["status"] == 2)
     result = gw.maxcombo_test(y, group=lung["sex"])
     assert result.statistic > 0
     assert 0 < result.p_value < 1
@@ -365,7 +363,7 @@ def test_maxcombo_z_matches_logrank() -> None:
     import greenwood as gw
 
     lung = gw.load_dataset("lung", backend="pandas")
-    y = Surv.right(lung["time"], event=(lung["status"] == 2))
+    y = Surv(time=lung["time"], event=lung["status"] == 2)
     result = gw.maxcombo_test(y, group=lung["sex"], weights=[(0, 0)])
     lr = gw.logrank_test(y, group=lung["sex"])
     assert result.z_statistics[(0, 0)] == pytest.approx(np.sqrt(lr.statistic), rel=1e-10)
@@ -375,7 +373,7 @@ def test_maxcombo_custom_weights() -> None:
     import greenwood as gw
 
     lung = gw.load_dataset("lung", backend="pandas")
-    y = Surv.right(lung["time"], event=(lung["status"] == 2))
+    y = Surv(time=lung["time"], event=lung["status"] == 2)
     result = gw.maxcombo_test(y, group=lung["sex"], weights=[(0, 0), (0, 1)])
     assert len(result.z_statistics) == 2
     assert result.correlation.shape == (2, 2)
@@ -384,7 +382,7 @@ def test_maxcombo_custom_weights() -> None:
 def test_maxcombo_requires_two_groups() -> None:
     import greenwood as gw
 
-    y = Surv.right([1, 2, 3], [1, 1, 1])
+    y = Surv(time=[1, 2, 3], event=[1, 1, 1])
     with pytest.raises(ValueError, match="exactly two groups"):
         gw.maxcombo_test(y, group=["A", "A", "A"])
 
@@ -392,7 +390,7 @@ def test_maxcombo_requires_two_groups() -> None:
 def test_maxcombo_rejects_three_groups() -> None:
     import greenwood as gw
 
-    y = Surv.right([1, 2, 3, 4, 5, 6], [1, 1, 1, 1, 1, 1])
+    y = Surv(time=[1, 2, 3, 4, 5, 6], event=[1, 1, 1, 1, 1, 1])
     with pytest.raises(ValueError, match="exactly two groups"):
         gw.maxcombo_test(y, group=["A", "A", "B", "B", "C", "C"])
 
@@ -400,7 +398,7 @@ def test_maxcombo_rejects_three_groups() -> None:
 def test_maxcombo_no_events_raises() -> None:
     import greenwood as gw
 
-    y = Surv.right([1, 2, 3, 4], [0, 0, 0, 0])
+    y = Surv(time=[1, 2, 3, 4], event=[0, 0, 0, 0])
     with pytest.raises(ValueError, match="No events"):
         gw.maxcombo_test(y, group=["A", "A", "B", "B"])
 
@@ -408,7 +406,7 @@ def test_maxcombo_no_events_raises() -> None:
 def test_maxcombo_length_mismatch() -> None:
     import greenwood as gw
 
-    y = Surv.right([1, 2, 3], [1, 1, 1])
+    y = Surv(time=[1, 2, 3], event=[1, 1, 1])
     with pytest.raises(ValueError, match="same length"):
         gw.maxcombo_test(y, group=["A", "B"])
 
@@ -417,7 +415,7 @@ def test_maxcombo_p_below_logrank_for_strong_signal() -> None:
     import greenwood as gw
 
     lung = gw.load_dataset("lung", backend="pandas")
-    y = Surv.right(lung["time"], event=(lung["status"] == 2))
+    y = Surv(time=lung["time"], event=lung["status"] == 2)
     mc = gw.maxcombo_test(y, group=lung["sex"])
     lr = gw.logrank_test(y, group=lung["sex"])
     assert mc.p_value < lr.p_value
@@ -427,7 +425,7 @@ def test_maxcombo_repr() -> None:
     import greenwood as gw
 
     lung = gw.load_dataset("lung", backend="pandas")
-    y = Surv.right(lung["time"], event=(lung["status"] == 2))
+    y = Surv(time=lung["time"], event=lung["status"] == 2)
     result = gw.maxcombo_test(y, group=lung["sex"])
     s = repr(result)
     assert "MaxComboResult" in s
@@ -440,7 +438,7 @@ def test_maxcombo_stratified() -> None:
 
     lung = gw.load_dataset("lung", backend="pandas")
     lung = lung.dropna(subset=["ph.ecog"])
-    y = Surv.right(lung["time"], event=(lung["status"] == 2))
+    y = Surv(time=lung["time"], event=lung["status"] == 2)
     result = gw.maxcombo_test(y, group=lung["sex"], strata=lung["ph.ecog"])
     assert result.statistic > 0
     assert 0 < result.p_value < 1
@@ -451,7 +449,7 @@ def test_maxcombo_correlation_symmetric_unit_diagonal() -> None:
     import greenwood as gw
 
     lung = gw.load_dataset("lung", backend="pandas")
-    y = Surv.right(lung["time"], event=(lung["status"] == 2))
+    y = Surv(time=lung["time"], event=lung["status"] == 2)
     result = gw.maxcombo_test(y, group=lung["sex"])
     corr = result.correlation
     np.testing.assert_allclose(corr, corr.T)
