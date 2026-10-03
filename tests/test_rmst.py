@@ -13,7 +13,7 @@ def test_rmst_test_requires_two_groups() -> None:
     time = [1, 2, 3, 4]
     event = [1, 1, 1, 1]
     group = ["a", "a", "a", "a"]
-    y = Surv.right(time, event)
+    y = Surv(time=time, event=event)
 
     with pytest.raises(ValueError, match="at least two groups"):
         rmst_test(y, tau=10, group=group)
@@ -24,7 +24,7 @@ def test_rmst_test_rejects_more_than_two_groups() -> None:
     time = [1, 2, 3, 4, 5, 6]
     event = [1, 1, 1, 1, 1, 1]
     group = ["a", "a", "b", "b", "c", "c"]
-    y = Surv.right(time, event)
+    y = Surv(time=time, event=event)
 
     with pytest.raises(ValueError, match="two groups"):
         rmst_test(y, tau=10, group=group)
@@ -38,7 +38,7 @@ def test_rmst_test_simple_two_group() -> None:
     time = [1, 2, 3, 4, 5, 6, 7, 8]
     event = [1, 1, 1, 1, 1, 1, 1, 1]
     group = ["a", "a", "a", "a", "b", "b", "b", "b"]
-    y = Surv.right(time, event)
+    y = Surv(time=time, event=event)
 
     result = rmst_test(y, tau=10, group=group)
 
@@ -56,7 +56,7 @@ def test_rmst_test_identical_groups() -> None:
     time = [1, 2, 3, 4, 1, 2, 3, 4]
     event = [1, 1, 1, 1, 1, 1, 1, 1]
     group = ["a", "a", "a", "a", "b", "b", "b", "b"]
-    y = Surv.right(time, event)
+    y = Surv(time=time, event=event)
 
     result = rmst_test(y, tau=10, group=group)
 
@@ -70,7 +70,7 @@ def test_rmst_test_difference_estimand() -> None:
     time = [1, 2, 3, 4, 5, 6, 7, 8]
     event = [1, 1, 1, 1, 1, 1, 1, 1]
     group = ["a", "a", "a", "a", "b", "b", "b", "b"]
-    y = Surv.right(time, event)
+    y = Surv(time=time, event=event)
 
     result = rmst_test(y, tau=10, group=group, estimand="difference")
 
@@ -86,7 +86,7 @@ def test_rmst_test_ratio_estimand() -> None:
     time = [1, 2, 3, 4, 5, 6, 7, 8]
     event = [1, 1, 1, 1, 1, 1, 1, 1]
     group = ["a", "a", "a", "a", "b", "b", "b", "b"]
-    y = Surv.right(time, event)
+    y = Surv(time=time, event=event)
 
     result = rmst_test(y, tau=10, group=group, estimand="ratio")
 
@@ -102,7 +102,7 @@ def test_rmst_test_percentage_difference_estimand() -> None:
     time = [1, 2, 3, 4, 5, 6, 7, 8]
     event = [1, 1, 1, 1, 1, 1, 1, 1]
     group = ["a", "a", "a", "a", "b", "b", "b", "b"]
-    y = Surv.right(time, event)
+    y = Surv(time=time, event=event)
 
     result = rmst_test(y, tau=10, group=group, estimand="percentage_difference")
 
@@ -116,7 +116,7 @@ def test_rmst_test_invalid_estimand() -> None:
     time = [1, 2, 3, 4, 5, 6, 7, 8]
     event = [1, 1, 1, 1, 1, 1, 1, 1]
     group = ["a", "a", "a", "a", "b", "b", "b", "b"]
-    y = Surv.right(time, event)
+    y = Surv(time=time, event=event)
 
     with pytest.raises(ValueError, match="estimand must be"):
         rmst_test(y, tau=10, group=group, estimand="invalid")
@@ -127,7 +127,7 @@ def test_rmst_test_z_statistic_and_pvalue() -> None:
     time = [1, 2, 3, 4, 5, 6, 7, 8]
     event = [1, 1, 1, 1, 1, 1, 1, 1]
     group = ["a", "a", "a", "a", "b", "b", "b", "b"]
-    y = Surv.right(time, event)
+    y = Surv(time=time, event=event)
 
     result = rmst_test(y, tau=10, group=group)
 
@@ -146,7 +146,7 @@ def test_rmst_test_ci_bounds() -> None:
     time = [1, 2, 3, 4, 5, 6, 7, 8]
     event = [1, 1, 1, 1, 1, 1, 1, 1]
     group = ["a", "a", "a", "a", "b", "b", "b", "b"]
-    y = Surv.right(time, event)
+    y = Surv(time=time, event=event)
 
     result = rmst_test(y, tau=10, group=group, conf_level=0.95)
 
@@ -165,7 +165,7 @@ def test_rmst_test_conf_level() -> None:
     time = [1, 2, 3, 4, 5, 6, 7, 8]
     event = [1, 1, 1, 1, 1, 1, 1, 1]
     group = ["a", "a", "a", "a", "b", "b", "b", "b"]
-    y = Surv.right(time, event)
+    y = Surv(time=time, event=event)
 
     result_95 = rmst_test(y, tau=10, group=group, conf_level=0.95)
     result_99 = rmst_test(y, tau=10, group=group, conf_level=0.99)
@@ -181,7 +181,7 @@ def test_rmst_test_with_censoring() -> None:
     time = [1, 2, 3, 4, 5, 6, 7, 8]
     event = [1, 1, 0, 1, 1, 0, 1, 1]  # Some censored
     group = ["a", "a", "a", "a", "b", "b", "b", "b"]
-    y = Surv.right(time, event)
+    y = Surv(time=time, event=event)
 
     result = rmst_test(y, tau=10, group=group)
 
@@ -198,7 +198,7 @@ def test_rmst_test_output_repr() -> None:
     time = [1, 2, 3, 4, 5, 6, 7, 8]
     event = [1, 1, 1, 1, 1, 1, 1, 1]
     group = ["a", "a", "a", "a", "b", "b", "b", "b"]
-    y = Surv.right(time, event)
+    y = Surv(time=time, event=event)
 
     result = rmst_test(y, tau=10, group=group)
 
@@ -213,7 +213,7 @@ def test_rmst_diff_returns_dataframe() -> None:
     time = [1, 2, 3, 4, 5, 6, 7, 8]
     event = [1, 1, 1, 1, 1, 1, 1, 1]
     group = ["a", "a", "a", "a", "b", "b", "b", "b"]
-    y = Surv.right(time, event)
+    y = Surv(time=time, event=event)
 
     result_df = rmst_diff(y, tau=10, group=group)
 
@@ -230,7 +230,7 @@ def test_rmst_test_group_labels_sorted() -> None:
     time = [1, 2, 3, 4, 5, 6, 7, 8]
     event = [1, 1, 1, 1, 1, 1, 1, 1]
     group = ["z", "z", "z", "z", "a", "a", "a", "a"]  # Reversed order
-    y = Surv.right(time, event)
+    y = Surv(time=time, event=event)
 
     result = rmst_test(y, tau=10, group=group)
 
@@ -244,7 +244,7 @@ def test_rmst_test_method_string() -> None:
     time = [1, 2, 3, 4, 5, 6, 7, 8]
     event = [1, 1, 1, 1, 1, 1, 1, 1]
     group = ["a", "a", "a", "a", "b", "b", "b", "b"]
-    y = Surv.right(time, event)
+    y = Surv(time=time, event=event)
 
     result_diff = rmst_test(y, tau=365, group=group, estimand="difference")
     result_ratio = rmst_test(y, tau=365, group=group, estimand="ratio")
@@ -259,7 +259,7 @@ def test_rmst_test_large_tau() -> None:
     time = [1, 2, 3, 4, 5, 6, 7, 8]
     event = [1, 1, 1, 1, 1, 1, 1, 1]
     group = ["a", "a", "a", "a", "b", "b", "b", "b"]
-    y = Surv.right(time, event)
+    y = Surv(time=time, event=event)
 
     # tau=100 is much larger than max time (8)
     result = rmst_test(y, tau=100, group=group)
@@ -274,7 +274,7 @@ def test_rmst_test_small_tau() -> None:
     time = [1, 2, 3, 4, 5, 6, 7, 8]
     event = [1, 1, 1, 1, 1, 1, 1, 1]
     group = ["a", "a", "a", "a", "b", "b", "b", "b"]
-    y = Surv.right(time, event)
+    y = Surv(time=time, event=event)
 
     result_small = rmst_test(y, tau=2, group=group)
     result_large = rmst_test(y, tau=10, group=group)
@@ -289,7 +289,7 @@ def test_rmst_test_with_numeric_group() -> None:
     time = [1, 2, 3, 4, 5, 6, 7, 8]
     event = [1, 1, 1, 1, 1, 1, 1, 1]
     group = [1, 1, 1, 1, 2, 2, 2, 2]  # Numeric
-    y = Surv.right(time, event)
+    y = Surv(time=time, event=event)
 
     result = rmst_test(y, tau=10, group=group)
 
@@ -304,7 +304,7 @@ def test_rmst_test_ratio_with_zero_rmst_error() -> None:
     time = [1, 2, 3, 4, 100, 100, 100, 100]
     event = [1, 1, 1, 1, 0, 0, 0, 0]  # Group b all censored
     group = ["a", "a", "a", "a", "b", "b", "b", "b"]
-    y = Surv.right(time, event)
+    y = Surv(time=time, event=event)
 
     # Should not raise immediately, but check if RMST2 is effectively zero
     rmst_test(y, tau=5, group=group, estimand="ratio")
@@ -317,7 +317,7 @@ def test_rmst_test_percentage_with_zero_rmst_error() -> None:
     time = [1, 2, 3, 4, 100, 100, 100, 100]
     event = [1, 1, 1, 1, 0, 0, 0, 0]
     group = ["a", "a", "a", "a", "b", "b", "b", "b"]
-    y = Surv.right(time, event)
+    y = Surv(time=time, event=event)
 
     rmst_test(y, tau=5, group=group, estimand="percentage_difference")
     # Should compute or handle gracefully
@@ -328,7 +328,7 @@ def test_rmst_test_attributes() -> None:
     time = [1, 2, 3, 4, 5, 6, 7, 8]
     event = [1, 1, 1, 1, 1, 1, 1, 1]
     group = ["a", "a", "a", "a", "b", "b", "b", "b"]
-    y = Surv.right(time, event)
+    y = Surv(time=time, event=event)
 
     result = rmst_test(y, tau=10, group=group)
 
@@ -357,7 +357,7 @@ def test_rmst_test_comparison_order() -> None:
     time = [1, 2, 3, 4, 5, 6, 7, 8]
     event = [1, 1, 1, 1, 1, 1, 1, 1]
     group = ["b", "b", "b", "b", "a", "a", "a", "a"]
-    y = Surv.right(time, event)
+    y = Surv(time=time, event=event)
 
     result = rmst_test(y, tau=10, group=group)
 
@@ -372,7 +372,7 @@ def test_pairwise_rmst_test_three_groups() -> None:
     time = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
     event = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
     group = ["a", "a", "a", "a", "b", "b", "b", "b", "c", "c", "c", "c"]
-    y = Surv.right(time, event)
+    y = Surv(time=time, event=event)
 
     result = pairwise_rmst_test(y, tau=15, group=group)
 
@@ -388,7 +388,7 @@ def test_pairwise_rmst_test_requires_two_groups() -> None:
     time = [1, 2, 3, 4]
     event = [1, 1, 1, 1]
     group = ["a", "a", "a", "a"]
-    y = Surv.right(time, event)
+    y = Surv(time=time, event=event)
 
     with pytest.raises(ValueError, match="at least two groups"):
         pairwise_rmst_test(y, tau=10, group=group)
@@ -399,7 +399,7 @@ def test_pairwise_rmst_test_correction_methods() -> None:
     time = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
     event = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
     group = ["a", "a", "a", "a", "b", "b", "b", "b", "c", "c", "c", "c"]
-    y = Surv.right(time, event)
+    y = Surv(time=time, event=event)
 
     result_holm = pairwise_rmst_test(y, tau=15, group=group, correction="holm")
     result_bh = pairwise_rmst_test(y, tau=15, group=group, correction="bh")
@@ -419,7 +419,7 @@ def test_pairwise_rmst_test_invalid_correction() -> None:
     time = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
     event = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
     group = ["a", "a", "a", "a", "b", "b", "b", "b", "c", "c", "c", "c"]
-    y = Surv.right(time, event)
+    y = Surv(time=time, event=event)
 
     with pytest.raises(ValueError, match="Unknown correction"):
         pairwise_rmst_test(y, tau=15, group=group, correction="invalid")
@@ -434,7 +434,7 @@ def test_rmst_test_stratified_sets_flag() -> None:
     event = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
     group = ["a", "a", "a", "a", "b", "b", "b", "b", "a", "a", "a", "a", "b", "b", "b", "b"]
     strata = ["x", "x", "x", "x", "x", "x", "x", "x", "y", "y", "y", "y", "y", "y", "y", "y"]
-    y = Surv.right(time, event)
+    y = Surv(time=time, event=event)
 
     result = rmst_test(y, tau=10, group=group, strata=strata)
 
@@ -447,7 +447,7 @@ def test_rmst_test_unstratified_flag_absent() -> None:
     time = [1, 2, 3, 4, 5, 6, 7, 8]
     event = [1, 1, 1, 1, 1, 1, 1, 1]
     group = ["a", "a", "a", "a", "b", "b", "b", "b"]
-    y = Surv.right(time, event)
+    y = Surv(time=time, event=event)
 
     result = rmst_test(y, tau=10, group=group)
 
@@ -477,7 +477,7 @@ def test_rmst_test_stratified_finite_output() -> None:
         "s2",
         "s2",
     ]
-    y = Surv.right(time, event)
+    y = Surv(time=time, event=event)
 
     result = rmst_test(y, tau=10, group=group, strata=strata)
 
@@ -495,7 +495,7 @@ def test_rmst_test_stratified_wider_ci_than_within_stratum() -> None:
     event = [1] * 16
     group = ["a", "a", "a", "a", "b", "b", "b", "b"] * 2
     strata = ["s1"] * 8 + ["s2"] * 8
-    y = Surv.right(time, event)
+    y = Surv(time=time, event=event)
 
     result = rmst_test(y, tau=10, group=group, strata=strata)
 
@@ -509,7 +509,7 @@ def test_rmst_test_stratified_same_both_strata_near_zero() -> None:
     event = [1] * 16
     group = ["a", "a", "a", "a", "b", "b", "b", "b"] * 2
     strata = ["s1"] * 8 + ["s2"] * 8
-    y = Surv.right(time, event)
+    y = Surv(time=time, event=event)
 
     result = rmst_test(y, tau=10, group=group, strata=strata)
 
@@ -537,12 +537,12 @@ def test_rmst_test_stratified_missing_group_in_stratum_skipped() -> None:
     event = [1] * 12
     group = ["a", "a", "a", "a", "b", "b", "b", "b", "a", "a", "a", "a"]
     strata = ["s1", "s1", "s1", "s1", "s1", "s1", "s1", "s1", "s2", "s2", "s2", "s2"]
-    y = Surv.right(time, event)
+    y = Surv(time=time, event=event)
 
     result = rmst_test(y, tau=15, group=group, strata=strata)
 
     # Result should come from s1 only (stratum s2 is skipped)
-    result_unstrat = rmst_test(Surv.right(time[:8], event[:8]), tau=15, group=group[:8])
+    result_unstrat = rmst_test(Surv(time=time[:8], event=event[:8]), tau=15, group=group[:8])
     assert result.estimate == pytest.approx(result_unstrat.estimate)
 
 
@@ -553,7 +553,7 @@ def test_rmst_test_stratified_no_valid_strata_raises() -> None:
     group = ["a", "a", "a", "a", "b", "b", "b", "b"]
     # Each stratum has only one group
     strata = ["s1", "s1", "s1", "s1", "s2", "s2", "s2", "s2"]
-    y = Surv.right(time, event)
+    y = Surv(time=time, event=event)
 
     with pytest.raises(ValueError, match="No usable strata"):
         rmst_test(y, tau=10, group=group, strata=strata)
@@ -566,7 +566,7 @@ def test_rmst_test_counting_process() -> None:
     entry = np.array([0, 0, 0, 0, 0, 0, 0, 0])
     exit_ = np.array([1, 2, 3, 4, 5, 6, 7, 8])
     event = np.array([1, 1, 1, 1, 1, 1, 1, 1])
-    y = Surv.counting(entry, exit_, event)
+    y = Surv(time=entry, time2=exit_, event=event)
     group = [0, 0, 0, 0, 1, 1, 1, 1]
     result = rmst_test(y, tau=6, group=group)
     assert isinstance(result.estimate, float)
@@ -576,7 +576,7 @@ def test_rmst_test_counting_process_stratified() -> None:
     entry = np.zeros(16)
     exit_ = np.array([1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8], dtype=float)
     event = np.ones(16, dtype=int)
-    y = Surv.counting(entry, exit_, event)
+    y = Surv(time=entry, time2=exit_, event=event)
     group = np.array([0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1])
     strata = np.array(["S1"] * 8 + ["S2"] * 8)
     result = rmst_test(y, tau=6, group=group, strata=strata)
@@ -587,7 +587,7 @@ def test_pairwise_rmst_counting_process() -> None:
     entry = np.zeros(12)
     exit_ = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], dtype=float)
     event = np.ones(12, dtype=int)
-    y = Surv.counting(entry, exit_, event)
+    y = Surv(time=entry, time2=exit_, event=event)
     group = np.array(["A"] * 4 + ["B"] * 4 + ["C"] * 4)
     result = pairwise_rmst_test(y, tau=8, group=group)
     assert result.shape[0] == 3
@@ -600,6 +600,6 @@ def test_pairwise_rmst_with_strata() -> None:
     events = np.ones(n, dtype=int)
     group = np.array(["A"] * 20 + ["B"] * 20 + ["C"] * 20)
     strata = np.tile(["S1", "S2"], 30)
-    y = Surv.right(times, events)
+    y = Surv(time=times, event=events)
     result = pairwise_rmst_test(y, tau=4, group=group, strata=strata)
     assert result.shape[0] == 3
