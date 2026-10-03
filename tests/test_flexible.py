@@ -25,7 +25,7 @@ def lung():
 
 @pytest.fixture(scope="module")
 def y(lung):
-    return Surv.right(lung["time"], event=(lung["status"] == 2))
+    return Surv(time=lung["time"], event=(lung["status"] == 2))
 
 
 def test_df1_matches_r_weibull(lung, y) -> None:
@@ -482,7 +482,7 @@ class TestPredictFormats:
 
 class TestRoystonParmarErrorPaths:
     def test_rejects_non_right_censored(self) -> None:
-        yc = Surv.counting([0, 1, 2], [5, 6, 7], [1, 0, 1])
+        yc = Surv(time=[0, 1, 2], time2=[5, 6, 7], event=[1, 0, 1])
         x = np.array([[1.0], [2.0], [3.0]])
         with pytest.raises(NotImplementedError, match="right-censored"):
             RoystonParmar(df=1).fit(yc, x)
