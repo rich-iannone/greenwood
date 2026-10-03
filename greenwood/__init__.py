@@ -23,6 +23,7 @@ from ._cr_forest import CompetingRiskForest
 from ._cure import MixtureCure
 from ._event_time import (
     EventTime,
+    as_surv,
     event_time,
     extract_status,
     extract_time,
@@ -60,7 +61,7 @@ from ._power import logrank_n_events, logrank_power, logrank_sample_size
 from ._resample import cross_validate
 from ._rmst import RMSTResult, pairwise_rmst_test, rmst_diff, rmst_test
 from ._simulate import SimulatedCompetingRisks, simulate_competing_risks
-from ._surv import CensoringType, Surv
+from ._surv import CensoringType, Surv, first_event
 from ._survival_boost import SurvivalBoost
 from ._tests import (
     MaxComboResult,
@@ -102,6 +103,8 @@ __all__ = [
     "EventTime",
     "extract_time",
     "extract_status",
+    "as_surv",
+    "first_event",
     "Outcome",
     "duration",
     "Duration",
