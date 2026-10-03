@@ -20,6 +20,7 @@ from ._competing import _censoring_km
 from ._cox import _design_matrix_spec
 from ._outcome import bind_fit_inputs
 from ._repr import dropped_note
+from ._surv import MULTISTATE_HINT
 
 if TYPE_CHECKING:
     from ._outcome import Outcome
@@ -229,8 +230,9 @@ class SurvivalBoost:
         Parameters
         ----------
         surv
-            A multi-state `Surv` response (built with `Surv.multistate()`).
-            An `Outcome` or a formula string such as `'Surv(time, status == 2) ~ age + sex'` is also
+            A multi-state `Surv` response, built with `gw.Surv()` and a categorical `event`.
+            An `Outcome` or a formula string such as
+            `"Surv(time, factor(cause, c(0, 1, 2), c('censor', 'pcm', 'death'))) ~ age"` is also
             accepted, with its columns read from `data`. The right-hand side sets `covariates`.
         covariates
             A dataframe, a 2-D array, or a right-hand-side formula string evaluated against `data`.
@@ -280,7 +282,7 @@ class SurvivalBoost:
 
         if surv.states is None:
             raise NotImplementedError(
-                "SurvivalBoost requires a multi-state response from Surv.multistate()."
+                "SurvivalBoost requires a multi-state response. " + MULTISTATE_HINT
             )
 
         x, names, self._design_spec = _design_matrix_spec(covariates, data)
