@@ -12,7 +12,7 @@ from greenwood import PiecewiseExponential, Surv
 @pytest.fixture
 def lung_data():  # type: ignore[no-untyped-def]
     df = gw.load_dataset("lung", backend="pandas")
-    y = Surv.right(df["time"], event=(df["status"] == 2))
+    y = Surv(time=df["time"], event=(df["status"] == 2))
     return df, y
 
 
@@ -326,11 +326,7 @@ def test_survival_cumhaz_consistency(lung_data) -> None:  # type: ignore[no-unty
 def test_counting_process(lung_data) -> None:  # type: ignore[no-untyped-def]
     """PEM should accept counting-process Surv input."""
     df, _ = lung_data
-    y_cp = Surv.counting(
-        start=np.zeros(len(df)),
-        stop=df["time"].values,
-        event=(df["status"].values == 2),
-    )
+    y_cp = Surv(time=np.zeros(len(df)), time2=df["time"].values, event=(df["status"].values == 2))
     pem = PiecewiseExponential(breaks=[180, 365]).fit(y_cp, df[["age", "sex"]])
 
     assert pem.n_ == 228
