@@ -100,12 +100,12 @@ class Parametric:
     ```{python}
     import greenwood as gw
 
-    # Load data and build a right-censored response
+    # Load data and name the response columns
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+    death = gw.Outcome.surv(time="time", event="status")
 
     # Fit a Weibull distribution and display the parameter estimates
-    fit = gw.Parametric(dist="weibull").fit(y)
+    fit = gw.Parametric(dist="weibull").fit(death, data=lung)
     fit
     ```
 
@@ -114,7 +114,7 @@ class Parametric:
 
     ```{python}
     # Compare all four distribution families by AIC
-    gw.compare_distributions(y, format="polars")
+    gw.compare_distributions(death, data=lung, format="polars")
     ```
     """
 
@@ -160,7 +160,7 @@ class Parametric:
         Parameters
         ----------
         surv
-            A right-censored `Surv` response built with `Surv.right()`.
+            A right-censored `Surv` response built with `Surv(time=..., event=...)`.
             An `Outcome` or a formula string such as `'Surv(time, status == 2)'` is also accepted,
             with its columns read from `data`.
         data
@@ -182,12 +182,12 @@ class Parametric:
         ```{python}
         import greenwood as gw
 
-        # Load data and build a right-censored response
+        # Load data and name the response columns
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+        death = gw.Outcome.surv(time="time", event="status")
 
         # Fit a log-normal distribution
-        gw.Parametric(dist="lognormal").fit(y)
+        gw.Parametric(dist="lognormal").fit(death, data=lung)
         ```
         """
         bound = bind_fit_inputs(
@@ -342,8 +342,8 @@ class Parametric:
 
         # Load data and fit a Weibull distribution
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-        fit = gw.Parametric(dist="weibull").fit(y)
+        death = gw.Outcome.surv(time="time", event="status")
+        fit = gw.Parametric(dist="weibull").fit(death, data=lung)
         # Evaluate survival probabilities at selected time points
         fit.survival(times=[100, 200, 365, 500])
         ```
@@ -384,8 +384,8 @@ class Parametric:
 
         # Load data and fit a Weibull distribution
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-        fit = gw.Parametric(dist="weibull").fit(y)
+        death = gw.Outcome.surv(time="time", event="status")
+        fit = gw.Parametric(dist="weibull").fit(death, data=lung)
 
         # Compute cumulative hazard at selected time points
         fit.cumulative_hazard(times=[100, 200, 365, 500])
@@ -429,8 +429,8 @@ class Parametric:
 
         # Load data and fit a Weibull distribution
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-        fit = gw.Parametric(dist="weibull").fit(y)
+        death = gw.Outcome.surv(time="time", event="status")
+        fit = gw.Parametric(dist="weibull").fit(death, data=lung)
 
         # Evaluate the instantaneous hazard rate at selected time points
         fit.hazard(times=[100, 200, 365, 500])
@@ -476,8 +476,8 @@ class Parametric:
 
         # Load data and fit a Weibull distribution
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-        fit = gw.Parametric(dist="weibull").fit(y)
+        death = gw.Outcome.surv(time="time", event="status")
+        fit = gw.Parametric(dist="weibull").fit(death, data=lung)
 
         # Evaluate the density at selected time points
         fit.density(times=[100, 200, 365, 500])
@@ -521,8 +521,8 @@ class Parametric:
 
         # Load data and fit a Weibull distribution
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-        fit = gw.Parametric(dist="weibull").fit(y)
+        death = gw.Outcome.surv(time="time", event="status")
+        fit = gw.Parametric(dist="weibull").fit(death, data=lung)
 
         # Compute the quartile survival times
         fit.quantile(p=[0.25, 0.5, 0.75])
@@ -562,8 +562,8 @@ class Parametric:
 
         # Load data and fit a Weibull distribution
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-        fit = gw.Parametric(dist="weibull").fit(y)
+        death = gw.Outcome.surv(time="time", event="status")
+        fit = gw.Parametric(dist="weibull").fit(death, data=lung)
 
         # Compute the expected survival time
         fit.mean()
@@ -593,8 +593,8 @@ class Parametric:
 
         # Load data and fit a Weibull distribution
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-        fit = gw.Parametric(dist="weibull").fit(y)
+        death = gw.Outcome.surv(time="time", event="status")
+        fit = gw.Parametric(dist="weibull").fit(death, data=lung)
 
         # Compute the median survival time
         fit.median()
@@ -630,8 +630,8 @@ class Parametric:
 
         # Load data and fit a Weibull distribution
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-        fit = gw.Parametric(dist="weibull").fit(y)
+        death = gw.Outcome.surv(time="time", event="status")
+        fit = gw.Parametric(dist="weibull").fit(death, data=lung)
 
         # Export the parameter estimates as a Polars DataFrame
         fit.to_frame(format="polars")
@@ -706,12 +706,12 @@ def compare_distributions(
     ```{python}
     import greenwood as gw
 
-    # Load data and build a right-censored response
+    # Load data and name the response columns
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+    death = gw.Outcome.surv(time="time", event="status")
 
     # Compare all four distributions by AIC
-    gw.compare_distributions(y, format="polars")
+    gw.compare_distributions(death, data=lung, format="polars")
     ```
     """
     surv = bind_fit_inputs(surv, data=data, estimator="compare_distributions()").surv
