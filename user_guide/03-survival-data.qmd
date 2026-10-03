@@ -11,6 +11,36 @@ import great_docs as gd
 gd.enable_tbl_preview(n_head=8, n_tail=3)
 ```
 
+```{=html}
+<style>
+.gw-fig { --gw-event: #2a78d6; --gw-window: #eb6834; --gw-entry: #1baf7a;
+  --gw-surface: #fcfeff; --gw-muted: rgba(0, 0, 0, 0.62); --gw-faint: rgba(0, 0, 0, 0.16); --gw-box: rgba(0, 0, 0, 0.035);
+  margin: 1.5rem 0; }
+body.quarto-dark .gw-fig { --gw-surface: #1a1a1a; --gw-event: #3987e5; --gw-window: #d95926; --gw-entry: #199e70;
+  --gw-muted: rgba(255, 255, 255, 0.66); --gw-faint: rgba(255, 255, 255, 0.2);
+  --gw-box: rgba(255, 255, 255, 0.05); }
+.gw-fig svg { display: block; width: 100%; height: auto; overflow: visible; }
+.gw-fig text { fill: currentColor; font-family: inherit; }
+.gw-fig .t-muted { fill: var(--gw-muted); }
+.gw-fig .t-mono { font-family: var(--bs-font-monospace, ui-monospace, SFMono-Regular, Menlo, monospace); }
+.gw-fig .t-bold { font-weight: 600; }
+.gw-fig .ink { stroke: currentColor; fill: none; }
+.gw-fig .muted { stroke: var(--gw-muted); fill: none; }
+.gw-fig .faint { stroke: var(--gw-faint); fill: none; }
+.gw-fig .event { fill: var(--gw-event); stroke: none; }
+.gw-fig .event-line { stroke: var(--gw-event); fill: none; }
+.gw-fig .censor { fill: var(--gw-surface, Canvas); stroke: currentColor; }
+.gw-fig .window { fill: var(--gw-window); stroke: none; opacity: 0.45; }
+.gw-fig .window-line { stroke: var(--gw-window); fill: none; }
+.gw-fig .entry-line { stroke: var(--gw-entry); fill: none; }
+.gw-fig .box { fill: var(--gw-box); stroke: var(--gw-faint); }
+.gw-fig .arrowhead { fill: var(--gw-muted); }
+.gw-fig .arrowhead-window { fill: var(--gw-window); }
+body.quarto-dark .gw-fig .window { opacity: 0.75; }
+.gw-fig .group { fill: none; stroke: var(--gw-faint); stroke-dasharray: 5 5; }
+</style>
+```
+
 Survival analysis studies the time until an event happens: death, relapse, machine failure, customer
 churn, or any other well-defined endpoint. What makes this kind of data special, and what separates
 survival analysis from ordinary regression, is that we usually cannot observe the event time for
@@ -24,52 +54,190 @@ column names when your data lives in a data frame.
 
 ## Why survival data is different
 
-Imagine a study that follows patients for two years and records the time until relapse. At the end
-of the study, three situations are possible for any given patient.
+Imagine a study that follows patients for up to two years after treatment and records the time
+until their disease comes back (relapse). @fig-follow-up shows four of them.
 
-The first is a fully observed event: the patient relapsed at a known time, say 8 months. The second
-is right censoring: the patient was relapse-free at their last visit, say at 20 months, so all we
-know is that their true relapse time is greater than 20 months. The third is a variation on
-censoring caused by how subjects enter and leave the study.
-
-Right censoring is by far the most common situation, and it is why we cannot simply average the
-observed times or run a standard regression on them. A censored time of 20 months is not the same as
-an event at 20 months, and treating it as one would badly bias every estimate. Survival methods are
-built to use the partial information in a censored observation without pretending it is a complete
-one.
-
-::: {#fig-censoring}
-<svg viewBox="0 0 680 210" xmlns="http://www.w3.org/2000/svg" style="max-width:680px;width:100%;height:auto;font-family:sans-serif;color:inherit">
-<text x="125" y="59" text-anchor="end" font-size="13" fill="currentColor">Subject A</text>
-<line x1="140" y1="55" x2="280" y2="55" stroke="currentColor" stroke-width="3"/>
-<circle cx="280" cy="55" r="6" fill="#4c78a8"/>
-<text x="292" y="59" font-size="13" fill="currentColor">Event (t = 8)</text>
-<text x="125" y="109" text-anchor="end" font-size="13" fill="currentColor">Subject B</text>
-<line x1="140" y1="105" x2="490" y2="105" stroke="currentColor" stroke-width="3"/>
-<circle cx="490" cy="105" r="6" fill="none" stroke="currentColor" stroke-width="2"/>
-<text x="502" y="109" font-size="13" fill="currentColor">Censored (t = 20)</text>
-<line x1="140" y1="150" x2="560" y2="150" stroke="currentColor" stroke-width="1"/>
-<g font-size="11" fill="currentColor" text-anchor="middle">
-<line x1="140" y1="150" x2="140" y2="156" stroke="currentColor"/><text x="140" y="170">0</text>
-<line x1="210" y1="150" x2="210" y2="156" stroke="currentColor"/><text x="210" y="170">4</text>
-<line x1="280" y1="150" x2="280" y2="156" stroke="currentColor"/><text x="280" y="170">8</text>
-<line x1="350" y1="150" x2="350" y2="156" stroke="currentColor"/><text x="350" y="170">12</text>
-<line x1="420" y1="150" x2="420" y2="156" stroke="currentColor"/><text x="420" y="170">16</text>
-<line x1="490" y1="150" x2="490" y2="156" stroke="currentColor"/><text x="490" y="170">20</text>
-<line x1="560" y1="150" x2="560" y2="156" stroke="currentColor"/><text x="560" y="170">24</text>
-</g>
-<text x="350" y="195" text-anchor="middle" font-size="12" fill="currentColor">Months of follow-up</text>
+::: {#fig-follow-up}
+```{=html}
+<div class="gw-fig">
+<svg viewBox="0 0 720 314" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Follow-up of four patients and the time and status recorded for each">
+<defs><marker id="gw-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrowhead" d="M0,0 L10,5 L0,10 z"/></marker><marker id="gw-arrow-window" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path class="arrowhead-window" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<circle cx="27.0" cy="17.0" r="6" class="event"/>
+<text x="46.0" y="22.0" font-size="13" text-anchor="start">Relapse observed</text>
+<circle cx="197.4" cy="17.0" r="6" class="censor" stroke-width="2.5"/>
+<text x="216.4" y="22.0" font-size="13" text-anchor="start">Censored: relapse-free when last seen</text>
+<line x1="480.0" y1="44.0" x2="480.0" y2="230.0" class="muted" stroke-width="1.5" stroke-linecap="round" stroke-dasharray="5 5"/>
+<text x="560.0" y="52.0" font-size="14" text-anchor="start" class="t-bold">What is recorded</text>
+<text x="560.0" y="72.0" font-size="13" text-anchor="start" class="t-muted">time</text>
+<text x="630.0" y="72.0" font-size="13" text-anchor="start" class="t-muted">status</text>
+<text x="106.0" y="97.0" font-size="14" text-anchor="end">Patient A</text>
+<line x1="120.0" y1="92.0" x2="240.0" y2="92.0" class="ink" stroke-width="3" stroke-linecap="round"/>
+<circle cx="240.0" cy="92.0" r="7" class="event"/>
+<text x="560.0" y="97.0" font-size="14" text-anchor="start" class="t-mono">8</text>
+<circle cx="636.0" cy="92.0" r="5" class="event"/>
+<text x="648.0" y="97.0" font-size="14" text-anchor="start">event</text>
+<text x="106.0" y="143.0" font-size="14" text-anchor="end">Patient B</text>
+<line x1="120.0" y1="138.0" x2="480.0" y2="138.0" class="ink" stroke-width="3" stroke-linecap="round"/>
+<line x1="490.0" y1="138.0" x2="528.0" y2="138.0" class="window-line" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="3 5" marker-end="url(#gw-arrow-window)"/>
+<circle cx="480.0" cy="138.0" r="7" class="censor" stroke-width="2.5"/>
+<text x="536.0" y="143.0" font-size="15" text-anchor="start" class="t-bold">?</text>
+<text x="472.0" y="126.0" font-size="12" text-anchor="end" class="t-muted">study ended</text>
+<text x="560.0" y="143.0" font-size="14" text-anchor="start" class="t-mono">24</text>
+<circle cx="636.0" cy="138.0" r="5" class="censor" stroke-width="2.5"/>
+<text x="648.0" y="143.0" font-size="14" text-anchor="start">censored</text>
+<text x="106.0" y="189.0" font-size="14" text-anchor="end">Patient C</text>
+<line x1="120.0" y1="184.0" x2="315.0" y2="184.0" class="ink" stroke-width="3" stroke-linecap="round"/>
+<line x1="325.0" y1="184.0" x2="363.0" y2="184.0" class="window-line" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="3 5" marker-end="url(#gw-arrow-window)"/>
+<circle cx="315.0" cy="184.0" r="7" class="censor" stroke-width="2.5"/>
+<text x="371.0" y="189.0" font-size="15" text-anchor="start" class="t-bold">?</text>
+<text x="307.0" y="172.0" font-size="12" text-anchor="end" class="t-muted">moved away</text>
+<text x="560.0" y="189.0" font-size="14" text-anchor="start" class="t-mono">13</text>
+<circle cx="636.0" cy="184.0" r="5" class="censor" stroke-width="2.5"/>
+<text x="648.0" y="189.0" font-size="14" text-anchor="start">censored</text>
+<text x="106.0" y="235.0" font-size="14" text-anchor="end">Patient D</text>
+<line x1="120.0" y1="230.0" x2="375.0" y2="230.0" class="ink" stroke-width="3" stroke-linecap="round"/>
+<circle cx="375.0" cy="230.0" r="7" class="event"/>
+<text x="560.0" y="235.0" font-size="14" text-anchor="start" class="t-mono">17</text>
+<circle cx="636.0" cy="230.0" r="5" class="event"/>
+<text x="648.0" y="235.0" font-size="14" text-anchor="start">event</text>
+<text x="480.0" y="246.0" font-size="12" text-anchor="middle" class="t-muted">end of study</text>
+<line x1="120.0" y1="262.0" x2="480.0" y2="262.0" class="muted" stroke-width="1.5" stroke-linecap="round"/>
+<line x1="120.0" y1="262.0" x2="120.0" y2="268.0" class="muted" stroke-width="1.5" stroke-linecap="round"/>
+<text x="120.0" y="284.0" font-size="13" text-anchor="middle" class="t-muted">0</text>
+<line x1="180.0" y1="262.0" x2="180.0" y2="268.0" class="muted" stroke-width="1.5" stroke-linecap="round"/>
+<text x="180.0" y="284.0" font-size="13" text-anchor="middle" class="t-muted">4</text>
+<line x1="240.0" y1="262.0" x2="240.0" y2="268.0" class="muted" stroke-width="1.5" stroke-linecap="round"/>
+<text x="240.0" y="284.0" font-size="13" text-anchor="middle" class="t-muted">8</text>
+<line x1="300.0" y1="262.0" x2="300.0" y2="268.0" class="muted" stroke-width="1.5" stroke-linecap="round"/>
+<text x="300.0" y="284.0" font-size="13" text-anchor="middle" class="t-muted">12</text>
+<line x1="360.0" y1="262.0" x2="360.0" y2="268.0" class="muted" stroke-width="1.5" stroke-linecap="round"/>
+<text x="360.0" y="284.0" font-size="13" text-anchor="middle" class="t-muted">16</text>
+<line x1="420.0" y1="262.0" x2="420.0" y2="268.0" class="muted" stroke-width="1.5" stroke-linecap="round"/>
+<text x="420.0" y="284.0" font-size="13" text-anchor="middle" class="t-muted">20</text>
+<line x1="480.0" y1="262.0" x2="480.0" y2="268.0" class="muted" stroke-width="1.5" stroke-linecap="round"/>
+<text x="480.0" y="284.0" font-size="13" text-anchor="middle" class="t-muted">24</text>
+<text x="300.0" y="304.0" font-size="13" text-anchor="middle" class="t-muted">Months since enrolment</text>
 </svg>
+</div>
+```
 
-Two subjects observed over a study window. Subject A reaches the event at month 8. Subject B is
-still event-free at month 20, so their true event time is only known to exceed 20: this is right
-censoring.
+Four patients in a two-year study. Each line is the time a patient was followed. A filled dot
+marks a relapse that was seen. An open circle marks the last time the patient was seen relapse-free,
+and the dashed arrow says the true relapse time, if there is one, lies somewhere later. On the right
+is what ends up in the data: one time and one status per patient.
 :::
 
-Greenwood also supports less common but important patterns: left censoring (the event happened
-before a known time), interval censoring (the event happened between two known times), and left
-truncation or late entry (a subject only becomes observable after some delay). All of these are
-expressed through the same response object.
+Patients A and D relapsed while they were being followed, so we know exactly when: at month 8 and
+month 17. Patients B and C are different. B was still relapse-free when the study ended at month 24,
+and C moved away at month 13 and was never seen again. For both of them we only know that the
+relapse, if it ever happens, comes **after** the last time they were seen. Their times are
+**censored**: cut off before the event could be observed.
+
+So every patient contributes two pieces of information: a **time**, and a **status** that says what
+the time means. For A and D the time is when the event happened. For B and C it is the last moment
+they were known to be event-free, which is still useful information: B stayed relapse-free for at
+least 24 months, and that counts.
+
+Censoring is why ordinary methods break down here. Averaging the four times treats B's 24 months as
+if B relapsed at month 24, which makes the treatment look worse than it is. Dropping B and C throws
+away the fact that they did well for a long time. Survival methods use exactly what each patient
+tells us, no more and no less, and that is what the rest of this guide is about.
+
+### Other ways an observation can be incomplete
+
+The example above shows **right censoring**: the event, if any, happens after the last time we saw
+the patient. It is by far the most common situation. @fig-kinds shows the others you may meet, and
+how each one is written down.
+
+::: {#fig-kinds}
+```{=html}
+<div class="gw-fig">
+<svg viewBox="0 0 720 468" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Exact, right-censored, left-censored, interval-censored, and late-entry observations">
+<defs><marker id="gw-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrowhead" d="M0,0 L10,5 L0,10 z"/></marker><marker id="gw-arrow-window" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path class="arrowhead-window" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<text x="20.0" y="30.0" font-size="14" text-anchor="start" class="t-bold">What we know about one subject</text>
+<text x="560.0" y="30.0" font-size="14" text-anchor="start" class="t-bold">Written as</text>
+<text x="20.0" y="79.0" font-size="14" text-anchor="start" class="t-bold">Exact event</text>
+<text x="20.0" y="97.0" font-size="12" text-anchor="start" class="t-muted">The event was seen when it happened.</text>
+<text x="560.0" y="79.0" font-size="13" text-anchor="start" class="t-mono">status "e"</text>
+<text x="560.0" y="97.0" font-size="12" text-anchor="start" class="t-muted">event at 8</text>
+<line x1="230.0" y1="106.0" x2="510.0" y2="106.0" class="faint" stroke-width="1" stroke-linecap="round"/>
+<text x="20.0" y="143.0" font-size="14" text-anchor="start" class="t-bold">Right-censored</text>
+<text x="20.0" y="161.0" font-size="12" text-anchor="start" class="t-muted">Event-free when last seen.</text>
+<text x="560.0" y="143.0" font-size="13" text-anchor="start" class="t-mono">status "r"</text>
+<text x="560.0" y="161.0" font-size="12" text-anchor="start" class="t-muted">event after 12</text>
+<line x1="230.0" y1="170.0" x2="510.0" y2="170.0" class="faint" stroke-width="1" stroke-linecap="round"/>
+<text x="20.0" y="207.0" font-size="14" text-anchor="start" class="t-bold">Left-censored</text>
+<text x="20.0" y="225.0" font-size="12" text-anchor="start" class="t-muted">Already happened by the first check.</text>
+<text x="560.0" y="207.0" font-size="13" text-anchor="start" class="t-mono">status "l"</text>
+<text x="560.0" y="225.0" font-size="12" text-anchor="start" class="t-muted">event before 8</text>
+<line x1="230.0" y1="234.0" x2="510.0" y2="234.0" class="faint" stroke-width="1" stroke-linecap="round"/>
+<text x="20.0" y="271.0" font-size="14" text-anchor="start" class="t-bold">Interval-censored</text>
+<text x="20.0" y="289.0" font-size="12" text-anchor="start" class="t-muted">Happened between two visits.</text>
+<text x="560.0" y="271.0" font-size="13" text-anchor="start" class="t-mono">status "i"</text>
+<text x="560.0" y="289.0" font-size="12" text-anchor="start" class="t-muted">event in (4, 12]</text>
+<line x1="230.0" y1="298.0" x2="510.0" y2="298.0" class="faint" stroke-width="1" stroke-linecap="round"/>
+<text x="20.0" y="335.0" font-size="14" text-anchor="start" class="t-bold">Late entry</text>
+<text x="20.0" y="353.0" font-size="12" text-anchor="start" class="t-muted">Only observed after joining the study.</text>
+<text x="560.0" y="335.0" font-size="13" text-anchor="start" class="t-mono">Surv(t0, t1, event)</text>
+<text x="560.0" y="353.0" font-size="12" text-anchor="start" class="t-muted">start, stop, event</text>
+<line x1="230.0" y1="362.0" x2="510.0" y2="362.0" class="faint" stroke-width="1" stroke-linecap="round"/>
+<line x1="230.0" y1="82.0" x2="342.0" y2="82.0" class="ink" stroke-width="3" stroke-linecap="round"/>
+<circle cx="342.0" cy="82.0" r="7" class="event"/>
+<rect x="398.0" y="139.0" width="112.0" height="14" rx="3" class="window"/>
+<line x1="230.0" y1="146.0" x2="398.0" y2="146.0" class="ink" stroke-width="3" stroke-linecap="round"/>
+<circle cx="398.0" cy="146.0" r="7" class="censor" stroke-width="2.5"/>
+<text x="454.0" y="133.0" font-size="12" text-anchor="middle" class="t-muted">somewhere here</text>
+<rect x="230.0" y="203.0" width="112.0" height="14" rx="3" class="window"/>
+<line x1="342.0" y1="197.0" x2="342.0" y2="223.0" class="ink" stroke-width="3" stroke-linecap="round"/>
+<text x="350.0" y="215.0" font-size="12" text-anchor="start" class="t-muted">first check</text>
+<text x="286.0" y="197.0" font-size="12" text-anchor="middle" class="t-muted">somewhere here</text>
+<rect x="286.0" y="267.0" width="112.0" height="14" rx="3" class="window"/>
+<line x1="230.0" y1="274.0" x2="286.0" y2="274.0" class="ink" stroke-width="3" stroke-linecap="round"/>
+<line x1="286.0" y1="261.0" x2="286.0" y2="287.0" class="ink" stroke-width="3" stroke-linecap="round"/>
+<line x1="398.0" y1="261.0" x2="398.0" y2="287.0" class="ink" stroke-width="3" stroke-linecap="round"/>
+<text x="286.0" y="256.0" font-size="12" text-anchor="middle" class="t-muted">visit</text>
+<text x="398.0" y="256.0" font-size="12" text-anchor="middle" class="t-muted">visit</text>
+<line x1="230.0" y1="338.0" x2="314.0" y2="338.0" class="entry-line" stroke-width="3" stroke-linecap="round" stroke-dasharray="4 5"/>
+<text x="272.0" y="326.0" font-size="12" text-anchor="middle" class="t-muted">not yet in study</text>
+<line x1="314.0" y1="338.0" x2="440.0" y2="338.0" class="ink" stroke-width="3" stroke-linecap="round"/>
+<line x1="314.0" y1="328.0" x2="314.0" y2="348.0" class="ink" stroke-width="3" stroke-linecap="round"/>
+<circle cx="440.0" cy="338.0" r="7" class="event"/>
+<line x1="230.0" y1="382.0" x2="510.0" y2="382.0" class="muted" stroke-width="1.5" stroke-linecap="round"/>
+<line x1="230.0" y1="382.0" x2="230.0" y2="388.0" class="muted" stroke-width="1.5" stroke-linecap="round"/>
+<text x="230.0" y="404.0" font-size="13" text-anchor="middle" class="t-muted">0</text>
+<line x1="286.0" y1="382.0" x2="286.0" y2="388.0" class="muted" stroke-width="1.5" stroke-linecap="round"/>
+<text x="286.0" y="404.0" font-size="13" text-anchor="middle" class="t-muted">4</text>
+<line x1="342.0" y1="382.0" x2="342.0" y2="388.0" class="muted" stroke-width="1.5" stroke-linecap="round"/>
+<text x="342.0" y="404.0" font-size="13" text-anchor="middle" class="t-muted">8</text>
+<line x1="398.0" y1="382.0" x2="398.0" y2="388.0" class="muted" stroke-width="1.5" stroke-linecap="round"/>
+<text x="398.0" y="404.0" font-size="13" text-anchor="middle" class="t-muted">12</text>
+<line x1="454.0" y1="382.0" x2="454.0" y2="388.0" class="muted" stroke-width="1.5" stroke-linecap="round"/>
+<text x="454.0" y="404.0" font-size="13" text-anchor="middle" class="t-muted">16</text>
+<line x1="510.0" y1="382.0" x2="510.0" y2="388.0" class="muted" stroke-width="1.5" stroke-linecap="round"/>
+<text x="510.0" y="404.0" font-size="13" text-anchor="middle" class="t-muted">20</text>
+<text x="370.0" y="422.0" font-size="13" text-anchor="middle" class="t-muted">Time</text>
+<circle cx="27.0" cy="449.0" r="6" class="event"/>
+<text x="46.0" y="454.0" font-size="13" text-anchor="start">Event</text>
+<circle cx="108.0" cy="449.0" r="6" class="censor" stroke-width="2.5"/>
+<text x="127.0" y="454.0" font-size="13" text-anchor="start">Censored</text>
+<rect x="204.2" y="443.0" width="18" height="12" rx="2" class="window"/>
+<text x="230.2" y="454.0" font-size="13" text-anchor="start">Where the event could be</text>
+<line x1="425.8" y1="449.0" x2="443.8" y2="449.0" class="entry-line" stroke-width="3" stroke-linecap="round" stroke-dasharray="4 4"/>
+<text x="451.8" y="454.0" font-size="13" text-anchor="start">Not observed</text>
+</svg>
+</div>
+```
+
+Kinds of observation, one subject per row. The shaded band is where the event could be. In
+**left censoring** the event had already happened by the first check. In **interval censoring** it
+happened between two visits. With **late entry** (also called left truncation), the subject is only
+observed after joining the study, so the time before entry tells us nothing about them. The right
+column shows the matching status code for `gw.event_time()`, and the counting-process form of
+`gw.Surv()` for late entry.
+:::
+
+All of these are expressed through the same response object, so the estimators and models you meet
+later work the same way whichever kind of data you have.
 
 ::: {.callout-note}
 ## The key idea
@@ -78,6 +246,70 @@ A survival observation carries two pieces of information: a time, and a status t
 time means (an event, or a censoring point). You must always keep them together. Greenwood does this
 for you with the `Surv` object.
 :::
+
+## Ways to build a response
+
+There are two starting points, shown in @fig-ways. If your data sits in a data frame (the usual
+case), name the columns in a formula such as `"Surv(time, status) ~ age"`, or describe the response
+once with `gw.Outcome.surv()`, and pass the frame with `data=` when you fit a model. If you already
+hold the values (lists, arrays, or simulated data), build the response directly with `gw.Surv()`, or
+with `gw.event_time()` if you think in the status codes of @fig-kinds. Either way, every estimator
+receives the same thing: a `Surv` response.
+
+::: {#fig-ways}
+```{=html}
+<div class="gw-fig">
+<svg viewBox="0 0 720 550" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Ways to build a survival response, from a data frame or from values">
+<defs><marker id="gw-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrowhead" d="M0,0 L10,5 L0,10 z"/></marker><marker id="gw-arrow-window" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path class="arrowhead-window" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+<rect x="250" y="10" width="220" height="46" rx="10" class="box" stroke-width="1.5"/>
+<text x="360.0" y="38.0" font-size="14" text-anchor="middle" class="t-bold">Where is your data?</text>
+<line x1="300.0" y1="56.0" x2="180.0" y2="96.0" class="muted" stroke-width="1.8" stroke-linecap="round" marker-end="url(#gw-arrow)"/>
+<line x1="420.0" y1="56.0" x2="540.0" y2="96.0" class="muted" stroke-width="1.8" stroke-linecap="round" marker-end="url(#gw-arrow)"/>
+<rect x="10" y="100" width="340" height="56" rx="10" class="box" stroke-width="1.5"/>
+<text x="180.0" y="123.0" font-size="14" text-anchor="middle" class="t-bold">In a data frame</text>
+<text x="180.0" y="143.0" font-size="12.5" text-anchor="middle" class="t-muted">pandas, Polars, PyArrow, DuckDB, lazy frames</text>
+<rect x="370" y="100" width="340" height="56" rx="10" class="box" stroke-width="1.5"/>
+<text x="540.0" y="123.0" font-size="14" text-anchor="middle" class="t-bold">Already in hand</text>
+<text x="540.0" y="143.0" font-size="12.5" text-anchor="middle" class="t-muted">lists, NumPy arrays, simulated values</text>
+<line x1="180.0" y1="156.0" x2="180.0" y2="180.0" class="muted" stroke-width="1.8" stroke-linecap="round" marker-end="url(#gw-arrow)"/>
+<line x1="540.0" y1="156.0" x2="540.0" y2="180.0" class="muted" stroke-width="1.8" stroke-linecap="round" marker-end="url(#gw-arrow)"/>
+<rect x="6" y="184" width="348" height="170" rx="12" class="group" stroke-width="1.5"/>
+<rect x="366" y="184" width="348" height="170" rx="12" class="group" stroke-width="1.5"/>
+<rect x="18" y="194" width="324" height="58" rx="10" class="box" stroke-width="1.5"/>
+<text x="180.0" y="218.0" font-size="14" text-anchor="middle">Name columns in a formula</text>
+<text x="180.0" y="238.0" font-size="12" text-anchor="middle" class="t-mono">"Surv(time, status) ~ age"</text>
+<text x="180.0" y="272.0" font-size="13" text-anchor="middle" class="t-muted">or</text>
+<rect x="18" y="286" width="324" height="58" rx="10" class="box" stroke-width="1.5"/>
+<text x="180.0" y="310.0" font-size="14" text-anchor="middle">Describe it once with an Outcome</text>
+<text x="180.0" y="330.0" font-size="12" text-anchor="middle" class="t-mono">gw.Outcome.surv(time="time", event="status")</text>
+<rect x="378" y="194" width="324" height="58" rx="10" class="box" stroke-width="1.5"/>
+<text x="540.0" y="218.0" font-size="14" text-anchor="middle">Times and an event indicator</text>
+<text x="540.0" y="238.0" font-size="12" text-anchor="middle" class="t-mono">gw.Surv(time=t, event=d)</text>
+<text x="540.0" y="272.0" font-size="13" text-anchor="middle" class="t-muted">or</text>
+<rect x="378" y="286" width="324" height="58" rx="10" class="box" stroke-width="1.5"/>
+<text x="540.0" y="310.0" font-size="14" text-anchor="middle">Event-time codes e, r, l, i</text>
+<text x="540.0" y="330.0" font-size="12" text-anchor="middle" class="t-mono">gw.event_time(time=t, status=s)</text>
+<line x1="180.0" y1="354.0" x2="320.0" y2="402.0" class="muted" stroke-width="1.8" stroke-linecap="round" marker-end="url(#gw-arrow)"/>
+<line x1="540.0" y1="354.0" x2="400.0" y2="402.0" class="muted" stroke-width="1.8" stroke-linecap="round" marker-end="url(#gw-arrow)"/>
+<text x="172.0" y="384.0" font-size="12.5" text-anchor="end" class="t-muted">evaluated against data=</text>
+<text x="548.0" y="384.0" font-size="12.5" text-anchor="start" class="t-muted">converted with gw.as_surv()</text>
+<rect x="190" y="406" width="340" height="58" rx="10" class="box" stroke-width="1.5"/>
+<text x="360.0" y="430.0" font-size="14" text-anchor="middle" class="t-bold">A Surv response</text>
+<text x="360.0" y="450.0" font-size="12.5" text-anchor="middle" class="t-muted">right, left, interval, counting, multi-state</text>
+<line x1="360.0" y1="464.0" x2="360.0" y2="492.0" class="muted" stroke-width="1.8" stroke-linecap="round" marker-end="url(#gw-arrow)"/>
+<rect x="190" y="496" width="340" height="46" rx="10" class="box" stroke-width="1.5"/>
+<text x="360.0" y="524.0" font-size="14" text-anchor="middle">Any estimator's fit()</text>
+</svg>
+</div>
+```
+
+The ways to build a survival response. From a data frame, name columns in a formula or an
+`Outcome`. From values in hand, call `gw.Surv()` or `gw.event_time()`. All of them lead to a `Surv`
+response, which every estimator accepts.
+:::
+
+The rest of this page walks through both starting points, beginning with `gw.Surv()` because it
+shows most clearly what a response contains.
 
 ## The Surv object
 
@@ -111,11 +343,12 @@ print("events:", y.n_events)
 print("censored:", y.n_censored)
 ```
 
-### Other censoring types
+### The other kinds of observation
 
-When subjects enter the risk set after time zero, or when a covariate changes during follow-up, you
-use the counting-process form. Each observation is an interval `(start, stop]` with an event
-indicator at the stop time. This is also how left truncation is expressed. Supplying `time2=` is all
+Each kind of observation in @fig-kinds has its own form of `gw.Surv()`. When subjects enter the
+risk set after time zero, or when a covariate changes during follow-up, you use the
+counting-process form. Each observation is an interval `(start, stop]` with an event indicator at
+the stop time. This is also how left truncation (late entry) is expressed. Supplying `time2=` is all
 it takes: `time` becomes the start and `time2` the stop.
 
 ```{python}
