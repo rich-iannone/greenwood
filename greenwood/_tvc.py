@@ -32,9 +32,9 @@ def split_episodes(
     r"""Convert repeated-measurement data into counting-process (episode-split) format.
 
     Takes a subject-level baseline table and a long-format visits table, and merges them
-    into the interval-per-row counting-process layout required by `Surv.counting()` and
-    `CoxPH`. Each row in the output represents a constant-covariate interval `(tstart,
-    tstop]` for one subject.
+    into the interval-per-row counting-process layout required by a counting-process response
+    (`"Surv(tstart, tstop, event)"`) and `CoxPH`. Each row in the output represents a
+    constant-covariate interval `(tstart, tstop]` for one subject.
 
     The covariate value measured at visit time `v` applies to the interval `[v, next_v)`.
     The event indicator is 1 only on the final interval for subjects who experienced the
@@ -84,7 +84,7 @@ def split_episodes(
     pandas.DataFrame, polars.DataFrame, or pyarrow.Table
         Counting-process dataset with columns `(id, tstart, tstop, event,
         [time-fixed covariates], [time-varying covariates])`. Ready to pass directly to
-        `Surv.counting(tstart, tstop, event)` and `CoxPH.fit()`.
+        `CoxPH.fit()` with a formula such as `"Surv(tstart, tstop, event) ~ bili"`.
 
     Raises
     ------
@@ -114,8 +114,7 @@ def split_episodes(
     long = gw.split_episodes(
         baseline=baseline, visits=visits, id="id", time="time", event="event", visit_time="day"
     )
-    y = gw.Surv.counting(start=long["tstart"], stop=long["tstop"], event=long["event"])
-    cox = gw.CoxPH().fit(y, covariates=["bili"], data=long)
+    cox = gw.CoxPH().fit("Surv(tstart, tstop, event) ~ bili", data=long)
     ```
     """
     try:
