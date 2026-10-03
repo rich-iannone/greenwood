@@ -7,6 +7,7 @@ from . import _cif, _forest, _gt, _influence, _schoenfeld, _smooth_hr, _weibull
 from . import _curves as plotnine
 from ._altair import plot_predicted_survival, plot_survival
 from ._cif import plot_cif
+from ._curves import theme_survival
 from ._forest import plot_forest, theme_forest
 from ._gt import risk_table
 from ._influence import plot_influence
@@ -24,6 +25,7 @@ __all__ = [
     "get_risk_table_frame",
     "plot_forest",
     "theme_forest",
+    "theme_survival",
     "plot_cif",
     "plot_influence",
     "plot_schoenfeld",
