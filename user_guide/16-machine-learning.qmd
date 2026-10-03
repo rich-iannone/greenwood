@@ -21,7 +21,8 @@ bagged `RandomSurvivalForest` (and its extremely-randomized `ExtraSurvivalTrees`
 and visualize them.
 
 We'll work with `lung`-dataset outcomes, keeping the rows with complete covariates so the examples
-are easy to follow.
+are easy to follow. Every model below is fit from the same formula, and `covariates` lists the
+predictor columns to pass when predicting.
 
 ```{python}
 import greenwood as gw
@@ -31,10 +32,13 @@ lung = gw.load_dataset("lung", backend="polars").drop_nulls(
     subset=["ph.ecog", "ph.karno", "wt.loss"]
 )
 
-# Define the survival response and covariate list
-y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+# Define the model formula, the survival response, and the covariate list
+formula = "Surv(time, status) ~ age + sex + ph.ecog + ph.karno + wt.loss"
+death = gw.Outcome.surv(time="time", event="status")
 covariates = ["age", "sex", "ph.ecog", "ph.karno", "wt.loss"]
-y
+
+# Bind the response to the data to display its summary
+death.bind(lung)
 ```
 
 ## Survival trees
@@ -47,7 +51,7 @@ interpretable building block of an ensemble.
 
 ```{python}
 # Grow a shallow, interpretable survival tree
-tree = gw.SurvivalTree(max_depth=3, random_state=0).fit(y, covariates=lung[covariates])
+tree = gw.SurvivalTree(max_depth=3, random_state=0).fit(formula, data=lung)
 tree
 ```
 
@@ -71,7 +75,7 @@ only the trees for which each subject was not in the bootstrap sample.
 # Fit a forest and report the out-of-bag concordance
 rsf = gw.RandomSurvivalForest(
     n_estimators=200, oob_score=True, random_state=0
-).fit(y, covariates=lung[covariates])
+).fit(formula, data=lung)
 rsf
 ```
 
@@ -109,7 +113,7 @@ Following the extra-trees convention, it grows each tree on the whole sample by 
 # Extremely-randomized survival trees with out-of-bag scoring enabled
 ext = gw.ExtraSurvivalTrees(
     n_estimators=200, bootstrap=True, oob_score=True, random_state=0
-).fit(y, covariates=lung[covariates])
+).fit(formula, data=lung)
 ext
 ```
 
@@ -136,7 +140,7 @@ predicts very well on structured tabular data.
 # Fit a gradient-boosted survival model
 gbm = gw.GradientBoostingSurvivalAnalysis(
     n_estimators=300, learning_rate=0.05, max_depth=2, random_state=0
-).fit(y, covariates=lung[covariates])
+).fit(formula, data=lung)
 gbm
 ```
 
@@ -168,7 +172,7 @@ assume proportional hazards.
 
 ```{python}
 # Fit an IPC-weighted ridge regression model
-ridge = gw.IPCRidge(alpha=1.0).fit(y, covariates=lung[covariates])
+ridge = gw.IPCRidge(alpha=1.0).fit(formula, data=lung)
 ridge
 ```
 
@@ -204,7 +208,7 @@ get a risk score compatible with `concordance_index()`.
 risk = -ridge.predict(lung[covariates], type="lp")
 
 # Compute concordance for the ridge model
-gw.concordance_index(y, risk=risk)
+gw.concordance_index(death, risk=risk, data=lung)
 ```
 
 ## Visualizing per-subject curves
@@ -231,9 +235,9 @@ score).
 ```{python}
 # In-sample concordance for the three ensemble models
 scores = {
-    "random forest": gw.concordance_index(y, risk=rsf.predict(lung[covariates])),
-    "extra trees": gw.concordance_index(y, risk=ext.predict(lung[covariates])),
-    "gradient boosting": gw.concordance_index(y, risk=gbm.predict(lung[covariates])),
+    "random forest": gw.concordance_index(death, risk=rsf.predict(lung[covariates]), data=lung),
+    "extra trees": gw.concordance_index(death, risk=ext.predict(lung[covariates]), data=lung),
+    "gradient boosting": gw.concordance_index(death, risk=gbm.predict(lung[covariates]), data=lung),
 }
 scores
 ```
@@ -270,8 +274,8 @@ nonzero value.
 
 ### Fitting the model
 
-`SurvivalBoost` consumes a multi-state `Surv` response (from `Surv.multistate()`) and a covariate
-matrix. We use `simulate_competing_risks()` to generate synthetic data with known properties, but
+`SurvivalBoost` consumes a multi-state `Surv` response (from `gw.Surv()` with a categorical event,
+or from `gw.first_event()`) and a covariate matrix. We use `simulate_competing_risks()` to generate synthetic data with known properties, but
 the model works with any competing-risks dataset.
 
 ```{python}
