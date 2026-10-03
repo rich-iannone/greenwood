@@ -510,74 +510,347 @@ class Surv:
 
     @property
     def type(self) -> CensoringType:
-        """The response type, one of R's type names (see `CensoringType`)."""
+        """The kind of response, using R's type names.
+
+        One of `CensoringType.RIGHT`, `LEFT`, `INTERVAL`, `COUNTING`, `MRIGHT` (multi-state), or
+        `MCOUNTING` (multi-state with start times). The type is chosen when the response is built:
+        inferred from the arguments, as in R, or set with `type=`. A `type="interval2"` response
+        reports `INTERVAL`, because R converts it to interval coding. Because `CensoringType` is a
+        `str` enum, the value also compares equal to R's type strings.
+
+        Returns
+        -------
+        CensoringType
+            The response type.
+
+        Examples
+        --------
+        ```{python}
+        import greenwood as gw
+
+        y = gw.Surv(time=[0, 2, 1], time2=[5, 6, 4], event=[1, 0, 1])
+        y.type, y.type == "counting"
+        ```
+        """
         return self._type
 
     @property
     def stop(self) -> FloatArray:
-        """The (stop) time column: `time` for right and left data, `stop` for counting data, and
-        `time2` for interval data."""
+        """The main time column, one value per row.
+
+        What it holds depends on the type, following R's `Surv` matrix:
+
+        - Right, left, and multi-state data: the follow-up time (R's time column).
+        - Counting-process data: the time each interval ends (R's stop column).
+        - Interval data: the upper bound (R's time2 column). As in R, rows that are not
+          interval-censored (status other than `3`) hold the placeholder `1`, and their time is in
+          `lower`.
+
+        Any origin offset given to `Surv(origin=...)` has already been subtracted. Missing times
+        are `nan`.
+
+        Returns
+        -------
+        numpy.ndarray
+            A float array with one time per row.
+
+        Examples
+        --------
+        ```{python}
+        import greenwood as gw
+
+        gw.Surv(time=[5, 6, 4, 9], event=[1, 0, 1, 0]).stop
+        ```
+        """
         return self._stop
 
     @property
     def status(self) -> FloatArray:
-        """The status column, as floats with `nan` for missing values, as R stores it."""
+        """The status column, one code per row, stored as floats as R stores it.
+
+        The codes depend on the type:
+
+        - Right and counting data: `1` for an event, `0` for censored. Logical status and R's
+          `1`/`2` coding are converted to these codes when the response is built.
+        - Left data: `1` for an exact event, `0` for left-censored.
+        - Interval data: `0` right-censored, `1` exact, `2` left-censored, `3` interval-censored.
+        - Multi-state data: `0` for censored, `k` for the `k`-th entry of `states`.
+
+        Codes that R doesn't accept become missing (`nan`) when the response is built, with a
+        warning, as do backwards intervals. Use `int(y.status[i])` when a code is used as an index.
+
+        Returns
+        -------
+        numpy.ndarray
+            A float array with one code per row, `nan` where it is missing.
+
+        Examples
+        --------
+        R's `1`/`2` coding (as in the `lung` data) becomes `0`/`1`:
+
+        ```{python}
+        import greenwood as gw
+
+        gw.Surv(time=[5, 6, 4], event=[2, 1, 2]).status
+        ```
+        """
         return self._status
 
     @property
     def start(self) -> FloatArray | None:
-        """Start times for counting-process data, otherwise `None`."""
+        """The time each row starts being at risk, for counting-process data.
+
+        A counting-process response, `Surv(time=start, time2=stop, event=...)`, describes each row
+        as an interval `(start, stop]`. This is how late entry (left truncation) and time-varying
+        covariates are expressed. A row whose start is not before its stop has its start set to
+        `nan`, with a warning, as in R. For every other type there are no start times and this is
+        `None`. Use `entry` for a value that is defined for every type.
+
+        Returns
+        -------
+        numpy.ndarray or None
+            A float array of start times, or `None` when the response has none.
+
+        Examples
+        --------
+        ```{python}
+        import greenwood as gw
+
+        # Subject 2 joins the study at time 2
+        gw.Surv(time=[0, 2, 1], time2=[5, 6, 4], event=[1, 0, 1]).start
+        ```
+        """
         return self._start
 
     @property
     def lower(self) -> FloatArray | None:
-        """The `time1` column for interval data, otherwise `None`."""
+        """The first time column of interval data (R's `time1`), otherwise `None`.
+
+        For interval data this is the time that goes with each row's status: the censoring time
+        for right-censored rows, the event time for exact rows, the time by which the event had
+        happened for left-censored rows, and the lower bound for interval-censored rows (whose
+        upper bound is in `stop`). For every other type it is `None`.
+
+        Returns
+        -------
+        numpy.ndarray or None
+            A float array with one time per row, or `None` for types other than interval.
+
+        Examples
+        --------
+        ```{python}
+        import numpy as np
+        import greenwood as gw
+
+        # Rows: an interval (1, 2], right-censored at 2, an interval (3, 5]
+        y = gw.Surv(time=[1, 2, 3], time2=[2, np.inf, 5], type="interval2")
+        y.lower, y.stop, y.status
+        ```
+        """
         return self._lower
 
     @property
     def states(self) -> tuple[str, ...] | None:
-        """State names for a multi-state response (status `k` is `states[k - 1]`), otherwise
-        `None`."""
+        """The names of the event states of a multi-state response, otherwise `None`.
+
+        A multi-state response comes from a categorical `event` (or `first_event()`). Its first
+        category means censored, and the remaining categories, in order, are the states. A row
+        with status `k` reached `states[k - 1]`. For single-event responses this is `None`.
+
+        Returns
+        -------
+        tuple of str or None
+            The state names in code order, or `None` for a single-event response.
+
+        Examples
+        --------
+        ```{python}
+        import pandas as pd
+        import greenwood as gw
+
+        outcome = pd.Categorical(
+            ["death", "censor", "relapse"], categories=["censor", "relapse", "death"]
+        )
+        y = gw.Surv(time=[5, 6, 7], event=outcome)
+        y.states, y.status
+        ```
+        """
         return self._states
 
     # -- derived views ------------------------------------------------------------------------
 
     @property
     def n(self) -> int:
-        """Number of rows."""
+        """The number of rows, including any with missing values.
+
+        Each row is one observation: one subject for most data, or one interval of a subject's
+        follow-up for counting-process data. Rows with missing values are counted here but dropped
+        when a model is fitted, so a fit may use fewer rows. `len(y)` gives the same number.
+
+        Returns
+        -------
+        int
+            The number of rows.
+
+        Examples
+        --------
+        ```{python}
+        import greenwood as gw
+
+        gw.Surv(time=[5, 6, 4, 9], event=[1, 0, 1, 0]).n
+        ```
+        """
         return int(self._stop.shape[0])
 
     @property
     def entry(self) -> FloatArray:
-        r"""Entry time of each row: the start time for counting data, otherwise $-\infty$."""
+        """The time each row enters the risk set, defined for every type.
+
+        For counting-process data this is the start time of each interval, the same as `start`.
+        For every other type, subjects are at risk from the beginning, so every value is minus
+        infinity (`-inf`). Estimators use `entry` to build risk sets without having to check
+        whether the response has start times.
+
+        Returns
+        -------
+        numpy.ndarray
+            A float array with one entry time per row.
+
+        Examples
+        --------
+        ```{python}
+        import greenwood as gw
+
+        gw.Surv(time=[5, 6], event=[1, 0]).entry
+        ```
+
+        ```{python}
+        gw.Surv(time=[0, 2], time2=[5, 6], event=[1, 0]).entry
+        ```
+        """
         if self._start is not None:
             return self._start
         return np.full(self.n, -np.inf)
 
     @property
     def event(self) -> npt.NDArray[np.bool_]:
-        """Whether each row has an event (any state, for multi-state data)."""
+        """Whether each row ended in an event, as a boolean array.
+
+        A row counts as an event when its status is `1` or more. For multi-state data that means
+        any state, not a particular one. For interval data it means the event is known to have
+        happened (exactly, before a time, or within an interval), so only right-censored rows are
+        `False`. Rows with a missing status are `False`.
+
+        Returns
+        -------
+        numpy.ndarray
+            A boolean array with one value per row.
+
+        Examples
+        --------
+        ```{python}
+        import greenwood as gw
+
+        gw.Surv(time=[5, 6, 4, 9], event=[1, 0, 1, 0]).event
+        ```
+        """
         with np.errstate(invalid="ignore"):
             return self._status >= 1
 
     @property
     def is_truncated(self) -> bool:
-        """Whether rows have start times (late entry)."""
+        """Whether the response has start times (late entry or time-varying data).
+
+        `True` for counting-process responses, built as `Surv(time=start, time2=stop,
+        event=...)`, including multi-state ones. Estimators that can't handle delayed entry check
+        this and raise an error rather than silently ignoring the start times.
+
+        Returns
+        -------
+        bool
+            `True` if the response has start times.
+
+        Examples
+        --------
+        ```{python}
+        import greenwood as gw
+
+        gw.Surv(time=[0, 2], time2=[5, 6], event=[1, 0]).is_truncated
+        ```
+        """
         return self._start is not None
 
     @property
     def is_multistate(self) -> bool:
-        """Whether the response has several event states."""
+        """Whether the response has more than one kind of event.
+
+        `True` for multi-state and competing-risks responses (types `MRIGHT` and `MCOUNTING`),
+        which come from a categorical `event` or from `first_event()`. Their state names are in
+        `states`. Estimators for a single event type, such as `KaplanMeier` and `CoxPH`, reject
+        these responses. Competing-risks estimators such as `AalenJohansen` require them.
+
+        Returns
+        -------
+        bool
+            `True` if the response has several event states.
+
+        Examples
+        --------
+        ```{python}
+        import pandas as pd
+        import greenwood as gw
+
+        outcome = pd.Categorical(["pcm", "censor"], categories=["censor", "pcm", "death"])
+        gw.Surv(time=[5, 6], event=outcome).is_multistate
+        ```
+        """
         return self._type in (CensoringType.MRIGHT, CensoringType.MCOUNTING)
 
     @property
     def n_events(self) -> int:
-        """Number of rows with an event."""
+        """The number of rows that ended in an event.
+
+        This counts the `True` values of `event`: rows with status `1` or more, in any state for
+        multi-state data. Rows with a missing status are not counted.
+
+        Returns
+        -------
+        int
+            The number of events.
+
+        Examples
+        --------
+        ```{python}
+        import greenwood as gw
+
+        gw.Surv(time=[5, 6, 4, 9], event=[1, 0, 1, 0]).n_events
+        ```
+        """
         return int(np.count_nonzero(self.event))
 
     @property
     def n_censored(self) -> int:
-        """Number of censored rows (status `0`)."""
+        """The number of censored rows (status `0`).
+
+        For right, counting, and multi-state data these are the rows that were event-free when
+        last seen. For left data, status `0` means left-censored, and for interval data it means
+        right-censored. Rows with a missing status are not counted, so `n_events + n_censored`
+        is less than `n` when some statuses are missing.
+
+        Returns
+        -------
+        int
+            The number of censored rows.
+
+        Examples
+        --------
+        ```{python}
+        import greenwood as gw
+
+        y = gw.Surv(time=[5, 6, 4, 9], event=[1, 0, 1, 0])
+        y.n_censored, y.n_events + y.n_censored == y.n
+        ```
+        """
         return int(np.count_nonzero(self._status == 0))
 
     def is_na(self) -> npt.NDArray[np.bool_]:
