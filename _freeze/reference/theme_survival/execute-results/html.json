@@ -1,0 +1,12 @@
+{
+  "hash": "0df2696b8a88d54fb6c8085e9da5b096",
+  "result": {
+    "engine": "jupyter",
+    "markdown": "---\ntitle: \"[theme_survival()]{.doc-object-name .doc-function .doc-label .doc-label-function}\"\nbody-classes: doc-api-page\npage-navigation: false\nhtml-table-processing: none\n---\n\n::: {.doc-subject}\n\nA light, publication-ready plotnine theme for survival plots.\n:::\n\n::: {.doc-usage-source}\nUsage\n\n[Source](https://github.com/rich-iannone/greenwood/blob/main/greenwood/viz/_curves.py#L79-L109){target=\"_blank\" rel=\"noopener\"}\n:::\n\n::: {.doc-signature .doc-Kind.FUNCTION}\n```python\ntheme_survival()\n```\n:::\n\n::: {.doc-text}\n\nApplies a minimal theme with the legend at the top and minor grid lines removed,\ngiving survival curves a clean look suitable for journal figures.\n:::\n\n## Returns {.doc-returns}\n\n::: {.doc-definition-items}\n<code> [plotnine.theme]{.doc-parameter-annotation}</code>\n\n:   A composable theme object. Add it to a `ggplot` with `+`.\n:::\n\n## Examples {.doc-examples}\n\nApply the survival theme to a Kaplan-Meier plot:\n\n::: {#4704a465 .cell execution_count=1}\n``` {.python .cell-code}\nimport greenwood as gw\n\n# Load data and fit a stratified Kaplan-Meier estimator\nlung = gw.load_dataset(\"lung\", backend=\"polars\")\nkm = gw.KaplanMeier().fit(\"Surv(time, status) ~ sex\", data=lung)\n\n# Apply the survival theme to the plot\ngw.plot_survival(km, backend=\"plotnine\") + gw.theme_survival()\n```\n\n::: {.cell-output .cell-output-display execution_count=1}\n![](theme_survival_files/figure-html/cell-2-output-1.png){width=672 height=480}\n:::\n:::\n\n\n",
+    "supporting": [
+      "theme_survival_files"
+    ],
+    "filters": [],
+    "includes": {}
+  }
+}
