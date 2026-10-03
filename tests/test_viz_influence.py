@@ -13,7 +13,7 @@ from greenwood import CoxPH, Surv  # noqa: E402
 @pytest.fixture
 def cox_lung() -> CoxPH:
     df = gw.load_dataset("lung", backend="pandas")
-    y = Surv.right(df["time"], event=(df["status"] == 2))
+    y = Surv(time=df["time"], event=(df["status"] == 2))
     return CoxPH(ties="breslow").fit(y, df[["age", "sex"]])
 
 
