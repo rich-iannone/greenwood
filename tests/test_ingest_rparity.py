@@ -25,7 +25,7 @@ from .test_r_parity import (  # pyright: ignore[reportPrivateUsage]
 
 pytestmark = pytest.mark.rparity
 
-DEATH = Outcome.right(time="time", event="status", event_value=2)
+DEATH = Outcome.surv(time="time", event="status == 2")
 MGUS_ENDPOINTS = {"pcm": ("ptime", "pstat"), "death": ("futime", "death")}
 
 
@@ -189,7 +189,7 @@ def test_tvc_split_episodes_long_table_matches_r() -> None:
         covariates=["bili", "albumin", "protime"],
         format="pandas",
     )
-    tvc = Outcome.counting(start="tstart", stop="tstop", event="status", event_value=2)
+    tvc = Outcome.surv(time="tstart", time2="tstop", event="status == 2")
     cox = gw.CoxPH().fit(tvc, covariates=["bili", "albumin", "protime"], data=long)
     assert cox.n_ == fx["n"]
     assert cox.n_event_ == fx["nevent"]
