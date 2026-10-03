@@ -111,14 +111,14 @@ def concordance_index(surv: Surv | Outcome | str, risk: Any, *, data: Any = None
     ```{python}
     import greenwood as gw
 
-    # Load data and build a right-censored response
+    # Load data and name the response columns
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-    cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
+    death = gw.Outcome.surv(time="time", event="status")
+    cox = gw.CoxPH().fit(death, covariates=["age", "sex"], data=lung)
 
     # Compute the concordance index from the Cox linear predictor
     lp = cox.predict(type="lp")
-    c_index = gw.concordance_index(y, risk=lp)
+    c_index = gw.concordance_index(death, risk=lp, data=lung)
     c_index
     ```
 
@@ -129,7 +129,7 @@ def concordance_index(surv: Surv | Outcome | str, risk: Any, *, data: Any = None
     import numpy as np
 
     # Compare model discrimination against a naive baseline
-    baseline_c = gw.concordance_index(y, risk=np.zeros(len(y)))
+    baseline_c = gw.concordance_index(death, risk=np.zeros(lung.height), data=lung)
     print(f"Baseline: {baseline_c:.3f}")
     print(f"Cox model: {c_index:.3f}")
     print(f"Improvement: {c_index - baseline_c:.3f}")
@@ -153,7 +153,7 @@ def concordance_index(surv: Surv | Outcome | str, risk: Any, *, data: Any = None
     surv = bound.surv
     risk = bound.labels["risk"]
 
-    from ._surv import _to_1d_array
+    from ._ingest import to_1d_array as _to_1d_array
 
     scores = _to_1d_array(risk)
     exit_ = surv.stop
@@ -249,14 +249,14 @@ def concordance_index_ipcw(
     import greenwood as gw
 
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-    cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
+    death = gw.Outcome.surv(time="time", event="status")
+    cox = gw.CoxPH().fit(death, covariates=["age", "sex"], data=lung)
 
     lp = cox.predict(type="lp")
 
     # Compare Harrell's C with IPCW C
-    c_harrell = gw.concordance_index(y, risk=lp)
-    c_ipcw = gw.concordance_index_ipcw(y, risk=lp)
+    c_harrell = gw.concordance_index(death, risk=lp, data=lung)
+    c_ipcw = gw.concordance_index_ipcw(death, risk=lp, data=lung)
     print(f"Harrell C: {c_harrell:.4f}")
     print(f"IPCW C:    {c_ipcw:.4f}")
     ```
@@ -264,7 +264,7 @@ def concordance_index_ipcw(
     Truncate at 1 year to focus on short-term discrimination:
 
     ```{python}
-    c_1yr = gw.concordance_index_ipcw(y, risk=lp, tau=365.0)
+    c_1yr = gw.concordance_index_ipcw(death, risk=lp, tau=365.0, data=lung)
     print(f"IPCW C (1-year): {c_1yr:.4f}")
     ```
     """
@@ -277,7 +277,7 @@ def concordance_index_ipcw(
     surv = bound.surv
     risk = bound.labels["risk"]
 
-    from ._surv import _to_1d_array
+    from ._ingest import to_1d_array as _to_1d_array
 
     scores = _to_1d_array(risk)
     T = surv.stop
@@ -423,16 +423,16 @@ def brier_score(
     import greenwood as gw
     import numpy as np
 
-    # Load data and build a right-censored response
+    # Load data and name the response columns
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-    cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
+    death = gw.Outcome.surv(time="time", event="status")
+    cox = gw.CoxPH().fit(death, covariates=["age", "sex"], data=lung)
 
     # Compute Brier scores at three clinically relevant horizons
     times = [180, 365, 540]
     surv_pred = cox.predict(lung, type="survival", times=times, format="pandas")
     probs = surv_pred.iloc[:, 1:].to_numpy().T
-    brier = gw.brier_score(y, survival_prob=probs, times=times)
+    brier = gw.brier_score(death, survival_prob=probs, times=times, data=lung)
     brier
     ```
 
@@ -442,7 +442,7 @@ def brier_score(
     ```{python}
     # Compare model calibration against a naive 50% baseline
     null_probs = np.full_like(probs, 0.5)
-    null_brier = gw.brier_score(y, survival_prob=null_probs, times=times)
+    null_brier = gw.brier_score(death, survival_prob=null_probs, times=times, data=lung)
     print(f"Null model Brier: {null_brier}")
     print(f"Cox model Brier: {brier}")
     print(f"Improvement: {null_brier - brier}")
@@ -452,7 +452,7 @@ def brier_score(
 
     ```{python}
     # Summarize calibration as a single integrated Brier score
-    ibs = gw.integrated_brier_score(y, survival_prob=probs, times=times)
+    ibs = gw.integrated_brier_score(death, survival_prob=probs, times=times, data=lung)
     print(f"Integrated Brier Score: {ibs:.3f}")
     ```
     """
@@ -560,25 +560,25 @@ def integrated_brier_score(
     ```{python}
     import greenwood as gw
 
-    # Load data and build a right-censored response
+    # Load data and name the response columns
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-    cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
+    death = gw.Outcome.surv(time="time", event="status")
+    cox = gw.CoxPH().fit(death, covariates=["age", "sex"], data=lung)
 
     # Compute the integrated Brier score across three time horizons
     times = [180, 365, 540]
     surv_pred = cox.predict(lung, type="survival", times=times, format="pandas")
     probs = surv_pred.iloc[:, 1:].to_numpy().T
-    ibs = gw.integrated_brier_score(y, survival_prob=probs, times=times)
+    ibs = gw.integrated_brier_score(death, survival_prob=probs, times=times, data=lung)
     ibs
     ```
 
     Compare two models via their integrated Brier scores. Lower is better:
 
     ```{python}
-    # cox2 = CoxPH().fit(y, covariates=lung[["age", "sex", "ph.ecog"]])  # More covariates
+    # cox2 = gw.CoxPH().fit(death, covariates=["age", "sex", "ph.ecog"], data=lung)
     # surv_pred2 = cox2.predict(...)
-    # ibs2 = gw.integrated_brier_score(y, probs2, times)
+    # ibs2 = gw.integrated_brier_score(death, probs2, times, data=lung)
     # print(f"Model 1 IBS: {ibs:.3f}")
     # print(f"Model 2 IBS: {ibs2:.3f}")
     # print(f"Better model: {'Model 2' if ibs2 < ibs else 'Model 1'}")
@@ -594,7 +594,9 @@ def integrated_brier_score(
         lung, type="survival", times=times_wide, format="pandas"
     )
     probs_wide = surv_pred_wide.iloc[:, 1:].to_numpy().T
-    ibs_wide = gw.integrated_brier_score(y, survival_prob=probs_wide, times=times_wide)
+    ibs_wide = gw.integrated_brier_score(
+        death, survival_prob=probs_wide, times=times_wide, data=lung
+    )
     print(f"IBS over {len(times_wide)} time points: {ibs_wide:.3f}")
     ```
     """
@@ -691,15 +693,17 @@ def calibration(
     ```{python}
     import greenwood as gw
 
-    # Load data and build a right-censored response
+    # Load data and name the response columns
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-    cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
+    death = gw.Outcome.surv(time="time", event="status")
+    cox = gw.CoxPH().fit(death, covariates=["age", "sex"], data=lung)
 
     # Assess one-year calibration across five prediction bins
     surv = cox.predict(lung, type="survival", times=[365.0], format="pandas")
     predicted = surv.iloc[0, 1:].to_numpy()
-    gw.calibration(y, predicted=predicted, time=365.0, n_bins=5, format="polars")
+    gw.calibration(
+        death, predicted=predicted, time=365.0, n_bins=5, data=lung, format="polars"
+    )
     ```
     """
     bound = bind_fit_inputs(
@@ -837,14 +841,14 @@ def time_dependent_auc(
     ```{python}
     import greenwood as gw
 
-    # Load data and build a right-censored response
+    # Load data and name the response columns
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-    cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
+    death = gw.Outcome.surv(time="time", event="status")
+    cox = gw.CoxPH().fit(death, covariates=["age", "sex"], data=lung)
 
     # Compute time-dependent AUC at three clinically relevant horizons
     lp = cox.predict(type="lp")
-    auc = gw.time_dependent_auc(y, marker=lp, times=[180, 365, 540])
+    auc = gw.time_dependent_auc(death, marker=lp, times=[180, 365, 540], data=lung)
     auc
     ```
 
@@ -852,7 +856,7 @@ def time_dependent_auc(
 
     ```{python}
     # Summarize discrimination as a single time-averaged AUC
-    ibs = gw.integrated_auc(y, marker=lp, times=[180, 365, 540])
+    ibs = gw.integrated_auc(death, marker=lp, times=[180, 365, 540], data=lung)
     ibs
     ```
     """
@@ -865,7 +869,7 @@ def time_dependent_auc(
     surv = bound.surv
     marker = bound.labels["marker"]
 
-    from ._surv import _to_1d_array
+    from ._ingest import to_1d_array as _to_1d_array
 
     scores = _to_1d_array(marker)
     query = np.atleast_1d(np.asarray(times, dtype=float))
@@ -964,14 +968,14 @@ def integrated_auc(
     ```{python}
     import greenwood as gw
 
-    # Load data and build a right-censored response
+    # Load data and name the response columns
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-    cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
+    death = gw.Outcome.surv(time="time", event="status")
+    cox = gw.CoxPH().fit(death, covariates=["age", "sex"], data=lung)
 
     # Compute the time-averaged AUC across three horizons
     lp = cox.predict(type="lp")
-    gw.integrated_auc(y, marker=lp, times=[180, 365, 540])
+    gw.integrated_auc(death, marker=lp, times=[180, 365, 540], data=lung)
     ```
     """
     bound = bind_fit_inputs(
@@ -1033,9 +1037,10 @@ def brier_score_incidence(
     Parameters
     ----------
     surv
-        A multi-state `Surv` response (from `Surv.multistate()`). The `status` column encodes
-        0 = censored, 1 = first cause, 2 = second cause, etc. An `Outcome` or a formula response
-        such as `'Surv(time, status == 2)'` is also accepted, with its columns read from `data`.
+        A multi-state `Surv` response (from `gw.Surv()` with a categorical event). The `status`
+        column encodes 0 = censored, 1 = first cause, 2 = second cause, etc. An `Outcome` or a
+        formula response such as `'Surv(time, status == 2)'` is also accepted, with its columns
+        read from `data`.
     incidence_prob
         Predicted cumulative incidence probabilities for the cause of interest, shape
         `(n_subjects, n_times)`. Each entry is a predicted probability that cause `cause` has
@@ -1045,8 +1050,8 @@ def brier_score_incidence(
         the second dimension of `incidence_prob`.
     cause
         The cause of interest, as an integer event code from the `Surv` response. For example, if
-        `states=("relapse", "death")` then `cause=1` evaluates predictions for relapse and `cause=2`
-        evaluates predictions for death.
+        the response's states are `("relapse", "death")`, then `cause=1` evaluates predictions for
+        relapse and `cause=2` evaluates predictions for death.
     data
         A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns named
         by the response and `incidence_prob`. When `surv` is an `Outcome` or a formula, rows with a
@@ -1081,22 +1086,21 @@ def brier_score_incidence(
 
     Examples
     --------
-    Build a competing-risks response from the `mgus2` dataset (progression to PCM vs. death)
-    and evaluate a marginal Aalen-Johansen CIF as a naive baseline model:
+    Name the competing endpoints in the `mgus2` dataset (progression to PCM vs. death) and
+    evaluate a marginal Aalen-Johansen CIF as a naive baseline model:
 
     ```{python}
     import greenwood as gw
     import numpy as np
 
+    # The first of progression (PCM) or death, each with its own time and status columns
     mgus2 = gw.load_dataset("mgus2", backend="polars")
-    event = np.where(
-        mgus2["pstat"].to_numpy() == 1, 1,
-        np.where(mgus2["death"].to_numpy() == 1, 2, 0),
+    first = gw.Outcome.first_event(
+        endpoints={"pcm": ("ptime", "pstat"), "death": ("futime", "death")}
     )
-    y = gw.Surv.multistate(time=mgus2["futime"].to_numpy(), event=event, states=("pcm", "death"))
 
     # Fit Aalen-Johansen for the marginal CIF
-    aj = gw.AalenJohansen().fit(y)
+    aj = gw.AalenJohansen().fit(first, data=mgus2)
     cif_df = aj.to_frame(format="polars")
     pcm_cif = cif_df.filter(cif_df["cause"] == "pcm")
 
@@ -1108,8 +1112,10 @@ def brier_score_incidence(
     )
 
     # Naive model: same marginal CIF for every subject
-    probs = np.tile(marginal, (y.n, 1))
-    bs = gw.brier_score_incidence(y, incidence_prob=probs, times=times, cause=1)
+    probs = np.tile(marginal, (mgus2.height, 1))
+    bs = gw.brier_score_incidence(
+        first, incidence_prob=probs, times=times, cause=1, data=mgus2
+    )
     bs
     ```
     """
@@ -1199,8 +1205,9 @@ def integrated_brier_score_incidence(
     Parameters
     ----------
     surv
-        A multi-state `Surv` response (from `Surv.multistate()`). An `Outcome` or a formula response
-        such as `'Surv(time, status == 2)'` is also accepted, with its columns read from `data`.
+        A multi-state `Surv` response (from `gw.Surv()` with a categorical event). An `Outcome` or
+        a formula response such as `'Surv(time, status == 2)'` is also accepted, with its columns
+        read from `data`.
     incidence_prob
         Predicted cumulative incidence probabilities for the cause of interest, shape
         `(n_subjects, n_times)`.
@@ -1230,15 +1237,14 @@ def integrated_brier_score_incidence(
     import greenwood as gw
     import numpy as np
 
+    # The first of progression (PCM) or death, each with its own time and status columns
     mgus2 = gw.load_dataset("mgus2", backend="polars")
-    event = np.where(
-        mgus2["pstat"].to_numpy() == 1, 1,
-        np.where(mgus2["death"].to_numpy() == 1, 2, 0),
+    first = gw.Outcome.first_event(
+        endpoints={"pcm": ("ptime", "pstat"), "death": ("futime", "death")}
     )
-    y = gw.Surv.multistate(time=mgus2["futime"].to_numpy(), event=event, states=("pcm", "death"))
 
     # Marginal CIF from Aalen-Johansen as a naive baseline
-    aj = gw.AalenJohansen().fit(y)
+    aj = gw.AalenJohansen().fit(first, data=mgus2)
     cif_df = aj.to_frame(format="polars")
     pcm_cif = cif_df.filter(cif_df["cause"] == "pcm")
 
@@ -1248,8 +1254,10 @@ def integrated_brier_score_incidence(
         [float(np.interp(t, pcm_cif["time"].to_numpy(), pcm_cif["estimate"].to_numpy()))
          for t in times]
     )
-    probs = np.tile(marginal, (y.n, 1))
-    ibs = gw.integrated_brier_score_incidence(y, incidence_prob=probs, times=times, cause=1)
+    probs = np.tile(marginal, (mgus2.height, 1))
+    ibs = gw.integrated_brier_score_incidence(
+        first, incidence_prob=probs, times=times, cause=1, data=mgus2
+    )
     ibs
     ```
     """
@@ -1296,8 +1304,9 @@ def concordance_index_incidence(
     Parameters
     ----------
     surv
-        A multi-state `Surv` response (from `Surv.multistate()`). An `Outcome` or a formula response
-        such as `'Surv(time, status == 2)'` is also accepted, with its columns read from `data`.
+        A multi-state `Surv` response (from `gw.Surv()` with a categorical event). An `Outcome` or
+        a formula response such as `'Surv(time, status == 2)'` is also accepted, with its columns
+        read from `data`.
     incidence_prob
         Predicted cumulative incidence probability for the cause of interest at the evaluation time
         `tau`, one value per subject. Higher values should indicate a higher predicted probability
@@ -1334,22 +1343,21 @@ def concordance_index_incidence(
 
     Examples
     --------
-    Build a competing-risks response from the `mgus2` dataset and evaluate the concordance of a
+    Name the competing endpoints in the `mgus2` dataset and evaluate the concordance of a
     marginal Aalen-Johansen CIF as a naive baseline:
 
     ```{python}
     import greenwood as gw
     import numpy as np
 
+    # The first of progression (PCM) or death, each with its own time and status columns
     mgus2 = gw.load_dataset("mgus2", backend="polars")
-    event = np.where(
-        mgus2["pstat"].to_numpy() == 1, 1,
-        np.where(mgus2["death"].to_numpy() == 1, 2, 0),
+    first = gw.Outcome.first_event(
+        endpoints={"pcm": ("ptime", "pstat"), "death": ("futime", "death")}
     )
-    y = gw.Surv.multistate(time=mgus2["futime"].to_numpy(), event=event, states=("pcm", "death"))
 
     # Fit Aalen-Johansen for the marginal CIF
-    aj = gw.AalenJohansen().fit(y)
+    aj = gw.AalenJohansen().fit(first, data=mgus2)
     cif_df = aj.to_frame(format="polars")
     pcm_cif = cif_df.filter(cif_df["cause"] == "pcm")
 
@@ -1358,9 +1366,11 @@ def concordance_index_incidence(
     marginal_at_tau = float(
         np.interp(tau, pcm_cif["time"].to_numpy(), pcm_cif["estimate"].to_numpy())
     )
-    pred = np.full(y.n, marginal_at_tau)
+    pred = np.full(mgus2.height, marginal_at_tau)
 
-    c = gw.concordance_index_incidence(y, incidence_prob=pred, cause=1, tau=tau)
+    c = gw.concordance_index_incidence(
+        first, incidence_prob=pred, cause=1, tau=tau, data=mgus2
+    )
     c
     ```
     """
@@ -1373,7 +1383,7 @@ def concordance_index_incidence(
     surv = bound.surv
     incidence_prob = bound.labels["incidence_prob"]
 
-    from ._surv import _to_1d_array
+    from ._ingest import to_1d_array as _to_1d_array
 
     scores = _to_1d_array(incidence_prob)
     T = surv.stop
@@ -1474,8 +1484,9 @@ def calibration_incidence(
     Parameters
     ----------
     surv
-        A multi-state `Surv` response (from `Surv.multistate()`). An `Outcome` or a formula response
-        such as `'Surv(time, status == 2)'` is also accepted, with its columns read from `data`.
+        A multi-state `Surv` response (from `gw.Surv()` with a categorical event). An `Outcome` or
+        a formula response such as `'Surv(time, status == 2)'` is also accepted, with its columns
+        read from `data`.
     incidence_prob
         Predicted cumulative incidence probabilities for the cause of interest, shape
         `(n_subjects, n_times)`. Each entry is a predicted probability that cause `cause` has
@@ -1510,22 +1521,21 @@ def calibration_incidence(
 
     Examples
     --------
-    Build a competing-risks response from the `mgus2` dataset and check calibration of a marginal
+    Name the competing endpoints in the `mgus2` dataset and check calibration of a marginal
     baseline model (which should be perfectly calibrated by construction):
 
     ```{python}
     import greenwood as gw
     import numpy as np
 
+    # The first of progression (PCM) or death, each with its own time and status columns
     mgus2 = gw.load_dataset("mgus2", backend="polars")
-    event = np.where(
-        mgus2["pstat"].to_numpy() == 1, 1,
-        np.where(mgus2["death"].to_numpy() == 1, 2, 0),
+    first = gw.Outcome.first_event(
+        endpoints={"pcm": ("ptime", "pstat"), "death": ("futime", "death")}
     )
-    y = gw.Surv.multistate(time=mgus2["futime"].to_numpy(), event=event, states=("pcm", "death"))
 
     # Fit Aalen-Johansen for the marginal CIF
-    aj = gw.AalenJohansen().fit(y)
+    aj = gw.AalenJohansen().fit(first, data=mgus2)
     cif_df = aj.to_frame(format="polars")
     pcm_cif = cif_df.filter(cif_df["cause"] == "pcm")
 
@@ -1535,10 +1545,12 @@ def calibration_incidence(
         [float(np.interp(t, pcm_cif["time"].to_numpy(), pcm_cif["estimate"].to_numpy()))
          for t in times]
     )
-    probs = np.tile(marginal, (y.n, 1))
+    probs = np.tile(marginal, (mgus2.height, 1))
 
     # Calibration error should be near zero for the marginal model
-    cal_err = gw.calibration_incidence(y, incidence_prob=probs, times=times, cause=1)
+    cal_err = gw.calibration_incidence(
+        first, incidence_prob=probs, times=times, cause=1, data=mgus2
+    )
     cal_err
     ```
     """
@@ -1612,7 +1624,7 @@ def accuracy_in_time(
     Parameters
     ----------
     surv
-        A multi-state `Surv` response (from `Surv.multistate()`).
+        A multi-state `Surv` response (from `Surv()` with a categorical event).
         An `Outcome` or a formula response such as `'Surv(time, status == 2)'` is also accepted,
         with its columns read from `data`.
     incidence_probs
@@ -1650,22 +1662,21 @@ def accuracy_in_time(
 
     Examples
     --------
-    Build a competing-risks response from the `mgus2` dataset and evaluate the accuracy of a
+    Name the competing endpoints in the `mgus2` dataset and evaluate the accuracy of a
     marginal Aalen-Johansen model:
 
     ```{python}
     import greenwood as gw
     import numpy as np
 
+    # The first of progression (PCM) or death, each with its own time and status columns
     mgus2 = gw.load_dataset("mgus2", backend="polars")
-    event = np.where(
-        mgus2["pstat"].to_numpy() == 1, 1,
-        np.where(mgus2["death"].to_numpy() == 1, 2, 0),
+    first = gw.Outcome.first_event(
+        endpoints={"pcm": ("ptime", "pstat"), "death": ("futime", "death")}
     )
-    y = gw.Surv.multistate(time=mgus2["futime"].to_numpy(), event=event, states=("pcm", "death"))
 
     # Fit Aalen-Johansen for marginal CIFs
-    aj = gw.AalenJohansen().fit(y)
+    aj = gw.AalenJohansen().fit(first, data=mgus2)
     cif_df = aj.to_frame(format="polars")
     pcm_cif = cif_df.filter(cif_df["cause"] == "pcm")
     death_cif = cif_df.filter(cif_df["cause"] == "death")
@@ -1681,10 +1692,10 @@ def accuracy_in_time(
          for t in times]
     )
     probs = np.stack(
-        [np.tile(pcm_vals, (y.n, 1)), np.tile(death_vals, (y.n, 1))], axis=1
+        [np.tile(pcm_vals, (mgus2.height, 1)), np.tile(death_vals, (mgus2.height, 1))], axis=1
     )
 
-    acc = gw.accuracy_in_time(y, incidence_probs=probs, times=times)
+    acc = gw.accuracy_in_time(first, incidence_probs=probs, times=times, data=mgus2)
     acc
     ```
     """
@@ -2082,8 +2093,8 @@ def concordance_index_ci(
     Parameters
     ----------
     surv
-        A `Surv` response. If `cause` is given, must be multistate (`Surv.multistate`). Otherwise it
-        must be right-censored (`Surv.right`).
+        A `Surv` response. If `cause` is given, must be multi-state (`Surv()` with a categorical
+        event). Otherwise it must be right-censored (`Surv(time=..., event=...)`).
         An `Outcome` or a formula response such as `'Surv(time, status == 2)'` is also accepted,
         with its columns read from `data`.
     risk
@@ -2114,11 +2125,11 @@ def concordance_index_ci(
     import greenwood as gw
 
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-    cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
+    death = gw.Outcome.surv(time="time", event="status")
+    cox = gw.CoxPH().fit(death, covariates=["age", "sex"], data=lung)
     lp = cox.predict(type="lp")
 
-    gw.concordance_index_ci(y, risk=lp)
+    gw.concordance_index_ci(death, risk=lp, data=lung)
     ```
     """
     bound = bind_fit_inputs(
@@ -2132,7 +2143,7 @@ def concordance_index_ci(
 
     from scipy.stats import norm as sp_norm
 
-    from ._surv import _to_1d_array
+    from ._ingest import to_1d_array as _to_1d_array
 
     scores = _to_1d_array(risk)
     if scores.shape[0] != surv.n:
@@ -2226,13 +2237,13 @@ def concordance_index_compare(
     import greenwood as gw
 
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-    cox1 = gw.CoxPH().fit(y, covariates=["age"], data=lung)
-    cox2 = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
+    death = gw.Outcome.surv(time="time", event="status")
+    cox1 = gw.CoxPH().fit(death, covariates=["age"], data=lung)
+    cox2 = gw.CoxPH().fit(death, covariates=["age", "sex"], data=lung)
     lp1 = cox1.predict(type="lp")
     lp2 = cox2.predict(type="lp")
 
-    gw.concordance_index_compare(y, risk_a=lp1, risk_b=lp2)
+    gw.concordance_index_compare(death, risk_a=lp1, risk_b=lp2, data=lung)
     ```
     """
     bound = bind_fit_inputs(
@@ -2247,7 +2258,7 @@ def concordance_index_compare(
 
     from scipy.stats import norm as sp_norm
 
-    from ._surv import _to_1d_array
+    from ._ingest import to_1d_array as _to_1d_array
 
     scores_a = _to_1d_array(risk_a)
     scores_b = _to_1d_array(risk_b)
@@ -2345,17 +2356,19 @@ def score_cr(
     import numpy as np
 
     mg = gw.load_dataset("mgus2", backend="polars")
-    etime = np.where(mg["pstat"] == 1, mg["ptime"], mg["futime"])
-    event = np.where(mg["pstat"] == 1, 1, 2 * mg["death"])
-    y = gw.Surv.multistate(time=etime, event=event, states=("pcm", "death"))
+    first = gw.Outcome.first_event(
+        endpoints={"pcm": ("ptime", "pstat"), "death": ("futime", "death")}
+    )
 
-    fg = gw.FineGray(cause="pcm").fit(y, covariates=["age", "sex"], data=mg)
+    fg = gw.FineGray(cause="pcm").fit(first, covariates=["age", "sex"], data=mg)
     eval_times = np.array([120, 240, 360])
     cif_pred = fg.predict_cumulative_incidence(
         mg, times=eval_times, format="pandas"
     ).drop(columns="time").values.T
 
-    gw.score_cr(y, incidence_prob=cif_pred, cause=1, times=eval_times, format="polars")
+    gw.score_cr(
+        first, incidence_prob=cif_pred, cause=1, times=eval_times, data=mg, format="polars"
+    )
     ```
     """
     bound = bind_fit_inputs(
