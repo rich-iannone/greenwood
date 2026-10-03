@@ -50,8 +50,8 @@ def _bj_pseudo_response(log_time: Array, event: Array, x: Array, beta: Array) ->
     residual is temporarily treated as uncensored when fitting that Kaplan-Meier curve (a standard
     Buckley-James tail correction), since otherwise the residual survival curve never reaches 0
     and the conditional mean beyond the last censored residual is undefined; residuals are
-    shifted to be positive first since `Surv.right` requires non-negative times (the restricted
-    mean residual life used here is invariant to that shift).
+    shifted to be positive first (the restricted mean residual life used here is invariant to
+    that shift).
     """
     from ._nonparametric import KaplanMeier
     from ._surv import Surv
@@ -63,7 +63,7 @@ def _bj_pseudo_response(log_time: Array, event: Array, x: Array, beta: Array) ->
     km_event = event.copy()
     idx_max = int(np.argmax(resid_shifted))
     km_event[idx_max] = True  # tail correction: ensure the residual KM curve reaches 0
-    km = KaplanMeier().fit(Surv.right(resid_shifted, event=km_event))
+    km = KaplanMeier().fit(Surv(time=resid_shifted, event=km_event))
     tau = float(resid_shifted[idx_max])
 
     y_star = log_time.copy()
@@ -151,12 +151,11 @@ class BuckleyJames:
     ```{python}
     import greenwood as gw
 
-    # Load data and build a right-censored response
+    # Load the data
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
     # Fit a Buckley-James model
-    bj = gw.BuckleyJames().fit(y, covariates=["age", "sex"], data=lung)
+    bj = gw.BuckleyJames().fit("Surv(time, status) ~ age + sex", data=lung)
     bj
     ```
     """
@@ -213,7 +212,7 @@ class BuckleyJames:
         Parameters
         ----------
         surv
-            A right-censored `Surv` response. Built with `Surv.right()`.
+            A right-censored `Surv` response, built with `gw.Surv(time=..., event=...)`.
             An `Outcome` or a formula string such as `'Surv(time, status == 2) ~ age + sex'` is also
             accepted, with its columns read from `data`. The right-hand side sets `covariates`.
         covariates
@@ -239,9 +238,8 @@ class BuckleyJames:
         import greenwood as gw
 
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
-        bj = gw.BuckleyJames().fit(y, covariates=["age", "sex"], data=lung)
+        bj = gw.BuckleyJames().fit("Surv(time, status) ~ age + sex", data=lung)
         bj
         ```
         """
@@ -340,7 +338,7 @@ class BuckleyJames:
         from ._nonparametric import KaplanMeier
         from ._surv import Surv
 
-        self._resid_km = KaplanMeier().fit(Surv.right(resid_shifted, event=km_event))
+        self._resid_km = KaplanMeier().fit(Surv(time=resid_shifted, event=km_event))
         return self
 
     def _design(self, newdata: Any) -> Array:
@@ -396,8 +394,7 @@ class BuckleyJames:
         import greenwood as gw
 
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-        bj = gw.BuckleyJames().fit(y, covariates=["age", "sex"], data=lung)
+        bj = gw.BuckleyJames().fit("Surv(time, status) ~ age + sex", data=lung)
 
         bj.predict(lung[:2], type="survival", times=[180, 365, 730],
                    format="polars")
@@ -453,8 +450,7 @@ class BuckleyJames:
         import greenwood as gw
 
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-        bj = gw.BuckleyJames(n_boot=200, seed=0).fit(y, covariates=["age", "sex"], data=lung)
+        bj = gw.BuckleyJames(n_boot=200, seed=0).fit("Surv(time, status) ~ age + sex", data=lung)
         bj.to_frame(format="polars")
         ```
         """
