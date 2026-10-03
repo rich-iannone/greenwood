@@ -86,8 +86,9 @@ def test_column_names_and_arguments() -> None:
     o = Outcome.surv(time="a", time2="b", event="e == 1")
 
     assert o.column_names == ("a", "b", "e")
-    assert [arg for arg, _ in o.arguments] == ["time", "time2", "event"]
+    assert o.arguments == {"time": "a", "time2": "b", "event": "e == 1"}
     assert o.kind == "surv"
+    assert (o.type, o.origin, o.endpoints) == (None, 0.0, None)
 
     timed = Outcome.surv(time=gw.duration(start="enter", end="exit"), event="factor(cause)")
 
@@ -459,3 +460,30 @@ def test_competing_risks_formula() -> None:
     )
 
     np.testing.assert_allclose(fg.coef_, fg_ref.coef_, rtol=1e-10)
+
+
+def test_outcome_properties() -> None:
+    interval = Outcome.from_formula("Surv(lo, hi, type='interval2', origin=2)")
+    assert interval.type == "interval2"
+    assert interval.origin == 2.0
+    assert interval.arguments == {"time": "lo", "time2": "hi"}
+
+    # R reads a second argument without `event` as the status.
+    assert Outcome.from_formula("Surv(t, d)").arguments == {"time": "t", "event": "d"}
+
+    et = Outcome.event_time(time="t", status="code", time_max="upper")
+    assert et.kind == "event_time"
+    assert et.arguments == {"time": "t", "status": "code", "time_max": "upper"}
+
+    cr = Outcome.first_event(
+        endpoints={"pcm": ("ptime", "pstat"), "death": ("futime", "death == 1")}, censor_at="last"
+    )
+    assert cr.kind == "first_event"
+    assert cr.endpoints == {"pcm": ("ptime", "pstat"), "death": ("futime", "death == 1")}
+    assert cr.arguments == {"censor_at": "last"}
+    assert cr.column_names == ("ptime", "pstat", "futime", "death", "last")
+
+
+def test_outcome_is_built_by_its_constructors_only() -> None:
+    with pytest.raises(TypeError, match="Outcome.surv"):
+        Outcome()  # pyright: ignore[reportCallIssue]
