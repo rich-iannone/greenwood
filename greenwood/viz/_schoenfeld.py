@@ -45,7 +45,7 @@ def _prepare_schoenfeld_data(
         from .._nonparametric import KaplanMeier
         from .._surv import Surv
 
-        surv = Surv.right(cox._exit, cox._event)
+        surv = Surv(time=cox._exit, event=cox._event)
         km = KaplanMeier().fit(surv)
         km_surv = np.interp(t, km.time_, km.survival_, left=1.0, right=float(km.survival_[-1]))
         x_vals = 1.0 - km_surv
@@ -113,8 +113,7 @@ def plot_schoenfeld(
     import greenwood as gw
 
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-    cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
+    cox = gw.CoxPH().fit("Surv(time, status) ~ age + sex", data=lung)
 
     gw.plot_schoenfeld(cox)
     ```
