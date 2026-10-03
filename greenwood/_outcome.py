@@ -1,21 +1,23 @@
 """`Outcome`: a reusable, data-free description of a survival response.
 
-An `Outcome` names the columns of a response and declares its event encoding, without holding any
-data. It is bound to a frame later, either explicitly with `Outcome.bind()` or by an estimator's
-`fit(outcome, ..., data=df)`. Binding at `fit()` reads every column the model needs from the one
-frame and drops incomplete rows once, so the response, covariates, and per-row labels (`by`,
-`strata`, `cluster`, `weights`) always stay aligned.
+An `Outcome` is the structured form of a formula's left-hand side. It holds the arguments of a
+`Surv(...)` or `event_time(...)` call, written exactly as they would be written inside a formula
+(column names and simple expressions such as `status == 2`), and no data. It is bound to a frame
+later, either explicitly with `Outcome.bind()` or by an estimator's `fit(outcome, ..., data=df)`.
+Binding at `fit()` reads every column the model needs from the one frame and drops incomplete rows
+once, so the response, covariates, and per-row labels (`by`, `strata`, `cluster`, `weights`)
+always stay aligned.
 
-The same description can also be written as an R-style formula response, such as
-`"Surv(time, status == 2)"`, and a full formula (`"Surv(time, status == 2) ~ age + sex"`) can be
-passed straight to `fit()`. Formulas are parsed into an `Outcome`, so both spellings share one code
-path. Parsing uses Python's `ast` module and only accepts column names and literal values. Nothing
-in a formula is evaluated.
+The expressions are evaluated on whatever backend holds the data (pandas, Polars, PyArrow, DuckDB,
+lazy frames) and the results go through `Surv()` or `event_time()`, so R's rules apply unchanged.
+Parsing uses Python's `ast` module and accepts only column names, literal values, comparisons, and
+the functions `duration()`, `factor()`, and `c()`. Nothing in a formula is evaluated as code.
 """
 
 from __future__ import annotations
 
 import ast
+import math
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
@@ -25,61 +27,361 @@ import narwhals as nw  # pyright: ignore[reportMissingImports]  # installed + ty
 import numpy as np
 import numpy.typing as npt
 
+from ._event_time import EventTime, as_surv, event_time
 from ._ingest import Duration, as_1d, missing_mask, select_columns
-from ._surv import Surv
+from ._ingest import _check_names as check_names  # pyright: ignore[reportPrivateUsage]
+from ._surv import Surv, first_event
 
 __all__ = ["Outcome"]
 
 Array = npt.NDArray[Any]
 
-# Argument order of each constructor, used for the repr and for binding.
-_ARGUMENTS: dict[str, tuple[str, ...]] = {
-    "right": ("time", "event", "weights"),
-    "left": ("time", "event", "weights"),
-    "counting": ("start", "stop", "event", "weights"),
-    "interval": ("lower", "upper", "weights"),
-    "multistate": ("time", "event", "start", "weights"),
-}
+_BACKTICK = re.compile(r"`([^`]+)`")
+# R's integer ranges such as `0:2`, which Python can't parse, become `c(0, 1, 2)`.
+_RANGE = re.compile(r"(?<![\w.])(-?\d+)\s*:\s*(-?\d+)(?![\w.])")
+_SURV_TYPES = ("right", "left", "interval", "counting", "interval2", "mstate")
 
 
-def _freeze(value: Any) -> Any:
-    """Make an encoding value immutable (lists and sets become tuples)."""
-    if isinstance(value, (list, set, frozenset)):
-        return tuple(value)  # pyright: ignore[reportUnknownArgumentType, reportUnknownVariableType]
-    return value
+# -- expressions ----------------------------------------------------------------------------
 
 
-# Arguments that hold times, where a `duration()` may stand in for a column.
-_TIME_ARGUMENTS = re.compile(r"time\d*|start|stop|lower|upper|censor_at")
+@dataclass(frozen=True)
+class _Column:
+    """A column, by name."""
+
+    name: str
+
+    @property
+    def columns(self) -> tuple[str, ...]:
+        return (self.name,)
+
+    def source(self) -> str:
+        return self.name if _is_identifier(self.name) else f"`{self.name}`"
 
 
-def _column(arg: str, value: Any, *, optional: bool = False) -> str | Duration | None:
-    if value is None and optional:
-        return None
-    if isinstance(value, Duration) and _TIME_ARGUMENTS.fullmatch(arg):
+@dataclass(frozen=True)
+class _Compare:
+    """`column == v`, `!=`, `in (v1, v2)`, or `not in (...)`, with R's missing-value rules."""
+
+    name: str
+    op: str
+    values: tuple[Any, ...]
+
+    @property
+    def columns(self) -> tuple[str, ...]:
+        return (self.name,)
+
+    def source(self) -> str:
+        column = _Column(self.name).source()
+        if self.op in ("==", "!="):
+            return f"{column} {self.op} {self.values[0]!r}"
+        return f"{column} {self.op} {self.values!r}"
+
+
+@dataclass(frozen=True)
+class _Factor:
+    """R's `factor(x, levels, labels)`: a categorical whose first level means censored."""
+
+    name: str
+    levels: tuple[Any, ...] | None = None
+    labels: tuple[str, ...] | None = None
+
+    @property
+    def columns(self) -> tuple[str, ...]:
+        return (self.name,)
+
+    def source(self) -> str:
+        parts = [_Column(self.name).source()]
+        if self.levels is not None:
+            parts.append(f"levels={list(self.levels)!r}")
+        if self.labels is not None:
+            parts.append(f"labels={list(self.labels)!r}")
+        return f"factor({', '.join(parts)})"
+
+
+_Expr = _Column | _Compare | _Factor | Duration
+
+
+def _expr_columns(expr: _Expr) -> tuple[str, ...]:
+    return expr.columns
+
+
+def _expr_source(expr: _Expr) -> str:
+    if isinstance(expr, Duration):
+        return f"duration({expr.start!r}, {expr.end!r}, unit={expr.unit!r})"
+    return expr.source()
+
+
+def _is_identifier(name: str) -> bool:
+    return all(part.isidentifier() for part in name.split("."))
+
+
+class _Categorical:
+    """A minimal categorical (levels plus integer codes, -1 for missing) that `Surv()` reads as a
+    factor, so `factor()` works without importing pandas."""
+
+    def __init__(self, categories: list[str], codes: list[int]) -> None:
+        self.categories = categories
+        self.codes = codes
+
+
+def _r_label(value: Any) -> str:
+    if isinstance(value, (bool, np.bool_)):
+        return "TRUE" if value else "FALSE"
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value)
+
+
+def _r_equal(a: Any, b: Any) -> bool:
+    """Equality as R's `==` sees it: a number compared with a string is compared as strings."""
+    if isinstance(a, str) != isinstance(b, str):
+        return _r_label(a) == _r_label(b)
+    return bool(a == b)
+
+
+def _is_missing_value(value: Any) -> bool:
+    return value is None or (isinstance(value, float) and math.isnan(value))
+
+
+def _evaluate(expr: _Expr, get: Any) -> Any:
+    """Evaluate an expression against `get(name)`, which returns a Narwhals series or an array."""
+    if isinstance(expr, Duration):
+        return expr.compute(_as_array(get(expr.start)), _as_array(get(expr.end)))
+    column = get(expr.name)
+    if isinstance(expr, _Column):
+        return column.to_native() if isinstance(column, nw.Series) else column
+    values = _as_list(column)
+    if isinstance(expr, _Compare):
+        out: list[bool | None] = []
+        for v in values:
+            if expr.op in ("==", "!="):
+                # R: a comparison with a missing value is missing.
+                if _is_missing_value(v):
+                    out.append(None)
+                else:
+                    out.append(_r_equal(v, expr.values[0]) == (expr.op == "=="))
+            else:
+                # R: `NA %in% x` is FALSE, so `not in` is TRUE.
+                hit = (not _is_missing_value(v)) and any(_r_equal(v, t) for t in expr.values)
+                out.append(hit if expr.op == "in" else not hit)
+        return out
+    present = [v for v in values if not _is_missing_value(v)]
+    levels = list(expr.levels) if expr.levels is not None else sorted(set(present))
+    for i, level in enumerate(levels):
+        if any(_r_equal(level, earlier) for earlier in levels[:i]):
+            raise ValueError(f"factor level [{i + 1}] is duplicated")
+    labels = list(expr.labels) if expr.labels is not None else [_r_label(lv) for lv in levels]
+    if len(labels) != len(levels):
+        raise ValueError(
+            f"`factor({expr.name}, ...)` has {len(levels)} levels but {len(labels)} labels."
+        )
+    # As in R, repeated labels merge their levels (for example, two codes that both mean censored).
+    categories = list(dict.fromkeys(labels))
+    code_of = [categories.index(label) for label in labels]
+
+    def code(v: Any) -> int:
+        if _is_missing_value(v):
+            return -1
+        for level, c in zip(levels, code_of, strict=True):
+            if _r_equal(v, level):
+                return c
+        return -1
+
+    codes = [code(v) for v in values]
+    return _Categorical(categories, codes)
+
+
+def _as_list(values: Any) -> list[Any]:
+    if isinstance(values, nw.Series):
+        nulls = values.is_null().to_list()
+        return [None if null else v for v, null in zip(values.to_list(), nulls, strict=True)]
+    return list(as_1d(values).tolist())
+
+
+def _as_array(values: Any) -> Array:
+    if isinstance(values, nw.Series):
+        return as_1d(values.to_numpy())
+    return as_1d(values)
+
+
+# -- parsing ----------------------------------------------------------------------------------
+
+
+class _Parser:
+    """Parse the argument expressions of a response, for formulas and `Outcome` constructors."""
+
+    def __init__(self, text: str) -> None:
+        self.quoted: dict[str, str] = {}
+
+        def stash(match: re.Match[str]) -> str:
+            key = f"__gw_quoted_{len(self.quoted)}"
+            self.quoted[key] = match.group(1)
+            return key
+
+        def expand(match: re.Match[str]) -> str:
+            a, b = int(match.group(1)), int(match.group(2))
+            step = 1 if b >= a else -1
+            return "c(" + ", ".join(str(i) for i in range(a, b + step, step)) + ")"
+
+        source = _BACKTICK.sub(stash, text).replace("%in%", " in ")
+        self.source = _RANGE.sub(expand, source)
+
+    def parse(self) -> ast.expr:
+        try:
+            return ast.parse(self.source, mode="eval").body
+        except SyntaxError as error:
+            raise ValueError(f"Could not parse {self.restore(self.source)!r}.") from error
+
+    def restore(self, text: str) -> str:
+        for key, name in self.quoted.items():
+            text = text.replace(key, f"`{name}`")
+        return text
+
+    def name(self, node: ast.expr, what: str) -> str:
+        if isinstance(node, ast.Name):
+            return self.quoted.get(node.id, node.id)
+        if isinstance(node, ast.Attribute):
+            return f"{self.name(node.value, what)}.{node.attr}"
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            return node.value
+        raise ValueError(
+            f"Expected a column name for {what}, got `{self.restore(ast.unparse(node))}`."
+        )
+
+    def literal(self, node: ast.expr, what: str) -> Any:
+        # R's c(1, 2) becomes a tuple.
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "c":
+            return tuple(self.literal(a, what) for a in node.args)
+        try:
+            value = ast.literal_eval(node)
+        except ValueError as error:
+            raise ValueError(
+                f"`{self.restore(ast.unparse(node))}` in {what} must be a literal value (a number, "
+                "a string, or a list of them)."
+            ) from error
+        if isinstance(value, (list, set, frozenset)):
+            return tuple(value)  # pyright: ignore[reportUnknownArgumentType, reportUnknownVariableType]
+        return value
+
+    def values(self, node: ast.expr, what: str) -> tuple[Any, ...]:
+        value = self.literal(node, what)
+        return value if isinstance(value, tuple) else (value,)  # pyright: ignore[reportUnknownVariableType]
+
+    def expr(self, node: ast.expr, what: str) -> _Expr:
+        """A column, a comparison, `factor(...)`, or `duration(...)`."""
+        if isinstance(node, ast.Compare):
+            if len(node.ops) != 1:
+                raise ValueError(
+                    f"Chained comparisons are not supported: `{self.restore(ast.unparse(node))}`."
+                )
+            column = self.name(node.left, what)
+            op = node.ops[0]
+            if isinstance(op, (ast.Eq, ast.NotEq)):
+                value = self.literal(node.comparators[0], what)
+                return _Compare(column, "==" if isinstance(op, ast.Eq) else "!=", (value,))
+            if isinstance(op, (ast.In, ast.NotIn)):
+                values = self.values(node.comparators[0], what)
+                return _Compare(column, "in" if isinstance(op, ast.In) else "not in", values)
+            raise ValueError(
+                f"`{self.restore(ast.unparse(node))}` is not supported in {what}. Use `==`, `!=`, "
+                "`in`, or `not in`."
+            )
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+            if node.func.id == "duration":
+                return self.duration(node)
+            if node.func.id == "factor":
+                return self.factor(node, what)
+        return _Column(self.name(node, what))
+
+    def duration(self, node: ast.Call) -> Duration:
+        usage = (
+            "`duration()` takes (start, end) columns and an optional unit, as in "
+            '`duration(enroll, exit, unit="years")`.'
+        )
+        params = ("start", "end", "unit")
+        given: dict[str, ast.expr] = dict(zip(params, node.args, strict=False))
+        for kw in node.keywords:
+            if kw.arg not in params or kw.arg in given:
+                raise ValueError(usage)
+            given[kw.arg] = kw.value
+        if len(node.args) > 3 or "start" not in given or "end" not in given:
+            raise ValueError(usage)
+        unit = self.literal(given["unit"], "the duration unit") if "unit" in given else "days"
+        return Duration(
+            self.name(given["start"], "the duration start"),
+            self.name(given["end"], "the duration end"),
+            unit,
+        )
+
+    def factor(self, node: ast.Call, what: str) -> _Factor:
+        params = ("x", "levels", "labels")
+        given: dict[str, ast.expr] = dict(zip(params, node.args, strict=False))
+        for kw in node.keywords:
+            if kw.arg not in params or kw.arg in given:
+                raise ValueError("`factor()` takes (x, levels, labels), as R's `factor()` does.")
+            given[kw.arg] = kw.value
+        if "x" not in given or len(node.args) > 3:
+            raise ValueError("`factor()` takes (x, levels, labels), as R's `factor()` does.")
+        levels = self.values(given["levels"], "the factor levels") if "levels" in given else None
+        labels = self.values(given["labels"], "the factor labels") if "labels" in given else None
+        return _Factor(
+            self.name(given["x"], what),
+            levels,
+            None if labels is None else tuple(str(label) for label in labels),
+        )
+
+
+def _parse_argument(value: Any, arg: str) -> _Expr:
+    """Parse one `Outcome` constructor argument: an expression string or a `Duration`.
+
+    A string that isn't a supported expression (such as a column name with spaces) is taken as a
+    column name, so names never need quoting here.
+    """
+    if isinstance(value, Duration):
         return value
     if not isinstance(value, str):
         raise TypeError(
-            f"`Outcome` describes columns by name, so `{arg}` must be a column name. Got "
-            f"{type(value).__name__}. To build a response from values, use `Surv` directly."
+            f"`Outcome` describes columns by name, so `{arg}` must be a column name or an "
+            f"expression such as 'status == 2'. Got {type(value).__name__}. To build a response "
+            "from values, use `Surv()` or `event_time()` directly."
         )
-    return value
+    parser = _Parser(value)
+    try:
+        return parser.expr(parser.parse(), f"`{arg}`")
+    except ValueError:
+        if "`" in value:
+            raise
+        return _Column(value)
+
+
+# -- the Outcome ------------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
 class Outcome:
-    """A reusable description of a survival response: column names plus an event encoding.
+    """A reusable description of a survival response: column names and expressions, no data.
 
-    An `Outcome` says which columns hold the response and how to read the event, but holds no data.
-    Pass it to any estimator's `fit()` together with `data=`. The estimator reads every column it
-    needs from that one frame, drops rows with missing values once (as R's `na.omit` does), and
-    fits. Because the description is made of column names and values rather than DataFrame
-    expressions, the same `Outcome` works on any backend: pandas, Polars, PyArrow, DuckDB, or a lazy
-    frame.
+    An `Outcome` is the structured form of a formula's left-hand side. `Outcome.surv()` takes the
+    arguments of R's `Surv()` and `Outcome.event_time()` those of `event_time()`, each written as
+    it would be inside a formula: a column name, or an expression such as `"status == 2"`. Pass
+    the `Outcome` to any estimator's `fit()` together with `data=`. The estimator reads every
+    column it needs from that one frame, drops rows with missing values once (as R's `na.omit`
+    does), evaluates the expressions, and builds the response with `Surv()` or `event_time()`.
 
-    Build one with the class methods, which mirror the `Surv` constructors (`right`, `left`,
-    `counting`, `interval`, `multistate`), or parse an R-style formula response with
-    `Outcome.from_formula()`. Call `bind()` to turn it into a `Surv` for a particular frame.
+    Because an `Outcome` is made of names and expressions rather than DataFrame code, the same
+    description works on any backend: pandas, Polars, PyArrow, DuckDB, or a lazy frame. That makes
+    it, together with the equivalent formula strings, the recommended way to start from a data
+    frame. Use `Surv()` or `event_time()` directly when the values are already in hand.
+
+    The expressions understood here and in formulas are:
+
+    - a column name (backticks quote unusual names inside an expression),
+    - a comparison: `status == 2`, `status != 0`, `status in (1, 2)` (R's `%in% c(1, 2)` works),
+      or `status not in (1, 2)`,
+    - `factor(x, levels, labels)`, R's factor, for a multi-state status whose first level means
+      censored,
+    - `duration(start, end, unit="days")` for a time computed from two date columns.
 
     Examples
     --------
@@ -100,29 +402,26 @@ class Outcome:
     )
     ```
 
-    Describe the endpoint once. A `status` of `2` means the patient died:
+    Describe the endpoint once, with the same arguments `Surv()` takes:
 
     ```{python}
     import greenwood as gw
 
-    # Name the columns and the event encoding, with no data attached yet
-    death = gw.Outcome.right(time="time", event="status", event_value=2)
+    death = gw.Outcome.surv(time="time", event="status == 2")
     death
     ```
 
-    Pass the description to an estimator along with the frame. Column names work for covariates and
-    for `by=` too:
+    Pass it to estimators along with the frame. Column names work for covariates and `by=` too:
 
     ```{python}
     lung = gw.load_dataset("lung")
 
-    # Fit a Cox model and a stratified Kaplan-Meier curve from the same description
     cox = gw.CoxPH().fit(death, covariates=["age", "sex"], data=lung)
     km = gw.KaplanMeier().fit(death, by="sex", data=lung)
     cox
     ```
 
-    The same response can be written as a formula, which is parsed into an `Outcome`:
+    The same response written as a formula parses to an equal `Outcome`:
 
     ```{python}
     gw.Outcome.from_formula(formula="Surv(time, status == 2)") == death
@@ -130,40 +429,47 @@ class Outcome:
     """
 
     kind: str
-    columns: tuple[tuple[str, str | Duration], ...]
-    event_value: Any = None
-    censor_value: Any = None
-    states: tuple[str, ...] | None = None
-    state_values: tuple[Any, ...] | None = field(default=None, repr=False)
+    arguments: tuple[tuple[str, _Expr], ...]
+    type: str | None = None
+    origin: float = 0.0
+    labels: tuple[str, ...] = field(default=(), repr=False)
 
-    # -- constructors ---------------------------------------------------------
+    # -- constructors -------------------------------------------------------------------------
 
     @classmethod
-    def right(
+    def surv(
         cls,
         time: str | Duration,
+        time2: str | Duration | None = None,
         event: str | None = None,
         *,
-        weights: str | None = None,
-        event_value: Any = None,
-        censor_value: Any = None,
+        type: str | None = None,
+        origin: float = 0.0,
     ) -> Outcome:
-        """Describe a right-censored response.
+        """Describe a `Surv()` response by column names and expressions.
+
+        The arguments are those of `Surv()` (and of R's `survival::Surv()`), written as they
+        would be inside a formula. When the `Outcome` is bound to data, each one is evaluated and
+        the results are passed to `Surv()`, so R's type inference and status rules apply: `1`/`2`
+        status passes through, `type=` selects left or interval data, and a factor gives a
+        multi-state response.
 
         Parameters
         ----------
         time
-            The column holding exit times, or a `duration()` computed from two date columns.
+            The time column (or start time for counting data, or lower bound for interval data),
+            or `duration(...)` for a time computed from two date columns.
+        time2
+            The stop time for counting data, or the upper bound for interval data. As in R, a
+            second argument without `event` is the status.
         event
-            The column holding the event indicator. If `None`, every row is an event.
-        weights
-            The column holding case weights (optional).
-        event_value
-            The value (or list of values) in `event` that marks an event. Every other row is
-            censored. See `Surv.right()`.
-        censor_value
-            The value (or list of values) in `event` that marks censoring. Every other row is an
-            event. Pass this or `event_value`, not both.
+            The status: a column, a comparison such as `"status == 2"`, or
+            `"factor(cause, c(0, 1, 2), c('censor', 'pcm', 'death'))"` for a multi-state response.
+        type
+            As in `Surv()`: `"right"`, `"left"`, `"interval"`, `"counting"`, `"interval2"`, or
+            `"mstate"`. The default infers it from the arguments.
+        origin
+            Subtracted from every time, as in `Surv()`.
 
         Returns
         -------
@@ -175,232 +481,99 @@ class Outcome:
         ```{python}
         import greenwood as gw
 
-        gw.Outcome.right(time="time", event="status", event_value=2)
+        # pbc's status is 0 (censored), 1 (transplant), or 2 (died)
+        gw.Outcome.surv(time="time", event="status == 2")
         ```
-        """
-        return cls._build(
-            "right",
-            {"time": time, "event": event, "weights": weights},
-            event_value=event_value,
-            censor_value=censor_value,
+
+        A counting-process response and a multi-state one:
+
+        ```{python}
+        gw.Outcome.surv(time="tstart", time2="tstop", event="status == 2")
+        ```
+
+        ```{python}
+        gw.Outcome.surv(
+            time="time",
+            event="factor(status, c(0, 1, 2), c('censor', 'transplant', 'death'))",
         )
-
-    @classmethod
-    def left(
-        cls,
-        time: str | Duration,
-        event: str | None = None,
-        *,
-        weights: str | None = None,
-        event_value: Any = None,
-        censor_value: Any = None,
-    ) -> Outcome:
-        """Describe a left-censored response.
-
-        Parameters
-        ----------
-        time
-            The column holding observation times, or a `duration()`.
-        event
-            The column holding the event indicator. If `None`, every row is an event.
-        weights
-            The column holding case weights (optional).
-        event_value
-            The value (or list of values) in `event` that marks an event. See `Surv.left()`.
-        censor_value
-            The value (or list of values) in `event` that marks an event-free row. Pass this or
-            `event_value`, not both.
-
-        Returns
-        -------
-        Outcome
-            A data-free description of the response.
-
-        Examples
-        --------
-        ```{python}
-        import greenwood as gw
-
-        gw.Outcome.left(time="time", event="detected", event_value="yes")
         ```
         """
-        return cls._build(
-            "left",
-            {"time": time, "event": event, "weights": weights},
-            event_value=event_value,
-            censor_value=censor_value,
-        )
-
-    @classmethod
-    def counting(
-        cls,
-        start: str | Duration,
-        stop: str | Duration,
-        event: str | None = None,
-        *,
-        weights: str | None = None,
-        event_value: Any = None,
-        censor_value: Any = None,
-    ) -> Outcome:
-        """Describe a counting-process `(start, stop]` response.
-
-        Parameters
-        ----------
-        start
-            The column holding entry times, or a `duration()`.
-        stop
-            The column holding exit times, or a `duration()` computed from two date columns.
-        event
-            The column holding the event indicator. If `None`, every row is an event.
-        weights
-            The column holding case weights (optional).
-        event_value
-            The value (or list of values) in `event` that marks an event. See `Surv.counting()`.
-        censor_value
-            The value (or list of values) in `event` that marks censoring. Pass this or
-            `event_value`, not both.
-
-        Returns
-        -------
-        Outcome
-            A data-free description of the response.
-
-        Examples
-        --------
-        ```{python}
-        import greenwood as gw
-
-        gw.Outcome.counting(start="tstart", stop="tstop", event="event")
-        ```
-        """
-        return cls._build(
-            "counting",
-            {"start": start, "stop": stop, "event": event, "weights": weights},
-            event_value=event_value,
-            censor_value=censor_value,
-        )
-
-    @classmethod
-    def interval(
-        cls, lower: str | Duration, upper: str | Duration, *, weights: str | None = None
-    ) -> Outcome:
-        """Describe an interval-censored response.
-
-        Parameters
-        ----------
-        lower
-            The column holding interval lower bounds.
-        upper
-            The column holding interval upper bounds (`inf` for right-censored rows).
-        weights
-            The column holding case weights (optional).
-
-        Returns
-        -------
-        Outcome
-            A data-free description of the response.
-
-        Examples
-        --------
-        ```{python}
-        import greenwood as gw
-
-        gw.Outcome.interval(lower="left", upper="right")
-        ```
-        """
-        return cls._build("interval", {"lower": lower, "upper": upper, "weights": weights})
-
-    @classmethod
-    def multistate(
-        cls,
-        time: str | Duration,
-        event: str,
-        states: Sequence[str] | Mapping[str, Any],
-        *,
-        start: str | Duration | None = None,
-        weights: str | None = None,
-        censor_value: Any = None,
-    ) -> Outcome:
-        """Describe a multi-state or competing-risks response.
-
-        Parameters
-        ----------
-        time
-            The column holding event or censoring times, or a `duration()`.
-        event
-            The column holding the outcome.
-        states
-            A mapping of state label to the `event` value (or values) marking it, such as
-            `{"pcm": 1, "death": 2}`, or a sequence of labels when `event` already holds codes
-            `0, 1, 2, ...`. See `Surv.multistate()`.
-        start
-            The column holding entry times, for late entry (optional).
-        weights
-            The column holding case weights (optional).
-        censor_value
-            The value (or list of values) in `event` that marks censoring when `states` is a
-            mapping. The default is `0`.
-
-        Returns
-        -------
-        Outcome
-            A data-free description of the response.
-
-        Examples
-        --------
-        ```{python}
-        import greenwood as gw
-
-        gw.Outcome.multistate(time="etime", event="cause", states={"pcm": 1, "death": 2})
-        ```
-        """
-        if isinstance(states, Mapping):
-            labels = tuple(str(k) for k in states)
-            values: tuple[Any, ...] | None = tuple(_freeze(v) for v in states.values())
-        else:
-            labels = tuple(str(s) for s in states)
-            values = None
-        if not labels:
-            raise ValueError("`states` must name at least one state.")
-        outcome = cls._build(
-            "multistate",
-            {"time": time, "event": event, "start": start, "weights": weights},
-            censor_value=censor_value,
-        )
+        if type is not None and type not in _SURV_TYPES:
+            raise ValueError(
+                f"`type` must be one of {', '.join(map(repr, _SURV_TYPES))}, not {type!r}."
+            )
+        arguments = [("time", _parse_argument(time, "time"))]
+        if time2 is not None:
+            arguments.append(("time2", _parse_argument(time2, "time2")))
+        if event is not None:
+            arguments.append(("event", _parse_argument(event, "event")))
         return cls(
-            kind=outcome.kind,
-            columns=outcome.columns,
-            censor_value=outcome.censor_value,
-            states=labels,
-            state_values=values,
+            kind="surv", arguments=_surv_arguments(arguments, type), type=type, origin=float(origin)
         )
+
+    @classmethod
+    def event_time(
+        cls, time: str | Duration, status: str, time_max: str | Duration | None = None
+    ) -> Outcome:
+        """Describe an `event_time()` response by column names.
+
+        When bound to data, the columns are passed to `event_time()`, so its validation applies:
+        status codes are `"e"` (exact), `"r"` (right-censored), `"l"` (left-censored), or `"i"`
+        (interval-censored, with the upper bound in `time_max`).
+
+        Parameters
+        ----------
+        time
+            The time column (the lower bound for interval-censored rows), or `duration(...)`.
+        status
+            The column of status codes.
+        time_max
+            The column of interval upper bounds, missing for other rows.
+
+        Returns
+        -------
+        Outcome
+            A data-free description of the response.
+
+        Examples
+        --------
+        ```{python}
+        import greenwood as gw
+
+        gw.Outcome.event_time(time="time", status="code", time_max="upper")
+        ```
+        """
+        arguments = [
+            ("time", _parse_argument(time, "time")),
+            ("status", _parse_argument(status, "status")),
+        ]
+        if time_max is not None:
+            arguments.append(("time_max", _parse_argument(time_max, "time_max")))
+        return cls(kind="event_time", arguments=tuple(arguments))
 
     @classmethod
     def first_event(
         cls,
-        endpoints: Mapping[str, Sequence[Any]],
+        endpoints: Mapping[str, tuple[str | Duration, str]],
         *,
         censor_at: str | Duration | None = None,
         start: str | Duration | None = None,
-        weights: str | None = None,
     ) -> Outcome:
-        """Describe a competing-risks response built from several endpoint column pairs.
+        """Describe a `first_event()` competing-risks response by column names.
 
-        Each endpoint has its own time and event column. For each row, the earliest observed event
-        wins, ties go to the endpoint listed first, and rows with no observed event are censored
-        at the latest endpoint time (or at `censor_at`). See `Surv.first_event()`.
+        Each endpoint is a `(time, event)` pair of a time column and an event column or
+        comparison (such as `"pstat == 1"`), in priority order for ties. When bound to data, the
+        pairs are evaluated and passed to `first_event()`.
 
         Parameters
         ----------
         endpoints
-            A mapping of state label to `(time, event)` or `(time, event, event_value)` column
-            names, in priority order for ties.
+            A mapping of state name to `(time, event)`.
         censor_at
-            The column holding the censoring time for rows with no observed event (optional).
+            The column at which rows with no observed event are censored. The default is the
+            latest endpoint time.
         start
-            The column holding entry times, for late entry (optional).
-        weights
-            The column holding case weights (optional).
+            The column of entry times, for late entry.
 
         Returns
         -------
@@ -409,82 +582,39 @@ class Outcome:
 
         Examples
         --------
-        We'll use the bundled `mgus2` dataset, which follows patients with monoclonal gammopathy.
-        Each endpoint has its own column pair: `ptime` and `pstat` for progression to plasma-cell
-        malignancy (PCM), and `futime` and `death` for death. Here is what the dataset looks like:
-
-        ```{python}
-        #| echo: false
-        import great_docs as gd
-        import greenwood as gw
-
-        gd.tbl_preview(
-            gw.load_dataset("mgus2"),
-            n_head=5,
-            n_tail=3,
-            caption="mgus2: monoclonal gammopathy, 1,384 patients",
-        )
-        ```
-
-        Describe the competing-risks response from the two column pairs, then fit it from the frame:
-
         ```{python}
         import greenwood as gw
 
-        # PCM and death are recorded in separate column pairs in mgus2
-        cr = gw.Outcome.first_event(
-            endpoints={"pcm": ("ptime", "pstat"), "death": ("futime", "death")}
-        )
-        gw.AalenJohansen().fit(cr, data=gw.load_dataset("mgus2"))
+        gw.Outcome.first_event(endpoints={"pcm": ("ptime", "pstat"), "death": ("futime", "death")})
         ```
         """
         if not endpoints:
             raise ValueError("`endpoints` must name at least one endpoint.")
-        arguments: dict[str, Any] = {}
-        labels: list[str] = []
-        values: list[Any] = []
+        arguments: list[tuple[str, _Expr]] = []
         for i, (label, spec) in enumerate(endpoints.items()):
-            if isinstance(spec, str) or len(spec) not in (2, 3):
-                raise ValueError(
-                    f"Endpoint {label!r} must be `(time, event)` or `(time, event, event_value)`."
-                )
-            arguments[f"time{i}"] = spec[0]
-            arguments[f"event{i}"] = spec[1]
-            labels.append(str(label))
-            values.append(_freeze(spec[2]) if len(spec) == 3 else None)
-        arguments.update({"censor_at": censor_at, "start": start, "weights": weights})
-        columns: list[tuple[str, str | Duration]] = []
-        for arg, value in arguments.items():
-            ref = _column(arg, value, optional=arg in ("censor_at", "start", "weights"))
-            if ref is not None:
-                columns.append((arg, ref))
+            if isinstance(spec, str) or len(spec) != 2:  # pyright: ignore[reportUnnecessaryIsInstance]
+                raise ValueError(f"Endpoint {label!r} must be a `(time, event)` pair.")
+            arguments.append((f"time{i}", _parse_argument(spec[0], f"endpoint {label!r} time")))
+            arguments.append((f"event{i}", _parse_argument(spec[1], f"endpoint {label!r} event")))
+        if censor_at is not None:
+            arguments.append(("censor_at", _parse_argument(censor_at, "censor_at")))
+        if start is not None:
+            arguments.append(("start", _parse_argument(start, "start")))
         return cls(
             kind="first_event",
-            columns=tuple(columns),
-            states=tuple(labels),
-            state_values=tuple(values),
+            arguments=tuple(arguments),
+            labels=tuple(str(label) for label in endpoints),
         )
 
     @classmethod
     def from_formula(cls, formula: str) -> Outcome:
-        """Parse an R-style formula response such as `"Surv(time, status == 2)"`.
+        """Parse a formula response such as `"Surv(time, status == 2)"`.
 
-        The response is written as a call to `Surv()` with column names and literal values. The
-        forms follow R's `survival::Surv()`:
-
-        - `Surv(time)`: every row is an event
-        - `Surv(time, event)`: `event` is boolean or `0`/`1`
-        - `Surv(time, status == 2)` or `Surv(time, status != 0)`: declare the event value, or the
-          censoring value
-        - `Surv(time, status in (1, 2))`: several event values (R's `%in% c(1, 2)` is accepted
-          too)
-        - `Surv(start, stop, event)`: the counting-process form
-        - `Surv(time, event, type="left")` and `Surv(lower, upper, type="interval2")`
-        - `Surv(time, cause, states={"pcm": 1, "death": 2})`: a multi-state response
-
-        Keyword arguments `event_value=`, `censor_value=`, `weights=`, and `states=` may also be
-        given inside the call. Column names that are not valid Python identifiers can be quoted
-        with backticks. Dotted R names such as `ph.ecog` work without quoting.
+        The response is a call to `Surv()` or `event_time()`, with the arguments R's functions
+        take: `Surv(time, time2, event, type=, origin=)` and `event_time(time, status, time_max)`.
+        Arguments are column names and the expressions listed under `Outcome`. Column names that
+        aren't valid Python identifiers are quoted with backticks, and dotted R names such as
+        `ph.ecog` work without quoting.
 
         Parameters
         ----------
@@ -504,101 +634,62 @@ class Outcome:
 
         gw.Outcome.from_formula(formula="Surv(time, status == 2)")
         ```
+
+        R's other forms work too:
+
+        ```{python}
+        gw.Outcome.from_formula(formula="Surv(tstart, tstop, status %in% c(1, 2))")
+        ```
+
+        ```{python}
+        gw.Outcome.from_formula(formula="event_time(time, code, upper)")
+        ```
         """
         outcome, rhs = parse_formula(formula)
         if rhs is not None:
             raise ValueError(
-                "`Outcome.from_formula()` takes the response only. Pass the full formula "
-                f"({formula!r}) to an estimator's `fit()` to include covariates."
+                f"`Outcome.from_formula()` takes only a response, but {formula!r} has a right-hand "
+                "side. Pass the full formula to an estimator's `fit()` instead."
             )
         return outcome
 
-    @classmethod
-    def _build(
-        cls,
-        kind: str,
-        arguments: dict[str, Any],
-        *,
-        event_value: Any = None,
-        censor_value: Any = None,
-    ) -> Outcome:
-        required = {"time", "start", "stop", "lower", "upper"}
-        if kind == "multistate":
-            required = {"time", "event"}
-        columns: list[tuple[str, str | Duration]] = []
-        for arg, value in arguments.items():
-            name = _column(arg, value, optional=arg not in required)
-            if name is not None:
-                columns.append((arg, name))
-        if event_value is not None and censor_value is not None:
-            raise ValueError("Pass `event_value` or `censor_value`, not both.")
-        if (event_value is not None or censor_value is not None) and "event" not in dict(columns):
-            raise ValueError("`event_value` and `censor_value` need an `event` column to encode.")
-        return cls(
-            kind=kind,
-            columns=tuple(columns),
-            event_value=_freeze(event_value),
-            censor_value=_freeze(censor_value),
-        )
-
-    # -- views ----------------------------------------------------------------
+    # -- views --------------------------------------------------------------------------------
 
     @property
     def column_names(self) -> tuple[str, ...]:
-        """The distinct column names the response reads, in argument order."""
+        """The columns this response reads, in order."""
         names: list[str] = []
-        for _, ref in self.columns:
-            names += list(ref.columns) if isinstance(ref, Duration) else [ref]
+        for _, expr in self.arguments:
+            names += _expr_columns(expr)
         return tuple(dict.fromkeys(names))
 
     def __repr__(self) -> str:
-        cols = dict(self.columns)
+        args = dict(self.arguments)
         if self.kind == "first_event":
-            parts = [f"endpoints={self._endpoints_argument()!r}"]
-            parts += [f"{a}={cols[a]!r}" for a in ("censor_at", "start", "weights") if a in cols]
+            pairs = ", ".join(
+                f"{label!r}: "
+                f"({_expr_source(args[f'time{i}'])!r}, {_expr_source(args[f'event{i}'])!r})"
+                for i, label in enumerate(self.labels)
+            )
+            parts = [f"endpoints={{{pairs}}}"]
+            parts += [f"{a}={_expr_source(args[a])!r}" for a in ("censor_at", "start") if a in args]
             return f"Outcome.first_event({', '.join(parts)})"
-        order = _ARGUMENTS[self.kind]
-        positional = {
-            "right": ("time", "event"),
-            "left": ("time", "event"),
-            "counting": ("start", "stop", "event"),
-            "interval": ("lower", "upper"),
-            "multistate": ("time", "event"),
-        }[self.kind]
-        parts = [f"{a}={cols[a]!r}" for a in positional if a in cols]
-        if self.kind == "multistate":
-            parts.append(f"states={self._states_argument()!r}")
-        parts += [f"{a}={cols[a]!r}" for a in order if a in cols and a not in positional]
-        if self.event_value is not None:
-            parts.append(f"event_value={self.event_value!r}")
-        if self.censor_value is not None:
-            parts.append(f"censor_value={self.censor_value!r}")
+        parts = [f"{a}={_expr_source(e)!r}" for a, e in self.arguments]
+        if self.type is not None:
+            parts.append(f"type={self.type!r}")
+        if self.origin:
+            parts.append(f"origin={self.origin!r}")
         return f"Outcome.{self.kind}({', '.join(parts)})"
 
-    def _endpoints_argument(self) -> dict[str, tuple[Any, ...]]:
-        assert self.states is not None and self.state_values is not None
-        cols = dict(self.columns)
-        endpoints: dict[str, tuple[Any, ...]] = {}
-        for i, (label, value) in enumerate(zip(self.states, self.state_values, strict=True)):
-            spec = (cols[f"time{i}"], cols[f"event{i}"])
-            endpoints[label] = spec if value is None else (*spec, value)
-        return endpoints
-
-    def _states_argument(self) -> tuple[str, ...] | dict[str, Any]:
-        assert self.states is not None
-        if self.state_values is None:
-            return self.states
-        return dict(zip(self.states, self.state_values, strict=True))
-
-    # -- binding --------------------------------------------------------------
+    # -- binding --------------------------------------------------------------------------------
 
     def bind(self, data: Any) -> Surv:
-        """Build a `Surv` response from the columns of `data`.
+        """Build the `Surv` response for the columns of `data`.
 
-        `bind()` is strict: missing values in the response columns raise an error, as they do in
-        the `Surv` constructors. To drop incomplete rows automatically, pass the `Outcome` to an
-        estimator's `fit()` with `data=` instead, where the response and covariates are filtered
-        together.
+        Each argument is evaluated against `data` and the results go through `Surv()`,
+        `event_time()` (then `as_surv()`), or `first_event()`. Missing values are kept, as they are
+        by `Surv()`. To drop incomplete rows together with the covariates, pass the `Outcome` to an
+        estimator's `fit()` with `data=` instead.
 
         Parameters
         ----------
@@ -613,71 +704,60 @@ class Outcome:
 
         Examples
         --------
-        We'll use the bundled `lung` dataset, from a North Central Cancer Treatment Group trial in
-        advanced lung cancer. `time` is days of follow-up and `status` is `1` (censored) or `2`
-        (died). Here is what the dataset looks like:
-
-        ```{python}
-        #| echo: false
-        import great_docs as gd
-        import greenwood as gw
-
-        gd.tbl_preview(
-            gw.load_dataset("lung"),
-            n_head=5,
-            n_tail=3,
-            caption="lung: NCCTG advanced lung cancer, 228 patients",
-        )
-        ```
-
-        Bind the description to the frame to get a `Surv`:
-
         ```{python}
         import greenwood as gw
 
         lung = gw.load_dataset("lung")
-        gw.Outcome.right(time="time", event="status", event_value=2).bind(lung)
+        gw.Outcome.surv(time="time", event="status").bind(lung)
         ```
         """
-        cols = dict(self.columns)
-        if self.kind == "first_event":
-            return Surv.first_event(
-                self._endpoints_argument(),
-                data=data,
-                censor_at=cols.get("censor_at"),
-                start=cols.get("start"),
-                weights=cols.get("weights"),
+        get = _column_getter(data, list(self.column_names))
+        values = {arg: _evaluate(expr, get) for arg, expr in self.arguments}
+        if self.kind == "surv":
+            return Surv(
+                values["time"],
+                values.get("time2"),
+                values.get("event"),
+                type=self.type,
+                origin=self.origin,
             )
-        if self.kind == "interval":
-            return Surv.interval(
-                cols["lower"], cols["upper"], weights=cols.get("weights"), data=data
-            )
-        if self.kind == "multistate":
-            return Surv.multistate(
-                cols["time"],
-                cols["event"],
-                self._states_argument(),
-                start=cols.get("start"),
-                weights=cols.get("weights"),
-                data=data,
-                censor_value=self.censor_value,
-            )
-        encoding: dict[str, Any] = {
-            "weights": cols.get("weights"),
-            "data": data,
-            "event_value": self.event_value,
-            "censor_value": self.censor_value,
+        if self.kind == "event_time":
+            return as_surv(event_time(values["time"], values["status"], values.get("time_max")))
+        endpoints = {
+            label: (values[f"time{i}"], values[f"event{i}"]) for i, label in enumerate(self.labels)
         }
-        if self.kind == "counting":
-            return Surv.counting(cols["start"], cols["stop"], cols.get("event"), **encoding)
-        if self.kind == "left":
-            return Surv.left(cols["time"], cols.get("event"), **encoding)
-        return Surv.right(cols["time"], cols.get("event"), **encoding)
+        return first_event(endpoints, censor_at=values.get("censor_at"), start=values.get("start"))
 
 
-# -- formula parsing ----------------------------------------------------------
+def _column_getter(data: Any, names: list[str]) -> Any:
+    """Return `get(name)` for the named columns of a frame (a Narwhals series) or a mapping."""
+    if isinstance(data, Mapping):
+        mapping: Mapping[Any, Any] = data  # pyright: ignore[reportUnknownVariableType]
+        check_names(names, [str(k) for k in mapping])
 
-_BACKTICK = re.compile(r"`([^`]+)`")
+        def from_mapping(name: str) -> Any:
+            return mapping[name]
+
+        return from_mapping
+    try:
+        frame: Any = nw.from_native(data)
+    except TypeError as error:
+        raise TypeError(
+            "`data` must be a DataFrame (pandas, Polars, PyArrow, DuckDB, ...) or a mapping of "
+            f"column names to values. Got {type(data).__name__}."
+        ) from error
+    if not isinstance(frame, (nw.DataFrame, nw.LazyFrame)):
+        raise TypeError(f"`data` must be a DataFrame, not a {type(data).__name__}.")
+    _check_columns(names, [str(c) for c in frame.collect_schema().names()])
+    selected = select_columns(frame, names)
+
+    def from_frame(name: str) -> Any:
+        return selected.get_column(name)
+
+    return from_frame
+
+
+# -- formula parsing ------------------------------------------------------------------------
 
 
 def split_formula(formula: str) -> tuple[str, str | None]:
@@ -700,178 +780,76 @@ def parse_formula(formula: str) -> tuple[Outcome, str | None]:
 
 
 def _parse_response(text: str) -> Outcome:
-    quoted: dict[str, str] = {}
-
-    def _stash(match: re.Match[str]) -> str:
-        key = f"__gw_quoted_{len(quoted)}"
-        quoted[key] = match.group(1)
-        return key
-
-    source = _BACKTICK.sub(_stash, text).replace("%in%", " in ")
-    try:
-        tree = ast.parse(source, mode="eval")
-    except SyntaxError as error:
-        raise ValueError(f"Could not parse the formula response {text!r}.") from error
-    call = tree.body
+    """Parse `Surv(...)` or `event_time(...)` into an `Outcome`."""
+    parser = _Parser(text)
+    call = parser.parse()
     if not (isinstance(call, ast.Call) and isinstance(call.func, ast.Name)):
-        raise ValueError(f"The formula response must be a call to `Surv(...)`. Got {text!r}.")
-    if call.func.id != "Surv":
         raise ValueError(
-            f"The formula response must be a call to `Surv(...)`, not `{call.func.id}(...)`."
+            "The formula response must be a call to `Surv(...)` or `event_time(...)`. "
+            f"Got {text!r}."
         )
-
-    def name_of(node: ast.expr, what: str) -> str:
-        if isinstance(node, ast.Name):
-            return quoted.get(node.id, node.id)
-        if isinstance(node, ast.Attribute):
-            return f"{name_of(node.value, what)}.{node.attr}"
-        if isinstance(node, ast.Constant) and isinstance(node.value, str):
-            return node.value
+    func = call.func.id
+    if func not in ("Surv", "event_time"):
         raise ValueError(
-            f"`Surv()` expects a column name for {what}, got `{ast.unparse(node)}`. Only column "
-            "names and literal values are allowed in a formula response."
+            f"The formula response must be a call to `Surv(...)` or `event_time(...)`, not "
+            f"`{func}(...)`."
         )
-
-    def time_of(node: ast.expr, what: str) -> str | Duration:
-        """A time column, or `duration(start, end, unit)` computed from two date columns."""
-        if not (
-            isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Name)
-            and node.func.id == "duration"
-        ):
-            return name_of(node, what)
-        params = ("start", "end", "unit")
-        given: dict[str, ast.expr] = dict(zip(params, node.args, strict=False))
-        for kw in node.keywords:
-            if kw.arg not in params or kw.arg in given:
-                raise ValueError(
-                    "`duration()` in a formula takes (start, end) columns and an optional unit, "
-                    'as in `duration(enroll, exit, unit="years")`.'
-                )
-            given[kw.arg] = kw.value
-        if len(node.args) > 3 or "start" not in given or "end" not in given:
+    names = ("time", "time2", "event") if func == "Surv" else ("time", "status", "time_max")
+    allowed = {*names, "type", "origin"} if func == "Surv" else set(names)
+    if len(call.args) > 3:
+        raise ValueError(f"`{func}()` takes at most 3 positional arguments.")
+    given: dict[str, ast.expr] = dict(zip(names, call.args, strict=False))
+    for kw in call.keywords:
+        if kw.arg is None or kw.arg not in allowed or kw.arg in given:
             raise ValueError(
-                "`duration()` in a formula takes (start, end) columns and an optional unit, as "
-                'in `duration(enroll, exit, unit="years")`.'
+                f"Unknown or repeated `{func}()` argument `{kw.arg}`. "
+                f"`{func}()` takes {', '.join(sorted(allowed))}."
             )
-        unit = literal(given["unit"], "the duration unit") if "unit" in given else "days"
-        return Duration(
-            name_of(given["start"], "the duration start"),
-            name_of(given["end"], "the duration end"),
-            unit,
+        given[kw.arg] = kw.value
+
+    if func == "event_time":
+        if "time" not in given or "status" not in given:
+            raise ValueError("`event_time()` needs `time` and `status`.")
+        arguments = tuple(
+            (arg, parser.expr(given[arg], f"`{arg}`")) for arg in names if arg in given
         )
+        return Outcome(kind="event_time", arguments=arguments)
 
-    def literal(node: ast.expr, what: str) -> Any:
-        # R's c(1, 2) becomes a tuple.
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "c":
-            return tuple(literal(a, what) for a in node.args)
-        try:
-            return _freeze(ast.literal_eval(node))
-        except ValueError as error:
-            raise ValueError(
-                f"`{ast.unparse(node)}` in {what} must be a literal value (a number, string, or "
-                "list of them)."
-            ) from error
-
-    args = list(call.args)
-    keywords = {kw.arg: kw.value for kw in call.keywords if kw.arg is not None}
-    unknown = set(keywords) - {"type", "event_value", "censor_value", "weights", "states"}
-    if unknown:
-        raise ValueError(f"Unknown `Surv()` argument(s): {sorted(unknown)}.")
-
-    ctype = literal(keywords["type"], "`type=`") if "type" in keywords else None
-    event_value = (
-        literal(keywords["event_value"], "`event_value=`") if "event_value" in keywords else None
-    )
-    censor_value = (
-        literal(keywords["censor_value"], "`censor_value=`") if "censor_value" in keywords else None
-    )
-    weights = name_of(keywords["weights"], "`weights=`") if "weights" in keywords else None
-    states = literal(keywords["states"], "`states=`") if "states" in keywords else None
-
-    def event_of(node: ast.expr) -> tuple[str, Any, Any]:
-        """Read an event argument: a bare column, or `col == v` / `!=` / `in` / `not in`."""
-        if not isinstance(node, ast.Compare):
-            return name_of(node, "the event"), None, None
-        if len(node.ops) != 1:
-            raise ValueError(f"Chained comparisons are not supported: `{ast.unparse(node)}`.")
-        column = name_of(node.left, "the event")
-        value = literal(node.comparators[0], "the event encoding")
-        op = node.ops[0]
-        if isinstance(op, (ast.Eq, ast.In)):
-            return column, value, None
-        if isinstance(op, (ast.NotEq, ast.NotIn)):
-            return column, None, value
+    if "time" not in given:
+        raise ValueError("`Surv()` needs a `time` argument.")
+    ctype = parser.literal(given.pop("type"), "`type=`") if "type" in given else None
+    if ctype is not None and ctype not in _SURV_TYPES:
         raise ValueError(
-            f"`{ast.unparse(node)}` is not supported. Encode the event by value: "
-            f"`{column} == v`, `{column} != v`, or `{column} in (v1, v2)`."
+            f"`type` must be one of {', '.join(map(repr, _SURV_TYPES))}, not {ctype!r}."
         )
+    origin = float(parser.literal(given.pop("origin"), "`origin=`")) if "origin" in given else 0.0
+    # R reads a second argument without `event` as the status, so name it that way in errors.
+    status_in_time2 = "event" not in given and ctype in (None, "right", "left", "mstate")
 
-    def merged(inline: Any, keyword: Any, what: str) -> Any:
-        if inline is not None and keyword is not None:
-            raise ValueError(f"The event encoding is given twice (inline and as `{what}=`).")
-        return inline if inline is not None else keyword
+    def what(arg: str) -> str:
+        return "the status" if status_in_time2 and arg == "time2" else f"`{arg}`"
 
-    n = len(args)
-    if states is not None:
-        if ctype not in (None, "mstate"):
-            raise ValueError("`states=` cannot be combined with `type=`.")
-        if n not in (2, 3):
-            raise ValueError("A multi-state `Surv()` takes (time, event) or (start, stop, event).")
-        event_col, inline_event, inline_censor = event_of(args[-1])
-        if inline_event is not None or event_value is not None:
-            raise ValueError("Multi-state responses map values with `states=`, not `event_value`.")
-        return Outcome.multistate(
-            time_of(args[-2], "the time"),
-            event_col,
-            states,
-            start=time_of(args[0], "the start time") if n == 3 else None,
-            weights=weights,
-            censor_value=merged(inline_censor, censor_value, "censor_value"),
-        )
-
-    if ctype in ("interval", "interval2"):
-        if n != 2:
-            raise ValueError('An interval `Surv()` takes (lower, upper, type="interval2").')
-        if event_value is not None or censor_value is not None:
-            raise ValueError("An interval-censored response has no event encoding.")
-        return Outcome.interval(
-            time_of(args[0], "the lower bound"),
-            time_of(args[1], "the upper bound"),
-            weights=weights,
-        )
-
-    if ctype not in (None, "right", "left", "counting"):
-        raise ValueError(
-            f"Unsupported `type={ctype!r}`. Use 'right', 'left', 'counting', or 'interval2'."
-        )
-    if ctype == "counting" and n != 3:
-        raise ValueError("A counting-process `Surv()` takes (start, stop, event).")
-    if ctype in ("right", "left") and n > 2:
-        raise ValueError(f'A `type="{ctype}"` response takes (time) or (time, event).')
-    if n not in (1, 2, 3):
-        raise ValueError("`Surv()` takes 1 to 3 positional arguments.")
-
-    event_col: str | None = None
-    inline_event = inline_censor = None
-    if n >= 2:
-        event_col, inline_event, inline_censor = event_of(args[-1])
-    ev = merged(inline_event, event_value, "event_value")
-    cv = merged(inline_censor, censor_value, "censor_value")
-
-    if n == 3:
-        return Outcome.counting(
-            time_of(args[0], "the start time"),
-            time_of(args[1], "the stop time"),
-            event_col,
-            weights=weights,
-            event_value=ev,
-            censor_value=cv,
-        )
-    build = Outcome.left if ctype == "left" else Outcome.right
-    return build(
-        time_of(args[0], "the time"), event_col, weights=weights, event_value=ev, censor_value=cv
+    arguments = [(arg, parser.expr(given[arg], what(arg))) for arg in names if arg in given]
+    return Outcome(
+        kind="surv", arguments=_surv_arguments(arguments, ctype), type=ctype, origin=origin
     )
+
+
+def _surv_arguments(
+    arguments: list[tuple[str, _Expr]], ctype: str | None
+) -> tuple[tuple[str, _Expr], ...]:
+    """Apply R's rule that `Surv(time, x)` without `event` reads `x` as the status.
+
+    R binds the second argument to `time2` and then, for right, left, and multi-state data, uses it
+    as `event`. Storing it as `event` gives one spelling, so equal responses compare equal.
+    """
+    names = [arg for arg, _ in arguments]
+    if names == ["time", "time2"] and ctype in (None, "right", "left", "mstate"):
+        arguments = [arguments[0], ("event", arguments[1][1])]
+    for arg, expr in arguments:
+        if arg == "event" and isinstance(expr, Duration):
+            raise ValueError("The status can't be a `duration()`. Durations are times.")
+    return tuple(arguments)
 
 
 def split_terms(rhs: str) -> list[str]:
@@ -1014,6 +992,8 @@ def bind_fit_inputs(
     options: dict[str, Any] = {}
 
     outcome: Outcome | None
+    if isinstance(surv, EventTime):
+        surv = as_surv(surv)
     if isinstance(surv, Surv):
         outcome = None
     elif isinstance(surv, Outcome):
@@ -1024,7 +1004,8 @@ def bind_fit_inputs(
             _place_rhs(rhs, rhs_to, designs, labels, estimator, options)
     else:
         raise TypeError(
-            "The response must be a `Surv`, an `Outcome`, or a formula string such as "
+            "The response must be a `Surv`, an `EventTime`, an `Outcome`, or a formula string "
+            "such as "
             f"'Surv(time, status == 2) ~ age'. Got {type(surv).__name__}."
         )
 
@@ -1047,7 +1028,50 @@ def bind_fit_inputs(
     else:
         bound = _bind_outcome(outcome, data, designs, labels)
     bound.options = options
+    _drop_missing_response(bound)
+    if "weights" in labels:
+        bound.labels["weights"] = _case_weights(bound.labels["weights"], bound.surv)
     return bound
+
+
+def _drop_missing_response(bound: BoundInputs) -> None:
+    """Drop rows whose response is missing, as R's default `na.action = na.omit` does.
+
+    A `Surv` keeps missing values (from missing inputs, invalid status codes, or backwards
+    intervals). Those rows are removed here, together with the matching rows of every row-aligned
+    argument and of `data`, and counted in `n_dropped`.
+    """
+    missing = bound.surv.is_na()
+    if not missing.any():
+        return
+    keep = ~missing
+    n = bound.surv.n
+    bound.surv = bound.surv[keep]
+    for group in (bound.labels, bound.designs):
+        for key, value in group.items():
+            if value is None or isinstance(value, (str, _GroupTerms)) or _is_name_list(value):
+                continue
+            if _row_count(value) == n:
+                group[key] = _filter_rows(value, keep)
+    if bound.data is not None and not isinstance(bound.data, Mapping):
+        frame = _to_frame(bound.data)
+        if isinstance(frame, nw.LazyFrame):
+            frame = frame.collect()
+        if int(frame.shape[0]) == n:
+            bound.data = frame.filter(keep.tolist()).to_native()
+    bound.n_dropped += int(missing.sum())
+
+
+def _case_weights(weights: Any, surv: Surv) -> Array | None:
+    """Validate case weights given to `fit(weights=)`: finite, strictly positive, one per row."""
+    if weights is None:
+        return None
+    w = np.asarray(as_1d(weights), dtype=np.float64)
+    if w.shape[0] != surv.n:
+        raise ValueError(f"`weights` has {w.shape[0]} values, but the response has {surv.n} rows.")
+    if not np.all(np.isfinite(w)) or np.any(w <= 0):
+        raise ValueError("`weights` must be finite and strictly positive.")
+    return w
 
 
 def _place_rhs(
