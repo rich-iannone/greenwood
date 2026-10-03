@@ -12,7 +12,7 @@ from greenwood import CoxPH, Surv
 @pytest.fixture
 def lung_surv():  # type: ignore[no-untyped-def]
     df = gw.load_dataset("lung", backend="pandas")
-    return df, Surv.right(df["time"], event=(df["status"] == 2))
+    return df, Surv(time=df["time"], event=(df["status"] == 2))
 
 
 class TestCalibrationFormat:
