@@ -14,15 +14,18 @@ gd.enable_tbl_preview(n_head=8, n_tail=3)
 ```{=html}
 <style>
 .gw-fig { --gw-event: #2a78d6; --gw-window: #eb6834; --gw-entry: #1baf7a;
-  --gw-surface: #fcfeff; --gw-muted: rgba(0, 0, 0, 0.62); --gw-faint: rgba(0, 0, 0, 0.16); --gw-box: rgba(0, 0, 0, 0.035);
+  --gw-surface: #fcfeff; --gw-muted: rgba(0, 0, 0, 0.62); --gw-faint: rgba(0, 0, 0, 0.16);
+  --gw-box: rgba(0, 0, 0, 0.035);
   margin: 1.5rem 0; }
-body.quarto-dark .gw-fig { --gw-surface: #1a1a1a; --gw-event: #3987e5; --gw-window: #d95926; --gw-entry: #199e70;
+body.quarto-dark .gw-fig { --gw-surface: #1a1a1a; --gw-event: #3987e5; --gw-window: #d95926;
+  --gw-entry: #199e70;
   --gw-muted: rgba(255, 255, 255, 0.66); --gw-faint: rgba(255, 255, 255, 0.2);
   --gw-box: rgba(255, 255, 255, 0.05); }
 .gw-fig svg { display: block; width: 100%; height: auto; overflow: visible; }
 .gw-fig text { fill: currentColor; font-family: inherit; }
 .gw-fig .t-muted { fill: var(--gw-muted); }
-.gw-fig .t-mono { font-family: var(--bs-font-monospace, ui-monospace, SFMono-Regular, Menlo, monospace); }
+.gw-fig .t-mono {
+  font-family: var(--bs-font-monospace, ui-monospace, SFMono-Regular, Menlo, monospace); }
 .gw-fig .t-bold { font-weight: 600; }
 .gw-fig .ink { stroke: currentColor; fill: none; }
 .gw-fig .muted { stroke: var(--gw-muted); fill: none; }
