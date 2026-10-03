@@ -21,7 +21,7 @@ Unlike many statistical libraries, Greenwood is built on [Narwhals](https://narw
 
 Every Greenwood analysis follows a consistent workflow:
 
-1. **Represent the data** with `Surv`: capture survival outcomes and censoring (right, left, interval, or counting-process form) in a validated response object.
+1. **Represent the data** with a formula such as `"Surv(time, status) ~ age"` or an `Outcome` that names your columns, or with `Surv()` for values already in hand: capture survival outcomes and censoring (right, left, interval, or counting-process form) in a validated response object.
 2. **Estimate and summarize**: use `KaplanMeier`, `NelsonAalen`, or `Turnbull` (for interval-censored data) to describe the data, then compare groups with `logrank_test`, trend tests, or RMST comparisons.
 3. **Build and fit models**: fit Cox proportional hazards, parametric AFT models, or competing-risks models to examine covariate effects.
 4. **Visualize and evaluate**: create publication-quality plots with `plot_survival`, `forest_plot`, or `cif_plot`, and assess model performance with concordance, Brier scores, or cross-validation.
@@ -31,22 +31,24 @@ Every Greenwood analysis follows a consistent workflow:
 
 Here's a complete example: load survival data, estimate a curve, test for differences, and visualize.
 
-**Step 1: Represent the data with a Surv object**
+**Step 1: Describe the response by column names**
 
 ```{python}
 import greenwood as gw
 
-# Load data and represent it as a survival object (a status of 2 marks a death)
+# Load data and describe the survival response (a status of 2 marks a death)
 lung = gw.load_dataset("lung", backend="polars")
-y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-y
+death = gw.Outcome.surv(time="time", event="status")
+
+# Evaluate it against the frame to see the Surv object it produces
+death.bind(lung)
 ```
 
 **Step 2: Estimate Kaplan-Meier survival curves, stratified by sex**
 
 ```{python}
 # Fit stratified Kaplan-Meier with log-log confidence intervals
-km = gw.KaplanMeier(conf_type="log-log").fit(y, by="sex", data=lung)
+km = gw.KaplanMeier(conf_type="log-log").fit(death, by="sex", data=lung)
 
 # Get median survival per group with 95% confidence intervals
 km.median(ci=True)
@@ -56,7 +58,7 @@ km.median(ci=True)
 
 ```{python}
 # Test for differences in survival between sexes
-test_result = gw.logrank_test(y, group="sex", data=lung)
+test_result = gw.logrank_test("Surv(time, status) ~ sex", data=lung)
 test_result
 ```
 
@@ -70,8 +72,8 @@ gw.plot_survival(km, risk_table=True)
 **Step 5: Fit a Cox proportional hazards model**
 
 ```{python}
-# Model covariate effects on hazard
-cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
+# Model covariate effects on hazard, written as an R-style formula
+cox = gw.CoxPH().fit("Surv(time, status) ~ age + sex", data=lung)
 
 # Get hazard ratios with confidence intervals
 gw.tidy(cox, exponentiate=True, format="polars")
