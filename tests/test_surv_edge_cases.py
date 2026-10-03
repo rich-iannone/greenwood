@@ -1,103 +1,88 @@
-"""Edge-case and validation-path coverage for the Surv response."""
+"""Edge cases for the array helpers and for missing rows at fit time."""
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
+import pandas as pd
+import polars as pl
 import pytest
 
-from greenwood import CensoringType, Surv
-from greenwood._surv import _to_1d_array
+import greenwood as gw
+from greenwood import Surv
+from greenwood._ingest import to_1d_array
 
 
 def test_to_1d_array_none_and_shape() -> None:
-    with pytest.raises(ValueError, match="array-like"):
-        _to_1d_array(None)
+    with pytest.raises(ValueError, match="Expected an array-like"):
+        to_1d_array(None)
     with pytest.raises(ValueError, match="1-D"):
-        _to_1d_array(np.zeros((2, 2)))
+        to_1d_array(np.ones((2, 2)))
 
 
 def test_to_1d_array_non_series_fallback() -> None:
-    # A range is not an ndarray/list/tuple and not a Narwhals series: the TypeError
-    # fallback coerces it with np.asarray.
-    out = _to_1d_array(range(3))
-    np.testing.assert_array_equal(out, [0.0, 1.0, 2.0])
+    np.testing.assert_array_equal(to_1d_array(range(3)), [0.0, 1.0, 2.0])
 
 
-def test_stop_time_validation() -> None:
-    with pytest.raises(ValueError, match="finite"):
-        Surv.right([1.0, np.inf, 2.0])
-    with pytest.raises(ValueError, match="non-negative"):
-        Surv.right([1.0, -1.0])
+def test_zero_length_response() -> None:
+    y = Surv(time=[], event=[])
+    assert (y.n, y.n_events, y.type) == (0, 0, "right")
 
 
-def test_event_indicator_validation() -> None:
-    with pytest.raises(ValueError, match="non-finite"):
-        Surv.right([1, 2], event=[1, np.nan])
-    with pytest.raises(ValueError, match="boolean or 0/1"):
-        Surv.right([1, 2, 3], event=[1, 2, 1])  # R's 1/2 coding must be converted
+def test_fit_drops_rows_with_a_missing_response() -> None:
+    lung = gw.load_dataset("lung", backend="pandas")
+    time = lung["time"].astype(float).copy()
+    time.iloc[:3] = np.nan
+    model = gw.CoxPH().fit(Surv(time=time, event=lung["status"]), "age + sex", data=lung)
+    assert model.n_dropped_ == 3
+
+    complete = lung.iloc[3:]
+    reference = gw.CoxPH().fit(
+        Surv(time=complete["time"], event=complete["status"]), "age + sex", data=complete
+    )
+    np.testing.assert_allclose(model.coef_, reference.coef_)
 
 
-def test_negative_status_rejected() -> None:
-    with pytest.raises(ValueError, match="non-negative integers"):
-        Surv(type=CensoringType.RIGHT, stop=np.array([1.0, 2.0]), status=np.array([-1, 1]))
+def test_fit_drops_rows_with_an_invalid_status() -> None:
+    times = pl.Series([5.0, 6.0, 4.0, 9.0, 3.0])
+    with pytest.warns(UserWarning, match="Invalid status value"):
+        y = Surv(time=times, event=[1, 0, 1, 0, 5])
+    km = gw.KaplanMeier().fit(y)
+    assert km.n_dropped_ == 1
 
 
-def test_status_exceeds_state_count() -> None:
-    with pytest.raises(ValueError, match="exceeds the number of event states"):
-        Surv.multistate([1, 2, 3], event=[1, 2, 3], states=("a", "b"))
+def test_fit_drops_rows_from_array_covariates_too() -> None:
+    rng = np.random.default_rng(1)
+    n = 60
+    x = rng.normal(size=(n, 1))
+    time = rng.exponential(size=n)
+    time[0] = np.nan
+    event = rng.integers(0, 2, size=n)
+    model = gw.CoxPH().fit(Surv(time=time, event=event), x)
+    reference = gw.CoxPH().fit(Surv(time=time[1:], event=event[1:]), x[1:])
+    assert model.n_dropped_ == 1
+    np.testing.assert_allclose(model.coef_, reference.coef_)
 
 
-def test_counting_start_validation() -> None:
-    with pytest.raises(ValueError, match="`start` and `stop`"):
-        Surv.counting(start=[0.0], stop=[5.0, 6.0], event=[1, 1])
-    with pytest.raises(ValueError, match="start` times must be finite"):
-        Surv.counting(start=[np.inf, 0.0], stop=[5.0, 6.0])
-    with pytest.raises(ValueError, match="strictly less"):
-        Surv.counting(start=[5.0], stop=[5.0])
-
-
-def test_interval_validation() -> None:
-    with pytest.raises(ValueError, match="`lower` and `upper`"):
-        Surv.interval(lower=[1.0, 2.0, 3.0], upper=[2.0, 3.0])
-    with pytest.raises(ValueError, match="lower` must be <="):
-        Surv.interval(lower=[5.0], upper=[2.0])
-    # The post-init length check (reached when building Surv directly).
-    with pytest.raises(ValueError, match="`lower` and `stop`"):
-        Surv(
-            type=CensoringType.INTERVAL,
-            stop=np.array([1.0, 2.0]),
-            status=np.array([2, 2]),
-            lower=np.array([1.0]),
-        )
-
-
-def test_weight_validation() -> None:
-    with pytest.raises(ValueError, match="`weights` and `stop`"):
-        Surv.right([1, 2], weights=[1.0])
+def test_weights_must_be_positive_and_aligned() -> None:
+    y = Surv(time=[5.0, 6.0, 4.0, 9.0], event=[1, 0, 1, 0])
     with pytest.raises(ValueError, match="strictly positive"):
-        Surv.right([1, 2], weights=[1.0, 0.0])
+        gw.KaplanMeier().fit(y, weights=[1.0, 0.0, 1.0, 1.0])
+    with pytest.raises(ValueError, match="has 2 values"):
+        gw.KaplanMeier().fit(y, weights=[1.0, 1.0])
 
 
-def test_len_and_repr_variants() -> None:
-    assert len(Surv.right([1, 2, 3])) == 3
-    trunc = repr(Surv.counting(start=[1, 2], stop=[5, 6], event=[1, 1]))
-    assert "truncated" in trunc
-    ms = repr(Surv.multistate([1, 2, 3], event=[1, 2, 0], states=("relapse", "death")))
-    assert "states=" in ms
+def test_counting_start_after_stop_is_dropped_at_fit() -> None:
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        y = Surv(time=[0.0, 7.0, 1.0], time2=[5.0, 6.0, 4.0], event=[1, 0, 1])
+    assert y.start is not None and int(np.isnan(y.start).sum()) == 1
+    assert gw.KaplanMeier().fit(y).n_dropped_ == 1
 
 
-def test_to_backends() -> None:
-    pd = pytest.importorskip("pandas")
-    pl = pytest.importorskip("polars")
-    pa = pytest.importorskip("pyarrow")
-    y = Surv.counting(start=[0, 1], stop=[5, 6], event=[1, 0], weights=[1.0, 2.0])
-
-    pandas_df = y.to_frame(format="pandas")
-    assert isinstance(pandas_df, pd.DataFrame)
-    assert {"start", "stop", "status", "weight"} <= set(pandas_df.columns)
-
-    polars_df = y.to_frame(format="polars")
-    assert isinstance(polars_df, pl.DataFrame)
-
-    arrow_table = y.to_frame(format="pyarrow")
-    assert isinstance(arrow_table, pa.Table)
+def test_pandas_categorical_with_missing_value() -> None:
+    event = pd.Categorical(["a", None, "b"], categories=["censor", "a", "b"])
+    y = Surv(time=[5, 6, 7], event=event)
+    assert np.isnan(y.status[1])
+    assert y.states == ("a", "b")
