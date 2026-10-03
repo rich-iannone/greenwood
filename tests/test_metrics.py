@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pandas as pd
 import pytest
 
 import greenwood as gw
@@ -15,7 +16,7 @@ def test_concordance_perfect_ordering() -> None:
     event = [1, 1, 1, 1]
     risk = [4.0, 3.0, 2.0, 1.0]
 
-    assert gw.concordance_index(Surv.right(time, event), risk) == pytest.approx(1.0)
+    assert gw.concordance_index(Surv(time=time, event=event), risk) == pytest.approx(1.0)
 
 
 def test_concordance_reversed_ordering() -> None:
@@ -23,16 +24,16 @@ def test_concordance_reversed_ordering() -> None:
     event = [1, 1, 1, 1]
     risk = [1.0, 2.0, 3.0, 4.0]  # larger risk fails later -> fully discordant
 
-    assert gw.concordance_index(Surv.right(time, event), risk) == pytest.approx(0.0)
+    assert gw.concordance_index(Surv(time=time, event=event), risk) == pytest.approx(0.0)
 
 
 def test_concordance_length_checked() -> None:
     with pytest.raises(ValueError, match="same length"):
-        gw.concordance_index(Surv.right([1, 2, 3], [1, 1, 1]), [0.1, 0.2])
+        gw.concordance_index(Surv(time=[1, 2, 3], event=[1, 1, 1]), [0.1, 0.2])
 
 
 def test_brier_shape_checked() -> None:
-    y = Surv.right([1, 2, 3], [1, 0, 1])
+    y = Surv(time=[1, 2, 3], event=[1, 0, 1])
     with pytest.raises(ValueError, match="shape"):
         gw.brier_score(y, np.zeros((3, 1)), times=[1.0, 2.0])
 
@@ -41,7 +42,7 @@ def test_brier_perfect_prediction_is_zero() -> None:
     # No censoring; predicting survival 1 before the event and 0 after is perfect.
     time = [1.0, 2.0, 3.0]
     event = [1, 1, 1]
-    y = Surv.right(time, event)
+    y = Surv(time=time, event=event)
     times = np.array([1.5, 2.5])
 
     # subject i alive at t iff time_i > t.
@@ -52,7 +53,7 @@ def test_brier_perfect_prediction_is_zero() -> None:
 
 def test_brier_in_unit_range() -> None:
     df = gw.load_dataset("lung", backend="pandas")
-    y = Surv.right(df["time"], event=(df["status"] == 2))
+    y = Surv(time=df["time"], event=(df["status"] == 2))
     cox = gw.CoxPH().fit(y, df[["age", "sex"]])
     times = np.array([180.0, 365.0])
     pred = cox.predict(df[["age", "sex"]], type="survival", times=times, format="pandas")
@@ -63,14 +64,14 @@ def test_brier_in_unit_range() -> None:
 
 
 def test_integrated_brier_needs_two_times() -> None:
-    y = Surv.right([1, 2, 3], [1, 0, 1])
+    y = Surv(time=[1, 2, 3], event=[1, 0, 1])
     with pytest.raises(ValueError, match="at least two times"):
         gw.integrated_brier_score(y, np.zeros((3, 1)), times=[1.0])
 
 
 def test_integrated_brier_between_pointwise() -> None:
     df = gw.load_dataset("lung", backend="pandas")
-    y = Surv.right(df["time"], event=(df["status"] == 2))
+    y = Surv(time=df["time"], event=(df["status"] == 2))
     cox = gw.CoxPH().fit(y, df[["age", "sex"]])
     times = np.array([180.0, 365.0, 540.0])
     pred = cox.predict(df[["age", "sex"]], type="survival", times=times, format="pandas")
@@ -83,7 +84,7 @@ def test_integrated_brier_between_pointwise() -> None:
 
 def test_calibration_structure_and_coverage() -> None:
     df = gw.load_dataset("lung", backend="pandas")
-    y = Surv.right(df["time"], event=(df["status"] == 2))
+    y = Surv(time=df["time"], event=(df["status"] == 2))
     cox = gw.CoxPH().fit(y, df[["age", "sex"]])
     pred = (
         cox.predict(df[["age", "sex"]], type="survival", times=[365.0], format="pandas")
@@ -108,7 +109,7 @@ def test_calibration_structure_and_coverage() -> None:
 def test_calibration_single_bin_is_overall_km() -> None:
     # A constant prediction collapses to one bin; the observed is the overall KM at the time.
     df = gw.load_dataset("lung", backend="pandas")
-    y = Surv.right(df["time"], event=(df["status"] == 2))
+    y = Surv(time=df["time"], event=(df["status"] == 2))
     cal = gw.calibration(y, np.full(len(df), 0.5), 365.0, n_bins=3, format="pandas")
 
     assert len(cal) == 1
@@ -128,7 +129,7 @@ def test_calibration_diagonal_on_well_specified_model() -> None:
     censor_time = rng.exponential(1.0 / 0.01, size=n)
     time = np.minimum(event_time, censor_time)
     event = (event_time <= censor_time).astype(int)
-    y = Surv.right(time, event=event)
+    y = Surv(time=time, event=event)
     cox = gw.CoxPH().fit(y, x.reshape(-1, 1))
     horizon = float(np.quantile(time, 0.4))
     pred = (
@@ -143,7 +144,7 @@ def test_calibration_diagonal_on_well_specified_model() -> None:
 
 
 def test_calibration_input_validation() -> None:
-    y = Surv.right([1, 2, 3, 4], [1, 1, 1, 1])
+    y = Surv(time=[1, 2, 3, 4], event=[1, 1, 1, 1])
     with pytest.raises(ValueError, match="one value per subject"):
         gw.calibration(y, [0.5, 0.5], 2.0)
     with pytest.raises(ValueError, match="n_bins"):
@@ -158,7 +159,7 @@ def test_ipcw_concordance_perfect_ordering() -> None:
     event = [1, 1, 1, 1]
     risk = [4.0, 3.0, 2.0, 1.0]
 
-    assert gw.concordance_index_ipcw(Surv.right(time, event), risk) == pytest.approx(1.0)
+    assert gw.concordance_index_ipcw(Surv(time=time, event=event), risk) == pytest.approx(1.0)
 
 
 def test_ipcw_concordance_reversed_ordering() -> None:
@@ -166,7 +167,7 @@ def test_ipcw_concordance_reversed_ordering() -> None:
     event = [1, 1, 1, 1]
     risk = [1.0, 2.0, 3.0, 4.0]
 
-    assert gw.concordance_index_ipcw(Surv.right(time, event), risk) == pytest.approx(0.0)
+    assert gw.concordance_index_ipcw(Surv(time=time, event=event), risk) == pytest.approx(0.0)
 
 
 def test_ipcw_concordance_no_censoring_equals_harrell() -> None:
@@ -174,7 +175,7 @@ def test_ipcw_concordance_no_censoring_equals_harrell() -> None:
     time = rng.exponential(1.0, size=50)
     event = np.ones(50, dtype=int)
     risk = rng.normal(size=50)
-    y = Surv.right(time, event)
+    y = Surv(time=time, event=event)
     c_harrell = gw.concordance_index(y, risk)
     c_ipcw = gw.concordance_index_ipcw(y, risk)
 
@@ -183,22 +184,24 @@ def test_ipcw_concordance_no_censoring_equals_harrell() -> None:
 
 def test_ipcw_concordance_length_checked() -> None:
     with pytest.raises(ValueError, match="same length"):
-        gw.concordance_index_ipcw(Surv.right([1, 2, 3], [1, 1, 1]), [0.1, 0.2])
+        gw.concordance_index_ipcw(Surv(time=[1, 2, 3], event=[1, 1, 1]), [0.1, 0.2])
 
 
 def test_ipcw_concordance_no_events_raises() -> None:
     with pytest.raises(ValueError, match="No events"):
-        gw.concordance_index_ipcw(Surv.right([1, 2, 3], [0, 0, 0]), [0.1, 0.2, 0.3])
+        gw.concordance_index_ipcw(Surv(time=[1, 2, 3], event=[0, 0, 0]), [0.1, 0.2, 0.3])
 
 
 def test_ipcw_concordance_no_events_before_tau_raises() -> None:
     with pytest.raises(ValueError, match="No events before tau"):
-        gw.concordance_index_ipcw(Surv.right([10, 20, 30], [1, 1, 1]), [0.1, 0.2, 0.3], tau=5.0)
+        gw.concordance_index_ipcw(
+            Surv(time=[10, 20, 30], event=[1, 1, 1]), [0.1, 0.2, 0.3], tau=5.0
+        )
 
 
 def test_ipcw_concordance_tau_restricts_events() -> None:
     df = gw.load_dataset("lung", backend="pandas")
-    y = Surv.right(df["time"], event=(df["status"] == 2))
+    y = Surv(time=df["time"], event=(df["status"] == 2))
     cox = gw.CoxPH().fit(y, df[["age", "sex"]])
     lp = cox.predict(type="lp")
     c_full = gw.concordance_index_ipcw(y, lp)
@@ -210,7 +213,7 @@ def test_ipcw_concordance_tau_restricts_events() -> None:
 
 def test_ipcw_concordance_in_unit_range() -> None:
     df = gw.load_dataset("lung", backend="pandas")
-    y = Surv.right(df["time"], event=(df["status"] == 2))
+    y = Surv(time=df["time"], event=(df["status"] == 2))
     cox = gw.CoxPH().fit(y, df[["age", "sex"]])
     lp = cox.predict(type="lp")
     c = gw.concordance_index_ipcw(y, lp)
@@ -225,7 +228,7 @@ class TestTimeDependentAUC:
     @pytest.fixture(scope="class")
     def lung_cox(self):  # type: ignore[no-untyped-def]
         df = gw.load_dataset("lung", backend="pandas")
-        y = Surv.right(df["time"], event=(df["status"] == 2))
+        y = Surv(time=df["time"], event=(df["status"] == 2))
         cox = gw.CoxPH().fit(y, df[["age", "sex"]])
         lp = cox.predict(type="lp")
         return y, lp
@@ -247,7 +250,7 @@ class TestTimeDependentAUC:
         time = np.array([1.0, 2.0, 3.0, 4.0])
         event = np.array([1, 1, 1, 1])
         risk = np.array([4.0, 3.0, 2.0, 1.0])
-        y = Surv.right(time, event)
+        y = Surv(time=time, event=event)
         auc = gw.time_dependent_auc(y, risk, times=[1.5, 2.5, 3.5])
 
         np.testing.assert_allclose(auc, [1.0, 1.0, 1.0])
@@ -256,7 +259,7 @@ class TestTimeDependentAUC:
         time = np.array([1.0, 2.0, 3.0, 4.0])
         event = np.array([1, 1, 1, 1])
         risk = np.array([1.0, 2.0, 3.0, 4.0])
-        y = Surv.right(time, event)
+        y = Surv(time=time, event=event)
         auc = gw.time_dependent_auc(y, risk, times=[1.5, 2.5, 3.5])
 
         np.testing.assert_allclose(auc, [0.0, 0.0, 0.0])
@@ -267,7 +270,7 @@ class TestTimeDependentAUC:
         time = rng.exponential(1.0, size=n)
         event = np.ones(n, dtype=int)
         risk = rng.normal(size=n)
-        y = Surv.right(time, event)
+        y = Surv(time=time, event=event)
         med = float(np.median(time))
         auc = gw.time_dependent_auc(y, risk, times=[med])
 
@@ -276,7 +279,7 @@ class TestTimeDependentAUC:
     def test_time_before_first_event_is_nan(self) -> None:
         time = np.array([5.0, 6.0, 7.0])
         event = np.array([1, 1, 1])
-        y = Surv.right(time, event)
+        y = Surv(time=time, event=event)
         auc = gw.time_dependent_auc(y, [3.0, 2.0, 1.0], times=[1.0])
 
         assert np.isnan(auc[0])
@@ -284,13 +287,13 @@ class TestTimeDependentAUC:
     def test_time_after_all_observations_is_nan(self) -> None:
         time = np.array([1.0, 2.0, 3.0])
         event = np.array([1, 1, 1])
-        y = Surv.right(time, event)
+        y = Surv(time=time, event=event)
         auc = gw.time_dependent_auc(y, [3.0, 2.0, 1.0], times=[10.0])
 
         assert np.isnan(auc[0])
 
     def test_marker_length_mismatch_raises(self) -> None:
-        y = Surv.right([1, 2, 3], [1, 1, 1])
+        y = Surv(time=[1, 2, 3], event=[1, 1, 1])
         with pytest.raises(ValueError, match="same length"):
             gw.time_dependent_auc(y, [1.0, 2.0], times=[1.5])
 
@@ -308,7 +311,7 @@ class TestTimeDependentAUC:
         time = rng.exponential(1.0, size=n)
         event = np.ones(n, dtype=int)
         risk = -time + rng.normal(0, 0.1, size=n)
-        y = Surv.right(time, event)
+        y = Surv(time=time, event=event)
         med = float(np.median(time))
         auc = gw.time_dependent_auc(y, risk, times=[med])
 
@@ -322,7 +325,7 @@ class TestIntegratedAUC:
     @pytest.fixture(scope="class")
     def lung_cox(self):  # type: ignore[no-untyped-def]
         df = gw.load_dataset("lung", backend="pandas")
-        y = Surv.right(df["time"], event=(df["status"] == 2))
+        y = Surv(time=df["time"], event=(df["status"] == 2))
         cox = gw.CoxPH().fit(y, df[["age", "sex"]])
         lp = cox.predict(type="lp")
         return y, lp
@@ -357,7 +360,7 @@ class TestIntegratedAUC:
         time = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
         event = np.array([1, 1, 1, 1, 1])
         risk = np.array([5.0, 4.0, 3.0, 2.0, 1.0])
-        y = Surv.right(time, event)
+        y = Surv(time=time, event=event)
         iauc = gw.integrated_auc(y, risk, times=[1.5, 2.5, 3.5, 4.5])
 
         assert iauc == pytest.approx(1.0)
@@ -381,7 +384,12 @@ def competing_data():
     n = 200
     time = rng.exponential(scale=10, size=n)
     status = rng.choice([0, 1, 2], size=n, p=[0.3, 0.4, 0.3])
-    y = Surv.multistate(time, status, states=("cause1", "cause2"))
+    y = Surv(
+        time=time,
+        event=pd.Categorical.from_codes(
+            np.asarray(status, dtype=int), categories=["censor", "cause1", "cause2"]
+        ),
+    )
     return y
 
 
@@ -401,7 +409,12 @@ class TestBrierScoreIncidence:
     def test_perfect_prediction_is_zero(self) -> None:
         time = np.array([1.0, 2.0, 3.0, 4.0])
         status = np.array([1, 2, 1, 2])
-        y = Surv.multistate(time, status, states=("a", "b"))
+        y = Surv(
+            time=time,
+            event=pd.Categorical.from_codes(
+                np.asarray(status, dtype=int), categories=["censor", "a", "b"]
+            ),
+        )
         t_eval = np.array([1.5, 2.5, 3.5])
 
         # Perfect CIF for cause 1: indicator that cause 1 happened before t
@@ -434,13 +447,18 @@ class TestBrierScoreIncidence:
         n = 300
         time = rng.exponential(scale=10, size=n)
         status = rng.choice([0, 1, 2], size=n, p=[0.2, 0.5, 0.3])
-        y = Surv.multistate(time, status, states=("a", "b"))
+        y = Surv(
+            time=time,
+            event=pd.Categorical.from_codes(
+                np.asarray(status, dtype=int), categories=["censor", "a", "b"]
+            ),
+        )
         times = np.array([5.0, 10.0, 15.0])
 
         # Good predictions: approximately correct CIF for cause 1
         from greenwood._nonparametric import KaplanMeier
 
-        km_all = KaplanMeier().fit(Surv.right(time, (status > 0).astype(int)))
+        km_all = KaplanMeier().fit(Surv(time=time, event=(status > 0).astype(int)))
         cause1_frac = (status == 1).sum() / (status > 0).sum()
         good_probs = np.array(
             [
@@ -464,8 +482,13 @@ class TestBrierScoreIncidence:
         n = 150
         time = rng.exponential(scale=8, size=n)
         event_binary = rng.choice([0, 1], size=n, p=[0.3, 0.7])
-        y_right = Surv.right(time, event_binary)
-        y_multi = Surv.multistate(time, event_binary, states=("death",))
+        y_right = Surv(time=time, event=event_binary)
+        y_multi = Surv(
+            time=time,
+            event=pd.Categorical.from_codes(
+                np.asarray(event_binary, dtype=int), categories=["censor", "death"]
+            ),
+        )
 
         times = np.array([3.0, 6.0, 10.0])
         surv_probs = np.column_stack([rng.uniform(0.3, 0.9, size=n) for _ in times])
@@ -519,7 +542,12 @@ class TestIntegratedBrierScoreIncidence:
         n = 250
         time = rng.exponential(scale=10, size=n)
         status = rng.choice([0, 1, 2], size=n, p=[0.2, 0.5, 0.3])
-        y = Surv.multistate(time, status, states=("a", "b"))
+        y = Surv(
+            time=time,
+            event=pd.Categorical.from_codes(
+                np.asarray(status, dtype=int), categories=["censor", "a", "b"]
+            ),
+        )
         times = np.linspace(2.0, 20.0, 10)
 
         good_probs = np.column_stack(
@@ -558,7 +586,12 @@ class TestConcordanceIndexIncidence:
     def test_no_events_before_tau_raises(self) -> None:
         time = np.array([10.0, 20.0, 30.0])
         status = np.array([1, 2, 1])
-        y = Surv.multistate(time, status, states=("a", "b"))
+        y = Surv(
+            time=time,
+            event=pd.Categorical.from_codes(
+                np.asarray(status, dtype=int), categories=["censor", "a", "b"]
+            ),
+        )
         with pytest.raises(ValueError, match="No events of cause 1 before tau"):
             gw.concordance_index_incidence(y, np.zeros(3), cause=1, tau=5.0)
 
@@ -572,7 +605,12 @@ class TestConcordanceIndexIncidence:
     def test_perfect_discrimination(self) -> None:
         time = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
         status = np.array([1, 1, 2, 2, 0, 0])
-        y = Surv.multistate(time, status, states=("a", "b"))
+        y = Surv(
+            time=time,
+            event=pd.Categorical.from_codes(
+                np.asarray(status, dtype=int), categories=["censor", "a", "b"]
+            ),
+        )
         # Subjects with cause 1 (times 1, 2) get highest predicted CIF
         pred = np.array([0.9, 0.8, 0.3, 0.2, 0.1, 0.05])
         c = gw.concordance_index_incidence(y, pred, cause=1)
@@ -691,7 +729,12 @@ class TestAccuracyInTime:
     def test_perfect_prediction_is_one(self) -> None:
         time = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
         status = np.array([1, 2, 1, 0, 2, 1])
-        y = Surv.multistate(time, status, states=("a", "b"))
+        y = Surv(
+            time=time,
+            event=pd.Categorical.from_codes(
+                np.asarray(status, dtype=int), categories=["censor", "a", "b"]
+            ),
+        )
         t_eval = np.array([3.5])
 
         # At t=3.5: subject 0 (cause 1 at 1.0), 1 (cause 2 at 2.0), 2 (cause 1 at 3.0),
@@ -737,7 +780,12 @@ class TestAccuracyInTime:
         n = 300
         time = rng.exponential(scale=50, size=n)
         status = rng.choice([0, 1, 2], size=n, p=[0.3, 0.4, 0.3])
-        y = Surv.multistate(time, status, states=("a", "b"))
+        y = Surv(
+            time=time,
+            event=pd.Categorical.from_codes(
+                np.asarray(status, dtype=int), categories=["censor", "a", "b"]
+            ),
+        )
 
         # At very early times, most subjects survived; predicting low CIF = survival
         times = np.array([0.5, 1.0])
