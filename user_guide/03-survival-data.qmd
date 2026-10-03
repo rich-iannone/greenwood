@@ -18,8 +18,9 @@ everyone. Some subjects are still event-free when the study ends, some drop out 
 enter late. Handling these partially observed times correctly is the entire point of the field, and
 it starts with how you represent the data.
 
-This page explains the structure of survival data and introduces the `Surv` object, the response
-type that every estimator and model in Greenwood consumes.
+This page explains the structure of survival data, introduces the `Surv` object (the response type
+that every estimator and model in Greenwood consumes), and shows how to describe a response by
+column names when your data lives in a data frame.
 
 ## Why survival data is different
 
@@ -81,19 +82,20 @@ for you with the `Surv` object.
 ## The Surv object
 
 `Surv` is the response you pass to estimators and models. It bundles the times with their status
-codes and validates them, so that downstream code can rely on a clean, consistent representation.
-You build one with a constructor that names the censoring type.
+codes, so that downstream code can rely on a clean, consistent representation. You build one with a
+single call, `gw.Surv(time, time2, event, type=, origin=)`, which mirrors R's `survival::Surv()`
+argument for argument. As in R, the kind of response is inferred from the arguments you supply.
 
-The most common constructor is `gw.Surv.right()`, for right-censored data. It takes the observed
-times and an event indicator, where a truthy value (or `1`) means the event occurred and a falsy
-value (or `0`) means the observation was censored.
+The most common case is right-censored data: pass the observed times and an event indicator, where a
+true value (or `1`) means the event occurred and a false value (or `0`) means the observation was
+censored.
 
 ```{python}
 # Import the Greenwood library
 import greenwood as gw
 
 # Four subjects: events at 5 and 4, censored at 6 and 9
-y = gw.Surv.right(time=[5, 6, 4, 9], event=[1, 0, 1, 0])
+y = gw.Surv(time=[5, 6, 4, 9], event=[1, 0, 1, 0])
 
 # Display a compact summary of the response
 y
@@ -113,50 +115,68 @@ print("censored:", y.n_censored)
 
 When subjects enter the risk set after time zero, or when a covariate changes during follow-up, you
 use the counting-process form. Each observation is an interval `(start, stop]` with an event
-indicator at the stop time. This is also how left truncation is expressed.
+indicator at the stop time. This is also how left truncation is expressed. Supplying `time2=` is all
+it takes: `time` becomes the start and `time2` the stop.
 
 ```{python}
 # Each row is an interval (start, stop] with an event indicator at the stop time
-gw.Surv.counting(start=[0, 2, 1], stop=[5, 6, 4], event=[1, 0, 1])
+gw.Surv(time=[0, 2, 1], time2=[5, 6, 4], event=[1, 0, 1])
 ```
 
-Left censoring, where all you know is that the event had already happened by the time of
-observation, uses `gw.Surv.left()`. It takes the same `(time, event)` arguments as
-`gw.Surv.right()`, but the time is an upper bound on the unknown event time rather than a lower one.
+The remaining types must be requested explicitly with `type=`, exactly as in R. With
+`type="left"`, a status of `1` is an exact event and a status of `0` means the event had already
+happened by the recorded time (left censoring).
 
 ```{python}
-# The event is known only to have already occurred before the recorded time
-gw.Surv.left(time=[5, 6, 4], event=[1, 0, 1])
+# Status 1 is an exact event, status 0 is left-censored at the recorded time
+gw.Surv(time=[5, 6, 4], event=[1, 0, 1], type="left")
 ```
 
-Interval censoring, where the event is known only to fall between two times, uses
-`gw.Surv.interval()`. Use `numpy.inf` for the upper bound to mark right censoring.
+Interval censoring, where the event is known only to fall between two times, is most easily written
+with `type="interval2"`. The two times are the lower and upper bounds. An upper bound of
+`numpy.inf` (or a missing value) marks right censoring, a missing lower bound marks left censoring,
+and equal bounds mark an exact event. R's other form, `type="interval"`, takes the two times plus a
+status code (`0` right, `1` exact, `2` left, `3` interval) and is supported too.
 
 ```{python}
 import numpy as np
 
 # The event is known only to fall in [lower, upper]; numpy.inf marks right censoring
-gw.Surv.interval(lower=[1, 2, 3], upper=[2, np.inf, 5])
+gw.Surv(time=[1, 2, 3], time2=[2, np.inf, 5], type="interval2")
 ```
 
-Competing risks and multi-state endpoints, where more than one kind of event can occur, use
-`gw.Surv.multistate()`. Name each state and the value that marks it in the event column. Rows
-holding `0` are censored.
+Competing risks and multi-state endpoints, where more than one kind of event can occur, follow R's
+rule as well: make the event a categorical. The first category means censoring, and the remaining
+categories are the states, in order.
 
 ```{python}
-# Map each state to its event code, and 0 means censored
-gw.Surv.multistate(time=[5, 6, 7, 8], event=[1, 2, 0, 1], states={"relapse": 1, "death": 2})
+import pandas as pd
+
+# The first category ("censor") is censoring, and the others are the states
+outcome = pd.Categorical(
+    ["relapse", "death", "censor", "relapse"],
+    categories=["censor", "relapse", "death"],
+)
+gw.Surv(time=[5, 6, 7, 8], event=outcome)
 ```
 
-Because the mapping is explicit, the column can use any coding, strings included. A value that is
-assigned to no state and is not listed as censoring raises an error, so a typo can never quietly
-turn into censoring.
+When each endpoint lives in its own time and event columns instead, `gw.first_event()` builds the
+same multi-state response by taking the earliest event per subject. The [competing
+risks](13-competing-risks.qmd) page shows it in action.
 
 ## Building a response from a data frame
 
-In practice your data lives in a data frame. Rather than pulling columns out yourself, name them and
-pass the frame as `data=`. The bundled `lung` dataset, from the North Central Cancer Treatment Group,
-is a good example.
+Greenwood offers two layers for building a response. `gw.Surv()`, which mirrors R's
+`survival::Surv()`, and `gw.event_time()` build a response from values you already hold: lists,
+NumPy arrays, or simulated data, as in the examples above. When your data lives in a data frame,
+you describe the response instead, by column names and expressions. A formula such as
+`"Surv(time, status == 2) ~ age"` or an outcome such as
+`gw.Outcome.surv(time="time", event="status == 2")` names the columns, and the estimator evaluates
+it against the frame you pass as `data=` when it fits. Because the description holds names rather
+than data frame code, it works the same on every backend (pandas, Polars, PyArrow, DuckDB, and lazy
+frames). That is why it is the recommended way to start from a data frame.
+
+The bundled `lung` dataset, from the North Central Cancer Treatment Group, is a good example.
 
 ```{python}
 # Load the bundled lung dataset as a Polars DataFrame
@@ -166,89 +186,25 @@ lung = gw.load_dataset("lung", backend="polars")
 lung
 ```
 
-There is a subtlety here that might trip you up. In this dataset, and in several others that come
-from R, the `status` column is coded `1` for censored and `2` for dead, rather than the `0`/`1`
-convention. Greenwood does not guess at this coding. Instead, you say which value marks the event
-with `event_value=`.
+In this dataset, and in several others that come from R, the `status` column is coded `1` for
+censored and `2` for dead, rather than the `0`/`1` convention. `Surv()` handles this the way R does:
+when the largest status value is `2`, the codes are read as `1`/`2` and shifted down to `0`/`1`. So
+the column passes straight through, and the formula is the one you would write in R.
 
 ```{python}
-# Name the columns, and say that a status of 2 marks a death
-y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-
-# Display the response summary
-y
+# The response and the covariates in one R-style formula, evaluated against `data=`
+gw.CoxPH().fit("Surv(time, status) ~ age + sex", data=lung)
 ```
-
-Leave out `event_value=` and Greenwood stops with an error that names the fix, rather than silently
-treating every `1` as an event:
-
-```{python}
-# Without an encoding, R's 1/2 coding is rejected with a pointer to the fix
-try:
-    gw.Surv.right(time="time", event="status", data=lung)
-except ValueError as error:
-    print(error)
-```
-
-The same call works on any data frame backend (Polars, Pandas, PyArrow, DuckDB, or a lazy frame),
-because the encoding is a value rather than a data frame expression. Only the named columns are
-read.
-
-### Declaring the event encoding
-
-There are two ways to state an encoding, and each takes a single value or a list:
-
-- `event_value=` lists the values that mark an event. Every other row is censored.
-- `censor_value=` lists the values that mark censoring. Every other row is an event.
-
-This covers the codings you meet in practice. The `pbc` dataset codes `status` as `0` (censored),
-`1` (transplant), and `2` (dead), so an all-cause endpoint and a death-only endpoint are one argument
-apart:
-
-```{python}
-# Load the pbc dataset, whose status has three levels (0, 1, 2)
-pbc = gw.load_dataset("pbc", backend="polars")
-
-# All-cause: anything other than 0 is an event
-print("all-cause: ", gw.Surv.right(time="time", event="status", data=pbc, censor_value=0))
-
-# Death only: transplant becomes censoring
-print("death-only:", gw.Surv.right(time="time", event="status", data=pbc, event_value=2))
-```
-
-Strings work the same way, which saves recoding an outcome column by hand:
-
-```{python}
-import polars as pl
-
-# Build a small example with string outcomes
-study = pl.DataFrame({
-    "time": [12.0, 5.5, 20.0, 8.0],
-    "outcome": ["died", "withdrew", "censored", "died"],
-})
-
-# Only "died" is an event, and the other outcomes are censored
-gw.Surv.right(time="time", event="outcome", data=study, event_value="died")
-```
-
-::: {.callout-warning}
-## Check your event coding
-
-Without `event_value=` or `censor_value=`, the event column must be boolean or `0`/`1`, where `1`
-means the event occurred. Anything else raises an error. A value of the wrong kind (a string for a
-numeric column, or the reverse) also raises, and an encoding that matches no rows at all gives a
-warning, which catches slips like `"Died"` versus `"died"`. This deliberate strictness prevents a
-silent and serious error where censoring and events are swapped.
-:::
 
 ### Describing an outcome once
 
-When you fit several models to the same endpoint, describe it once with `gw.Outcome`. An `Outcome`
-holds the column names and the encoding but no data, and it is bound to a frame when you fit.
+When you fit several models to the same endpoint, or a model that takes no covariates, describe the
+response once with `gw.Outcome.surv()`. It takes the same arguments as `Surv()`, each written as it
+would be inside a formula, and holds no data.
 
 ```{python}
-# The lung endpoint, described without any data attached
-death = gw.Outcome.right(time="time", event="status", event_value=2)
+# The lung endpoint, described by column names
+death = gw.Outcome.surv(time="time", event="status")
 death
 ```
 
@@ -267,92 +223,159 @@ a missing value in one of them, as R's `na.omit` does. The response and the cova
 never get out of step. The printout reports how many rows were dropped, and the fitted model keeps
 the count in `n_dropped_`. Here, one patient has no `ph.ecog` score.
 
-Call `bind()` when you want the `Surv` itself. It is strict about missing values, like the `Surv`
-constructors.
+A formula's response parses to the same `Outcome`, and `bind()` evaluates either one against a
+frame when you want the `Surv` itself.
 
 ```{python}
+# The formula response and the Outcome are the same description
+print(gw.Outcome.from_formula(formula="Surv(time, status)") == death)
+
 # Bind the description to a frame to get a Surv
 death.bind(lung)
 ```
 
-### Writing the response as a formula
+### The expression grammar
 
-If you know R's `survival` package, you can write the response as a formula instead. It is parsed
-into an `Outcome`, so it behaves exactly the same way.
-
-```{python}
-# The response and the covariates in one R-style formula
-gw.CoxPH().fit("Surv(time, status == 2) ~ age + sex + strata(inst)", data=lung)
-```
-
-The response accepts the same encodings as the arguments: `status == 2`, `status != 0`,
-`status in (1, 2)` (R's `%in% c(1, 2)` works too), and a plain `event` column that is already
-`0`/`1`. `Surv(start, stop, event)` gives the counting-process form, and `type="left"` or
-`type="interval2"` select the other censoring types. A time can also be computed from two date
-columns with `duration(enroll, exit, unit="years")`. On the right-hand side, `strata()`,
-`cluster()`, and `frailty()` terms route columns to the `strata=`, `cluster=`, and
-`frailty_cluster=` arguments. For the non-parametric estimators and the hypothesis tests, the
-right-hand side names the grouping column(s).
+Each argument of a response is a column name or an expression. The expressions mirror what you
+would write in R, so a formula copied from an R script usually works unchanged. For any status
+coding other than `0`/`1` or `1`/`2`, write a comparison that gives a true or false value per row.
+The `pbc` dataset codes `status` as `0` (censored), `1` (transplant), and `2` (dead). This column
+must not be passed raw, because R's rules would read it as a `1`/`2` coding and mark the `0` rows as
+invalid. An all-cause endpoint and a death-only endpoint are each one comparison:
 
 ```{python}
-# A formula for a grouped Kaplan-Meier curve and for the log-rank test
-km = gw.KaplanMeier().fit("Surv(time, status == 2) ~ sex", data=lung)
-gw.logrank_test("Surv(time, status == 2) ~ sex", data=lung)
+# Load the pbc dataset, whose status has three levels (0, 1, 2)
+pbc = gw.load_dataset("pbc", backend="polars")
+
+# All-cause: anything other than 0 is an event
+print("all-cause: ", gw.Outcome.surv(time="time", event="status != 0").bind(pbc))
+
+# Death only: transplant becomes censoring
+print("death-only:", gw.Outcome.surv(time="time", event="status == 2").bind(pbc))
 ```
 
-Formulas only ever name columns and literal values. Nothing in a formula is evaluated as code.
-
-### Passing values directly
-
-Every constructor still accepts plain arrays and series, which is the right tool when the values do
-not live in a frame, or when you have computed them yourself:
+The comparisons are `==`, `!=`, `in`, and `not in`. R's `status %in% c(1, 2)` is accepted as a
+spelling of `status in (1, 2)`. Strings are compared the same way, which saves recoding an outcome
+column by hand. Missing values follow R: `==` and `!=` with a missing value give a missing status,
+while `in` gives false.
 
 ```{python}
-# The expert path: pass the values, with the event already coded as True/False
-gw.Surv.right(time=lung["time"], event=(lung["status"] == 2))
+import polars as pl
+
+# Build a small example with string outcomes
+study = pl.DataFrame({
+    "time": [12.0, 5.5, 20.0, 8.0],
+    "outcome": ["died", "withdrew", "censored", "died"],
+})
+
+# Only "died" is an event, and the other outcomes are censored
+gw.KaplanMeier().fit("Surv(time, outcome == 'died') ~ 1", data=study)
 ```
 
-Prefer the column-name form when you can. A comparison such as `lung["status"] == 2` is data frame
-syntax, and it does not behave the same way on every backend (on a PyArrow table it compares the
-whole column and returns a single `False`). The column-name form also leaves missing values to the
-fit-time binding described above.
-
-## Validation and reproducibility
-
-The `Surv` constructor validates its inputs immediately. Times must be finite and non-negative, the
-arrays must have matching lengths, and for the counting-process form each start must be strictly
-less than its stop. When something is wrong, you get a clear error at construction time rather than
-a confusing failure deep inside an estimator.
+For competing risks and multi-state endpoints, R's `factor(x, levels, labels)` turns a status
+column into a categorical. The first label means censored and the remaining labels are the states,
+in order. R's ranges such as `0:2` work for the levels, and repeating a label merges levels (for
+example, two codes that both mean censored).
 
 ```{python}
-# Surv rejects negative times immediately with a descriptive error
-try:
-    gw.Surv.right(time=[5, -1, 3], event=[1, 1, 1])
-except ValueError as error:
-    print(error)
+# pbc as a competing-risks response: transplant and death are separate states
+gw.Outcome.surv(
+    time="time",
+    event="factor(status, c(0, 1, 2), c('censor', 'transplant', 'death'))",
+).bind(pbc)
 ```
 
-Another common data quality issue is when a subject's entry time equals their exit time (zero
-follow-up time). This indicates a data problem: if a subject has no time at risk, they cannot
-experience an event. Greenwood catches this early:
+A time can also be computed from two date columns with `duration(start, end, unit=)`, where the
+unit is `"days"` (the default), `"weeks"`, `"months"`, or `"years"`. The
+[Data sources](04-data-sources.qmd) page shows it on a study export.
+
+On the right-hand side of a formula, `strata()`, `cluster()`, and `frailty()` terms route columns to
+the `strata=`, `cluster=`, and `frailty_cluster=` arguments. For the non-parametric estimators and
+the hypothesis tests, the right-hand side names the grouping column(s).
 
 ```{python}
-#| eval: false
-# Surv.counting requires start < stop for every row
-try:
-    # Subject enters at time 1, exits at time 1 (follow-up = 0)
-    gw.Surv.counting(start=[1, 0], stop=[1, 2], event=[1, 0])
-except ValueError as error:
-    print(error)
+# A formula for a stratified Cox model, a grouped Kaplan-Meier curve, and the log-rank test
+gw.CoxPH().fit("Surv(time, status) ~ age + sex + strata(inst)", data=lung)
+km = gw.KaplanMeier().fit("Surv(time, status) ~ sex", data=lung)
+gw.logrank_test("Surv(time, status) ~ sex", data=lung)
 ```
 
-Output:
+A formula's response and the arguments of an `Outcome` only ever name columns and literal values.
+Nothing in them is evaluated as Python code.
 
-```
-Each `start` must be strictly less than its `stop`.
+::: {.callout-warning}
+## Check your event coding
+
+The event must be logical, `0`/`1`, or `1`/`2`. Any other value is not an error: following R, it
+becomes a missing status and Greenwood issues a warning ("Invalid status value, converted to NA").
+Missing rows are dropped when you fit. Watch for that warning, since it usually means a column with
+more than two codes was used without a comparison. The section on
+[missing values and validation](#missing-values-and-validation) shows what happens next.
+:::
+
+### Writing it as an event-time vector
+
+Sometimes the clearest way to describe a censored time is to say what kind it is. `gw.event_time()`
+does exactly that. It is a port of Max Kuhn's etd R package, and it pairs each time with a
+one-letter status: `"e"` for an exact event, `"r"` for right-censored,
+`"l"` for left-censored, and `"i"` for interval-censored. For interval-censored values, `time_max=`
+holds the upper end of the interval.
+
+```{python}
+# One exact, one right-censored, one left-censored, and one interval-censored time
+x = gw.event_time(
+    time=[7, 5, 3, 2],
+    status=["e", "r", "l", "i"],
+    time_max=[None, None, None, 4],
+)
+x
 ```
 
-If you encounter this error, check your data:
+The printout uses the familiar notation: `5+` is right-censored, `3-` is left-censored, and `[2, 4]`
+is an interval. Convert to a `Surv` with `gw.as_surv()` when you need one.
+
+```{python}
+# Convert the event-time vector to the equivalent Surv
+gw.as_surv(x)
+```
+
+You often do not need the conversion at all, because estimators accept an event-time vector
+directly.
+
+```{python}
+# Turnbull's NPMLE fitted straight from the event-time vector
+gw.Turnbull().fit(x)
+```
+
+When the times and codes are columns of a frame, describe them by name with
+`gw.Outcome.event_time(time=, status=, time_max=)` or the formula response
+`event_time(time, status, time_max)`, just as with `Surv`.
+
+## Missing values and validation
+
+`Surv()` follows R in how it treats questionable input. It does not reject a row outright. Instead,
+an invalid status code becomes a missing value with a warning, and missing times or statuses are
+kept in the response. The `repr` reports how many rows are missing, and every estimator drops them
+when it fits, as R's `na.omit` does, and reports the count.
+
+```{python}
+# The status of 3 is invalid, so the last row becomes missing
+y = gw.Surv(time=[5, 6, 7, 8, 9], event=[1, 0, 1, 1, 3])
+
+# The missing row is dropped at fit time, and the printout says so
+gw.KaplanMeier().fit(y)
+```
+
+The counting-process form has one more rule from R. Each start must be strictly less than its stop.
+A row where a subject enters and exits at the same time has no time at risk, so `Surv()` sets its
+start to missing with the warning "Stop time must be > start time, NA created".
+
+```{python}
+# Subject 1 enters at time 1 and exits at time 1 (zero follow-up), so the row becomes missing
+gw.Surv(time=[1, 0], time2=[1, 2], event=[1, 0])
+```
+
+If you see this warning, check your data:
 
 - **Most common fix**: exclude subjects with `start >= stop` (they have zero or negative follow-up
 time)
@@ -361,15 +384,17 @@ entry error?
 - **If intentional**: if the event truly occurred instantaneously, add a small epsilon to the stop
 time: `stop = start + 1e-10`
 
+## Serialization
+
 A response also serializes to and from JSON without loss, which is useful for saving an analysis
 input or moving it between systems. Calling `to_json()` returns a plain string, so you can write it
 to a file or send it over the wire. Here is the serialized form of the `lung` response, truncated to
 its first stretch so you can see the shape of it.
 
 ```{python}
-# Load data and build the response
+# Load data and bind the lung response to get a Surv
 lung = gw.load_dataset("lung", backend="polars")
-y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+y = death.bind(lung)
 
 # Serialize the response to a self-contained JSON string
 text = y.to_json(indent=None)
@@ -405,7 +430,7 @@ an equivalent response from it.
 
 ```{python}
 # Serialize to a dict, then immediately reconstruct from it
-gw.Surv.from_dict(gw.Surv.right(time=[5, 6, 4], event=[1, 0, 1]).to_dict())
+gw.Surv.from_dict(gw.Surv(time=[5, 6, 4], event=[1, 0, 1]).to_dict())
 ```
 
 ## The risk-set table
@@ -416,21 +441,18 @@ is what Kaplan-Meier, the log-rank test, and Cox all build on, and you can compu
 `event_table()`. It matches R's `survfit` tabulation.
 
 ```{python}
-# Load data and build the response
-lung = gw.load_dataset("lung", backend="polars")
-y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-
 # Tabulate events and censorings at each distinct event time
-gw.event_table(y).to_frame(format="polars")
+gw.event_table(death, data=lung).to_frame(format="polars")
 ```
 
 Each row is a distinct time. The `n_risk` column counts the subjects under observation just before
-that time, `n_event` the events at it, and `n_censor` the censorings. Pass `group=` to tabulate
-within strata, which adds a `strata` column.
+that time, `n_event` the events at it, and `n_censor` the censorings. Name a grouping column on the
+right-hand side of a formula (or pass `group=`) to tabulate within strata, which adds a `strata`
+column.
 
 ```{python}
 # Tabulate separately within each level of the `sex` column
-gw.event_table(y, group="sex", data=lung).to_frame(format="polars")
+gw.event_table("Surv(time, status) ~ sex", data=lung).to_frame(format="polars")
 ```
 
 You rarely need this table directly, but it is the shared foundation the estimators are built on,
@@ -438,9 +460,10 @@ and it is handy when you want to check counts by hand or drive a custom calculat
 
 ## Next steps
 
-You now know how to represent survival data, how to declare its event coding, and how to describe
-an outcome once with `Outcome` or a formula. From here you can bring in your own data or start
-estimating.
+You now know how to represent survival data with `Surv()` or `event_time()`, how to describe a
+response by column names with a formula or `Outcome`, and how to handle its event coding with
+expressions. From here you can bring in
+your own data or start estimating.
 
 - [Data sources and formats](04-data-sources.qmd) shows how to load data from pandas, Polars, and
 other backends, how to compute durations from timestamps and encode event indicators from compound
