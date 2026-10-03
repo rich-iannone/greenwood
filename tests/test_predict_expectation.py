@@ -16,7 +16,7 @@ pytestmark = pytest.mark.rparity
 @pytest.fixture()
 def lung_data() -> tuple[Surv, np.ndarray]:
     df = gw.load_dataset("lung", backend="pandas")
-    y = Surv.right(df["time"], event=(df["status"] == 2))
+    y = Surv(time=df["time"], event=(df["status"] == 2))
     x = df[["age", "sex"]].values
     return y, x
 
