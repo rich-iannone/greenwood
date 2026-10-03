@@ -86,12 +86,11 @@ class RMSTResult:
     ```{python}
     import greenwood as gw
 
-    # Load data and build a right-censored response
+    # Load the data
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
     # Compare one-year RMST between sex groups
-    result = gw.rmst_test(y, tau=365, group="sex", data=lung)
+    result = gw.rmst_test("Surv(time, status) ~ sex", tau=365, data=lung)
     result
     ```
 
@@ -133,12 +132,8 @@ class RMSTResult:
 
 def _subset_surv(surv: Surv, mask: npt.NDArray[np.bool_]) -> Surv:
     """Subset a Surv object by a boolean mask."""
-    from ._surv import Surv as _Surv
-
-    if surv.type.value == "right":
-        return _Surv.right(surv.stop[mask], surv.event[mask])
-    if surv.type.value == "counting":
-        return _Surv.counting(surv.entry[mask], surv.stop[mask], surv.event[mask])
+    if surv.type.value in ("right", "counting"):
+        return surv[mask]
     raise NotImplementedError(  # pragma: no cover
         f"_subset_surv does not support Surv type {surv.type.value!r}"
     )
@@ -166,7 +161,7 @@ def _stratified_rmst_group_values(
 
     Strata where either group is absent are skipped.
     """
-    from ._surv import _to_1d_array
+    from ._ingest import to_1d_array as _to_1d_array
 
     group_arr = _to_1d_array(group, dtype=object)
     strata_arr = _to_1d_array(strata, dtype=object)
@@ -377,12 +372,11 @@ def rmst_test(
     ```{python}
     import greenwood as gw
 
-    # Load data and build a right-censored response
+    # Load the data
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
     # Test for one-year RMST difference between sex groups
-    result = gw.rmst_test(y, tau=365, group="sex", data=lung)
+    result = gw.rmst_test("Surv(time, status) ~ sex", tau=365, data=lung)
     result
     ```
 
@@ -404,7 +398,7 @@ def rmst_test(
 
     ```{python}
     # Compare RMST as a ratio instead of a difference
-    gw.rmst_test(y, tau=365, group="sex", estimand="ratio", data=lung)
+    gw.rmst_test("Surv(time, status) ~ sex", tau=365, estimand="ratio", data=lung)
     ```
     """
     bound = bind_fit_inputs(
@@ -532,7 +526,7 @@ def rmst_diff(
     Parameters
     ----------
     surv
-        A right-censored `Surv` response built with `Surv.right()`.
+        A right-censored `Surv` response, built with `gw.Surv(time=..., event=...)`.
         An `Outcome` or a formula string such as `'Surv(time, status == 2) ~ sex'` is also accepted,
         with its columns read from `data`. The right-hand side names the `group` column(s) and
         `strata(x)` terms set `strata`.
@@ -565,12 +559,11 @@ def rmst_diff(
     ```{python}
     import greenwood as gw
 
-    # Load data and build a right-censored response
+    # Load the data
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
     # Compute the one-year RMST difference as a tidy DataFrame
-    gw.rmst_diff(y, tau=365, group="sex", data=lung)
+    gw.rmst_diff("Surv(time, status) ~ sex", tau=365, data=lung)
     ```
     """
     bound = bind_fit_inputs(
@@ -697,12 +690,11 @@ def pairwise_rmst_test(
     ```{python}
     import greenwood as gw
 
-    # Load data and build a right-censored response
+    # Load the data
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
     # Run pairwise RMST comparisons with Holm-adjusted p-values
-    gw.pairwise_rmst_test(y, tau=365, group="sex", format="polars", data=lung)
+    gw.pairwise_rmst_test("Surv(time, status) ~ sex", tau=365, format="polars", data=lung)
     ```
     """
     bound = bind_fit_inputs(
@@ -719,7 +711,7 @@ def pairwise_rmst_test(
 
     import itertools
 
-    from ._surv import Surv, _to_1d_array
+    from ._ingest import to_1d_array as _to_1d_array
 
     group_arr = _to_1d_array(group, dtype=object)
     groups = sorted(set(group_arr.tolist()), key=lambda v: (str(type(v)), v))
@@ -735,10 +727,8 @@ def pairwise_rmst_test(
         mask = (group_arr == g1) | (group_arr == g2)
 
         # Create subset Surv object based on type
-        if surv.type.value == "right":
-            surv_sub = Surv.right(surv.stop[mask], surv.event[mask])
-        elif surv.type.value == "counting":
-            surv_sub = Surv.counting(surv.entry[mask], surv.stop[mask], surv.event[mask])
+        if surv.type.value in ("right", "counting"):
+            surv_sub = surv[mask]
         else:  # pragma: no cover
             raise NotImplementedError(  # pragma: no cover
                 f"pairwise_rmst_test does not support {surv.type.value}"
@@ -747,7 +737,7 @@ def pairwise_rmst_test(
         group_sub = group_arr[mask]
 
         if strata is not None:
-            from ._surv import _to_1d_array as to_1d
+            from ._ingest import to_1d_array as to_1d
 
             strata_arr = to_1d(strata, dtype=object)
             strata_sub = strata_arr[mask]
