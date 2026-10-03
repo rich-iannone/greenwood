@@ -16,7 +16,7 @@ from greenwood._parametric import _error_quantile, _mean_survival_aft
 @pytest.fixture
 def lung_surv():  # type: ignore[no-untyped-def]
     df = gw.load_dataset("lung", backend="pandas")
-    return df, Surv.right(df["time"], event=(df["status"] == 2))
+    return df, Surv(time=df["time"], event=(df["status"] == 2))
 
 
 @pytest.fixture(scope="module")
@@ -28,7 +28,7 @@ def three_param_data():  # type: ignore[no-untyped-def]
     gamma_true, shape_true, scale_true = 5.0, 0.7, 10.0
     t_raw = weibull_min.rvs(shape_true, scale=scale_true, size=n, random_state=rng)
     time = gamma_true + t_raw
-    y = Surv.right(time, event=np.ones(n))
+    y = Surv(time=time, event=np.ones(n))
     return y, dict(gamma=gamma_true, shape=shape_true, scale=scale_true)
 
 
