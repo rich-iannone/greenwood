@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pandas as pd
 import pytest
 
 import greenwood as gw
@@ -53,7 +54,7 @@ class TestSurvivalBoostInit:
 
 class TestSurvivalBoostFit:
     def test_requires_multistate(self) -> None:
-        y = Surv.right([1, 2, 3], event=[1, 0, 1])
+        y = Surv(time=[1, 2, 3], event=[1, 0, 1])
         x = np.random.default_rng(0).standard_normal((3, 2))
         sb = gw.SurvivalBoost(n_estimators=5)
         with pytest.raises(NotImplementedError, match="multi-state"):
@@ -76,7 +77,10 @@ class TestSurvivalBoostFit:
         assert "causes = 2" in r
 
     def test_fit_no_events_raises(self) -> None:
-        y = Surv.multistate([1, 2, 3], event=[0, 0, 0], states=("a",))
+        y = Surv(
+            time=[1, 2, 3],
+            event=pd.Categorical.from_codes(np.array([0, 0, 0]), categories=["censor", "a"]),
+        )
         x = np.ones((3, 1))
         sb = gw.SurvivalBoost(n_estimators=5)
         with pytest.raises(ValueError, match="No events"):
