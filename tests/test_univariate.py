@@ -16,7 +16,7 @@ from ._r_parity import assert_allclose_to_r, load_fixture
 @pytest.fixture
 def lung_surv():  # type: ignore[no-untyped-def]
     df = gw.load_dataset("lung", backend="pandas")
-    return Surv.right(df["time"], event=(df["status"] == 2))
+    return Surv(time=df["time"], event=(df["status"] == 2))
 
 
 # -- construction & validation -----------------------------------------------
@@ -39,7 +39,7 @@ def test_unfitted_repr() -> None:
 
 
 def test_interval_censoring_not_supported() -> None:
-    y = Surv.interval(lower=[1, 2, 3], upper=[2, 3, 4])
+    y = Surv(time=[1, 2, 3], time2=[2, 3, 4], type="interval2")
     with pytest.raises(NotImplementedError, match="right-censored"):
         Parametric().fit(y)
 
@@ -186,7 +186,7 @@ def test_loglogistic_mean_can_be_infinite() -> None:
     # Instead of doing that, just verify the property: if fit sigma < 1, mean is finite.
     # The real data (lung) has beta > 1 so mean should be finite.
     df = gw.load_dataset("lung", backend="pandas")
-    y = Surv.right(df["time"], event=(df["status"] == 2))
+    y = Surv(time=df["time"], event=(df["status"] == 2))
     fit = Parametric("loglogistic").fit(y)
     if fit.params_["beta"] > 1.0:
         assert np.isfinite(fit.mean())
