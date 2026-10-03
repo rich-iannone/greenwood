@@ -51,8 +51,8 @@ def test_forest_matches_sksurv_discrimination(split) -> None:
     (xtr, ttr, etr), (xte, tte, ete), _ = split
 
     # Greenwood
-    y_tr = Surv.right(ttr, event=etr)
-    y_te = Surv.right(tte, event=ete)
+    y_tr = Surv(time=ttr, event=etr)
+    y_te = Surv(time=tte, event=ete)
     gw_forest = RandomSurvivalForest(**_shared_params()).fit(y_tr, xtr)
     gw_risk = gw_forest.predict(xte)
     gw_c = gw.concordance_index(y_te, gw_risk)
@@ -78,7 +78,7 @@ def test_forest_risk_rank_correlates_with_sksurv(split) -> None:
     spearmanr = pytest.importorskip("scipy.stats").spearmanr
 
     gw_risk = (
-        RandomSurvivalForest(**_shared_params()).fit(Surv.right(ttr, event=etr), xtr).predict(xte)
+        RandomSurvivalForest(**_shared_params()).fit(Surv(time=ttr, event=etr), xtr).predict(xte)
     )
     sk_y_tr = sksurv_util.Surv.from_arrays(event=etr, time=ttr)
     sk_forest = sksurv_ensemble.RandomSurvivalForest(**_shared_params()).fit(xtr, sk_y_tr)
