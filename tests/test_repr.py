@@ -7,6 +7,7 @@ addresses), and each unfitted estimator should say so rather than erroring.
 from __future__ import annotations
 
 import numpy as np
+import pandas as pd
 import pytest
 
 import greenwood as gw
@@ -20,7 +21,7 @@ def lung():
 
 @pytest.fixture(scope="module")
 def y(lung):
-    return Surv.right(lung["time"], event=(lung["status"] == 2))
+    return Surv(time=lung["time"], event=(lung["status"] == 2))
 
 
 @pytest.fixture(scope="module")
@@ -28,7 +29,10 @@ def mgus_cr():
     mg = gw.load_dataset("mgus2", backend="pandas")
     etime = np.where(mg["pstat"] == 1, mg["ptime"], mg["futime"])
     cause = np.where(mg["pstat"] == 1, 1, 2 * mg["death"])
-    return mg, Surv.multistate(etime, event=cause, states=("pcm", "death"))
+    status = pd.Categorical.from_codes(
+        np.asarray(cause, dtype=int), categories=["censor", "pcm", "death"]
+    )
+    return mg, Surv(time=etime, event=status)
 
 
 def _clean(text: str) -> None:
