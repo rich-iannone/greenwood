@@ -80,11 +80,119 @@ class CensoringType(str, Enum):
     """
 
     RIGHT = "right"
+    """Right-censored data: the event, if any, happens after the recorded time.
+
+    The most common type. Each row has a follow-up time and a status: `1` if the event was seen
+    at that time, `0` if the subject was event-free when last seen. `Surv()` infers it from a time
+    and a status, `Surv(time=t, event=d)`, and `as_surv()` gives it for an event-time vector with
+    only `"e"` and `"r"` codes. The response's columns are `time` and `status`, as in R.
+
+    Examples
+    --------
+    ```{python}
+    import greenwood as gw
+
+    gw.Surv(time=[5, 6, 4], event=[1, 0, 1]).type
+    ```
+    """
+
     LEFT = "left"
+    """Left-censored data: the event may have happened before the recorded time.
+
+    Each row has a time and a status, using R's meaning: `1` is an event seen at that time, `0`
+    means the event had already happened by then (left-censored). It must be asked for with
+    `Surv(time=t, event=d, type="left")`, and `as_surv()` gives it for an event-time vector with
+    only `"e"` and `"l"` codes. The response's columns are `time` and `status`, as in R.
+
+    Examples
+    --------
+    ```{python}
+    import greenwood as gw
+
+    gw.Surv(time=[5, 6, 4], event=[1, 0, 1], type="left").type
+    ```
+    """
+
     INTERVAL = "interval"
+    """Interval data: each row may be exact, right-, left-, or interval-censored.
+
+    The most general single-event type. The status uses R's interval codes: `0` right-censored,
+    `1` exact, `2` left-censored, and `3` interval-censored. It comes from
+    `Surv(time, time2, event, type="interval")` with those codes, from
+    `Surv(time=lower, time2=upper, type="interval2")` with open bounds marking censoring, or
+    from `as_surv()` for an event-time vector that mixes codes in any other way. The response's
+    columns are `time1`, `time2`, and `status`, as in R, where `time2` is `1` for rows that are
+    not interval-censored. Fit it with `Turnbull`.
+
+    Examples
+    --------
+    ```{python}
+    import numpy as np
+    import greenwood as gw
+
+    # The event happened in (1, 2], after 2, and in (3, 5]
+    gw.Surv(time=[1, 2, 3], time2=[2, np.inf, 5], type="interval2").type
+    ```
+    """
+
     COUNTING = "counting"
+    """Counting-process data: each row is an interval `(start, stop]` at risk.
+
+    Used for late entry (left truncation), where subjects join the study after time zero, and
+    for time-varying covariates, where each subject's follow-up is split into several rows. The
+    status is `1` if the event happened at the stop time. `Surv()` infers it from a start time, a
+    stop time, and a status: `Surv(time=start, time2=stop, event=d)`. The response's columns are
+    `start`, `stop`, and `status`, as in R.
+
+    Examples
+    --------
+    ```{python}
+    import greenwood as gw
+
+    gw.Surv(time=[0, 2, 1], time2=[5, 6, 4], event=[1, 0, 1]).type
+    ```
+    """
+
     MRIGHT = "mright"
+    """Multi-state right-censored data: several kinds of event that compete.
+
+    Used for competing risks, where each subject can experience at most one of several events
+    (for example progression or death). The status is `0` for censored, or `k` for the `k`-th
+    state name in the response's `states`. `Surv()` gives this type when the status is a
+    categorical whose first category means censored, and `first_event()` builds it from one
+    `(time, event)` column pair per endpoint. In a formula, write the status with `factor()`. The
+    response's columns are `time` and `status`, as in R.
+
+    Examples
+    --------
+    ```{python}
+    import pandas as pd
+    import greenwood as gw
+
+    cause = pd.Categorical(["pcm", "censor", "death"], categories=["censor", "pcm", "death"])
+    gw.Surv(time=[5, 6, 7], event=cause).type
+    ```
+    """
+
     MCOUNTING = "mcounting"
+    """Multi-state counting-process data: competing events with late entry.
+
+    The counting-process form of `MRIGHT`: each row is an interval `(start, stop]` at risk, and
+    the status is `0` for censored or `k` for the `k`-th state name in `states`. `Surv()` gives
+    this type for a start time, a stop time, and a categorical status, and `first_event()` gives
+    it when `start=` is supplied. The response's columns are `start`, `stop`, and `status`, as in
+    R.
+
+    Examples
+    --------
+    ```{python}
+    import pandas as pd
+    import greenwood as gw
+
+    cause = pd.Categorical(["pcm", "censor"], categories=["censor", "pcm", "death"])
+    gw.Surv(time=[0, 2], time2=[5, 6], event=cause).type
+    ```
+    """
 
 
 # -- input classification -------------------------------------------------------------------
