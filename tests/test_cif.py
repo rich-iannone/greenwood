@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pandas as pd
 import pytest
 
 import greenwood as gw
@@ -12,7 +13,10 @@ from greenwood.viz._cif import _step_data
 
 def _make_aj(*, grouped: bool = False) -> AalenJohansen:
     """Minimal AalenJohansen fit: 4 subjects, 2 competing causes."""
-    y = Surv.multistate([1, 2, 3, 4], event=[1, 2, 1, 0], states=("pcm", "death"))
+    y = Surv(
+        time=[1, 2, 3, 4],
+        event=pd.Categorical.from_codes([1, 2, 1, 0], categories=["censor", "pcm", "death"]),
+    )
     if grouped:
         by = np.array(["A", "A", "B", "B"])
         return AalenJohansen().fit(y, by=by)
