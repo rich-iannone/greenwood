@@ -9,12 +9,13 @@ from datetime import date
 from typing import Any
 
 import numpy as np
+import pandas as pd
 import pytest
 
 import greenwood as gw
 from greenwood import Outcome, Surv
 
-DEATH = Outcome.right("time", "status", event_value=2)
+DEATH = Outcome.surv(time="time", event="status == 2")
 MGUS_ENDPOINTS = {"pcm": ("ptime", "pstat"), "death": ("futime", "death")}
 
 
@@ -29,7 +30,16 @@ def mgus2() -> Any:
 
 
 def _y(frame: Any) -> Surv:
-    return Surv.right(frame["time"].to_numpy(), (frame["status"] == 2).to_numpy())
+    return Surv(time=frame["time"].to_numpy(), event=(frame["status"] == 2).to_numpy())
+
+
+def _mgus_first_event(mgus2: Any) -> Surv:
+    return gw.first_event(
+        endpoints={
+            "pcm": (mgus2["ptime"], mgus2["pstat"]),
+            "death": (mgus2["futime"], mgus2["death"]),
+        }
+    )
 
 
 # -- dropped-row reporting ----------------------------------------------------
@@ -178,7 +188,7 @@ def test_pairwise_logrank_by_name(lung: Any) -> None:
 
 
 def test_grays_test_with_first_event(mgus2: Any) -> None:
-    y = Surv.first_event(MGUS_ENDPOINTS, data=mgus2)
+    y = _mgus_first_event(mgus2)
     ref = gw.grays_test(y, mgus2["sex"].to_numpy(), cause="pcm")
     res = gw.grays_test(Outcome.first_event(MGUS_ENDPOINTS), "sex", data=mgus2, cause="pcm")
 
@@ -199,7 +209,7 @@ def test_concordance_with_outcome_filters_the_predictions() -> None:
         }
     )
     ref = gw.concordance_index(
-        Surv.right([5.0, 3.0, 8.0, 2.0], [1, 0, 1, 1]), np.array([0.2, 0.5, 0.1, 0.8])
+        Surv(time=[5.0, 3.0, 8.0, 2.0], event=[1, 0, 1, 1]), np.array([0.2, 0.5, 0.1, 0.8])
     )
     by_array = gw.concordance_index(DEATH, np.array([0.2, 0.9, 0.5, 0.1, 0.8]), data=df)
     by_name = gw.concordance_index(DEATH, "risk", data=df)
@@ -214,7 +224,9 @@ def test_brier_score_filters_a_2d_prediction_matrix() -> None:
     df = pl.DataFrame({"time": [5.0, None, 3.0, 8.0, 2.0], "status": [2, 2, 1, 2, 2]})
     probs = np.linspace(0.1, 0.9, 10).reshape(5, 2)
     times = [2.5, 4.0]
-    ref = gw.brier_score(Surv.right([5.0, 3.0, 8.0, 2.0], [1, 0, 1, 1]), probs[[0, 2, 3, 4]], times)
+    ref = gw.brier_score(
+        Surv(time=[5.0, 3.0, 8.0, 2.0], event=[1, 0, 1, 1]), probs[[0, 2, 3, 4]], times
+    )
     res = gw.brier_score(DEATH, probs, times, data=df)
 
     np.testing.assert_allclose(res, ref)
@@ -238,8 +250,11 @@ def test_cross_validate_formula(lung: Any) -> None:
 def test_first_event_matches_the_r_recipe(mgus2: Any) -> None:
     etime = np.where(mgus2["pstat"] == 1, mgus2["ptime"], mgus2["futime"])
     cause = np.where(mgus2["pstat"] == 1, 1, 2 * mgus2["death"])
-    ref = Surv.multistate(etime, cause, states=("pcm", "death"))
-    y = Surv.first_event(MGUS_ENDPOINTS, data=mgus2)
+    status = pd.Categorical.from_codes(
+        np.asarray(cause, dtype=int), categories=["censor", "pcm", "death"]
+    )
+    ref = Surv(time=etime, event=status)
+    y = _mgus_first_event(mgus2)
 
     np.testing.assert_array_equal(y.stop, ref.stop)
     np.testing.assert_array_equal(y.status, ref.status)
@@ -247,13 +262,14 @@ def test_first_event_matches_the_r_recipe(mgus2: Any) -> None:
 
 
 def test_first_event_ties_follow_endpoint_order() -> None:
-    data = {"ta": [5.0], "ea": [1], "tb": [5.0], "eb": [1]}
-    a_first = Surv.first_event({"a": ("ta", "ea"), "b": ("tb", "eb")}, data=data)
-    b_first = Surv.first_event({"b": ("tb", "eb"), "a": ("ta", "ea")}, data=data)
+    a = ([5.0], [1])
+    b = ([5.0], [1])
+    a_first = gw.first_event(endpoints={"a": a, "b": b})
+    b_first = gw.first_event(endpoints={"b": b, "a": a})
 
     assert a_first.states is not None and b_first.states is not None
-    assert a_first.states[a_first.status[0] - 1] == "a"
-    assert b_first.states[b_first.status[0] - 1] == "b"
+    assert a_first.states[int(a_first.status[0]) - 1] == "a"
+    assert b_first.states[int(b_first.status[0]) - 1] == "b"
 
 
 def test_first_event_earliest_wins_and_censoring_time() -> None:
@@ -264,43 +280,50 @@ def test_first_event_earliest_wins_and_censoring_time() -> None:
         "e2": ["yes", "yes", "no"],
         "last": [7.0, 7.0, 10.0],
     }
-    endpoints = {"x": ("t1", "e1"), "y": ("t2", "e2", "yes")}
-    y = Surv.first_event(endpoints, data=data)
+    endpoints = {
+        "x": (data["t1"], data["e1"]),
+        "y": (data["t2"], np.asarray(data["e2"]) == "yes"),
+    }
+    y = gw.first_event(endpoints=endpoints)
 
     np.testing.assert_array_equal(y.stop, [3.0, 2.0, 6.0])
     np.testing.assert_array_equal(y.status, [1, 2, 0])
 
-    y2 = Surv.first_event(endpoints, data=data, censor_at="last")
+    y2 = gw.first_event(endpoints=endpoints, censor_at=data["last"])
 
     np.testing.assert_array_equal(y2.stop, [3.0, 2.0, 10.0])
 
 
 def test_first_event_bad_spec_errors() -> None:
-    with pytest.raises(ValueError, match="must be `\\(time, event\\)`"):
-        Surv.first_event({"a": ("t",)}, data={"t": [1.0]})
+    with pytest.raises(ValueError, match="must be a `\\(time, event\\)` pair"):
+        gw.first_event(endpoints={"a": ([1.0],)})  # pyright: ignore[reportArgumentType]
     with pytest.raises(ValueError, match="at least one"):
-        Surv.first_event({})
+        gw.first_event(endpoints={})
 
 
 def test_outcome_first_event_round_trip(mgus2: Any) -> None:
-    cr = Outcome.first_event({"pcm": ("ptime", "pstat"), "death": ("futime", "death", 1)})
+    cr = Outcome.first_event(
+        endpoints={"pcm": ("ptime", "pstat"), "death": ("futime", "death == 1")}
+    )
 
     assert repr(cr) == (
         "Outcome.first_event(endpoints={'pcm': ('ptime', 'pstat'), "
-        "'death': ('futime', 'death', 1)})"
+        "'death': ('futime', 'death == 1')})"
     )
+    assert eval(repr(cr), {"Outcome": Outcome}) == cr
     assert cr.column_names == ("ptime", "pstat", "futime", "death")
+    assert cr.kind == "first_event"
 
     hash(cr)
     y = cr.bind(mgus2)
-    ref = Surv.first_event(MGUS_ENDPOINTS, data=mgus2)
+    ref = _mgus_first_event(mgus2)
 
     np.testing.assert_array_equal(y.status, ref.status)
 
 
 def test_first_event_fits_aalen_johansen(mgus2: Any) -> None:
     aj = gw.AalenJohansen().fit(Outcome.first_event(MGUS_ENDPOINTS), data=mgus2)
-    ref = gw.AalenJohansen().fit(Surv.first_event(MGUS_ENDPOINTS, data=mgus2))
+    ref = gw.AalenJohansen().fit(_mgus_first_event(mgus2))
 
     np.testing.assert_allclose(aj.to_frame()["estimate"], ref.to_frame()["estimate"])
 
@@ -316,15 +339,13 @@ def test_duration_units() -> None:
         ("months", 366 / 30.4375),
         ("years", 366 / 365.25),
     ]:
-        y = Surv.right(gw.duration("a", "b", unit=unit), data=data)
+        y = Outcome.surv(time=gw.duration("a", "b", unit=unit)).bind(data)
 
         assert y.stop[0] == pytest.approx(expected)
 
 
 @pytest.mark.parametrize("backend", ["pandas", "polars", "pyarrow", "duckdb"])
 def test_duration_across_backends(backend: str) -> None:
-    import pandas as pd
-
     frame = pd.DataFrame(
         {
             "enroll": pd.to_datetime(["2021-03-01", "2021-03-15"]),
@@ -347,26 +368,28 @@ def test_duration_across_backends(backend: str) -> None:
         data = duckdb.from_arrow(pa.Table.from_pandas(frame))
     else:
         data = frame
-    y = Surv.right(gw.duration("enroll", "exit"), "died", data=data)
+    y = Outcome.surv(time=gw.duration("enroll", "exit"), event="died").bind(data)
 
     np.testing.assert_allclose(y.stop, [10.0, 30.0])
 
 
 def test_duration_accepts_iso_strings() -> None:
-    y = Surv.right(gw.duration("a", "b"), data={"a": ["2020-01-01"], "b": ["2020-03-01"]})
+    y = Outcome.surv(time=gw.duration("a", "b")).bind({"a": ["2020-01-01"], "b": ["2020-03-01"]})
 
     assert y.stop[0] == 60.0
 
 
 def test_duration_errors() -> None:
     with pytest.raises(ValueError, match="negative duration"):
-        Surv.right(gw.duration("a", "b"), data={"a": [date(2021, 1, 1)], "b": [date(2020, 1, 1)]})
+        Outcome.surv(time=gw.duration("a", "b")).bind(
+            {"a": [date(2021, 1, 1)], "b": [date(2020, 1, 1)]}
+        )
     with pytest.raises(TypeError, match="not numbers"):
-        Surv.right(gw.duration("a", "b"), data={"a": [1], "b": [2]})
+        Outcome.surv(time=gw.duration("a", "b")).bind({"a": [1], "b": [2]})
     with pytest.raises(ValueError, match="Unknown unit"):
         gw.duration("a", "b", unit="fortnights")
-    with pytest.raises(ValueError, match="no `data=` was given"):
-        Surv.right(gw.duration("a", "b"))
+    with pytest.raises(ValueError, match="Pass `data=`"):
+        gw.KaplanMeier().fit(Outcome.surv(time=gw.duration("a", "b")))
 
 
 def test_duration_in_outcome_drops_missing_dates() -> None:
@@ -379,11 +402,11 @@ def test_duration_in_outcome_drops_missing_dates() -> None:
             "outcome": ["died", "died", "alive"],
         }
     )
-    o = Outcome.right(gw.duration("enroll", "exit"), "outcome", event_value="died")
+    o = Outcome.surv(time=gw.duration("enroll", "exit"), event="outcome == 'died'")
 
     assert repr(o) == (
-        "Outcome.right(time=duration(start='enroll', end='exit', unit='days'), event='outcome', "
-        "event_value='died')"
+        "Outcome.surv(time=\"duration('enroll', 'exit', unit='days')\", "
+        "event=\"outcome == 'died'\")"
     )
     assert o.column_names == ("enroll", "exit", "outcome")
 
@@ -391,14 +414,9 @@ def test_duration_in_outcome_drops_missing_dates() -> None:
 
     assert km.n_dropped_ == 1
 
-    ref = gw.KaplanMeier().fit(Surv.right([10.0, 20.0], [1, 0]))
+    ref = gw.KaplanMeier().fit(Surv(time=[10.0, 20.0], event=[1, 0]))
 
     np.testing.assert_allclose(km.survival_, ref.survival_)
-
-
-def test_duration_only_for_time_arguments() -> None:
-    with pytest.raises(TypeError, match="must be a column name"):
-        Outcome.right("time", gw.duration("a", "b"))  # pyright: ignore[reportArgumentType]
 
 
 # -- remaining entry points ---------------------------------------------------
@@ -448,8 +466,6 @@ def pbcseq() -> Any:
 
 
 def test_split_episodes_long_table_matches_two_frame_form(pbcseq: Any) -> None:
-    import pandas as pd
-
     base = pbcseq.drop_duplicates("id")[["id", "futime", "status"]]
     old = gw.split_episodes(
         baseline=base,
@@ -555,14 +571,14 @@ def test_duration_in_formula() -> None:
         }
     )
     parsed = Outcome.from_formula('Surv(duration(enroll, exit, unit="weeks"), outcome == "died")')
-    built = Outcome.right(
+    built = Outcome.surv(
         time=gw.duration(start="enroll", end="exit", unit="weeks"),
-        event="outcome",
-        event_value="died",
+        event="outcome == 'died'",
     )
-    assert parsed == built
+    spelled = Outcome.surv(time="duration(enroll, exit, unit='weeks')", event="outcome == 'died'")
+    assert parsed == built == spelled
     km = gw.KaplanMeier().fit('Surv(duration(enroll, exit), outcome == "died")', data=df)
-    ref = gw.KaplanMeier().fit(gw.Surv.right(time=[10.0, 20.0, 30.0], event=[1, 0, 1]))
+    ref = gw.KaplanMeier().fit(gw.Surv(time=[10.0, 20.0, 30.0], event=[1, 0, 1]))
     np.testing.assert_allclose(km.survival_, ref.survival_)
 
 
@@ -622,7 +638,7 @@ def test_frailty_term_errors(lung: Any) -> None:
 def test_first_event_warns_when_an_event_follows_ended_follow_up() -> None:
     data = {"p": [80.0, 5.0], "ps": [1, 0], "f": [60.0, 9.0], "d": [0, 0]}
     with pytest.warns(UserWarning, match="follow-up stops at 60"):
-        Surv.first_event(endpoints={"pcm": ("p", "ps"), "death": ("f", "d")}, data=data)
+        gw.first_event(endpoints={"pcm": (data["p"], data["ps"]), "death": (data["f"], data["d"])})
 
 
 def test_first_event_is_quiet_on_mgus2(mgus2: Any) -> None:
@@ -630,4 +646,4 @@ def test_first_event_is_quiet_on_mgus2(mgus2: Any) -> None:
 
     with warnings.catch_warnings():
         warnings.simplefilter("error")
-        Surv.first_event(endpoints=MGUS_ENDPOINTS, data=mgus2)
+        _mgus_first_event(mgus2)
