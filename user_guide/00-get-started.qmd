@@ -12,8 +12,11 @@ R's survival package, and visualized with [plotnine](https://plotnine.org/).
 Every analysis starts from a `Surv` response and flows through a shared kernel:
 
 1. **`Surv` response**: captures the outcome and its censoring (right, left, interval, or the
-counting-process form with left truncation), plus optional weights and multi-state endpoints. It is
-validated eagerly, so downstream code can trust it.
+counting-process form with left truncation), plus multi-state endpoints. A single `gw.Surv()` call
+mirrors R's `survival::Surv()` and checks the input the same way, so downstream code can trust it.
+When the data lives in a data frame, a formula such as `"Surv(time, status == 2) ~ age"` or a
+`gw.Outcome` names the columns instead, and the response is built from `data=` at fit time on any
+backend.
 2. **Risk-set / event-table kernel**: at each unique event time, how many are at risk, how many had
 events, how many were censored. This single tabulation underlies Kaplan-Meier, the log-rank test,
 and Cox.
