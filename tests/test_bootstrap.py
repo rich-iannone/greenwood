@@ -18,7 +18,7 @@ def lung_surv() -> Surv:
     import greenwood as gw
 
     lung = gw.load_dataset("lung", backend="polars")
-    return gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+    return gw.Surv(time=lung["time"], event=(lung["status"] == 2))
 
 
 @pytest.fixture()
@@ -32,10 +32,7 @@ def lung_sex(lung_surv: Surv) -> np.ndarray:
 
 @pytest.fixture()
 def simple_surv() -> Surv:
-    return Surv.right(
-        [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-        [1, 0, 1, 0, 1, 0, 1, 0, 1, 0],
-    )
+    return Surv(time=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10], event=[1, 0, 1, 0, 1, 0, 1, 0, 1, 0])
 
 
 # ---------------------------------------------------------------------------
@@ -122,9 +119,8 @@ class TestBootstrapSurvival:
 
 class TestBootstrapMedianDiff:
     def test_estimate_is_difference(self) -> None:
-        y = Surv.right(
-            [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
-            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+        y = Surv(
+            time=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], event=[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
         )
         group = ["A"] * 6 + ["B"] * 6
         result = bootstrap(y, "median_diff", by=group, n_boot=50, seed=1)
@@ -138,7 +134,7 @@ class TestBootstrapMedianDiff:
             bootstrap(simple_surv, "median_diff", n_boot=10, seed=1)
 
     def test_requires_exactly_two_groups(self) -> None:
-        y = Surv.right([1, 2, 3, 4, 5, 6], [1, 1, 1, 1, 1, 1])
+        y = Surv(time=[1, 2, 3, 4, 5, 6], event=[1, 1, 1, 1, 1, 1])
         group = ["A", "A", "B", "B", "C", "C"]
         with pytest.raises(ValueError, match="2 groups"):
             bootstrap(y, "median_diff", by=group, n_boot=10, seed=1)
@@ -146,9 +142,8 @@ class TestBootstrapMedianDiff:
 
 class TestBootstrapRMSTDiff:
     def test_estimate_is_rmst_difference(self) -> None:
-        y = Surv.right(
-            [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
-            [1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0],
+        y = Surv(
+            time=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], event=[1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0]
         )
         group = ["A"] * 6 + ["B"] * 6
         result = bootstrap(y, "rmst_diff", by=group, tau=10.0, n_boot=50, seed=1)
@@ -160,9 +155,8 @@ class TestBootstrapRMSTDiff:
 
 class TestBootstrapSurvivalDiff:
     def test_estimate_is_survival_difference(self) -> None:
-        y = Surv.right(
-            [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
-            [1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0],
+        y = Surv(
+            time=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], event=[1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0]
         )
         group = ["A"] * 6 + ["B"] * 6
         result = bootstrap(y, "survival_diff", by=group, times=5.0, n_boot=50, seed=1)
@@ -213,9 +207,8 @@ class TestCustomStatistic:
         assert result.estimate == pytest.approx(km.rmst(8.0))
 
     def test_callable_rmst_difference(self) -> None:
-        y = Surv.right(
-            [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
-            [1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0],
+        y = Surv(
+            time=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], event=[1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0]
         )
         group = ["A"] * 6 + ["B"] * 6
 
