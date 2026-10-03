@@ -15,7 +15,7 @@ def forest_data():
     lung = gw.load_dataset("lung", backend="pandas").dropna(
         subset=["ph.ecog", "ph.karno", "wt.loss"]
     )
-    y = Surv.right(lung["time"], event=(lung["status"] == 2))
+    y = Surv(time=lung["time"], event=(lung["status"] == 2))
     cols = ["age", "sex", "ph.ecog", "ph.karno", "wt.loss"]
     rsf = RandomSurvivalForest(n_estimators=40, random_state=0).fit(y, lung[cols])
     return rsf, lung[cols]
@@ -55,7 +55,7 @@ def test_works_for_tree_and_cox(forest_data) -> None:
     lung = gw.load_dataset("lung", backend="pandas").dropna(
         subset=["ph.ecog", "ph.karno", "wt.loss"]
     )
-    y = Surv.right(lung["time"], event=(lung["status"] == 2))
+    y = Surv(time=lung["time"], event=(lung["status"] == 2))
     tree = gw.SurvivalTree(max_depth=3, random_state=0).fit(y, x)
     cox = gw.CoxPH().fit(y, x)
     gw.plot_predicted_survival(tree, x[:2]).to_dict()
