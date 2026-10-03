@@ -23,6 +23,7 @@ from scipy.stats import chi2, norm
 from ._backends import to_dataframe
 from ._outcome import bind_fit_inputs
 from ._repr import dropped_note
+from ._surv import MULTISTATE_HINT
 
 if TYPE_CHECKING:
     from ._outcome import Outcome
@@ -326,10 +327,12 @@ def grays_test(
     Parameters
     ----------
     surv
-        A multi-state `Surv` response built with `Surv.multistate()`. Must have at least two causes.
-        Event codes are 0 for censoring and 1..K for causes.
-        An `Outcome` or a formula string such as `'Surv(time, status == 2) ~ sex'` is also accepted,
-        with its columns read from `data`. The right-hand side names the `group` column(s).
+        A multi-state `Surv` response (a `Surv` with a categorical event). Must have at least two
+        causes. Event codes are 0 for censoring and 1..K for causes. An `Outcome` (such as
+        `gw.Outcome.first_event(...)`) or a formula string such as
+        `"Surv(etime, factor(cause, c(0, 1, 2), c('censor', 'pcm', 'death'))) ~ sex"` is also
+        accepted, with its columns read from `data`. The right-hand side names the `group`
+        column(s).
     group
         Group labels, one per observation. Can be a Narwhals series, 1-D array, or Python sequence.
         Must have the same length as `surv`. At least two groups are required.
@@ -374,9 +377,9 @@ def grays_test(
     import greenwood as gw
 
     mg = gw.load_dataset("mgus2", backend="pandas")
-    etime = mg["ptime"].where(mg["pstat"] == 1, mg["futime"])
-    cause = mg["pstat"].where(mg["pstat"] == 1, 2 * mg["death"])
-    cr = gw.Surv.multistate(time=etime, event=cause, states=("pcm", "death"))
+    cr = gw.Outcome.first_event(
+        endpoints={"pcm": ("ptime", "pstat"), "death": ("futime", "death")}
+    )
 
     gw.grays_test(cr, group="sex", cause="pcm", data=mg)
     ```
@@ -398,11 +401,11 @@ def grays_test(
     surv = bound.surv
     group = bound.labels["group"]
 
-    from ._surv import _to_1d_array
+    from ._ingest import to_1d_array as _to_1d_array
     from ._tests import TestResult
 
     if not surv.is_multistate:
-        raise ValueError("grays_test needs a multi-state response; build it with Surv.multistate.")
+        raise ValueError("grays_test needs a multi-state response. " + MULTISTATE_HINT)
 
     assert surv.states is not None
     if isinstance(cause, str):
@@ -454,9 +457,10 @@ class AalenJohansen:
 
     Unlike naive estimates that ignore censoring or competing events, the Aalen-Johansen CIF
     correctly accounts for both. It is computed using transition probabilities between states via
-    generalized Kaplan-Meier estimates. Call `fit()` with a multi-state `Surv` response (built with
-    `Surv.multistate()`) to obtain estimates for each competing cause. Results are returned as tidy
-    DataFrames with one row per combination of stratum, cause, and time.
+    generalized Kaplan-Meier estimates. Call `fit()` with a multi-state response (an `Outcome` such
+    as `gw.Outcome.first_event(...)` with `data=`, or a `Surv` with a categorical `event`) to obtain
+    estimates for each competing cause. Results are returned as tidy DataFrames with one row per
+    combination of stratum, cause, and time.
 
     The estimator uses the formula $\mathrm{CIF}_j(t) = \sum_{s \le t} \hat{S}(s^-) P_{0j}(s)$,
     where $\hat{S}(s^-)$ is the probability of being event-free before time $s$, and $P_{0j}(s)$ is
@@ -481,29 +485,31 @@ class AalenJohansen:
 
     Details
     -------
-    Call `fit(surv, by=...)` with a multi-state `Surv` response (built with `Surv.multistate`, where
-    `event` codes are 0 for censoring and `1..K` for the competing causes). Results are tidy frames
-    via `to_frame()` (optionally `format=`) with one row per stratum, cause, and time.
+    Call `fit(surv, by=..., data=...)` with a multi-state response: an `Outcome`, a formula such
+    as `"Surv(etime, factor(cause, c(0, 1, 2), c('censor', 'pcm', 'death'))) ~ sex"`, or a `Surv`
+    with a categorical `event` whose first category is censoring and whose remaining categories
+    are the competing causes. Results are tidy frames via `to_frame()` (optionally `format=`) with
+    one row per stratum, cause, and time.
 
     Examples
     --------
     The bundled `mgus2` dataset follows monoclonal-gammopathy patients who may progress to
-    plasma-cell malignancy (`"pcm"`) or die first, a competing-risks setup. Build the
-    competing-risks response by combining the progression and death indicators into a single cause
-    code (`0` censored, `1` progression, `2` death), then fit the estimator. Printing the fitted
-    object reports the final cumulative incidence for each cause.
+    plasma-cell malignancy (`"pcm"`) or die first, a competing-risks setup. Each endpoint has
+    its own time and status column, so `gw.Outcome.first_event()` names the two pairs and the
+    response is whichever event comes first. Printing the fitted object reports the final
+    cumulative incidence for each cause.
 
     ```{python}
     import greenwood as gw
 
-    # Load data and build the competing-risks response
+    # Load data and name the competing endpoints
     mg = gw.load_dataset("mgus2", backend="pandas")
-    etime = mg["ptime"].where(mg["pstat"] == 1, mg["futime"])
-    cause = mg["pstat"].where(mg["pstat"] == 1, 2 * mg["death"])
-    cr = gw.Surv.multistate(time=etime, event=cause, states=("pcm", "death"))
+    cr = gw.Outcome.first_event(
+        endpoints={"pcm": ("ptime", "pstat"), "death": ("futime", "death")}
+    )
 
     # Fit cumulative incidence for each cause
-    aj = gw.AalenJohansen().fit(cr)
+    aj = gw.AalenJohansen().fit(cr, data=mg)
     aj
     ```
     """
@@ -562,12 +568,12 @@ class AalenJohansen:
         Parameters
         ----------
         surv
-            A multi-state `Surv` response built with `Surv.multistate()`. Must have multiple
-            causes-of-interest. Raises `ValueError` if a single-event response is passed (use
-            `KaplanMeier` for that).
-            An `Outcome` or a formula string such as `'Surv(time, status == 2) ~ sex'` is also
-            accepted, with its columns read from `data`. The right-hand side names the `by`
-            column(s).
+            A multi-state response: a `Surv` with a categorical event, an `Outcome` (such as
+            `gw.Outcome.first_event(...)`), or a formula string such as
+            `"Surv(etime, factor(cause, c(0, 1, 2), c('censor', 'pcm', 'death'))) ~ sex"`. Must
+            have multiple causes-of-interest. Raises `ValueError` if a single-event response is
+            passed (use `KaplanMeier` for that). An `Outcome` or formula reads its columns from
+            `data`. The formula's right-hand side names the `by` column(s).
         by
             Optional grouping variable (e.g., a column or array). Produces one set of cumulative
             incidence functions per unique value of `by`. Default (`None`): fit a single,
@@ -592,8 +598,8 @@ class AalenJohansen:
         counting process for cause $j$. It reduces to Kaplan-Meier when there is only one cause and
         no censoring.
 
-        Left truncation is not yet supported. Multi-state responses must be built with
-        `Surv.multistate()`.
+        Left truncation is not yet supported. A multi-state response comes from an
+        `Outcome`, a formula with a `factor()` event, or a `Surv` with a categorical `event`.
 
         Examples
         --------
@@ -603,14 +609,14 @@ class AalenJohansen:
         ```{python}
         import greenwood as gw
 
-        # Load data and build the competing-risks response
+        # Load data and name the competing endpoints
         mg = gw.load_dataset("mgus2", backend="pandas")
-        etime = mg["ptime"].where(mg["pstat"] == 1, mg["futime"])
-        cause = mg["pstat"].where(mg["pstat"] == 1, 2 * mg["death"])
-        cr = gw.Surv.multistate(time=etime, event=cause, states=("pcm", "death"))
+        cr = gw.Outcome.first_event(
+            endpoints={"pcm": ("ptime", "pstat"), "death": ("futime", "death")}
+        )
 
         # Fit cumulative incidence for each cause
-        aj = gw.AalenJohansen().fit(cr)
+        aj = gw.AalenJohansen().fit(cr, data=mg)
         aj
         ```
 
@@ -637,8 +643,9 @@ class AalenJohansen:
 
         if not surv.is_multistate:
             raise ValueError(
-                "AalenJohansen needs a multi-state response; build it with Surv.multistate "
-                "(use KaplanMeier for a single event type)."
+                "AalenJohansen needs a multi-state response (use KaplanMeier for a single event "
+                + "type). "
+                + MULTISTATE_HINT
             )
         if surv.is_truncated:
             raise NotImplementedError(
@@ -657,7 +664,7 @@ class AalenJohansen:
             self._grouped = False
             self._blocks = {None: _cif_block(exit_, status, causes, z, self.conf_type)}
         else:
-            from ._surv import _to_1d_array
+            from ._ingest import to_1d_array as _to_1d_array
 
             labels = _to_1d_array(by, dtype=object)
             if labels.shape[0] != surv.n:
@@ -730,12 +737,12 @@ class AalenJohansen:
         ```{python}
         import greenwood as gw
 
-        # Load data and build the competing-risks response
+        # Load data and name the competing endpoints
         mg = gw.load_dataset("mgus2", backend="pandas")
-        etime = mg["ptime"].where(mg["pstat"] == 1, mg["futime"])
-        cause = mg["pstat"].where(mg["pstat"] == 1, 2 * mg["death"])
-        cr = gw.Surv.multistate(time=etime, event=cause, states=("pcm", "death"))
-        aj = gw.AalenJohansen().fit(cr)
+        cr = gw.Outcome.first_event(
+            endpoints={"pcm": ("ptime", "pstat"), "death": ("futime", "death")}
+        )
+        aj = gw.AalenJohansen().fit(cr, data=mg)
 
         # Export cumulative incidence as a Polars DataFrame
         aj.to_frame(format="polars")
@@ -762,13 +769,13 @@ class FineGray:
     function, making it ideal for policy-relevant questions like "what is the effect of
     treatment on my probability of experiencing event A?"
 
-    Technically, the Fine-Gray model uses a weighted Cox-like approach: subjects who experience
-    a competing event remain in the risk set but with decreasing inverse-probability-of-censoring
-    weights, reflecting their reduced ability to contribute information about the target cause.
-    Call `fit()` with a multi-state `Surv` response (built with `Surv.multistate()`) and specify
-    the target cause of interest. Coefficients, hazard ratios, and standard errors are computed
-    via weighted partial likelihood, with robust (clustered) standard errors accounting for the
-    weighting scheme.
+    Technically, the Fine-Gray model uses a weighted Cox-like approach: subjects who experience a
+    competing event remain in the risk set but with decreasing inverse-probability-of-censoring
+    weights, reflecting their reduced ability to contribute information about the target cause. Call
+    `fit()` with a multi-state response (an `Outcome` or formula with `data=`, or a `Surv` with a
+    categorical event) and specify the target cause of interest. Coefficients, hazard ratios, and
+    standard errors are computed via weighted partial likelihood, with robust (clustered) standard
+    errors accounting for the weighting scheme.
 
     The implementation automatically computes event weights and handles censoring. Standard errors
     use the Lin-Wei robust (sandwich) estimator, validated against R's survival package. Unlike
@@ -791,9 +798,9 @@ class FineGray:
 
     Details
     -------
-    Call `fit(surv, covariates)` with a multi-state `Surv` response (built with
-    `Surv.multistate()`) and specify the target `cause`. The model uses weighted Cox-like
-    optimization with robust standard errors. Results can be tidy frames via `to_frame()`
+    Call `fit(surv, covariates, data=...)` with a multi-state response (an `Outcome`, a formula, or
+    a `Surv` with a categorical `event`) and specify the target `cause`. The model uses weighted
+    Cox-like optimization with robust standard errors. Results can be tidy frames via `to_frame()`
     (optionally `format=`).
 
     Examples
@@ -806,11 +813,11 @@ class FineGray:
     ```{python}
     import greenwood as gw
 
-    # Load data and build the competing-risks response
+    # Load data and name the competing endpoints
     mg = gw.load_dataset("mgus2", backend="pandas")
-    etime = mg["ptime"].where(mg["pstat"] == 1, mg["futime"])
-    cause = mg["pstat"].where(mg["pstat"] == 1, 2 * mg["death"])
-    cr = gw.Surv.multistate(time=etime, event=cause, states=("pcm", "death"))
+    cr = gw.Outcome.first_event(
+        endpoints={"pcm": ("ptime", "pstat"), "death": ("futime", "death")}
+    )
 
     # Fit the Fine-Gray subdistribution hazard model for pcm
     fg = gw.FineGray(cause="pcm").fit(cr, covariates=["age", "sex"], data=mg)
@@ -878,10 +885,12 @@ class FineGray:
         Parameters
         ----------
         surv
-            A multi-state `Surv` response built with `Surv.multistate()`. Must have multiple
-            causes-of-interest. Raises `ValueError` if a single-event response is passed.
-            An `Outcome` or a formula string such as `'Surv(time, status == 2) ~ age + sex'` is also
-            accepted, with its columns read from `data`. The right-hand side sets `covariates`.
+            A multi-state response: a `Surv` with a categorical event, an `Outcome` (such as
+            `gw.Outcome.first_event(...)`), or a formula string such as
+            `"Surv(etime, factor(cause, c(0, 1, 2), c('censor', 'pcm', 'death'))) ~ age + sex"`.
+            Must have multiple causes-of-interest. Raises `ValueError` if a single-event response
+            is passed. An `Outcome` or formula reads its columns from `data`. The formula's
+            right-hand side sets `covariates`.
         covariates
             A dataframe (pandas or polars) or 2-D array of covariates to adjust for in the
             subdistribution hazard. An intercept is added automatically. Must have the same
@@ -925,11 +934,11 @@ class FineGray:
         ```{python}
         import greenwood as gw
 
-        # Load data and build the competing-risks response
+        # Load data and name the competing endpoints
         mg = gw.load_dataset("mgus2", backend="pandas")
-        etime = mg["ptime"].where(mg["pstat"] == 1, mg["futime"])
-        cause = mg["pstat"].where(mg["pstat"] == 1, 2 * mg["death"])
-        cr = gw.Surv.multistate(time=etime, event=cause, states=("pcm", "death"))
+        cr = gw.Outcome.first_event(
+            endpoints={"pcm": ("ptime", "pstat"), "death": ("futime", "death")}
+        )
 
         # Fit the Fine-Gray subdistribution hazard model for pcm
         fg = gw.FineGray(cause="pcm").fit(cr, covariates=["age", "sex"], data=mg)
@@ -961,9 +970,7 @@ class FineGray:
         from ._cox import _design_matrix_spec
 
         if not surv.is_multistate:
-            raise ValueError(
-                "FineGray needs a multi-state response; build it with Surv.multistate."
-            )
+            raise ValueError("FineGray needs a multi-state response. " + MULTISTATE_HINT)
         assert surv.states is not None
         if self.cause in surv.states:
             target = surv.states.index(self.cause) + 1
@@ -1267,11 +1274,11 @@ class FineGray:
         ```{python}
         import greenwood as gw
 
-        # Load data and build the competing-risks response
+        # Load data and name the competing endpoints
         mg = gw.load_dataset("mgus2", backend="pandas")
-        etime = mg["ptime"].where(mg["pstat"] == 1, mg["futime"])
-        cause = mg["pstat"].where(mg["pstat"] == 1, 2 * mg["death"])
-        cr = gw.Surv.multistate(time=etime, event=cause, states=("pcm", "death"))
+        cr = gw.Outcome.first_event(
+            endpoints={"pcm": ("ptime", "pstat"), "death": ("futime", "death")}
+        )
         fg = gw.FineGray(cause="pcm").fit(cr, covariates=["age", "sex"], data=mg)
 
         # Export the coefficient table as a Polars DataFrame
@@ -1329,9 +1336,9 @@ class PenalizedFineGray:
     import greenwood as gw
 
     mg = gw.load_dataset("mgus2", backend="pandas")
-    etime = mg["ptime"].where(mg["pstat"] == 1, mg["futime"])
-    cause = mg["pstat"].where(mg["pstat"] == 1, 2 * mg["death"])
-    cr = gw.Surv.multistate(time=etime, event=cause, states=("pcm", "death"))
+    cr = gw.Outcome.first_event(
+        endpoints={"pcm": ("ptime", "pstat"), "death": ("futime", "death")}
+    )
 
     pfg = gw.PenalizedFineGray(cause="pcm", penalizer=0.01, l1_ratio=1.0)
     pfg.fit(cr, covariates=["age", "sex"], data=mg)
@@ -1391,9 +1398,11 @@ class PenalizedFineGray:
         Parameters
         ----------
         surv
-            A multi-state `Surv` response built with `Surv.multistate()`.
-            An `Outcome` or a formula string such as `'Surv(time, status == 2) ~ age + sex'` is also
-            accepted, with its columns read from `data`. The right-hand side sets `covariates`.
+            A multi-state response: a `Surv` with a categorical event, an `Outcome` (such as
+            `gw.Outcome.first_event(...)`), or a formula string such as
+            `"Surv(etime, factor(cause, c(0, 1, 2), c('censor', 'pcm', 'death'))) ~ age + sex"`.
+            An `Outcome` or formula reads its columns from `data`. The formula's right-hand side
+            sets `covariates`.
         covariates
             A dataframe or 2-D array of covariates.
             A list of column names in `data` also works.
@@ -1415,12 +1424,11 @@ class PenalizedFineGray:
 
         ```{python}
         import greenwood as gw
-        import numpy as np
 
         mg = gw.load_dataset("mgus2", backend="pandas")
-        etime = np.where(mg["pstat"] == 1, mg["ptime"], mg["futime"])
-        cause = np.where(mg["pstat"] == 1, 1, 2 * mg["death"])
-        cr = gw.Surv.multistate(time=etime, event=cause, states=("pcm", "death"))
+        cr = gw.Outcome.first_event(
+            endpoints={"pcm": ("ptime", "pstat"), "death": ("futime", "death")}
+        )
 
         pfg = gw.PenalizedFineGray(
             cause="pcm", penalizer=0.1, l1_ratio=1.0
@@ -1445,9 +1453,7 @@ class PenalizedFineGray:
         from ._cox import _design_matrix_spec
 
         if not surv.is_multistate:
-            raise ValueError(
-                "PenalizedFineGray needs a multi-state response; build it with Surv.multistate."
-            )
+            raise ValueError("PenalizedFineGray needs a multi-state response. " + MULTISTATE_HINT)
         assert surv.states is not None
         if self.cause in surv.states:
             target = surv.states.index(self.cause) + 1
@@ -1680,13 +1686,12 @@ class CauseSpecificCox:
     Fit a cause-specific Cox model for PCM progression in the `mgus2` dataset:
 
     ```{python}
-    import numpy as np
     import greenwood as gw
 
     mg = gw.load_dataset("mgus2", backend="polars")
-    etime = np.where(mg["pstat"] == 1, mg["ptime"], mg["futime"])
-    cause = np.where(mg["pstat"] == 1, 1, 2 * mg["death"])
-    cr = gw.Surv.multistate(time=etime, event=cause, states=("pcm", "death"))
+    cr = gw.Outcome.first_event(
+        endpoints={"pcm": ("ptime", "pstat"), "death": ("futime", "death")}
+    )
 
     csc = gw.CauseSpecificCox(cause="pcm").fit(cr, covariates=["age", "sex"], data=mg)
     csc
@@ -1731,6 +1736,7 @@ class CauseSpecificCox:
         frailty_max_iter: int = 30,
         max_iter: int = 30,
         tol: float = 1e-9,
+        weights: Any = None,
     ) -> CauseSpecificCox:
         """Fit the cause-specific Cox model.
 
@@ -1741,9 +1747,11 @@ class CauseSpecificCox:
         Parameters
         ----------
         surv
-            A multi-state `Surv` response built with `Surv.multistate()`.
-            An `Outcome` or a formula string such as `'Surv(time, status == 2) ~ age + sex'` is also
-            accepted, with its columns read from `data`. The right-hand side sets `covariates`.
+            A multi-state response: a `Surv` with a categorical event, an `Outcome` (such as
+            `gw.Outcome.first_event(...)`), or a formula string such as
+            `"Surv(etime, factor(cause, c(0, 1, 2), c('censor', 'pcm', 'death'))) ~ age + sex"`.
+            An `Outcome` or formula reads its columns from `data`. The formula's right-hand side
+            sets `covariates`.
         covariates
             A dataframe or 2-D array of covariates.
             A list of column names in `data` also works.
@@ -1757,6 +1765,9 @@ class CauseSpecificCox:
             Passed through to `CoxPH.fit()`.
         max_iter, tol
             Newton-Raphson iteration control passed through to `CoxPH.fit()`.
+        weights
+            Case weights, one per row (a column name in `data`, or an array). Must be finite
+            and strictly positive. Default is `None` (all weights `1`).
 
         Returns
         -------
@@ -1770,12 +1781,11 @@ class CauseSpecificCox:
 
         ```{python}
         import greenwood as gw
-        import numpy as np
 
         mg = gw.load_dataset("mgus2", backend="pandas")
-        etime = np.where(mg["pstat"] == 1, mg["ptime"], mg["futime"])
-        cause = np.where(mg["pstat"] == 1, 1, 2 * mg["death"])
-        cr = gw.Surv.multistate(time=etime, event=cause, states=("pcm", "death"))
+        cr = gw.Outcome.first_event(
+            endpoints={"pcm": ("ptime", "pstat"), "death": ("futime", "death")}
+        )
 
         csc = gw.CauseSpecificCox(cause="pcm").fit(
             cr, covariates=["age", "sex"], data=mg
@@ -1793,7 +1803,12 @@ class CauseSpecificCox:
             surv,
             data=data,
             designs={"covariates": covariates},
-            labels={"strata": strata, "cluster": cluster, "frailty_cluster": frailty_cluster},
+            labels={
+                "strata": strata,
+                "cluster": cluster,
+                "frailty_cluster": frailty_cluster,
+                "weights": weights,
+            },
             rhs_to="covariates",
             required=("covariates",),
             estimator="CauseSpecificCox",
@@ -1818,8 +1833,8 @@ class CauseSpecificCox:
 
         if not surv.is_multistate:
             raise ValueError(
-                "CauseSpecificCox needs a multi-state response; "
-                "build it with Surv.multistate (use CoxPH directly for a single event type)."
+                "CauseSpecificCox needs a multi-state response. Build it with Surv() and a "
+                "categorical event (use CoxPH directly for a single event type)."
             )
         assert surv.states is not None
 
@@ -1834,8 +1849,12 @@ class CauseSpecificCox:
 
         from ._surv import Surv as SurvCls
 
-        cs_event = (surv.status == target).astype(int)
-        cs_surv = SurvCls.right(surv.stop, event=cs_event, weights=surv.weights)
+        # Events of the target cause count as events. Every other cause is censoring.
+        cs_event = surv.status == target
+        if surv.start is not None:
+            cs_surv = SurvCls(time=surv.start, time2=surv.stop, event=cs_event)
+        else:
+            cs_surv = SurvCls(time=surv.stop, event=cs_event)
 
         cox = CoxPH(ties=self.ties, conf_level=self.conf_level)
         cox.fit(
@@ -1851,6 +1870,7 @@ class CauseSpecificCox:
             frailty_max_iter=frailty_max_iter,
             max_iter=max_iter,
             tol=tol,
+            weights=bound.labels["weights"],
         )
         self.cox_ = cox
         # The inner model only sees rows the binder kept, so add the binder's drops to its count.
@@ -2174,7 +2194,7 @@ class MultiState:
         ```
         """
         from ._ingest import resolve_columns
-        from ._surv import _to_1d_array
+        from ._ingest import to_1d_array as _to_1d_array
 
         cols = resolve_columns(data, {"start": start, "stop": stop, "state": state, "event": event})
         t0 = _to_1d_array(cols["start"])
