@@ -28,20 +28,15 @@ _VALID_METRICS = frozenset({"concordance", "brier", "auc"})
 
 
 def _subset_surv(surv: Surv, idx: Array) -> Surv:
-    """Rebuild a `Surv` response from a row subset (right-censored or counting-process)."""
-    from ._surv import CensoringType, Surv
+    """Select a row subset of a `Surv` response (right-censored or counting-process)."""
+    from ._surv import CensoringType
 
-    weights = None if surv.weights is None else surv.weights[idx]
-    if surv.type is CensoringType.RIGHT:
-        return Surv.right(surv.stop[idx], event=surv.event[idx], weights=weights)
-    if surv.type is CensoringType.COUNTING:
-        return Surv.counting(
-            surv.entry[idx], surv.stop[idx], event=surv.event[idx], weights=weights
+    if surv.type not in (CensoringType.RIGHT, CensoringType.COUNTING):
+        raise NotImplementedError(
+            "cross_validate supports right-censored and counting-process responses, "
+            f"not {surv.type.value!r}."
         )
-    raise NotImplementedError(
-        "cross_validate supports right-censored and counting-process responses, "
-        f"not {surv.type.value!r}."
-    )
+    return surv[idx]
 
 
 def _stratified_kfold_indices(surv: Surv, k: int, seed: int | None = None) -> list[Array]:
@@ -283,13 +278,16 @@ def cross_validate(
     ```{python}
     import greenwood as gw
 
-    # Load data and build a right-censored response
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
     # Run 5-fold cross-validation with concordance
     result = gw.cross_validate(
-        gw.CoxPH(), surv=y, covariates=["age", "sex"], data=lung, k=5, metric="concordance", seed=1
+        gw.CoxPH(),
+        surv="Surv(time, status) ~ age + sex",
+        data=lung,
+        k=5,
+        metric="concordance",
+        seed=1,
     )
     result
     ```
@@ -321,7 +319,7 @@ def cross_validate(
     ```{python}
     # Evaluate concordance, Brier, and AUC in one pass
     result_multi = gw.cross_validate(
-        gw.CoxPH(), surv=y, covariates=["age", "sex"], data=lung, k=5,
+        gw.CoxPH(), surv="Surv(time, status) ~ age + sex", data=lung, k=5,
         metrics=["concordance", "brier", "auc"],
         times=[180, 365, 540], seed=1
     )
