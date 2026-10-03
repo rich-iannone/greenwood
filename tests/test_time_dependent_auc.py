@@ -20,7 +20,7 @@ def lung():
 
 @pytest.fixture(scope="module")
 def lung_surv(lung):
-    return Surv.right(lung["time"], event=(lung["status"] == 2))
+    return Surv(time=lung["time"], event=(lung["status"] == 2))
 
 
 # ---------------------------------------------------------------------------
@@ -34,7 +34,7 @@ def test_auc_perfect_marker_no_censoring() -> None:
     time = [1.0, 2.0, 3.0, 4.0, 5.0]
     event = [1, 1, 1, 1, 1]
     marker = [5.0, 4.0, 3.0, 2.0, 1.0]  # perfectly inversely correlated with time
-    y = Surv.right(time, event)
+    y = Surv(time=time, event=event)
     auc = gw.time_dependent_auc(y, marker, times=[3.0])
     # At t=3: cases are times 1,2,3 (markers 5,4,3); controls are times 4,5 (markers 2,1).
     # All cases have higher marker than all controls → AUC = 1.0.
@@ -46,7 +46,7 @@ def test_auc_reversed_marker_no_censoring() -> None:
     time = [1.0, 2.0, 3.0, 4.0, 5.0]
     event = [1, 1, 1, 1, 1]
     marker = [1.0, 2.0, 3.0, 4.0, 5.0]  # perfectly positively correlated with time
-    y = Surv.right(time, event)
+    y = Surv(time=time, event=event)
     auc = gw.time_dependent_auc(y, marker, times=[3.0])
     # All cases have lower marker than all controls → AUC = 0.0.
     assert auc[0] == pytest.approx(0.0)
@@ -57,7 +57,7 @@ def test_auc_equal_marker_gives_half() -> None:
     time = [1.0, 2.0, 3.0, 4.0, 5.0]
     event = [1, 1, 1, 1, 1]
     marker = [0.5, 0.5, 0.5, 0.5, 0.5]
-    y = Surv.right(time, event)
+    y = Surv(time=time, event=event)
     auc = gw.time_dependent_auc(y, marker, times=[2.0, 4.0])
     np.testing.assert_allclose(auc, [0.5, 0.5])
 
@@ -71,7 +71,7 @@ def test_auc_nan_when_no_cases() -> None:
     # t=0.5 is before all events → no cases → nan.
     time = [1.0, 2.0, 3.0]
     event = [1, 1, 1]
-    y = Surv.right(time, event)
+    y = Surv(time=time, event=event)
     auc = gw.time_dependent_auc(y, [1.0, 2.0, 3.0], times=[0.5])
     assert np.isnan(auc[0])
 
@@ -80,7 +80,7 @@ def test_auc_nan_when_no_controls() -> None:
     # t beyond all observation times → no controls → nan.
     time = [1.0, 2.0, 3.0]
     event = [1, 1, 1]
-    y = Surv.right(time, event)
+    y = Surv(time=time, event=event)
     auc = gw.time_dependent_auc(y, [3.0, 2.0, 1.0], times=[100.0])
     assert np.isnan(auc[0])
 
@@ -175,7 +175,7 @@ def test_auc_length_mismatch(lung_surv) -> None:
 
 def test_auc_accepts_polars_series() -> None:
     lung = gw.load_dataset("lung", backend="polars")
-    y = Surv.right(lung["time"], event=(lung["status"] == 2))
+    y = Surv(time=lung["time"], event=(lung["status"] == 2))
     cox = gw.CoxPH().fit(y, lung[["age", "sex"]])
     lp = cox.predict(type="lp")
     # Should not raise; Polars series accepted via _to_1d_array.
@@ -195,7 +195,7 @@ def test_integrated_auc_exceeds_random_for_strong_marker() -> None:
     x = rng.normal(size=n)
     time = np.abs(rng.normal(loc=3.0 - 0.8 * x, size=n)) + 0.1
     event = np.ones(n, dtype=int)
-    y = Surv.right(time, event)
+    y = Surv(time=time, event=event)
     marker = x  # positively correlated with hazard (shorter time)
 
     times = np.linspace(float(np.percentile(time, 10)), float(np.percentile(time, 90)), 10)
@@ -214,7 +214,7 @@ def test_integrated_auc_few_valid_values_input(lung_surv, lung) -> None:  # type
 
 
 def test_integrated_auc_few_valid_values_after_nan() -> None:
-    y = Surv.right([1, 2, 3, 4, 5], [1, 1, 1, 0, 0])
+    y = Surv(time=[1, 2, 3, 4, 5], event=[1, 1, 1, 0, 0])
     marker = np.array([0.5, 0.3, 0.8, 0.2, 0.6])
     with pytest.raises(ValueError, match="fewer than two valid AUC"):
         gw.integrated_auc(y, marker, times=[1000, 2000, 3000])
