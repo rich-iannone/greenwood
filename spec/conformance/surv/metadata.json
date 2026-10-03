@@ -1,0 +1,5 @@
+{
+  "survival_version": "3.5.3",
+  "r_version": "R version 4.2.3 (2023-03-15)",
+  "generated_by": "scripts/generate_surv_conformance.R"
+}
