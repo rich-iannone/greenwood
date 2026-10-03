@@ -30,8 +30,16 @@ from typing_extensions import Self
 
 from ._backends import to_dataframe
 from ._rformat import format_real
+from ._surv import Surv
 
-__all__ = ["EventTime", "event_time", "new_event_time", "extract_time", "extract_status"]
+__all__ = [
+    "EventTime",
+    "event_time",
+    "new_event_time",
+    "extract_time",
+    "extract_status",
+    "as_surv",
+]
 
 FloatArray = npt.NDArray[np.float64]
 BoolArray = npt.NDArray[np.bool_]
@@ -542,7 +550,8 @@ def event_time(time: Any, status: Any, time_max: Any = None) -> EventTime:
     x
     ```
 
-    Columns of a data frame work directly:
+    To start from a data frame, name the columns in a formula (or with `Outcome.event_time()`)
+    and pass `data=` to `fit()`, which works on every DataFrame backend:
 
     ```{python}
     import polars as pl
@@ -551,7 +560,7 @@ def event_time(time: Any, status: Any, time_max: Any = None) -> EventTime:
         "times": [0.14, 0.15, 0.44, 0.76, 1.18],
         "status": ["l", "e", "e", "e", "r"],
     })
-    gw.event_time(time=df["times"], status=df["status"])
+    gw.Turnbull().fit("event_time(times, status)", data=df)
     ```
     """
     time_a = _cast_double(time, "time")
@@ -760,3 +769,83 @@ def extract_status(x: Any) -> list[str | None]:
 @extract_status.register
 def _(x: EventTime) -> list[str | None]:
     return list(x._status)  # pyright: ignore[reportPrivateUsage]
+
+
+# -- conversion -----------------------------------------------------------------------------
+
+
+@singledispatch
+def as_surv(x: Any) -> Surv:
+    """Convert an event-time vector to a `Surv` response.
+
+    A port of etd's `as_surv()`. The type of the result depends on the status codes present,
+    ignoring missing elements:
+
+    - only `"e"` and `"r"`: a right-censored response, with status `1` for events.
+    - only `"e"` and `"l"`: a left-censored response, with status `1` for events.
+    - any other combination: an interval response, with R's codes `0` (right), `1` (exact), `2`
+      (left), and `3` (interval).
+
+    Missing elements are missing in the result.
+
+    Parameters
+    ----------
+    x
+        An `EventTime` vector.
+
+    Returns
+    -------
+    Surv
+        The response.
+
+    Raises
+    ------
+    TypeError
+        If `x` isn't an `EventTime` vector.
+
+    Examples
+    --------
+    ```{python}
+    import greenwood as gw
+
+    x = gw.event_time(
+        time=[7, 5, 3, 2],
+        status=["e", "r", "l", "i"],
+        time_max=[None, None, None, 4],
+    )
+    gw.as_surv(x).to_frame(format="polars")
+    ```
+
+    Exact and right-censored values give a right-censored response:
+
+    ```{python}
+    gw.as_surv(gw.event_time(time=[7, 5], status=["e", "r"]))
+    ```
+    """
+    raise _EventTimeTypeError(
+        f"Can't convert {_type_name(x)} to a <Surv> object.", check="as_surv_unsupported"
+    )
+
+
+@as_surv.register
+def _(x: EventTime) -> Surv:
+    # Follows etd's as_surv.event_time() line for line.
+    missing = x.is_na()
+    status = [None if m else s for s, m in zip(x._status, missing, strict=True)]  # pyright: ignore[reportPrivateUsage]
+    lower = x._lower()  # pyright: ignore[reportPrivateUsage]
+    # The last number of each element: the upper bound for pairs, the time itself otherwise.
+    upper = np.where(x._paired, x._time_max, x._time)  # pyright: ignore[reportPrivateUsage]
+    observed = {s for s in status if s is not None}
+
+    if len(x) == 0:
+        # etd builds the empty response directly, because R's Surv() warns on zero-length input.
+        return Surv(np.empty(0), np.empty(0))
+    if observed <= {"e", "r"}:
+        event = [None if s is None else s == "e" for s in status]
+        return Surv(lower, event=event, type="right")
+    if observed <= {"e", "l"}:
+        event = [None if s is None else s == "e" for s in status]
+        return Surv(lower, event=event, type="left")
+    codes = {"r": 0.0, "e": 1.0, "l": 2.0, "i": 3.0}
+    code = [math.nan if s is None else codes.get(s, math.nan) for s in status]
+    return Surv(lower, upper, code, type="interval")
