@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pandas as pd
 import pytest
 
 import greenwood as gw
@@ -14,7 +15,8 @@ def _mgus_fit(*, by_sex: bool = False) -> AalenJohansen:
     mg = gw.load_dataset("mgus2", backend="polars")
     etime = np.where(mg["pstat"] == 1, mg["ptime"], mg["futime"])
     cause = np.where(mg["pstat"] == 1, 1, 2 * mg["death"])
-    y = Surv.multistate(etime, event=cause, states=("pcm", "death"))
+    state = pd.Categorical.from_codes(cause.astype(int), categories=["censor", "pcm", "death"])
+    y = Surv(time=etime, event=state)
     if by_sex:
         return AalenJohansen().fit(y, by=mg["sex"])
     return AalenJohansen().fit(y)
