@@ -18,8 +18,9 @@ understand what the model predicts. This page covers the proportional hazards te
 baseline hazard and survival prediction, stratification, robust standard errors, and the concordance
 index. Together these turn a fitted model into a defensible one.
 
-We begin with the `lung` outcomes. The response `y` is a `Surv` object pairing each follow-up time
-with an event indicator, and it is the target every model on this page is fit against.
+We begin with the `lung` outcomes. The outcome `death` names the column holding each follow-up time
+and the column holding the event indicator. Written as `Surv(time, status)` on the left-hand side of
+a formula, it is the target every model on this page is fit against.
 
 ```{python}
 import greenwood as gw
@@ -27,20 +28,20 @@ import greenwood as gw
 # Load the bundled lung dataset as a Polars DataFrame
 lung = gw.load_dataset("lung", backend="polars")
 
-# Build a right-censored response, where a status of 2 marks a death
-y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+# Describe a right-censored response by naming its columns (a status of 2 marks a death)
+death = gw.Outcome.surv(time="time", event="status")
 
-# Display the response summary
-y
+# Evaluate the response against the data to see its summary
+death.bind(lung)
 ```
 
-The printed response records 165 events among 228 subjects, with a `+` marking each censored
-observation. We fit a Cox model to it using `age` and `sex` as covariates. This is the model we
-diagnose throughout the page, so we fit it once here and reuse it below.
+The printed response records 165 events among 228 subjects. We fit a Cox model to it using `age`
+and `sex` as covariates. This is the model we diagnose throughout the page, so we fit it once here
+and reuse it below.
 
 ```{python}
 # Fit the model we will diagnose throughout this page
-cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
+cox = gw.CoxPH().fit("Surv(time, status) ~ age + sex", data=lung)
 ```
 
 With the response and model in hand, the sections below work through each diagnostic in turn.
@@ -57,12 +58,11 @@ Calling `cox_zph()` returns a `ZPHResult`, an object that bundles the test stati
 Displaying it directly gives a compact summary of the test.
 
 ```{python}
-# Load data and build the response
+# Load the data
 lung = gw.load_dataset("lung", backend="polars")
-y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
 # Fit a Cox model with age and sex as covariates
-cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
+cox = gw.CoxPH().fit("Surv(time, status) ~ age + sex", data=lung)
 
 # Run the Grambsch-Therneau proportional hazards test
 zph = cox.cox_zph()
@@ -225,12 +225,11 @@ predicted. Deviance residuals are a normalized version that is more symmetricall
 better for spotting outliers.
 
 ```{python}
-# Load data and build the response
+# Load the data
 lung = gw.load_dataset("lung", backend="polars")
-y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
 # Fit a Cox model with age and sex as covariates
-cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
+cox = gw.CoxPH().fit("Surv(time, status) ~ age + sex", data=lung)
 
 # Compute martingale residuals (one per subject); peek at the first five
 cox.residuals(type="martingale")[:5]
@@ -352,12 +351,11 @@ fitting. The baseline cumulative hazard, and the survival curve derived from it,
 reference subject.
 
 ```{python}
-# Load data and build the response
+# Load the data
 lung = gw.load_dataset("lung", backend="polars")
-y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
 # Fit a Cox model with age and sex as covariates
-cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
+cox = gw.CoxPH().fit("Surv(time, status) ~ age + sex", data=lung)
 
 # Retrieve the Breslow cumulative baseline hazard and implied survival
 cox.baseline_hazard(format="polars")
@@ -481,16 +479,16 @@ cox.predict_expectation(newdata, tau=365, ci=True, format="polars")
 
 Sometimes a variable violates the proportional hazards assumption but is not of direct interest,
 such as enrolling hospital. Stratification lets each level of that variable have its own baseline
-hazard while sharing the coefficients of the covariates you do care about. You pass the stratifying
-variable to `strata`. Here we stratify by `sex` while keeping `age` and `ph.ecog` as covariates.
+hazard while sharing the coefficients of the covariates you do care about. You name the stratifying
+variable in a `strata()` term of the formula. Here we stratify by `sex` while keeping `age` and
+`ph.ecog` as covariates.
 
 ```{python}
-# Load data and build the response
+# Load the data
 lung = gw.load_dataset("lung", backend="polars")
-y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
 # Fit a stratified model: separate baselines per sex, shared age and ECOG coefficients
-stratified = gw.CoxPH().fit(y, covariates=["age", "ph.ecog"], data=lung, strata="sex")
+stratified = gw.CoxPH().fit("Surv(time, status) ~ age + ph.ecog + strata(sex)", data=lung)
 ```
 
 As with any fitted model, we can print `stratified` for a summary
@@ -541,15 +539,14 @@ Each subject's survival curve is computed against the baseline hazard of its str
 When observations are not independent, for example when the same subject contributes several rows or
 when subjects are grouped into clusters, the model-based standard errors are too small. The robust,
 or sandwich, variance corrects for this. Set `robust=True` for the Lin-Wei sandwich estimator, and
-pass `cluster` to group correlated observations.
+add a `cluster()` term to the formula to group correlated observations.
 
 ```{python}
-# Load data and build the response
+# Load the data
 lung = gw.load_dataset("lung", backend="polars")
-y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
 # Fit with the Lin-Wei sandwich variance; coefficients are unchanged, SEs are adjusted
-robust = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung, robust=True)
+robust = gw.CoxPH().fit("Surv(time, status) ~ age + sex", data=lung, robust=True)
 
 # Show only the standard errors to compare against the model-based values
 robust.to_frame(format="polars")[["term", "std_error"]]
@@ -566,12 +563,11 @@ one who failed first had the higher predicted risk. A value of 0.5 is no better 
 is perfect discrimination.
 
 ```{python}
-# Load data and build the response
+# Load the data
 lung = gw.load_dataset("lung", backend="polars")
-y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
 # Fit a Cox model with age and sex as covariates
-cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
+cox = gw.CoxPH().fit("Surv(time, status) ~ age + sex", data=lung)
 
 # Compute Harrell's C-statistic: probability of correct pairwise risk ordering
 cox.concordance()
