@@ -93,21 +93,20 @@ class CoxNet:
 
     Examples
     --------
-    Build a `Surv` response from the bundled `lung` dataset and fit a lasso (`l1_ratio=1.0`)
-    elastic-net Cox model over several covariates. The `ph.ecog`, `ph.karno`, and `wt.loss`
+    Write a formula naming the response and several covariates of the bundled `lung` dataset, and
+    fit a lasso (`l1_ratio=1.0`) elastic-net Cox model. The `ph.ecog`, `ph.karno`, and `wt.loss`
     columns have missing values, which `CoxNet` drops automatically. Printing the fitted object
     shows the penalized coefficients and how many were driven to zero.
 
     ```{python}
     import greenwood as gw
 
-    # Load data and build a right-censored response
+    # Load data and write the model formula
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-    cols = ["age", "sex", "ph.ecog", "ph.karno", "wt.loss"]
+    formula = "Surv(time, status) ~ age + sex + ph.ecog + ph.karno + wt.loss"
 
     # Fit a lasso-penalized Cox model
-    coxnet = gw.CoxNet(penalizer=0.05, l1_ratio=1.0).fit(y, covariates=lung[cols])
+    coxnet = gw.CoxNet(penalizer=0.05, l1_ratio=1.0).fit(formula, data=lung)
     coxnet
     ```
     """
@@ -151,7 +150,12 @@ class CoxNet:
         )
 
     def fit(
-        self, surv: Surv | Outcome | str, covariates: Any = None, *, data: Any = None
+        self,
+        surv: Surv | Outcome | str,
+        covariates: Any = None,
+        *,
+        data: Any = None,
+        weights: Any = None,
     ) -> CoxNet:
         r"""Fit the elastic-net penalized Cox model to survival data.
 
@@ -170,8 +174,8 @@ class CoxNet:
         Parameters
         ----------
         surv
-            A `Surv` response (right-censored or counting-process). Built with `Surv.right()`
-            or `Surv.counting()`.
+            A `Surv` response (right-censored or counting-process). Built with
+            `Surv(time=..., event=...)` or `Surv(time=start, time2=stop, event=...)`.
             An `Outcome` or a formula string such as `'Surv(time, status == 2) ~ age + sex'` is also
             accepted, with its columns read from `data`. The right-hand side sets `covariates`.
         covariates
@@ -183,6 +187,9 @@ class CoxNet:
             named by the response and `covariates`. When `surv` is an `Outcome` or a formula, rows
             with a missing value in any column used are dropped before fitting. Covariate formula
             strings and lists of column names are also resolved here.
+        weights
+            Case weights, one per row (a column name in `data`, or an array). Must be finite
+            and strictly positive. Default is `None` (all weights `1`).
 
         Returns
         -------
@@ -209,13 +216,12 @@ class CoxNet:
         ```{python}
         import greenwood as gw
 
-        # Load data and build a right-censored response
+        # Load data and write the model formula
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-        cols = ["age", "sex", "ph.ecog", "ph.karno", "wt.loss"]
+        formula = "Surv(time, status) ~ age + sex + ph.ecog + ph.karno + wt.loss"
 
         # Fit a ridge-penalized Cox model
-        coxnet_ridge = gw.CoxNet(penalizer=0.05, l1_ratio=0.0).fit(y, covariates=lung[cols])
+        coxnet_ridge = gw.CoxNet(penalizer=0.05, l1_ratio=0.0).fit(formula, data=lung)
         coxnet_ridge
         ```
 
@@ -223,13 +229,14 @@ class CoxNet:
 
         ```{python}
         # Fit a lasso-penalized Cox model for variable selection
-        coxnet_lasso = gw.CoxNet(penalizer=0.05, l1_ratio=1.0).fit(y, covariates=lung[cols])
+        coxnet_lasso = gw.CoxNet(penalizer=0.05, l1_ratio=1.0).fit(formula, data=lung)
         coxnet_lasso
         ```
         """
         bound = bind_fit_inputs(
             surv,
             data=data,
+            labels={"weights": weights},
             designs={"covariates": covariates},
             rhs_to="covariates",
             required=("covariates",),
@@ -254,7 +261,7 @@ class CoxNet:
             raise ValueError("Covariates and response must have the same number of rows.")
 
         entry, exit_, event = surv.entry, surv.stop, surv.event
-        weight = surv.weights if surv.weights is not None else np.ones(surv.n)
+        weight = bound.labels["weights"] if bound.labels["weights"] is not None else np.ones(surv.n)
         keep = ~np.isnan(x).any(axis=1)
         x, entry, exit_ = x[keep], entry[keep], exit_[keep]
         event, weight = event[keep], weight[keep]
@@ -417,12 +424,11 @@ class CoxNet:
 
         # Load data and fit a lasso-penalized Cox model
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-        cols = ["age", "sex", "ph.ecog", "ph.karno", "wt.loss"]
-        coxnet = gw.CoxNet(penalizer=0.05, l1_ratio=1.0).fit(y, covariates=lung[cols])
+        formula = "Surv(time, status) ~ age + sex + ph.ecog + ph.karno + wt.loss"
+        coxnet = gw.CoxNet(penalizer=0.05, l1_ratio=1.0).fit(formula, data=lung)
 
         # Predict the linear predictor for the first five subjects
-        coxnet.predict(lung[cols], type="lp")[:5]
+        coxnet.predict(lung, type="lp")[:5]
         ```
 
         Pass `type="risk"` for the relative risk $\exp(\text{lp})$, showing how many times the
@@ -430,7 +436,7 @@ class CoxNet:
 
         ```{python}
         # Predict relative risk for the first five subjects
-        coxnet.predict(lung[cols], type="risk")[:5]
+        coxnet.predict(lung, type="risk")[:5]
         ```
 
         Pass `type="survival"` for predicted survival curves at specified times or at the event
@@ -438,7 +444,7 @@ class CoxNet:
 
         ```{python}
         # Predict survival probabilities for two subjects at 180 and 365 days
-        coxnet.predict(lung[cols][:2], type="survival", times=[180, 365], format="polars")
+        coxnet.predict(lung[:2], type="survival", times=[180, 365], format="polars")
         ```
         """
         x = self._x if newdata is None else self._design_spec.transform(newdata)
@@ -497,9 +503,8 @@ class CoxNet:
 
         # Load data and fit a lasso-penalized Cox model
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-        cols = ["age", "sex", "ph.ecog", "ph.karno", "wt.loss"]
-        coxnet = gw.CoxNet(penalizer=0.05, l1_ratio=1.0).fit(y, covariates=lung[cols])
+        formula = "Surv(time, status) ~ age + sex + ph.ecog + ph.karno + wt.loss"
+        coxnet = gw.CoxNet(penalizer=0.05, l1_ratio=1.0).fit(formula, data=lung)
 
         # Export the penalized coefficients as a Polars DataFrame
         coxnet.to_frame(format="polars")
@@ -537,10 +542,8 @@ class CoxNet:
         import greenwood as gw
 
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-
         ridge = gw.CoxNet(penalizer=0.1, l1_ratio=0.0).fit(
-            y, covariates=["age", "sex", "ph.ecog", "ph.karno"], data=lung
+            "Surv(time, status) ~ age + sex + ph.ecog + ph.karno", data=lung
         )
         ridge.effective_df()
         ```
@@ -581,11 +584,10 @@ class CoxNet:
         import greenwood as gw
 
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-        cols = ["age", "sex", "ph.ecog", "ph.karno"]
+        formula = "Surv(time, status) ~ age + sex + ph.ecog + ph.karno"
 
         for lam in [0.01, 0.05, 0.1]:
-            m = gw.CoxNet(penalizer=lam, l1_ratio=0.5).fit(y, covariates=cols, data=lung)
+            m = gw.CoxNet(penalizer=lam, l1_ratio=0.5).fit(formula, data=lung)
             print(f"lambda={lam}: AIC={m.aic():.1f}, edf={m.effective_df():.2f}")
         ```
         """
@@ -609,10 +611,8 @@ class CoxNet:
         import greenwood as gw
 
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-
         ridge = gw.CoxNet(penalizer=0.1, l1_ratio=0.0).fit(
-            y, covariates=["age", "sex", "ph.ecog", "ph.karno"], data=lung
+            "Surv(time, status) ~ age + sex + ph.ecog + ph.karno", data=lung
         )
         ridge.bic()
         ```
@@ -732,13 +732,12 @@ class CoxNetCVResult:
     ```{python}
     import greenwood as gw
 
-    # Load data and build a right-censored response
+    # Load data and write the model formula
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-    cols = ["age", "sex", "ph.ecog", "ph.karno", "wt.loss"]
+    formula = "Surv(time, status) ~ age + sex + ph.ecog + ph.karno + wt.loss"
 
     # Run cross-validated penalizer selection
-    cv_result = gw.cv_coxnet(y, covariates=lung[cols], seed=23)
+    cv_result = gw.cv_coxnet(formula, data=lung, seed=23)
     cv_result
     ```
 
@@ -830,9 +829,8 @@ class CoxNetCVResult:
 
         # Load data and run cross-validated penalizer selection
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-        cols = ["age", "sex", "ph.ecog", "ph.karno", "wt.loss"]
-        result = gw.cv_coxnet(y, covariates=lung[cols], seed=23)
+        formula = "Surv(time, status) ~ age + sex + ph.ecog + ph.karno + wt.loss"
+        result = gw.cv_coxnet(formula, data=lung, seed=23)
 
         # Export the CV path as a Polars DataFrame
         result.to_frame(format="polars")
@@ -854,6 +852,7 @@ def cv_coxnet(
     covariates: Any = None,
     *,
     data: Any = None,
+    weights: Any = None,
     l1_ratio: float = 1.0,
     penalizers: Any = None,
     n_penalizers: int = 50,
@@ -886,6 +885,9 @@ def cv_coxnet(
         by the response and `covariates`. When `surv` is an `Outcome` or a formula, rows with a
         missing value in any column used are dropped first, along with the matching rows of any
         arrays passed alongside.
+    weights
+        Case weights, one per row (a column name in `data`, or an array). Must be finite
+        and strictly positive. Default is `None` (all weights `1`).
     l1_ratio
         Elastic-net mixing parameter (default `1.0` = lasso). Fixed across the entire path (only the
         `penalizer` is varied).
@@ -945,8 +947,8 @@ def cv_coxnet(
     **Fitting the final model.** After selecting a penalizer, refit on all data:
 
     ```python
-    result = gw.cv_coxnet(y, covariates=x, seed=23)
-    final = gw.CoxNet(penalizer=result.best_penalizer_).fit(y, covariates=x)
+    result = gw.cv_coxnet(formula, data=df, seed=23)
+    final = gw.CoxNet(penalizer=result.best_penalizer_).fit(formula, data=df)
     ```
 
     Examples
@@ -956,13 +958,12 @@ def cv_coxnet(
     ```{python}
     import greenwood as gw
 
-    # Load data and build a right-censored response
+    # Load data and write the model formula
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-    cols = ["age", "sex", "ph.ecog", "ph.karno", "wt.loss"]
+    formula = "Surv(time, status) ~ age + sex + ph.ecog + ph.karno + wt.loss"
 
     # Run cross-validated lasso selection with 3 folds
-    result = gw.cv_coxnet(y, covariates=lung[cols], l1_ratio=1.0, n_penalizers=10, k=3, seed=23)
+    result = gw.cv_coxnet(formula, data=lung, l1_ratio=1.0, n_penalizers=10, k=3, seed=23)
     result
     ```
 
@@ -977,7 +978,7 @@ def cv_coxnet(
 
     ```{python}
     # Refit at the best penalizer on all data
-    final = gw.CoxNet(penalizer=result.best_penalizer_, l1_ratio=1.0).fit(y, covariates=lung[cols])
+    final = gw.CoxNet(penalizer=result.best_penalizer_, l1_ratio=1.0).fit(formula, data=lung)
     final
     ```
 
@@ -985,13 +986,14 @@ def cv_coxnet(
 
     ```{python}
     # Refit at the 1-SE penalizer for a sparser model
-    sparse = gw.CoxNet(penalizer=result.penalizer_1se_, l1_ratio=1.0).fit(y, covariates=lung[cols])
+    sparse = gw.CoxNet(penalizer=result.penalizer_1se_, l1_ratio=1.0).fit(formula, data=lung)
     sparse
     ```
     """
     bound = bind_fit_inputs(
         surv,
         data=data,
+        labels={"weights": weights},
         designs={"covariates": covariates},
         rhs_to="covariates",
         required=("covariates",),
@@ -1040,7 +1042,7 @@ def cv_coxnet(
     entry = surv.entry
     exit_ = surv.stop
     event = surv.event
-    weight = surv.weights if surv.weights is not None else np.ones(n)
+    weight = bound.labels["weights"] if bound.labels["weights"] is not None else np.ones(n)
 
     if not event.any():
         raise ValueError("No events remain after dropping missing rows.")
