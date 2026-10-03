@@ -13,7 +13,7 @@ from greenwood import CoxPH, Surv  # noqa: E402
 @pytest.fixture
 def shr():
     df = gw.load_dataset("lung", backend="pandas")
-    y = Surv.right(df["time"], event=(df["status"] == 2))
+    y = Surv(time=df["time"], event=(df["status"] == 2))
     cox = CoxPH().fit(y, df[["age", "sex"]])
     return cox.smooth_hr("age")
 
