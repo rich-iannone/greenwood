@@ -183,8 +183,7 @@ def plot_survival(
     import greenwood as gw
 
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-    km = gw.KaplanMeier().fit(y, by="sex", data=lung)
+    km = gw.KaplanMeier().fit("Surv(time, status) ~ sex", data=lung)
 
     # Interactive Altair (default)
     gw.plot_survival(km, risk_table=True)
@@ -452,14 +451,13 @@ def plot_predicted_survival(
     ```{python}
     import greenwood as gw
 
-    # Load data and build a right-censored response
     lung = gw.load_dataset("lung", backend="pandas").dropna(subset=["ph.ecog", "ph.karno"])
-    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-    cols = ["age", "sex", "ph.ecog", "ph.karno", "wt.loss"]
 
     # Fit a forest and plot per-subject predicted survival
-    rsf = gw.RandomSurvivalForest(n_estimators=100, random_state=0).fit(y, covariates=lung[cols])
-    gw.plot_predicted_survival(rsf, newdata=lung[cols][:4])
+    rsf = gw.RandomSurvivalForest(n_estimators=100, random_state=0).fit(
+        "Surv(time, status) ~ age + sex + ph.ecog + ph.karno + wt.loss", data=lung
+    )
+    gw.plot_predicted_survival(rsf, newdata=lung.head(4))
     ```
     """
     if backend != "altair":
