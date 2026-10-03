@@ -38,7 +38,8 @@ Greenwood is a Python library for survival analysis, the statistical study of ti
 
 Descriptive statistics:
 
-- **`Surv` response object**: Handle right-, left-, and interval-censored data; counting-process form; left truncation; weights; and multi-state endpoints with built-in validation.
+- **`Surv` response object**: One `Surv()` call that mirrors R's `survival::Surv()` handles right-, left-, and interval-censored data, the counting-process form with left truncation, and multi-state endpoints. `event_time()` offers a compact alternative with one-letter status codes.
+- **Formulas and `Outcome`**: Describe a response by column names and R-style expressions (`"Surv(time, status == 2) ~ age"`, or `Outcome.surv(time="time", event="status == 2")`), evaluated against `data=` at fit. The same description works on Pandas, Polars, PyArrow, DuckDB, and lazy frames.
 - **Kaplan-Meier estimation** (`KaplanMeier`): Survival curves with Greenwood confidence intervals, median/quantile survival, restricted mean survival time, and step-function predictions.
 - **Nelson-Aalen estimator** (`NelsonAalen`): Cumulative hazard curves.
 - **Visualization** (`plot_survival()`, `plot_forest()`, `plot_cif()`): Interactive survival curves with confidence bands and censoring marks, publication-ready forest plots with aligned at-risk tables, and cumulative incidence plots for competing risks (all with a choice of plotting backends and Great Tables integration).
@@ -83,22 +84,24 @@ Here's a simple example that loads survival data, estimates a survival curve, an
 ```python
 import greenwood as gw
 
-# Load the data and represent it as a survival object (a status of 2 marks a death)
+# Load the data and describe the response by column names (a status of 2 marks a death)
 lung = gw.load_dataset("lung", backend="polars")
-y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+death = gw.Outcome.surv(time="time", event="status")
 
-# Estimate the Kaplan-Meier survival curve
-km = gw.KaplanMeier().fit(y)
+# Estimate the Kaplan-Meier survival curve, reading the columns from the frame
+km = gw.KaplanMeier().fit(death, data=lung)
 
 # Visualize it
 gw.plot_survival(km)
 
 # Fit a Cox proportional hazards model, written as an R-style formula
-cox = gw.CoxPH().fit("Surv(time, status == 2) ~ age + sex", data=lung)
+cox = gw.CoxPH().fit("Surv(time, status) ~ age + sex", data=lung)
 ```
 
-The same calls work on Pandas, Polars, PyArrow, and DuckDB data, because columns are named and the
-event coding is declared as a value rather than written as a data frame expression.
+The same calls work on Pandas, Polars, PyArrow, DuckDB, and lazy frames, because the response is
+described by column names and R-style expressions (such as `status == 2`) that Greenwood evaluates
+against `data=`, rather than by data frame code. When the values are already in hand as lists or
+arrays, `gw.Surv(time=..., event=...)` builds the response from them directly.
 
 That's it! See the [user guide](user-guide/quick-start.qmd) for more details on each step, and scroll down for a comprehensive example covering more of Greenwood's capabilities.
 
@@ -112,8 +115,7 @@ import greenwood as gw
 df = gw.load_dataset("lung", backend="polars")
 
 # Describe the endpoint once, then fit anything from the frame
-death = gw.Outcome.right(time="time", event="status", event_value=2)
-y = death.bind(df)
+death = gw.Outcome.surv(time="time", event="status")
 
 # Kaplan-Meier with stratification and detailed summaries
 km = gw.KaplanMeier(conf_type="log-log").fit(death, by="sex", data=df)
@@ -123,14 +125,14 @@ km.rmst(tau=365, ci=True)      # restricted mean survival time up to 365 days
 km.predict(times=[180, 365])     # survival probability at specific times
 
 # Statistical tests
-gw.logrank_test(death, group="sex", data=df)          # standard log-rank test
-gw.logrank_test(death, group="sex", data=df, rho=1)   # Peto-Peto (G-rho) test
+gw.logrank_test("Surv(time, status) ~ sex", data=df)          # standard log-rank test
+gw.logrank_test("Surv(time, status) ~ sex", data=df, rho=1)   # Peto-Peto (G-rho) test
 
 # Visualization with risk tables
 gw.plot_survival(km, risk_table=True)
 
 # Cox proportional hazards regression
-cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=df)
+cox = gw.CoxPH().fit("Surv(time, status) ~ age + sex", data=df)
 gw.tidy(cox, exponentiate=True, format="polars")  # hazard ratios with confidence intervals
 gw.glance(cox, format="polars")              # model-level stats (loglik, AIC, concordance)
 cox.cox_zph()                                # proportional-hazards test
@@ -138,23 +140,21 @@ cox.concordance()                            # C-statistic
 cox.predict(df.head(), type="survival", times=[180, 365], format="polars")
 
 # Penalized Cox: elastic-net with cross-validated lambda (rows with missing values are dropped)
-coxnet = gw.CoxNet(l1_ratio=1.0).fit(
-    death, covariates=["age", "sex", "ph.ecog", "wt.loss"], data=df
-)
-cv_result = gw.cv_coxnet(death, covariates=["age", "sex", "ph.ecog", "wt.loss"], data=df)
+coxnet = gw.CoxNet(l1_ratio=1.0).fit("Surv(time, status) ~ age + sex + ph.ecog + wt.loss", data=df)
+cv_result = gw.cv_coxnet("Surv(time, status) ~ age + sex + ph.ecog + wt.loss", data=df)
 cv_result.best_penalizer_   # penalty with the best cross-validated score
 
 # Flexible parametric model (spline-based, proportional hazards)
-rp = gw.RoystonParmar(df=3).fit(y, covariates=["age", "sex"], data=df)
+rp = gw.RoystonParmar(df=3).fit("Surv(time, status) ~ age + sex", data=df)
 gw.tidy(rp, format="polars")
 
 # Parametric accelerated failure time models
-aft = gw.AFT(dist="weibull").fit(y, covariates=["age", "sex"], data=df)
+aft = gw.AFT(dist="weibull").fit("Surv(time, status) ~ age + sex", data=df)
 gw.tidy(aft, format="polars")           # coefficients on the log-time scale
 
 # Univariate distribution fitting and comparison
 gw.compare_distributions(
-    y, format="polars"
+    death, data=df, format="polars"
 )  # rank Weibull / exponential / lognormal / loglogistic by AIC
 
 # Study design: events and sample size for an 80% powered log-rank test
@@ -168,11 +168,11 @@ gw.AalenJohansen().fit(cr, data=mg).to_frame(format="polars")
 gw.FineGray(cause="pcm").fit(cr, covariates=["age", "sex"], data=mg).to_frame(format="polars")
 
 # Model performance and prediction
-gw.concordance_index(y, risk=cox.predict(type="lp"))
+gw.concordance_index(death, risk=cox.predict(type="lp"), data=df)
 # One row per time, one column per subject: drop the time column and transpose
 S = cox.predict(df, type="survival", times=[180, 365], format="polars").drop("time").to_numpy().T
-gw.brier_score(y, survival_prob=S, times=[180, 365])
-gw.time_dependent_auc(y, marker=cox.predict(type="lp"), times=[180, 365])
+gw.brier_score(death, survival_prob=S, times=[180, 365], data=df)
+gw.time_dependent_auc(death, marker=cox.predict(type="lp"), times=[180, 365], data=df)
 ```
 
 ## License
