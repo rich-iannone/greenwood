@@ -89,6 +89,10 @@ def test_plot_survival_invalid_backend(km_overall: gw.KaplanMeier) -> None:
 
 
 class TestThemeSurvival:
+    def test_exported_at_top_level(self) -> None:
+        assert gw.theme_survival is gw.viz.theme_survival is gw.viz.plotnine.theme_survival
+        assert "theme_survival" in gw.__all__
+
     def test_returns_theme_instance(self) -> None:
         theme = gw.viz.plotnine.theme_survival()
         assert isinstance(theme, p9.theme)
