@@ -23,7 +23,7 @@ def fixture():
 @pytest.fixture(scope="module")
 def lung_data():
     lung = gw.load_dataset("lung", backend="pandas")
-    y = Surv.right(lung["time"], event=(lung["status"] == 2))
+    y = Surv(time=lung["time"], event=(lung["status"] == 2))
     return y, lung
 
 
