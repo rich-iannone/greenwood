@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pandas as pd
 import pytest
 
 import greenwood as gw
@@ -18,7 +19,10 @@ def cr_data():
     mg = gw.load_dataset("mgus2", backend="pandas")
     etime = np.where(mg["pstat"] == 1, mg["ptime"], mg["futime"])
     cause = np.where(mg["pstat"] == 1, 1, 2 * mg["death"])
-    y = gw.Surv.multistate(etime, event=cause, states=("pcm", "death"))
+    y = gw.Surv(
+        time=etime,
+        event=pd.Categorical.from_codes(cause.astype(int), categories=["censor", "pcm", "death"]),
+    )
     X = mg[["age", "sex"]]
     return y, X, mg
 
@@ -69,7 +73,7 @@ class TestFitAndRepr:
 
 class TestValidation:
     def test_right_censored_rejected(self):
-        y = gw.Surv.right([1, 2, 3], event=[True, False, True])
+        y = gw.Surv(time=[1, 2, 3], event=[True, False, True])
         with pytest.raises(NotImplementedError, match="multistate"):
             gw.CompetingRiskForest(n_estimators=2).fit(y, np.array([[1], [2], [3]]))
 
