@@ -1,0 +1,1476 @@
+[
+  {
+    "id": "right_01",
+    "description": "Right-censored with 0/1 status.",
+    "args": {
+      "time": {
+        "r_type": "double",
+        "values": [5, 6, 4, 9]
+      },
+      "event": {
+        "r_type": "double",
+        "values": [1, 0, 1, 0]
+      }
+    },
+    "result": {
+      "ok": true,
+      "type": "right",
+      "states": null,
+      "columns": {
+        "time": [5, 6, 4, 9],
+        "status": [1, 0, 1, 0]
+      },
+      "warnings": []
+    }
+  },
+  {
+    "id": "right_logical",
+    "description": "Logical status.",
+    "args": {
+      "time": {
+        "r_type": "double",
+        "values": [5, 6]
+      },
+      "event": {
+        "r_type": "logical",
+        "values": [
+          true,
+          false
+        ]
+      }
+    },
+    "result": {
+      "ok": true,
+      "type": "right",
+      "states": null,
+      "columns": {
+        "time": [5, 6],
+        "status": [1, 0]
+      },
+      "warnings": []
+    }
+  },
+  {
+    "id": "right_12",
+    "description": "1/2 status (as in lung) is converted to 0/1.",
+    "args": {
+      "time": {
+        "r_type": "double",
+        "values": [5, 6, 4]
+      },
+      "event": {
+        "r_type": "double",
+        "values": [2, 1, 2]
+      }
+    },
+    "result": {
+      "ok": true,
+      "type": "right",
+      "states": null,
+      "columns": {
+        "time": [5, 6, 4],
+        "status": [1, 0, 1]
+      },
+      "warnings": []
+    }
+  },
+  {
+    "id": "right_012_invalid",
+    "description": "0/1/2 status: max is 2, so 0 becomes -1 and is set to NA with a warning.",
+    "args": {
+      "time": {
+        "r_type": "double",
+        "values": [5, 6, 4]
+      },
+      "event": {
+        "r_type": "double",
+        "values": [0, 1, 2]
+      }
+    },
+    "result": {
+      "ok": true,
+      "type": "right",
+      "states": null,
+      "columns": {
+        "time": [5, 6, 4],
+        "status": ["NA", 0, 1]
+      },
+      "warnings": ["Invalid status value, converted to NA"]
+    }
+  },
+  {
+    "id": "right_invalid_code",
+    "description": "A status of 3 is invalid and becomes NA.",
+    "args": {
+      "time": {
+        "r_type": "double",
+        "values": [5, 6]
+      },
+      "event": {
+        "r_type": "double",
+        "values": [1, 3]
+      }
+    },
+    "result": {
+      "ok": true,
+      "type": "right",
+      "states": null,
+      "columns": {
+        "time": [5, 6],
+        "status": [1, "NA"]
+      },
+      "warnings": ["Invalid status value, converted to NA"]
+    }
+  },
+  {
+    "id": "right_status_na",
+    "description": "A missing status stays missing.",
+    "args": {
+      "time": {
+        "r_type": "double",
+        "values": [5, 6]
+      },
+      "event": {
+        "r_type": "double",
+        "values": [1, "NA"]
+      }
+    },
+    "result": {
+      "ok": true,
+      "type": "right",
+      "states": null,
+      "columns": {
+        "time": [5, 6],
+        "status": [1, "NA"]
+      },
+      "warnings": []
+    }
+  },
+  {
+    "id": "right_time_na",
+    "description": "A missing time stays missing.",
+    "args": {
+      "time": {
+        "r_type": "double",
+        "values": ["NA", 6]
+      },
+      "event": {
+        "r_type": "double",
+        "values": [1, 0]
+      }
+    },
+    "result": {
+      "ok": true,
+      "type": "right",
+      "states": null,
+      "columns": {
+        "time": ["NA", 6],
+        "status": [1, 0]
+      },
+      "warnings": []
+    }
+  },
+  {
+    "id": "right_time_inf",
+    "description": "An infinite time is allowed.",
+    "args": {
+      "time": {
+        "r_type": "double",
+        "values": ["Inf", 6]
+      },
+      "event": {
+        "r_type": "double",
+        "values": [0, 1]
+      }
+    },
+    "result": {
+      "ok": true,
+      "type": "right",
+      "states": null,
+      "columns": {
+        "time": ["Inf", 6],
+        "status": [0, 1]
+      },
+      "warnings": []
+    }
+  },
+  {
+    "id": "right_negative_time",
+    "description": "Negative times are allowed.",
+    "args": {
+      "time": {
+        "r_type": "double",
+        "values": [-1, 6]
+      },
+      "event": {
+        "r_type": "double",
+        "values": [1, 0]
+      }
+    },
+    "result": {
+      "ok": true,
+      "type": "right",
+      "states": null,
+      "columns": {
+        "time": [-1, 6],
+        "status": [1, 0]
+      },
+      "warnings": []
+    }
+  },
+  {
+    "id": "right_integer",
+    "description": "Integer time and status.",
+    "args": {
+      "time": {
+        "r_type": "integer",
+        "values": [5, 6]
+      },
+      "event": {
+        "r_type": "integer",
+        "values": [1, 0]
+      }
+    },
+    "result": {
+      "ok": true,
+      "type": "right",
+      "states": null,
+      "columns": {
+        "time": [5, 6],
+        "status": [1, 0]
+      },
+      "warnings": []
+    }
+  },
+  {
+    "id": "right_time_only",
+    "description": "Only a time: every row is an event.",
+    "args": {
+      "time": {
+        "r_type": "double",
+        "values": [5, 6, 4]
+      }
+    },
+    "result": {
+      "ok": true,
+      "type": "right",
+      "states": null,
+      "columns": {
+        "time": [5, 6, 4],
+        "status": [1, 1, 1]
+      },
+      "warnings": []
+    }
+  },
+  {
+    "id": "right_positional",
+    "description": "Two positional arguments: the second is the status, passed as time2.",
+    "args": {
+      "time": {
+        "r_type": "double",
+        "values": [5, 6]
+      },
+      "time2": {
+        "r_type": "double",
+        "values": [1, 0]
+      }
+    },
+    "result": {
+      "ok": true,
+      "type": "right",
+      "states": null,
+      "columns": {
+        "time": [5, 6],
+        "status": [1, 0]
+      },
+      "warnings": []
+    }
+  },
+  {
+    "id": "right_explicit_type",
+    "description": "type = 'right' given explicitly.",
+    "args": {
+      "time": {
+        "r_type": "double",
+        "values": [5, 6]
+      },
+      "event": {
+        "r_type": "double",
+        "values": [1, 0]
+      },
+      "type": "right"
+    },
+    "result": {
+      "ok": true,
+      "type": "right",
+      "states": null,
+      "columns": {
+        "time": [5, 6],
+        "status": [1, 0]
+      },
+      "warnings": []
+    }
+  },
+  {
+    "id": "right_origin",
+    "description": "origin is subtracted from the times.",
+    "args": {
+      "time": {
+        "r_type": "double",
+        "values": [5, 6]
+      },
+      "event": {
+        "r_type": "double",
+        "values": [1, 0]
+      },
+      "origin": 2
+    },
+    "result": {
+      "ok": true,
+      "type": "right",
+      "states": null,
+      "columns": {
+        "time": [3, 4],
+        "status": [1, 0]
+      },
+      "warnings": []
+    }
+  },
+  {
+    "id": "right_empty",
+    "description": "Zero-length input.",
+    "args": {
+      "time": {
+        "r_type": "double",
+        "values": []
+      },
+      "event": {
+        "r_type": "double",
+        "values": []
+      }
+    },
+    "result": {
+      "ok": true,
+      "type": "right",
+      "states": null,
+      "columns": {
+        "time": [],
+        "status": []
+      },
+      "warnings": ["no non-missing arguments to max; returning -Inf"]
+    }
+  },
+  {
+    "id": "right_all_na_status",
+    "description": "Every status missing.",
+    "args": {
+      "time": {
+        "r_type": "double",
+        "values": [5, 6]
+      },
+      "event": {
+        "r_type": "double",
+        "values": ["NA", "NA"]
+      }
+    },
+    "result": {
+      "ok": true,
+      "type": "right",
+      "states": null,
+      "columns": {
+        "time": [5, 6],
+        "status": ["NA", "NA"]
+      },
+      "warnings": ["no non-missing arguments to max; returning -Inf"]
+    }
+  },
+  {
+    "id": "right_character_status",
+    "description": "Character status is an error.",
+    "args": {
+      "time": {
+        "r_type": "double",
+        "values": [5, 6]
+      },
+      "event": {
+        "r_type": "character",
+        "values": [
+          "a",
+          "b"
+        ]
+      }
+    },
+    "result": {
+      "ok": false,
+      "message": "Invalid status value, must be logical or numeric",
+      "warnings": []
+    }
+  },
+  {
+    "id": "right_time_character",
+    "description": "Character time is an error.",
+    "args": {
+      "time": {
+        "r_type": "character",
+        "values": [
+          "a",
+          "b"
+        ]
+      },
+      "event": {
+        "r_type": "double",
+        "values": [1, 0]
+      }
+    },
+    "result": {
+      "ok": false,
+      "message": "Time variable is not numeric",
+      "warnings": []
+    }
+  },
+  {
+    "id": "right_time_logical",
+    "description": "Logical time is an error (not numeric).",
+    "args": {
+      "time": {
+        "r_type": "logical",
+        "values": [
+          true,
+          false
+        ]
+      },
+      "event": {
+        "r_type": "double",
+        "values": [1, 0]
+      }
+    },
+    "result": {
+      "ok": false,
+      "message": "Time variable is not numeric",
+      "warnings": []
+    }
+  },
+  {
+    "id": "right_length_mismatch",
+    "description": "Time and status of different lengths.",
+    "args": {
+      "time": {
+        "r_type": "double",
+        "values": [5, 6]
+      },
+      "event": {
+        "r_type": "double",
+        "values": [1]
+      }
+    },
+    "result": {
+      "ok": false,
+      "message": "Time and status are different lengths",
+      "warnings": []
+    }
+  },
+  {
+    "id": "right_wrong_arg_count",
+    "description": "type = 'right' with three arguments.",
+    "args": {
+      "time": {
+        "r_type": "double",
+        "values": [1]
+      },
+      "time2": {
+        "r_type": "double",
+        "values": [2]
+      },
+      "event": {
+        "r_type": "double",
+        "values": [1]
+      },
+      "type": "right"
+    },
+    "result": {
+      "ok": false,
+      "message": "Wrong number of args for this type of survival data",
+      "warnings": []
+    }
+  },
+  {
+    "id": "mright_factor",
+    "description": "A factor status gives a multi-state response. The first level is censoring.",
+    "args": {
+      "time": {
+        "r_type": "double",
+        "values": [5, 6, 7, 8]
+      },
+      "event": {
+        "r_type": "factor",
+        "values": [
+          "censor",
+          "pcm",
+          "death",
+          "pcm"
+        ],
+        "levels": [
+          "censor",
+          "pcm",
+          "death"
+        ]
+      }
+    },
+    "result": {
+      "ok": true,
+      "type": "mright",
+      "states": [
+        "pcm",
+        "death"
+      ],
+      "columns": {
+        "time": [5, 6, 7, 8],
+        "status": [0, 1, 2, 1]
+      },
+      "warnings": []
+    }
+  },
+  {
+    "id": "mright_factor_na",
+    "description": "A missing factor value is a missing status.",
+    "args": {
+      "time": {
+        "r_type": "double",
+        "values": [5, 6]
+      },
+      "event": {
+        "r_type": "factor",
+        "values": [
+          "pcm",
+          null
+        ],
+        "levels": [
+          "censor",
+          "pcm"
+        ]
+      }
+    },
+    "result": {
+      "ok": true,
+      "type": "mright",
+      "states": [
+        "pcm"
+      ],
+      "columns": {
+        "time": [5, 6],
+        "status": [1, "NA"]
+      },
+      "warnings": []
+    }
+  },
+  {
+    "id": "mright_type_character",
+    "description": "type = 'mstate' with character status: levels sort alphabetically.",
+    "args": {
+      "time": {
+        "r_type": "double",
+        "values": [5, 6, 7]
+      },
+      "event": {
+        "r_type": "character",
+        "values": [
+          "death",
+          "alive",
+          "pcm"
+        ]
+      },
+      "type": "mstate"
+    },
+    "result": {
+      "ok": true,
+      "type": "mright",
+      "states": [
+        "death",
+        "pcm"
+      ],
+      "columns": {
+        "time": [5, 6, 7],
+        "status": [1, 0, 2]
+      },
+      "warnings": []
+    }
+  },
+  {
+    "id": "mright_type_numeric",
+    "description": "type = 'mstate' with numeric status: levels sort numerically, so 0 is censoring.",
+    "args": {
+      "time": {
+        "r_type": "double",
+        "values": [5, 6, 7]
+      },
+      "event": {
+        "r_type": "double",
+        "values": [0, 2, 1]
+      },
+      "type": "mstate"
+    },
+    "result": {
+      "ok": true,
+      "type": "mright",
+      "states": [
+        "1",
+        "2"
+      ],
+      "columns": {
+        "time": [5, 6, 7],
+        "status": [0, 2, 1]
+      },
+      "warnings": []
+    }
+  },
+  {
+    "id": "mright_blank_state",
+    "description": "A blank state name is an error.",
+    "args": {
+      "time": {
+        "r_type": "double",
+        "values": [5, 6]
+      },
+      "event": {
+        "r_type": "factor",
+        "values": [
+          "a",
+          ""
+        ],
+        "levels": [
+          "a",
+          ""
+        ]
+      }
+    },
+    "result": {
+      "ok": false,
+      "message": "each state must have a non-blank name",
+      "warnings": []
+    }
+  },
+  {
+    "id": "left_01",
+    "description": "Left-censored: 1 is an exact event, 0 is left-censored.",
+    "args": {
+      "time": {
+        "r_type": "double",
+        "values": [5, 6, 4]
+      },
+      "event": {
+        "r_type": "double",
+        "values": [1, 0, 1]
+      },
+      "type": "left"
+    },
+    "result": {
+      "ok": true,
+      "type": "left",
+      "states": null,
+      "columns": {
+        "time": [5, 6, 4],
+        "status": [1, 0, 1]
+      },
+      "warnings": []
+    }
+  },
+  {
+    "id": "left_12",
+    "description": "Left-censored with 1/2 status.",
+    "args": {
+      "time": {
+        "r_type": "double",
+        "values": [5, 6]
+      },
+      "event": {
+        "r_type": "double",
+        "values": [2, 1]
+      },
+      "type": "left"
+    },
+    "result": {
+      "ok": true,
+      "type": "left",
+      "states": null,
+      "columns": {
+        "time": [5, 6],
+        "status": [1, 0]
+      },
+      "warnings": []
+    }
+  },
+  {
+    "id": "left_wrong_arg_count",
+    "description": "type = 'left' with only a time.",
+    "args": {
+      "time": {
+        "r_type": "double",
+        "values": [5, 6]
+      },
+      "type": "left"
+    },
+    "result": {
+      "ok": false,
+      "message": "Wrong number of args for this type of survival data",
+      "warnings": []
+    }
+  },
+  {
+    "id": "counting_01",
+    "description": "Counting-process (start, stop, event).",
+    "args": {
+      "time": {
+        "r_type": "double",
+        "values": [0, 2, 1]
+      },
+      "time2": {
+        "r_type": "double",
+        "values": [5, 6, 4]
+      },
+      "event": {
+        "r_type": "double",
+        "values": [1, 0, 1]
+      }
+    },
+    "result": {
+      "ok": true,
+      "type": "counting",
+      "states": null,
+      "columns": {
+        "start": [0, 2, 1],
+        "stop": [5, 6, 4],
+        "status": [1, 0, 1]
+      },
+      "warnings": []
+    }
+  },
+  {
+    "id": "counting_start_after_stop",
+    "description": "start >= stop sets start to NA with a warning.",
+    "args": {
+      "time": {
+        "r_type": "double",
+        "values": [0, 6, 4]
+      },
+      "time2": {
+        "r_type": "double",
+        "values": [5, 6, 3]
+      },
+      "event": {
+        "r_type": "double",
+        "values": [1, 0, 1]
+      }
+    },
+    "result": {
+      "ok": true,
+      "type": "counting",
+      "states": null,
+      "columns": {
+        "start": [0, "NA", "NA"],
+        "stop": [5, 6, 3],
+        "status": [1, 0, 1]
+      },
+      "warnings": ["Stop time must be > start time, NA created"]
+    }
+  },
+  {
+    "id": "counting_12",
+    "description": "Counting-process with 1/2 status.",
+    "args": {
+      "time": {
+        "r_type": "double",
+        "values": [0, 2]
+      },
+      "time2": {
+        "r_type": "double",
+        "values": [5, 6]
+      },
+      "event": {
+        "r_type": "double",
+        "values": [2, 1]
+      }
+    },
+    "result": {
+      "ok": true,
+      "type": "counting",
+      "states": null,
+      "columns": {
+        "start": [0, 2],
+        "stop": [5, 6],
+        "status": [1, 0]
+      },
+      "warnings": []
+    }
+  },
+  {
+    "id": "counting_logical",
+    "description": "Counting-process with logical status.",
+    "args": {
+      "time": {
+        "r_type": "double",
+        "values": [0, 2]
+      },
+      "time2": {
+        "r_type": "double",
+        "values": [5, 6]
+      },
+      "event": {
+        "r_type": "logical",
+        "values": [
+          true,
+          false
+        ]
+      }
+    },
+    "result": {
+      "ok": true,
+      "type": "counting",
+      "states": null,
+      "columns": {
+        "start": [0, 2],
+        "stop": [5, 6],
+        "status": [1, 0]
+      },
+      "warnings": []
+    }
+  },
+  {
+    "id": "counting_origin",
+    "description": "origin applies to start and stop.",
+    "args": {
+      "time": {
+        "r_type": "double",
+        "values": [1, 2]
+      },
+      "time2": {
+        "r_type": "double",
+        "values": [5, 6]
+      },
+      "event": {
+        "r_type": "double",
+        "values": [1, 0]
+      },
+      "origin": 1
+    },
+    "result": {
+      "ok": true,
+      "type": "counting",
+      "states": null,
+      "columns": {
+        "start": [0, 1],
+        "stop": [4, 5],
+        "status": [1, 0]
+      },
+      "warnings": []
+    }
+  },
+  {
+    "id": "mcounting_factor",
+    "description": "Counting-process with a factor status.",
+    "args": {
+      "time": {
+        "r_type": "double",
+        "values": [0, 2]
+      },
+      "time2": {
+        "r_type": "double",
+        "values": [5, 6]
+      },
+      "event": {
+        "r_type": "factor",
+        "values": [
+          "pcm",
+          "censor"
+        ],
+        "levels": [
+          "censor",
+          "pcm"
+        ]
+      }
+    },
+    "result": {
+      "ok": true,
+      "type": "mcounting",
+      "states": [
+        "pcm"
+      ],
+      "columns": {
+        "start": [0, 2],
+        "stop": [5, 6],
+        "status": [1, 0]
+      },
+      "warnings": []
+    }
+  },
+  {
+    "id": "counting_stop_length",
+    "description": "start and stop of different lengths.",
+    "args": {
+      "time": {
+        "r_type": "double",
+        "values": [0, 2]
+      },
+      "time2": {
+        "r_type": "double",
+        "values": [5]
+      },
+      "event": {
+        "r_type": "double",
+        "values": [1, 0]
+      }
+    },
+    "result": {
+      "ok": false,
+      "message": "Start and stop are different lengths",
+      "warnings": []
+    }
+  },
+  {
+    "id": "counting_event_length",
+    "description": "start and event of different lengths.",
+    "args": {
+      "time": {
+        "r_type": "double",
+        "values": [0, 2]
+      },
+      "time2": {
+        "r_type": "double",
+        "values": [5, 6]
+      },
+      "event": {
+        "r_type": "double",
+        "values": [1]
+      }
+    },
+    "result": {
+      "ok": false,
+      "message": "Start and event are different lengths",
+      "warnings": []
+    }
+  },
+  {
+    "id": "counting_stop_character",
+    "description": "Character stop time.",
+    "args": {
+      "time": {
+        "r_type": "double",
+        "values": [0, 2]
+      },
+      "time2": {
+        "r_type": "character",
+        "values": [
+          "a",
+          "b"
+        ]
+      },
+      "event": {
+        "r_type": "double",
+        "values": [1, 0]
+      }
+    },
+    "result": {
+      "ok": false,
+      "message": "Stop time is not numeric",
+      "warnings": []
+    }
+  },
+  {
+    "id": "counting_status_character",
+    "description": "Character status.",
+    "args": {
+      "time": {
+        "r_type": "double",
+        "values": [0, 2]
+      },
+      "time2": {
+        "r_type": "double",
+        "values": [5, 6]
+      },
+      "event": {
+        "r_type": "character",
+        "values": [
+          "a",
+          "b"
+        ]
+      }
+    },
+    "result": {
+      "ok": false,
+      "message": "Invalid status value",
+      "warnings": []
+    }
+  },
+  {
+    "id": "counting_wrong_arg_count",
+    "description": "type = 'counting' with two arguments.",
+    "args": {
+      "time": {
+        "r_type": "double",
+        "values": [0, 2]
+      },
+      "event": {
+        "r_type": "double",
+        "values": [1, 0]
+      },
+      "type": "counting"
+    },
+    "result": {
+      "ok": false,
+      "message": "Wrong number of args for this type of survival data",
+      "warnings": []
+    }
+  },
+  {
+    "id": "interval_codes",
+    "description": "Interval coding: 0 right, 1 exact, 2 left, 3 interval. time2 is 1 except for interval rows.",
+    "args": {
+      "time": {
+        "r_type": "double",
+        "values": [5, 6, 4, 2]
+      },
+      "time2": {
+        "r_type": "double",
+        "values": ["NA", "NA", "NA", 4]
+      },
+      "event": {
+        "r_type": "double",
+        "values": [0, 1, 2, 3]
+      },
+      "type": "interval"
+    },
+    "result": {
+      "ok": true,
+      "type": "interval",
+      "states": null,
+      "columns": {
+        "time1": [5, 6, 4, 2],
+        "time2": [1, 1, 1, 4],
+        "status": [0, 1, 2, 3]
+      },
+      "warnings": []
+    }
+  },
+  {
+    "id": "interval_no_intervals",
+    "description": "No interval rows: time2 is never used.",
+    "args": {
+      "time": {
+        "r_type": "double",
+        "values": [5, 6]
+      },
+      "time2": {
+        "r_type": "logical",
+        "values": [
+          null,
+          null
+        ]
+      },
+      "event": {
+        "r_type": "double",
+        "values": [0, 1]
+      },
+      "type": "interval"
+    },
+    "result": {
+      "ok": true,
+      "type": "interval",
+      "states": null,
+      "columns": {
+        "time1": [5, 6],
+        "time2": [1, 1],
+        "status": [0, 1]
+      },
+      "warnings": []
+    }
+  },
+  {
+    "id": "interval_invalid_code",
+    "description": "A code of 4 becomes NA with a warning.",
+    "args": {
+      "time": {
+        "r_type": "double",
+        "values": [5, 6]
+      },
+      "time2": {
+        "r_type": "double",
+        "values": [7, 8]
+      },
+      "event": {
+        "r_type": "double",
+        "values": [1, 4]
+      },
+      "type": "interval"
+    },
+    "result": {
+      "ok": true,
+      "type": "interval",
+      "states": null,
+      "columns": {
+        "time1": [5, 6],
+        "time2": [1, 1],
+        "status": [1, "NA"]
+      },
+      "warnings": ["Status must be 0, 1, 2 or 3; converted to NA"]
+    }
+  },
+  {
+    "id": "interval_backwards",
+    "description": "An interval with time > time2 becomes NA with a warning.",
+    "args": {
+      "time": {
+        "r_type": "double",
+        "values": [5, 2]
+      },
+      "time2": {
+        "r_type": "double",
+        "values": [3, 4]
+      },
+      "event": {
+        "r_type": "double",
+        "values": [3, 3]
+      },
+      "type": "interval"
+    },
+    "result": {
+      "ok": true,
+      "type": "interval",
+      "states": null,
+      "columns": {
+        "time1": [5, 2],
+        "time2": [1, 4],
+        "status": ["NA", 3]
+      },
+      "warnings": ["Invalid interval: start > stop, NA created"]
+    }
+  },
+  {
+    "id": "interval_origin",
+    "description": "origin applies to both times.",
+    "args": {
+      "time": {
+        "r_type": "double",
+        "values": [5, 2]
+      },
+      "time2": {
+        "r_type": "double",
+        "values": ["NA", 4]
+      },
+      "event": {
+        "r_type": "double",
+        "values": [1, 3]
+      },
+      "type": "interval",
+      "origin": 1
+    },
+    "result": {
+      "ok": true,
+      "type": "interval",
+      "states": null,
+      "columns": {
+        "time1": [4, 1],
+        "time2": [1, 3],
+        "status": [1, 3]
+      },
+      "warnings": []
+    }
+  },
+  {
+    "id": "interval_status_na",
+    "description": "A missing code stays missing.",
+    "args": {
+      "time": {
+        "r_type": "double",
+        "values": [5, 2]
+      },
+      "time2": {
+        "r_type": "double",
+        "values": ["NA", 4]
+      },
+      "event": {
+        "r_type": "double",
+        "values": ["NA", 3]
+      },
+      "type": "interval"
+    },
+    "result": {
+      "ok": true,
+      "type": "interval",
+      "states": null,
+      "columns": {
+        "time1": [5, 2],
+        "time2": [1, 4],
+        "status": ["NA", 3]
+      },
+      "warnings": []
+    }
+  },
+  {
+    "id": "interval_status_character",
+    "description": "Character codes are an error.",
+    "args": {
+      "time": {
+        "r_type": "double",
+        "values": [5, 2]
+      },
+      "time2": {
+        "r_type": "double",
+        "values": [6, 4]
+      },
+      "event": {
+        "r_type": "character",
+        "values": [
+          "a",
+          "b"
+        ]
+      },
+      "type": "interval"
+    },
+    "result": {
+      "ok": false,
+      "message": "Invalid status value, must be logical or numeric",
+      "warnings": []
+    }
+  },
+  {
+    "id": "interval_time2_length",
+    "description": "time2 of the wrong length when there are interval rows.",
+    "args": {
+      "time": {
+        "r_type": "double",
+        "values": [5, 2]
+      },
+      "time2": {
+        "r_type": "double",
+        "values": [4]
+      },
+      "event": {
+        "r_type": "double",
+        "values": [1, 3]
+      },
+      "type": "interval"
+    },
+    "result": {
+      "ok": false,
+      "message": "time and time2 are different lengths",
+      "warnings": []
+    }
+  },
+  {
+    "id": "interval_wrong_arg_count",
+    "description": "type = 'interval' with two arguments.",
+    "args": {
+      "time": {
+        "r_type": "double",
+        "values": [5, 2]
+      },
+      "event": {
+        "r_type": "double",
+        "values": [1, 3]
+      },
+      "type": "interval"
+    },
+    "result": {
+      "ok": false,
+      "message": "Wrong number of args for this type of survival data",
+      "warnings": []
+    }
+  },
+  {
+    "id": "interval2_bounds",
+    "description": "interval2: equal bounds are exact, an open upper is right, an open lower is left.",
+    "args": {
+      "time": {
+        "r_type": "double",
+        "values": [1, 2, "NA", 3]
+      },
+      "time2": {
+        "r_type": "double",
+        "values": [1, "NA", 4, 5]
+      },
+      "type": "interval2"
+    },
+    "result": {
+      "ok": true,
+      "type": "interval",
+      "states": null,
+      "columns": {
+        "time1": [1, 2, 4, 3],
+        "time2": [1, 1, 1, 5],
+        "status": [1, 0, 2, 3]
+      },
+      "warnings": []
+    }
+  },
+  {
+    "id": "interval2_infinite",
+    "description": "Infinite bounds count as open.",
+    "args": {
+      "time": {
+        "r_type": "double",
+        "values": [1, "-Inf"]
+      },
+      "time2": {
+        "r_type": "double",
+        "values": ["Inf", 4]
+      },
+      "type": "interval2"
+    },
+    "result": {
+      "ok": true,
+      "type": "interval",
+      "states": null,
+      "columns": {
+        "time1": [1, 4],
+        "time2": [1, 1],
+        "status": [0, 2]
+      },
+      "warnings": []
+    }
+  },
+  {
+    "id": "interval2_backwards",
+    "description": "lower > upper becomes NA with a warning.",
+    "args": {
+      "time": {
+        "r_type": "double",
+        "values": [5, 1]
+      },
+      "time2": {
+        "r_type": "double",
+        "values": [3, 2]
+      },
+      "type": "interval2"
+    },
+    "result": {
+      "ok": true,
+      "type": "interval",
+      "states": null,
+      "columns": {
+        "time1": [5, 1],
+        "time2": [1, 2],
+        "status": ["NA", 3]
+      },
+      "warnings": ["Invalid interval: start > stop, NA created"]
+    }
+  },
+  {
+    "id": "interval2_unknown",
+    "description": "Both bounds missing becomes NA.",
+    "args": {
+      "time": {
+        "r_type": "double",
+        "values": ["NA", 1]
+      },
+      "time2": {
+        "r_type": "double",
+        "values": ["NA", 2]
+      },
+      "type": "interval2"
+    },
+    "result": {
+      "ok": true,
+      "type": "interval",
+      "states": null,
+      "columns": {
+        "time1": ["NA", 1],
+        "time2": [1, 2],
+        "status": ["NA", 3]
+      },
+      "warnings": []
+    }
+  },
+  {
+    "id": "interval2_origin",
+    "description": "origin applies to both bounds.",
+    "args": {
+      "time": {
+        "r_type": "double",
+        "values": [2, 3]
+      },
+      "time2": {
+        "r_type": "double",
+        "values": [4, "NA"]
+      },
+      "type": "interval2",
+      "origin": 1
+    },
+    "result": {
+      "ok": true,
+      "type": "interval",
+      "states": null,
+      "columns": {
+        "time1": [1, 2],
+        "time2": [3, 1],
+        "status": [3, 0]
+      },
+      "warnings": []
+    }
+  },
+  {
+    "id": "interval2_upper_character",
+    "description": "Character upper bound is an error.",
+    "args": {
+      "time": {
+        "r_type": "double",
+        "values": [1, 2]
+      },
+      "time2": {
+        "r_type": "character",
+        "values": [
+          "a",
+          "b"
+        ]
+      },
+      "type": "interval2"
+    },
+    "result": {
+      "ok": false,
+      "message": "Time2 must be numeric",
+      "warnings": []
+    }
+  },
+  {
+    "id": "interval2_length",
+    "description": "Bounds of different lengths.",
+    "args": {
+      "time": {
+        "r_type": "double",
+        "values": [1, 2]
+      },
+      "time2": {
+        "r_type": "double",
+        "values": [3]
+      },
+      "type": "interval2"
+    },
+    "result": {
+      "ok": false,
+      "message": "time and time2 are different lengths",
+      "warnings": []
+    }
+  },
+  {
+    "id": "interval2_wrong_arg_count",
+    "description": "type = 'interval2' with three arguments.",
+    "args": {
+      "time": {
+        "r_type": "double",
+        "values": [1, 2]
+      },
+      "time2": {
+        "r_type": "double",
+        "values": [3, 4]
+      },
+      "event": {
+        "r_type": "double",
+        "values": [1, 1]
+      },
+      "type": "interval2"
+    },
+    "result": {
+      "ok": false,
+      "message": "Wrong number of args for this type of survival data",
+      "warnings": []
+    }
+  }
+]
