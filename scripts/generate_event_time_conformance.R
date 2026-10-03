@@ -5,7 +5,7 @@
 # fixtures are the executable form of that contract: each case records an input and what etd
 # does with it (the result, or which validation check fails and where). The Python suite
 # (tests/test_event_time_conformance.py) replays every case. A future R Greenwood can replay the
-# same JSON. See spec/event_time.md and EVENT_TIME_PLAN.md.
+# same JSON. See spec/event_time.md.
 #
 # Install the pinned etd first, then run from the repo root:
 #
@@ -542,8 +542,8 @@ conversion_cases <- list(
 
 # -- vector behaviour inherited from vctrs ----------------------------------------------------
 
-# An inventory of what base and vctrs generics do with an event_time vector. Phase 1 decides,
-# op by op, which ones Python mirrors and how. Each entry records the R code and its outcome.
+# An inventory of what base and vctrs generics do with an event_time vector. spec/event_time.md
+# records, op by op, which ones Python mirrors and how. Each entry records the R code and its outcome.
 x <- event_time(
   time = c(7, 5, 3, 2, NA),
   status = c("e", "r", "l", "i", NA),
