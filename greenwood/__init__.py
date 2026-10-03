@@ -88,6 +88,7 @@ from .viz import (
     plot_weibull,
     risk_table,
     theme_forest,
+    theme_survival,
 )
 
 try:
@@ -184,6 +185,7 @@ __all__ = [
     "plot_schoenfeld",
     "plot_smooth_hr",
     "theme_forest",
+    "theme_survival",
     "plot_cif",
     "plot_weibull",
     "load_dataset",
