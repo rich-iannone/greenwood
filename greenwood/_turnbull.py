@@ -168,32 +168,35 @@ def _to_interval_bounds(surv: Surv) -> tuple[Array, Array]:
             "Turnbull does not support left truncation (counting-process responses)."
         )
 
+    # Left-censored rows are bounded below by time 0.
     if surv.type is CensoringType.INTERVAL:
+        # R's interval coding: 0 right, 1 exact, 2 left, 3 interval (time1, time2].
         assert surv.lower is not None
-        return surv.lower, surv.stop
+        time1, code = surv.lower, surv.status
+        lower = np.where(code == 2, 0.0, time1)
+        upper = np.select([code == 0, code == 3], [np.inf, surv.stop], default=time1)
+        return lower, upper
     if surv.type is CensoringType.RIGHT:
         event = surv.event
         lower = surv.stop.copy()
         upper = np.where(event, surv.stop, np.inf)
         return lower, upper
     if surv.type is CensoringType.LEFT:
+        # R's meaning: status 1 is an exact event, status 0 is left-censored at `time`.
         event = surv.event
-        lower = np.where(event, 0.0, surv.stop)
-        upper = np.where(event, surv.stop, np.inf)
-        return lower, upper
+        lower = np.where(event, surv.stop, 0.0)
+        return lower, surv.stop.copy()
     raise NotImplementedError(  # pragma: no cover - exhaustive over CensoringType
         f"Turnbull does not support {surv.type.value!r} responses."
     )
 
 
 def _resolve_weights(surv: Surv, weights: Any) -> Array:
-    """Resolve weights from explicit argument, `Surv.weights`, or unit weights."""
+    """Resolve weights from the explicit argument, or unit weights."""
     if weights is not None:
-        from ._surv import _to_1d_array
+        from ._ingest import to_1d_array as _to_1d_array
 
         return _to_1d_array(weights)
-    if surv.weights is not None:
-        return surv.weights
     return np.ones(surv.n)
 
 
@@ -221,7 +224,7 @@ def _fit_turnbull_blocks(
         labels: list[Any] = [None]
         masks = [np.ones(surv.n, dtype=bool)]
     else:
-        from ._surv import _to_1d_array
+        from ._ingest import to_1d_array as _to_1d_array
 
         group_labels = _to_1d_array(by, dtype=object)
         if group_labels.shape[0] != surv.n:
@@ -327,11 +330,13 @@ class Turnbull:
     right-endpoint convention (every atom's mass resolves at `interval_high_`); see their
     docstrings for the resulting conservative (upper-bound) bias.
 
-    To use this estimator, call `fit()` with a `Surv` response built via `Surv.interval()`
-    (the general case), or `Surv.right()`/`Surv.left()` (degenerate cases: fitting a
-    right-censored response through `Turnbull` reproduces `KaplanMeier` exactly, since there is
-    then no genuine interval ambiguity). Left-truncated (`Surv.counting()`) and multi-state
-    responses are not supported.
+    To use this estimator, call `fit()` with an interval-censored `Surv` response, built with
+    `gw.Surv(time=lower, time2=upper, type="interval2")` or from a `gw.event_time()` vector via
+    `gw.as_surv()`. With a data frame, name its columns in a formula such as
+    `"Surv(lower, upper, type='interval2')"` and pass `data=`. Right- and left-censored responses
+    are degenerate cases. Fitting a right-censored response through `Turnbull` reproduces
+    `KaplanMeier` exactly, since there is then no genuine interval ambiguity. Left-truncated
+    (counting-process) and multi-state responses are not supported.
 
     Parameters
     ----------
@@ -367,9 +372,10 @@ class Turnbull:
     import greenwood as gw
 
     # Build an interval-censored response: (lower, upper] windows, inf marks right-censoring
-    y = gw.Surv.interval(
-        lower=[0, 4, 7, 0, 3, 5],
-        upper=[4, float("inf"), 7, 2.5, 6, 5],
+    y = gw.Surv(
+        time=[0, 4, 7, 0, 3, 5],
+        time2=[4, float("inf"), 7, 2.5, 6, 5],
+        type="interval2",
     )
 
     # Fit the Turnbull NPMLE
@@ -433,18 +439,18 @@ class Turnbull:
         Parameters
         ----------
         surv
-            A `Surv` response built with `Surv.interval()`, `Surv.right()`, or `Surv.left()`.
-            Left-truncated (`Surv.counting()`) and multi-state responses raise
+            An interval-, right-, or left-censored `Surv` response built with `Surv()`.
+            Left-truncated (counting-process) and multi-state responses raise
             `NotImplementedError`.
-            An `Outcome` or a formula string such as `'Surv(time, status == 2) ~ sex'` is also
-            accepted, with its columns read from `data`. The right-hand side names the `by`
+            An `Outcome` or a formula string such as `"Surv(lower, upper, type='interval2') ~ sex"`
+            is also accepted, with its columns read from `data`. The right-hand side names the `by`
             column(s).
         by
             Optional grouping variable (e.g., a column or array). Produces one fit per unique
             value of `by`. Default (`None`): a single, unstratified fit.
         weights
-            Optional case weights. Must have the same length as `surv`. Default (`None`): uses
-            `surv.weights` if present, otherwise unit weights.
+            Optional case weights. Must have the same length as `surv`. Default (`None`): unit
+            weights.
         data
             A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns
             named by the response, `by`, and `weights`. When `surv` is an `Outcome` or a formula,
@@ -461,7 +467,11 @@ class Turnbull:
         ```{python}
         import greenwood as gw
 
-        y = gw.Surv.interval(lower=[0, 4, 7, 0, 3, 5], upper=[4, float("inf"), 7, 2.5, 6, 5])
+        y = gw.Surv(
+            time=[0, 4, 7, 0, 3, 5],
+            time2=[4, float("inf"), 7, 2.5, 6, 5],
+            type="interval2",
+        )
         tb = gw.Turnbull().fit(y)
         tb.survival_
         ```
@@ -549,7 +559,11 @@ class Turnbull:
         ```{python}
         import greenwood as gw
 
-        y = gw.Surv.interval(lower=[0, 4, 7, 0, 3, 5], upper=[4, float("inf"), 7, 2.5, 6, 5])
+        y = gw.Surv(
+            time=[0, 4, 7, 0, 3, 5],
+            time2=[4, float("inf"), 7, 2.5, 6, 5],
+            type="interval2",
+        )
         tb = gw.Turnbull().fit(y)
 
         # The first-quartile survival time (or its ambiguity bracket)
@@ -577,7 +591,11 @@ class Turnbull:
         ```{python}
         import greenwood as gw
 
-        y = gw.Surv.interval(lower=[0, 4, 7, 0, 3, 5], upper=[4, float("inf"), 7, 2.5, 6, 5])
+        y = gw.Surv(
+            time=[0, 4, 7, 0, 3, 5],
+            time2=[4, float("inf"), 7, 2.5, 6, 5],
+            type="interval2",
+        )
         tb = gw.Turnbull().fit(y)
         tb.median()
         ```
@@ -617,7 +635,11 @@ class Turnbull:
         ```{python}
         import greenwood as gw
 
-        y = gw.Surv.interval(lower=[0, 4, 7, 0, 3, 5], upper=[4, float("inf"), 7, 2.5, 6, 5])
+        y = gw.Surv(
+            time=[0, 4, 7, 0, 3, 5],
+            time2=[4, float("inf"), 7, 2.5, 6, 5],
+            type="interval2",
+        )
         tb = gw.Turnbull().fit(y)
         tb.rmst(tau=7)
         ```
@@ -656,7 +678,11 @@ class Turnbull:
         ```{python}
         import greenwood as gw
 
-        y = gw.Surv.interval(lower=[0, 4, 7, 0, 3, 5], upper=[4, float("inf"), 7, 2.5, 6, 5])
+        y = gw.Surv(
+            time=[0, 4, 7, 0, 3, 5],
+            time2=[4, float("inf"), 7, 2.5, 6, 5],
+            type="interval2",
+        )
         tb = gw.Turnbull().fit(y)
         tb.rmrl(s=4, tau=7)
         ```
@@ -703,7 +729,11 @@ class Turnbull:
         ```{python}
         import greenwood as gw
 
-        y = gw.Surv.interval(lower=[0, 4, 7, 0, 3, 5], upper=[4, float("inf"), 7, 2.5, 6, 5])
+        y = gw.Surv(
+            time=[0, 4, 7, 0, 3, 5],
+            time2=[4, float("inf"), 7, 2.5, 6, 5],
+            type="interval2",
+        )
         tb = gw.Turnbull().fit(y)
 
         # nan at t=1 (strictly inside the ambiguous (0, 2.5) region)
@@ -772,7 +802,11 @@ class Turnbull:
         ```{python}
         import greenwood as gw
 
-        y = gw.Surv.interval(lower=[0, 4, 7, 0, 3, 5], upper=[4, float("inf"), 7, 2.5, 6, 5])
+        y = gw.Surv(
+            time=[0, 4, 7, 0, 3, 5],
+            time2=[4, float("inf"), 7, 2.5, 6, 5],
+            type="interval2",
+        )
         tb = gw.Turnbull().fit(y)
         tb.to_frame(format="polars")
         ```
