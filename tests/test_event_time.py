@@ -198,3 +198,8 @@ def test_to_frame_uses_nulls_for_missing_values(x: gw.EventTime) -> None:
     assert frame["time"].null_count() == 1
     assert frame["time_max"].null_count() == 4
     assert frame["time"].is_nan().sum() == 0
+
+
+def test_event_time_is_built_by_its_constructors_only() -> None:
+    with pytest.raises(TypeError, match="event_time\\(\\)"):
+        gw.EventTime()  # pyright: ignore[reportCallIssue]
