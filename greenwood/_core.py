@@ -67,12 +67,12 @@ class EventTable:
     ```{python}
     import greenwood as gw
 
-    # Load data and build a right-censored response
+    # Load data and name the response columns
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+    death = gw.Outcome.surv(time="time", event="status")
 
     # Tabulate the risk set at each event time
-    et = gw.event_table(y)
+    et = gw.event_table(death, data=lung)
     et.to_frame(format="polars")
     ```
     """
@@ -128,10 +128,10 @@ class EventTable:
         ```{python}
         import greenwood as gw
 
-        # Load data and build a right-censored response
+        # Load data and name the response columns
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-        et = gw.event_table(y)
+        death = gw.Outcome.surv(time="time", event="status")
+        et = gw.event_table(death, data=lung)
 
         # Export the event table as a Polars DataFrame
         et.to_frame(format="polars")
@@ -262,12 +262,12 @@ def event_table(
     ```{python}
     import greenwood as gw
 
-    # Load data and build a right-censored response
+    # Load data and name the response columns
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+    death = gw.Outcome.surv(time="time", event="status")
 
     # Tabulate risk sets, events, and censorings at each time
-    et = gw.event_table(y)
+    et = gw.event_table(death, data=lung)
     et.to_frame(format="polars").head(10)
     ```
 
@@ -279,7 +279,7 @@ def event_table(
 
     ```{python}
     # Stratify the event table by sex
-    et_sex = gw.event_table(y, group="sex", data=lung)
+    et_sex = gw.event_table(death, group="sex", data=lung)
     et_sex.to_frame(format="polars").head(15)
     ```
 
@@ -294,7 +294,7 @@ def event_table(
     import numpy as np
 
     # Compute the Kaplan-Meier estimate manually from risk-set counts
-    et = gw.event_table(y)
+    et = gw.event_table(death, data=lung)
     df = et.to_frame(format="pandas")
     # Kaplan-Meier survival at each time
     df["surv"] = np.cumprod(1 - df["n_event"] / df["n_risk"])
@@ -314,7 +314,8 @@ def event_table(
     group = bound.labels["group"]
     weights = bound.labels["weights"]
 
-    from ._surv import CensoringType, _to_1d_array
+    from ._ingest import to_1d_array as _to_1d_array
+    from ._surv import CensoringType
 
     if surv.type not in (CensoringType.RIGHT, CensoringType.COUNTING):
         raise NotImplementedError(
@@ -326,12 +327,7 @@ def event_table(
     exit_ = surv.stop
     event = surv.event
 
-    if weights is not None:
-        weight = _to_1d_array(weights)
-    elif surv.weights is not None:
-        weight = surv.weights
-    else:
-        weight = np.ones(surv.n)
+    weight = _to_1d_array(weights) if weights is not None else np.ones(surv.n)
 
     if group is None:
         time, n_risk, n_event, n_censor = _tabulate_block(entry, exit_, event, weight)
