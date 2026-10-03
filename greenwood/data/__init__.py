@@ -5,19 +5,21 @@ authoritative R sources by `scripts/export_datasets.R`. They are loaded lazily.
 
 Available datasets (all from R's `survival` package):
 
-- `lung`: NCCTG lung cancer (228 x 10). Note `status` is coded 1 = censored, 2 = dead, so
-  build the response with `Surv.right(time, event=(status == 2))`.
+- `lung`: NCCTG lung cancer (228 x 10). Note `status` is coded 1 = censored, 2 = dead. As in
+  R, this coding passes straight through: `"Surv(time, status)"`.
 - `veteran`: Veterans' Administration lung cancer trial (137 x 8).
 - `ovarian`: ovarian cancer survival (26 x 6).
-- `pbc`: Mayo Clinic primary biliary cholangitis (418 x 20).
+- `pbc`: Mayo Clinic primary biliary cholangitis (418 x 20). `status` is coded 0 = censored,
+  1 = transplant, 2 = dead, so death is `"Surv(time, status == 2)"`.
 - `pbcseq`: Mayo PBC repeated lab measurements (1945 x 19). Companion to `pbc`: one row
   per (subject, visit) with time-varying lab values. Link to `pbc` on `id`; `day` is the
-  visit time. Use `split_episodes(pbc, pbcseq, id="id", time="time", event=...,
-  visit_time="day")` to build the counting-process dataset for a TVC Cox model.
+  visit time. Use `split_episodes(baseline=pbc, visits=pbcseq, id="id", time="time",
+  event=..., visit_time="day")` to build the counting-process dataset for a TVC Cox model.
 - `colon`: chemotherapy for colon cancer (1858 x 16).
 - `mgus2`: monoclonal gammopathy (1384 x 11), a competing-risks dataset (progression to
-  plasma-cell malignancy vs death). Build the endpoint with `ptime`/`pstat` (progression)
-  and `futime`/`death`.
+  plasma-cell malignancy vs death). Build the endpoint from `ptime`/`pstat` (progression)
+  and `futime`/`death` with `gw.Outcome.first_event(endpoints={"pcm": ("ptime", "pstat"),
+  "death": ("futime", "death")})`.
 """
 
 from __future__ import annotations
