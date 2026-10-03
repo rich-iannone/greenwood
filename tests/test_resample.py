@@ -16,7 +16,7 @@ def lung():
 
 @pytest.fixture(scope="module")
 def y(lung):
-    return Surv.right(lung["time"], event=(lung["status"] == 2))
+    return Surv(time=lung["time"], event=(lung["status"] == 2))
 
 
 def test_concordance_is_deterministic_and_reasonable(lung, y) -> None:
@@ -142,7 +142,7 @@ def test_low_event_rate_warns(lung, y) -> None:
     time = rng.exponential(500, size=n)
     event = np.zeros(n, dtype=bool)
     event[rng.choice(n, size=6, replace=False)] = True  # 3% event rate
-    y_sparse = Surv.right(time, event=event)
+    y_sparse = Surv(time=time, event=event)
     x_sparse = rng.standard_normal((n, 2))
 
     with pytest.warns(UserWarning, match="fewer than 2"):
@@ -157,7 +157,7 @@ def test_imbalanced_data_no_error(lung, y) -> None:
     event = np.zeros(n, dtype=bool)
     # ~8% event rate — just above the 2*k=10 threshold for k=5
     event[rng.choice(n, size=25, replace=False)] = True
-    y_sparse = Surv.right(time, event=event)
+    y_sparse = Surv(time=time, event=event)
     x_sparse = rng.standard_normal((n, 2))
 
     result = cross_validate(gw.CoxPH(), y_sparse, x_sparse, k=5, seed=23)
