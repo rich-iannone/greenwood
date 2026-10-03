@@ -8,7 +8,7 @@ from typing import Any
 import numpy as np
 import numpy.typing as npt
 
-from ._surv import Surv
+from ._surv import CensoringType, Surv
 
 __all__ = ["simulate_competing_risks", "SimulatedCompetingRisks"]
 
@@ -249,10 +249,11 @@ def simulate_competing_risks(
         observed_time = event_time
         observed_status = event_cause
 
-    surv = Surv.multistate(
-        observed_time,
-        event=observed_status.astype(int),
-        states=states,
+    surv = Surv._from_fields(  # pyright: ignore[reportPrivateUsage]
+        CensoringType.MRIGHT,
+        stop=observed_time,
+        status=observed_status.astype(np.float64),
+        states=tuple(states),
     )
 
     return SimulatedCompetingRisks(
