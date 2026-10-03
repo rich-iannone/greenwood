@@ -229,7 +229,9 @@ Competing risks
   Experiencing one event precludes the others from occurring. Standard Kaplan-Meier applied to
   a single cause in the presence of competing risks overestimates the cause-specific
   probability. The correct quantity is the **cumulative incidence function**, estimated by
-  `AalenJohansen` and used as the basis for `FineGray` regression.
+  `AalenJohansen` and used as the basis for `FineGray` regression. The response is a multi-state
+  `Surv` built from a categorical event (first category = censoring) or with `first_event()`,
+  which keeps the earliest of several (time, event) endpoint pairs per subject.
 
 Conditional survival
 : The probability of surviving beyond time $t$ given that a subject has already survived to
@@ -242,7 +244,8 @@ Counting-process form
 : A representation of survival data as a set of intervals $(s_i, t_i]$ with an event
   indicator at $t_i$. It is the natural way to encode **left truncation** (late entry: $s_i >
   0$) and **time-varying covariates** (a subject contributes multiple rows with $s_i$ = end
-  of previous interval). Built with `Surv.counting(start, stop, event)`.
+  of previous interval). Built by passing both times to `Surv()`, as in
+  `Surv(time=start, time2=stop, event=event)`.
 
 Covariate
 : A measured characteristic of a subject (also called a predictor, feature, or independent variable)
@@ -362,7 +365,8 @@ Endpoint
   combination of columns in the data encodes the event indicator and which time column to
   use. In multi-endpoint datasets such as `colon` (recurrence vs. death, stored in separate
   rows via `etype`) and `mgus2` (progression vs. death, stored in separate column pairs),
-  each endpoint must be extracted and analyzed independently before passing to `Surv`.
+  each endpoint is either extracted and analyzed on its own or combined into a competing-risks
+  response with `Outcome.first_event()`.
 
 Event
 : The outcome of interest in a survival study: death, disease progression, machine failure,
@@ -375,6 +379,14 @@ Event table
   ($n_\text{risk}$), the number of events ($n_\text{event}$), and the number of censorings
   ($n_\text{censor}$). It is the common foundation for Kaplan-Meier, the log-rank test, and
   Cox regression. Available via `event_table()`.
+
+Event-time vector
+: A vector that pairs each time with a one-letter status saying what the time means: `"e"` for
+  an exact event, `"r"` for right-censored, `"l"` for left-censored, and `"i"` for
+  interval-censored (with the upper bound in `time_max`). Built with
+  `event_time(time, status, time_max)`, a port of Max Kuhn's etd R package. It prints in the
+  familiar notation (`5+`, `3-`, `[2, 4]`), converts to a `Surv` with `as_surv()`, and can be
+  passed to estimators directly.
 
 Episode splitting
 : The data-transformation step that converts a dataset with one row per subject and
@@ -479,15 +491,19 @@ Forest plot
   produces an interactive forest plot from a fitted `CoxPH` model.
 
 Formula interface
-: A string-based alternative to passing a covariate DataFrame directly, in which the
-  right-hand side of a model is written as a Wilkinson-style formula, for example
-  `"age + sex"` or `"age * sex"` (main effects plus their interaction). Parsed by the optional
-  [formulaic](https://matthewwardrop.github.io/formulaic/) dependency, the formula interface
-  expands categorical columns into indicator variables automatically, supports `C(column)` to
-  force a numeric-looking column to be treated as categorical, and supports
-  `C(column, contr.treatment(base=...))` to control the **reference category**. Available on
-  `CoxPH.fit()` and `AFT.fit()` via the `data=` argument together with a formula string in
-  place of the covariate frame.
+: An R-style string that names a model's response and covariates by column, for example
+  `"Surv(time, status == 2) ~ age + sex"`, passed to `fit()` together with the frame as `data=`.
+  The left-hand side is a call to `Surv()` or `event_time()` whose arguments are column names
+  and expressions (comparisons, `%in%`, `factor(x, levels, labels)`, `duration()`), parsed into
+  an **Outcome**. On the right-hand side, `strata()`, `cluster()`, and `frailty()` terms route
+  columns to the matching arguments, and the non-parametric estimators and hypothesis tests read
+  the remaining terms as grouping columns. For regression models, the covariate terms form a
+  Wilkinson-style formula such as `"age * sex"` (main effects plus their interaction). It is
+  parsed by the optional [formulaic](https://matthewwardrop.github.io/formulaic/) dependency,
+  which expands categorical columns into indicator variables automatically, supports `C(column)`
+  to force a numeric-looking column to be treated as categorical, and supports
+  `C(column, contr.treatment(base=...))` to control the **reference category**. Because a
+  formula names columns rather than holding data, it works on every supported backend.
 
 Gradient boosting (survival)
 : An ensemble method that builds an additive model by fitting each new, shallow regression
@@ -548,7 +564,7 @@ Immortal time bias
   until weeks later: the pre-treatment follow-up is credited to the treated group, making
   treatment appear beneficial even if it has no effect. The bias is corrected by using the
   **counting-process form** and entering subjects into the exposed risk set only from their
-  actual exposure time, which Greenwood supports via `Surv.counting(start, stop, event)`.
+  actual exposure time, which Greenwood supports via `Surv(time=start, time2=stop, event=event)`.
 
 Influence diagnostics
 : A suite of per-subject statistics that jointly assess how much each observation affects
@@ -584,8 +600,9 @@ Integrated Brier score (IBS)
 Interval censoring
 : A censoring mechanism in which the event is known only to have occurred within a time
   interval $[\ell_i, u_i]$, rather than at an exact time. Built with
-  `Surv.interval(lower, upper)`. Use `numpy.inf` as the upper bound to represent right
-  censoring within this form. Estimated non-parametrically by **Turnbull's algorithm**.
+  `Surv(time=lower, time2=upper, type="interval2")`. Use `numpy.inf` as the upper bound to
+  represent right censoring within this form. `event_time()` with status `"i"` and `time_max=`
+  is an equivalent way to write it. Estimated non-parametrically by **Turnbull's algorithm**.
 
 IPC-weighted ridge regression
 : A linear survival model that corrects for censoring bias via **IPCW** reweighting rather
@@ -631,7 +648,8 @@ Landmark analysis
 Left censoring
 : A censoring mechanism in which the event is known to have occurred before the observation
   time (the event time is at most $t_i$, not at least $t_i$). Less common than right
-  censoring. Built with `Surv.left(time, event)`.
+  censoring. Built with `Surv(time=time, event=event, type="left")`, where a status of `1` is an
+  exact event and `0` is left-censored, or with `event_time()` and status `"l"`.
 
 Lasso (L1 penalty)
 : A regularization method that adds a penalty proportional to the sum of absolute coefficient
@@ -648,7 +666,7 @@ Left truncation (late entry)
 : A form of selection bias in which a subject is only observed because they survived long
   enough to enter the study. The subject only joins the risk set at their entry time
   $s_i > 0$. If their event had occurred before $s_i$, they would not be in the data at all.
-  Handled via the **counting-process form** `Surv.counting(start, stop, event)`.
+  Handled via the **counting-process form** `Surv(time=start, time2=stop, event=event)`.
 
 Leverage
 : A scalar summary of how extreme a subject's covariate pattern is relative to the rest of
@@ -764,7 +782,9 @@ Multi-state model
 : A model in which subjects can occupy one of several states and transition between them over
   time. Competing risks is a special case (one transient state, multiple absorbing states).
   More general structures (for example, a "healthy -> sick -> dead" illness-death model) are
-  represented with `Surv.multistate` and fitted with `MultiState`.
+  represented as intervals with a from-state and a to-state and fitted with `MultiState`. A
+  multi-state `Surv` response comes from a categorical event (first category = censoring),
+  written `factor(x, levels, labels)` in a formula or `Outcome`, or from `first_event()`.
 
 Nelson-Aalen estimator
 : A non-parametric estimator of the **cumulative hazard function**:
@@ -811,6 +831,16 @@ Out-of-bag (OOB) estimate
   Greenwood's `RandomSurvivalForest` (and `ExtraSurvivalTrees` with `bootstrap=True`) reports
   out-of-bag concordance via `oob_score=True`, and uses the same held-out mechanism for
   **permutation variable importance**.
+
+Outcome
+: A data-free description of a survival response by column names and expressions, created with
+  `Outcome.surv()` (the arguments of `Surv()`), `Outcome.event_time()`, or
+  `Outcome.first_event()`, and equal to the parsed left-hand side of a **formula**. For example,
+  `gw.Outcome.surv(time="time", event="status == 2")`. Passed to `fit()` together with `data=`,
+  it is evaluated against the frame, rows with a missing value in any column the fit uses are
+  dropped once, and the result is passed to `Surv()`. Because it holds names rather than data, the
+  same `Outcome` works on pandas, Polars, PyArrow, DuckDB, and lazy frames, and can be reused
+  across models. `bind(data)` returns the `Surv` itself.
 
 Pairwise log-rank test
 : An extension of the log-rank test that performs all pairwise group comparisons when there
@@ -953,14 +983,15 @@ Restricted mean survival time (RMST)
 
 Response (`y`)
 : The outcome variable passed to a survival model, consisting of event times paired with
-  their censoring or event-type status. In Greenwood, the response is always a `Surv` object.
-  It is conventionally named `y` in model-fitting code, carrying over the standard statistical
-  notation for the dependent variable: in ordinary regression $y = X\beta + \varepsilon$,
-  `y` is the vector of outcomes and `X` is the covariate matrix. Survival analysis adopts the
-  same convention even though the response is a composite (time and status) rather than a
-  single scalar. Throughout the documentation and examples you will see the pattern
-  `y = gw.Surv.right(time, event)` followed by `model.fit(y, covariates=X)`, deliberately mirroring
-  the $y$, $X$ split familiar from regression.
+  their censoring or event-type status. In Greenwood, every estimator ultimately fits a `Surv`
+  object. It can be passed in three forms: a `Surv` (or event-time vector) built from values
+  already in hand, an **Outcome** that names columns, or the left-hand side of a **formula**.
+  The last two are evaluated against `data=` at fit time and are the recommended way to start
+  from a data frame. A `Surv` built from values is conventionally named `y`, carrying over the
+  standard statistical notation for the dependent variable: in ordinary regression
+  $y = X\beta + \varepsilon$, `y` is the vector of outcomes and `X` is the covariate matrix.
+  Survival analysis adopts the same convention even though the response is a composite (time and
+  status) rather than a single scalar.
 
 Response residuals
 : Per-subject residuals that measure the difference between observed and fitted values on the
@@ -986,7 +1017,7 @@ Right censoring
 : The most common censoring mechanism. An observation is right-censored if the event had not
   yet occurred by the time the subject left the study or the study ended. All that is known
   is that the true event time exceeds the observed time $t_i$. Built with
-  `Surv.right(time, event)`.
+  `Surv(time=time, event=event)`, the default form when only a time and an event are given.
 
 ROC curve (receiver operating characteristic curve)
 : A graphical summary of a binary classifier's discrimination across all possible decision
@@ -1058,7 +1089,7 @@ Simulated competing risks
   independent Weibull distributions (one per cause) and selects the cause with the shortest
   latent time as the observed event. Independent exponential censoring is applied on top.
   Optionally generates standard-normal covariates with cause-specific proportional-hazards
-  effects. The generator returns a `Surv.multistate` response, the covariate matrix, and
+  effects. The generator returns a multi-state `Surv` response, the covariate matrix, and
   the latent times (useful for constructing oracle predictions in benchmarks). Available via
   `simulate_competing_risks()`.
 
@@ -1124,10 +1155,16 @@ Survival tree
   base learner of the **random survival forest**). Available via `SurvivalTree`.
 
 Surv object
-: The response type in Greenwood that bundles event times with their status codes and validates them
-  eagerly. Every estimator and model in Greenwood consumes a `Surv` object. Built with
-  `Surv.right()`, `Surv.counting()`, `Surv.left()`, `Surv.interval()`, or `Surv.multistate()`
-  depending on the censoring and event structure of the data.
+: The response type in Greenwood that bundles event times with their status codes and checks them
+  as R does. Every estimator and model in Greenwood consumes a `Surv` object. Built with one call,
+  `Surv(time, time2, event, type=, origin=)`, which mirrors R's `survival::Surv()`. The type is
+  inferred from the arguments: a time and an event give right censoring, adding `time2` gives
+  the counting-process form, and a categorical event gives a multi-state response. Left and
+  interval censoring are requested with `type="left"`, `"interval"`, or `"interval2"`. The
+  event may be logical, `0`/`1`, or `1`/`2`. Any other code becomes a missing status with a
+  warning, and rows with missing values are dropped at fit time. When the data lives in a data
+  frame, describe the response with a **formula** or an **Outcome** instead, and the `Surv` is
+  built from `data=` at fit time. See also **event-time vector** and `first_event()`.
 
 SurvivalBoost
 : A gradient-boosted model for **competing risks** that directly estimates cause-specific
