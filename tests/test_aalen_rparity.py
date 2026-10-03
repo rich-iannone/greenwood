@@ -28,14 +28,14 @@ def veteran_fixture():
 @pytest.fixture(scope="module")
 def lung_fit(lung_fixture):
     lung = gw.load_dataset("lung", backend="pandas")
-    y = Surv.right(lung["time"], event=(lung["status"] == 2))
+    y = Surv(time=lung["time"], event=(lung["status"] == 2))
     return AalenAdditive().fit(y, lung[["age", "sex"]])
 
 
 @pytest.fixture(scope="module")
 def veteran_fit(veteran_fixture):
     vet = gw.load_dataset("veteran", backend="pandas")
-    y = Surv.right(vet["time"], event=(vet["status"] == 1))
+    y = Surv(time=vet["time"], event=(vet["status"] == 1))
     return AalenAdditive().fit(y, vet[["trt", "karno", "diagtime", "age"]])
 
 
