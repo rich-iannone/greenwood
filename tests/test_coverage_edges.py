@@ -34,7 +34,7 @@ def lung():
 
 @pytest.fixture(scope="module")
 def y(lung):
-    return Surv.right(lung["time"], event=(lung["status"] == 2))
+    return Surv(time=lung["time"], event=lung["status"] == 2)
 
 
 # -- data backend resolution -----------------------------------------------------------
@@ -63,7 +63,7 @@ def test_event_table_weights_grouped_and_backends(y, lung) -> None:
     grouped = event_table(y, group=lung["sex"]).to_frame(format="pandas")
     assert "strata" in grouped.columns
     with pytest.raises(NotImplementedError, match="event_table"):
-        event_table(Surv.interval(lower=[1, 2], upper=[2, 3]))
+        event_table(Surv(time=[1, 2], time2=[2, 3], type="interval2"))
 
 
 # -- Kaplan-Meier / Nelson-Aalen -------------------------------------------------------
@@ -102,26 +102,26 @@ def test_nelson_aalen_variants(y, lung) -> None:
 
 
 def test_logrank_error_paths() -> None:
-    y = Surv.right([1, 2, 3, 4], [1, 1, 1, 1])
+    y = Surv(time=[1, 2, 3, 4], event=[1, 1, 1, 1])
     with pytest.raises(NotImplementedError, match="logrank_test"):
-        logrank_test(Surv.interval(lower=[1, 2], upper=[2, 3]), ["a", "b"])
+        logrank_test(Surv(time=[1, 2], time2=[2, 3], type="interval2"), ["a", "b"])
     with pytest.raises(ValueError, match="`strata`"):
         logrank_test(y, ["a", "a", "b", "b"], strata=["s"])
     with pytest.raises(ValueError, match="No events"):
-        logrank_test(Surv.right([1, 2, 3, 4], [0, 0, 0, 0]), ["a", "a", "b", "b"])
+        logrank_test(Surv(time=[1, 2, 3, 4], event=[0, 0, 0, 0]), ["a", "a", "b", "b"])
 
 
 def test_stratified_logrank_with_empty_stratum() -> None:
     # A stratum with no events contributes zeros (exercises the empty-times branch).
-    y = Surv.right([1, 2, 3, 4], [1, 1, 0, 0])
+    y = Surv(time=[1, 2, 3, 4], event=[1, 1, 0, 0])
     result = logrank_test(y, ["a", "b", "a", "b"], strata=["s1", "s1", "s2", "s2"])
     assert result.df == 1
 
 
 def test_pairwise_error_paths() -> None:
-    y = Surv.right([1, 2, 3, 4], [1, 1, 1, 1])
+    y = Surv(time=[1, 2, 3, 4], event=[1, 1, 1, 1])
     with pytest.raises(NotImplementedError, match="pairwise"):
-        pairwise_logrank_test(Surv.interval(lower=[1, 2], upper=[2, 3]), ["a", "b"])
+        pairwise_logrank_test(Surv(time=[1, 2], time2=[2, 3], type="interval2"), ["a", "b"])
     with pytest.raises(ValueError, match="same length"):
         pairwise_logrank_test(y, ["a", "b"])
     with pytest.raises(ValueError, match="`strata`"):
@@ -160,11 +160,11 @@ def test_aft_predict_paths(y, lung) -> None:
 def test_royston_parmar_paths(y, lung) -> None:
     assert "<unfitted>" in repr(RoystonParmar())
     with pytest.raises(NotImplementedError, match="right-censored"):
-        RoystonParmar().fit(Surv.counting(start=[0, 1], stop=[5, 6], event=[1, 1]))
+        RoystonParmar().fit(Surv(time=[0, 1], time2=[5, 6], event=[1, 1]))
     with pytest.raises(ValueError, match="same number of rows"):
         RoystonParmar().fit(y, lung[["age"]].iloc[:-1])
     with pytest.raises(ValueError, match="No events remain"):
-        RoystonParmar().fit(Surv.right([1, 2, 3, 4], [0, 0, 0, 0]))
+        RoystonParmar().fit(Surv(time=[1, 2, 3, 4], event=[0, 0, 0, 0]))
     rp = RoystonParmar(df=2).fit(y, lung[["age", "sex"]])
     nd = lung[["age", "sex"]].iloc[:1]
     assert (rp.predict(nd, type="cumhaz", times=[180, 365], format="pandas").iloc[:, 1] >= 0).all()
@@ -176,11 +176,11 @@ def test_royston_parmar_paths(y, lung) -> None:
 def test_coxnet_paths(y, lung) -> None:
     assert "<unfitted>" in repr(CoxNet())
     with pytest.raises(NotImplementedError, match="right-censored"):
-        CoxNet().fit(Surv.interval(lower=[1, 2], upper=[2, 3]), np.zeros((2, 1)))
+        CoxNet().fit(Surv(time=[1, 2], time2=[2, 3], type="interval2"), np.zeros((2, 1)))
     with pytest.raises(ValueError, match="same number of rows"):
         CoxNet().fit(y, lung[["age"]].iloc[:-1])
     with pytest.raises(ValueError, match="No events remain"):
-        CoxNet().fit(Surv.right([1, 2, 3, 4], [0, 0, 0, 0]), np.zeros((4, 1)))
+        CoxNet().fit(Surv(time=[1, 2, 3, 4], event=[0, 0, 0, 0]), np.zeros((4, 1)))
     cn = CoxNet(penalizer=0.05).fit(y, lung[["age", "sex"]])
     assert np.all(cn.predict(lung[["age", "sex"]], type="risk") > 0)
     with pytest.raises(ValueError, match="Unknown predict type"):
@@ -192,17 +192,17 @@ def test_coxnet_paths(y, lung) -> None:
 
 def test_cross_validate_counting_and_errors(lung) -> None:
     # Counting-process response exercises the counting branch of the fold subsetter.
-    yc = Surv.counting(start=[0, 0, 0, 0, 0, 0], stop=[2, 4, 6, 3, 5, 7], event=[1, 1, 1, 1, 0, 1])
+    yc = Surv(time=[0, 0, 0, 0, 0, 0], time2=[2, 4, 6, 3, 5, 7], event=[1, 1, 1, 1, 0, 1])
     x = np.arange(6.0).reshape(-1, 1)
     out = cross_validate(CoxPH(), yc, x, k=2, seed=23)
     assert len(out["scores"]) == 2
-    y = Surv.right(lung["time"], event=(lung["status"] == 2))
+    y = Surv(time=lung["time"], event=lung["status"] == 2)
     with pytest.raises(ValueError, match="same number of rows"):
         cross_validate(CoxPH(), y, lung[["age", "sex"]].iloc[:-1])
 
 
 def test_cross_validate_drops_missing_rows(lung) -> None:
-    y = Surv.right(lung["time"], event=(lung["status"] == 2))
+    y = Surv(time=lung["time"], event=lung["status"] == 2)
     out = cross_validate(CoxPH(), y, lung[["age", "ph.ecog"]], k=3, seed=23)  # ph.ecog has a NaN
     assert len(out["scores"]) == 3
 
@@ -211,7 +211,7 @@ def test_subset_surv_rejects_interval() -> None:
     from greenwood._resample import _risk_score, _subset_surv
 
     with pytest.raises(NotImplementedError, match="right-censored"):
-        _subset_surv(Surv.interval(lower=[1, 2], upper=[2, 3]), np.array([0, 1]))
+        _subset_surv(Surv(time=[1, 2], time2=[2, 3], type="interval2"), np.array([0, 1]))
     with pytest.raises(TypeError, match="CoxPH, CoxNet, AFT, or RoystonParmar"):
         _risk_score(KaplanMeier(), np.zeros((2, 1)))
 
@@ -231,14 +231,16 @@ def test_register_and_dispatch_augment() -> None:
     assert augment(_DummyModel()) == {"ok": True}
 
 
-# -- Surv.left, interval interop, and calibration-before-first-event -------------------
+# -- R left type, interval interop, and calibration-before-first-event -------------------
 
 
 def test_surv_left_and_interval_dataframe() -> None:
-    left = Surv.left([3, 5, 7], event=[1, 0, 1])
+    # R's left type: status 1 is an exact event, status 0 is left-censored.
+    left = Surv(time=[3, 5, 7], event=[1, 0, 1], type="left")
     assert left.type.value == "left" and len(left) == 3
-    iv = Surv.interval(lower=[1, 2, 3], upper=[2, 4, 6])
-    assert "lower" in iv.to_frame(format="pandas").columns
+    np.testing.assert_array_equal(left.status, [1.0, 0.0, 1.0])
+    iv = Surv(time=[1, 2, 3], time2=[2, 4, 6], type="interval2")
+    assert list(iv.to_frame(format="pandas").columns) == ["time1", "time2", "status"]
 
 
 def test_calibration_before_first_event(y, lung) -> None:
@@ -257,9 +259,9 @@ def test_calibration_before_first_event(y, lung) -> None:
 
 def test_cox_fit_error_paths(y, lung) -> None:
     with pytest.raises(NotImplementedError, match="right-censored"):
-        CoxPH().fit(Surv.interval(lower=[1, 2], upper=[2, 3]), np.zeros((2, 1)))
+        CoxPH().fit(Surv(time=[1, 2], time2=[2, 3], type="interval2"), np.zeros((2, 1)))
     with pytest.raises(ValueError, match="No events remain"):
-        CoxPH().fit(Surv.right([1, 2, 3, 4], [0, 0, 0, 0]), np.zeros((4, 1)))
+        CoxPH().fit(Surv(time=[1, 2, 3, 4], event=[0, 0, 0, 0]), np.zeros((4, 1)))
     with pytest.raises(ValueError, match="produced no covariates"):
         CoxPH().fit(y, "1", data=lung)
     with pytest.raises(ValueError, match="2-D"):
@@ -285,11 +287,14 @@ def test_cox_predict_ci_before_event_and_conditional_mismatch(y, lung) -> None:
 
 
 def test_competing_backends_and_validation() -> None:
+    import pandas as pd
+
     from greenwood import AalenJohansen, FineGray, MultiState
 
-    y_cr = Surv.multistate(
-        [5, 6, 7, 8, 9, 10, 11, 12], event=[1, 2, 1, 2, 0, 1, 2, 1], states=("pcm", "death")
+    status = pd.Categorical.from_codes(
+        np.array([1, 2, 1, 2, 0, 1, 2, 1]), categories=["censor", "pcm", "death"]
     )
+    y_cr = Surv(time=[5, 6, 7, 8, 9, 10, 11, 12], event=status)
     aj = AalenJohansen().fit(y_cr)
     assert aj.to_frame(format="polars").shape[0] > 0
     assert aj.to_frame(format="pyarrow").num_rows > 0
@@ -323,6 +328,6 @@ def test_grouped_nelson_aalen_repr(y, lung) -> None:
 
 def test_concordance_last_event_has_no_comparable() -> None:
     # The largest event time has no later subject, exercising the skip branch.
-    cox = CoxPH().fit(Surv.right([1, 2, 3], [1, 1, 1]), np.array([[1.0], [2.0], [3.0]]))
+    cox = CoxPH().fit(Surv(time=[1, 2, 3], event=[1, 1, 1]), np.array([[1.0], [2.0], [3.0]]))
     c = cox.concordance()
     assert 0.0 <= c <= 1.0
