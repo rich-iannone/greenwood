@@ -7,10 +7,9 @@ documented Python adaptations.
 
 Two kinds of test live here:
 
-- Fixture integrity tests run now. They check the fixtures are pinned to the expected etd commit
-  and are internally consistent, so a bad regeneration is caught immediately.
-- Behaviour tests replay every case against `greenwood.event_time` and friends. They skip until
-  the Phase 1 port exists (and, for `as_surv`, until the Phase 2 `Surv` realignment).
+- Fixture integrity tests check the fixtures are pinned to the expected etd commit and are
+  internally consistent, so a bad regeneration is caught immediately.
+- Behaviour tests replay every case against `greenwood.event_time` and friends.
 """
 
 from __future__ import annotations
@@ -77,15 +76,6 @@ UPSTREAM_ISSUES: dict[str, str] = {
 
 OBSERVATIONS = ("is_na", "format", "extract_time", "extract_status", "as_surv", "as_tibble")
 
-has_event_time = hasattr(gw, "event_time")
-has_as_surv = hasattr(gw, "as_surv")
-requires_event_time = pytest.mark.skipif(
-    not has_event_time, reason="event_time is not ported yet (EVENT_TIME_PLAN.md, Phase 1)."
-)
-requires_as_surv = pytest.mark.skipif(
-    not has_as_surv, reason="as_surv needs the Phase 2 Surv realignment (EVENT_TIME_PLAN.md)."
-)
-
 
 def _cases(name: str) -> list[dict[str, Any]]:
     return load_conformance("event_time", name)
@@ -103,7 +93,7 @@ def _params(name: str, *, ok: bool | None = None) -> list[Any]:
     return params
 
 
-# -- fixture integrity (runs now) ---------------------------------------------------------------
+# -- fixture integrity ---------------------------------------------------------------
 
 
 def test_fixtures_are_pinned_to_the_expected_etd_commit() -> None:
@@ -157,7 +147,7 @@ def test_format_battery_has_no_etd_failures() -> None:
     assert all(case["format"]["ok"] for case in _cases("format"))
 
 
-# -- behaviour (skips until the port exists) -------------------------------------------------
+# -- behaviour -------------------------------------------------
 
 
 def _build(case: dict[str, Any]) -> Any:
@@ -221,7 +211,6 @@ def _assert_observations(x: Any, result: dict[str, Any], case_key: str) -> None:
     assert floats_equal(columns["time_max"], r_floats(frame["time_max"]))
 
 
-@requires_event_time
 @pytest.mark.parametrize("case", _params("constructor", ok=False))
 def test_event_time_validation_matches_etd(case: dict[str, Any]) -> None:
     with pytest.raises(Exception) as excinfo:
@@ -229,13 +218,11 @@ def test_event_time_validation_matches_etd(case: dict[str, Any]) -> None:
     _assert_error(excinfo, case["result"])
 
 
-@requires_event_time
 @pytest.mark.parametrize("case", _params("constructor", ok=True))
 def test_event_time_observations_match_etd(case: dict[str, Any]) -> None:
     _assert_observations(_build(case), case["result"], f"constructor/{case['id']}")
 
 
-@requires_event_time
 @pytest.mark.parametrize("case", _params("new_event_time", ok=False))
 def test_new_event_time_validation_matches_etd(case: dict[str, Any]) -> None:
     with pytest.raises(Exception) as excinfo:
@@ -243,13 +230,11 @@ def test_new_event_time_validation_matches_etd(case: dict[str, Any]) -> None:
     _assert_error(excinfo, case["result"])
 
 
-@requires_event_time
 @pytest.mark.parametrize("case", _params("new_event_time", ok=True))
 def test_new_event_time_observations_match_etd(case: dict[str, Any]) -> None:
     _assert_observations(_build_new(case), case["result"], f"new_event_time/{case['id']}")
 
 
-@requires_event_time
 @pytest.mark.parametrize("case", _params("format"))
 def test_format_matches_etd(case: dict[str, Any]) -> None:
     expected = case["format"]
@@ -257,7 +242,6 @@ def test_format_matches_etd(case: dict[str, Any]) -> None:
     assert list(_build(case).format()) == expected["value"]
 
 
-@requires_as_surv
 @pytest.mark.parametrize("case", _params("conversion"))
 def test_as_surv_rejects_unsupported_input(case: dict[str, Any]) -> None:
     with pytest.raises(Exception) as excinfo:
@@ -265,8 +249,6 @@ def test_as_surv_rejects_unsupported_input(case: dict[str, Any]) -> None:
     _assert_error(excinfo, case["result"])
 
 
-@requires_event_time
-@requires_as_surv
 @pytest.mark.parametrize("case", _params("constructor", ok=True))
 def test_as_surv_matches_etd(case: dict[str, Any]) -> None:
     expected = case["result"]["as_surv"]
