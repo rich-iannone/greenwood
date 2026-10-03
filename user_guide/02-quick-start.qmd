@@ -20,7 +20,8 @@ collected at the end.
 Survival data pairs a follow-up time with an indicator of whether the event was actually observed or
 the subject was censored (still event-free when we last saw them). Greenwood keeps the two together
 in a `Surv` object. We use the bundled `lung` dataset, the survival times of patients with advanced
-lung cancer.
+lung cancer. Since the data lives in a frame, we describe the response by its column names and let
+Greenwood read them from the frame.
 
 ```{python}
 # Import the Greenwood library
@@ -29,15 +30,19 @@ import greenwood as gw
 # Load the bundled lung cancer dataset as a Polars DataFrame
 lung = gw.load_dataset("lung", backend="polars")
 
-# Build a right-censored response, where a status of 2 marks a death
-y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-y
+# Describe a right-censored response by column names, where a status of 2 marks a death
+death = gw.Outcome.surv(time="time", event="status")
+
+# Evaluate it against the frame to see the Surv it produces
+death.bind(lung)
 ```
 
-The summary reports 228 patients, of whom 165 died during the study (the rest were censored). We
-named the two columns and let `data=` supply them. One detail to note: this dataset codes `status`
-as `1` for censored and `2` for dead (R's convention), so `event_value=2` says which value marks a
-death. The same call works whether `lung` is a Polars, Pandas, PyArrow, or DuckDB table.
+The summary reports 228 patients, of whom 165 died during the study (the rest were censored).
+`gw.Outcome.surv()` takes the same arguments as R's `survival::Surv()`, written as column names. One
+detail to note: this dataset codes `status` as `1` for censored and `2` for dead (R's convention). As
+in R, a `1`/`2` coding is recognized and passes straight through. The frame can be Polars, Pandas,
+PyArrow, or DuckDB. When the values are already in hand as lists or arrays, `gw.Surv()` builds the
+response from them directly.
 
 ## Estimate the survival curve
 
@@ -45,12 +50,8 @@ The Kaplan-Meier estimator turns those times into a survival curve, the probabil
 past each point in time. Printing the fitted estimator reports the median survival.
 
 ```{python}
-# Load data and build the right-censored response
-lung = gw.load_dataset("lung", backend="polars")
-y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-
-# Fit the Kaplan-Meier estimator
-km = gw.KaplanMeier().fit(y)
+# Fit the Kaplan-Meier estimator, reading the columns from the frame
+km = gw.KaplanMeier().fit(death, data=lung)
 
 # Print a summary: median survival with its confidence interval
 km
@@ -65,12 +66,8 @@ The `plot_survival()` function draws the curve as an interactive chart, with a s
 band and a notch wherever a patient was censored.
 
 ```{python}
-# Load data and build the right-censored response
-lung = gw.load_dataset("lung", backend="polars")
-y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-
 # Fit the Kaplan-Meier estimator
-km = gw.KaplanMeier().fit(y)
+km = gw.KaplanMeier().fit(death, data=lung)
 
 # Draw an interactive survival curve with confidence band and censoring marks
 gw.plot_survival(km)
@@ -82,27 +79,16 @@ still alive at the end of follow-up, so their survival time is only known to be 
 ## Model a covariate effect
 
 To ask how a characteristic changes the risk of death, fit a Cox proportional hazards model. Here we
-include `age` and `sex`. Printing the model shows a coefficient table.
+include `age` and `sex`, writing the model as an R-style formula. The response and the covariates
+are read from the same frame, and any row with a missing value in a column the model uses is dropped
+(the printout says how many). Printing the model shows a coefficient table.
 
 ```{python}
-# Load data and build the right-censored response
-lung = gw.load_dataset("lung", backend="polars")
-y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-
 # Fit a Cox proportional hazards model with age and sex as covariates
-cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
+cox = gw.CoxPH().fit("Surv(time, status) ~ age + sex", data=lung)
 
 # Print the coefficient table and global test statistics
 cox
-```
-
-If you know R, you can also write the whole model as a formula. The response and the covariates
-are read from the same frame, and any row with a missing value in a column the model uses is
-dropped (the printout says how many).
-
-```{python}
-# The same model, written as an R-style formula
-gw.CoxPH().fit("Surv(time, status == 2) ~ age + sex", data=lung)
 ```
 
 The `exp(coef)` column holds hazard ratios. For `sex` (coded `1` for male, `2` for female) the
@@ -112,15 +98,13 @@ study, holding age fixed. A ratio below 1 is lower risk, above 1 is higher risk.
 ## Shared frailty for clustered survival data
 
 If subjects are clustered (for example by center, family, or recurrent-event unit), you can make use
-of the shared gamma frailty Cox model.
+of the shared gamma frailty Cox model. As in R, a `frailty()` term in the formula names the cluster
+column.
 
 ```{python}
 # Shared frailty Cox model (clustered by institution)
 cox_frailty = gw.CoxPH(ties="breslow").fit(
-    y,
-    covariates=["age", "sex"], data=lung,
-    frailty="gamma",
-    frailty_cluster="inst",
+    "Surv(time, status) ~ age + sex + frailty(inst)", data=lung
 )
 
 # Frailty variance inference (tests theta = 0)
