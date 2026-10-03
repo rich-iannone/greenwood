@@ -28,7 +28,7 @@ from greenwood import AFT, Surv
 @pytest.fixture(scope="module")
 def lung_data():  # type: ignore[no-untyped-def]
     df = gw.load_dataset("lung", backend="pandas")
-    y = Surv.right(df["time"], event=(df["status"] == 2))
+    y = Surv(time=df["time"], event=(df["status"] == 2))
     return df, y
 
 
