@@ -18,7 +18,7 @@ def lung():
 
 @pytest.fixture(scope="module")
 def y(lung):
-    return Surv.right(lung["time"], event=(lung["status"] == 2))
+    return Surv(time=lung["time"], event=(lung["status"] == 2))
 
 
 @pytest.fixture(scope="module")
@@ -55,7 +55,7 @@ def test_invalid_conf_level() -> None:
 
 def test_no_censoring_matches_ols_exactly(uncensored_data) -> None:
     time, design, log_t = uncensored_data
-    y_full = Surv.right(time, event=np.ones(time.shape[0]))
+    y_full = Surv(time=time, event=np.ones(time.shape[0]))
     bj = BuckleyJames().fit(y_full, design)
 
     assert bj.n_iter_ == 1
@@ -277,7 +277,7 @@ def test_repr_unfit_and_fit() -> None:
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         bj_fit = BuckleyJames().fit(
-            Surv.right([1.0, 2.0, 3.0, 4.0], event=[1, 0, 1, 1]),
+            Surv(time=[1.0, 2.0, 3.0, 4.0], event=[1, 0, 1, 1]),
             np.array([[1.0], [2.0], [3.0], [4.0]]),
         )
 
@@ -285,6 +285,6 @@ def test_repr_unfit_and_fit() -> None:
 
 
 def test_counting_process_not_supported() -> None:
-    y_counting = Surv.counting(start=[0, 1], stop=[2, 3], event=[1, 0])
+    y_counting = Surv(time=[0, 1], time2=[2, 3], event=[1, 0])
     with pytest.raises(NotImplementedError, match="right-censored"):
         BuckleyJames().fit(y_counting, np.array([[1.0], [2.0]]))
