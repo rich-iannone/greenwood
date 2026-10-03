@@ -62,7 +62,7 @@ class EventTable:
     Examples
     --------
     An `EventTable` is produced by `event_table`. Build one from the bundled `lung`
-    dataset and view it as a Polars frame with `to_frame`.
+    dataset and view it as a Polars frame with `~~greenwood.EventTable.to_frame`.
 
     ```{python}
     import greenwood as gw
@@ -211,13 +211,13 @@ def event_table(
         order of first appearance in the data.
     weights
         Optional case weights. Can be a 1-D array or series. If `None` (default), uses
-        weights from the `surv` response if present, otherwise treats all subjects as
+        weights from the `surv`{.gd-no-link} response if present, otherwise treats all subjects as
         weight 1.
     data
         A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns named
-        by the response, `group`, and `weights`. When `surv` is an `Outcome` or a formula, rows with
-        a missing value in any column used are dropped first, along with the matching rows of any
-        arrays passed alongside.
+        by the response, `group`, and `weights`. When `surv`{.gd-no-link} is an `Outcome` or a
+        formula, rows with a missing value in any column used are dropped first, along with the
+        matching rows of any arrays passed alongside.
 
     Returns
     -------

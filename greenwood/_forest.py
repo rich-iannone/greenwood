@@ -472,9 +472,9 @@ class SurvivalTree:
             A list of column names in `data` also works.
         data
             A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns
-            named by the response and `covariates`. When `surv` is an `Outcome` or a formula, rows
-            with a missing value in any column used are dropped before fitting. Covariate formula
-            strings and lists of column names are also resolved here.
+            named by the response and `covariates`. When `surv`{.gd-no-link} is an `Outcome` or a
+            formula, rows with a missing value in any column used are dropped before fitting.
+            Covariate formula strings and lists of column names are also resolved here.
 
         Returns
         -------
@@ -1093,7 +1093,7 @@ class RandomSurvivalForest(_BaseSurvivalForest):
         Covariates considered per split: `"sqrt"` (default), `"log2"`, an int, a float, or `None`.
     bootstrap
         Whether to grow each tree on a bootstrap sample (required for `oob_score` and
-        `variable_importance`).
+        `variable_importance`{.gd-no-link}).
     oob_score
         Whether to compute an out-of-bag concordance estimate after fitting.
     engine
@@ -1147,7 +1147,7 @@ class ExtraSurvivalTrees(_BaseSurvivalForest):
         Covariates considered per split: `"sqrt"` (default), `"log2"`, an int, a float, or `None`.
     bootstrap
         Whether to grow each tree on a bootstrap sample. `False` by default (the extra-trees
-        convention); required to be `True` for `oob_score` and `variable_importance`.
+        convention); required to be `True` for `oob_score` and `variable_importance`{.gd-no-link}.
     oob_score
         Whether to compute an out-of-bag concordance estimate after fitting (requires
         `bootstrap=True`).

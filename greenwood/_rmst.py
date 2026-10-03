@@ -319,9 +319,9 @@ def rmst_test(
         Confidence level for confidence intervals (the default is `0.95` for 95% CI).
     data
         A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns named
-        by the response, `group`, and `strata`. When `surv` is an `Outcome` or a formula, rows with
-        a missing value in any column used are dropped first, along with the matching rows of any
-        arrays passed alongside.
+        by the response, `group`, and `strata`. When `surv`{.gd-no-link} is an `Outcome` or a
+        formula, rows with a missing value in any column used are dropped first, along with the
+        matching rows of any arrays passed alongside.
 
     Returns
     -------
@@ -542,9 +542,9 @@ def rmst_diff(
         Confidence level for the confidence interval (the default is `0.95`).
     data
         A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns named
-        by the response, `group`, and `strata`. When `surv` is an `Outcome` or a formula, rows with
-        a missing value in any column used are dropped first, along with the matching rows of any
-        arrays passed alongside.
+        by the response, `group`, and `strata`. When `surv`{.gd-no-link} is an `Outcome` or a
+        formula, rows with a missing value in any column used are dropped first, along with the
+        matching rows of any arrays passed alongside.
 
     Returns
     -------
@@ -666,9 +666,9 @@ def pairwise_rmst_test(
         Output format: None (auto-detect), `"pandas"`, `"polars"`, or `"pyarrow"`.
     data
         A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns named
-        by the response, `group`, and `strata`. When `surv` is an `Outcome` or a formula, rows with
-        a missing value in any column used are dropped first, along with the matching rows of any
-        arrays passed alongside.
+        by the response, `group`, and `strata`. When `surv`{.gd-no-link} is an `Outcome` or a
+        formula, rows with a missing value in any column used are dropped first, along with the
+        matching rows of any arrays passed alongside.
 
     Returns
     -------

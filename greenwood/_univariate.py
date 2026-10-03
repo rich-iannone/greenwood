@@ -79,8 +79,9 @@ class Parametric:
     Returns
     -------
     Parametric
-        The fitted estimator (after calling `fit()`), with attributes `params_`, `std_error_`,
-        `conf_low_`, `conf_high_`, `loglik_`, `aic_`, `bic_`, `n_`, and `n_event_`.
+        The fitted estimator (after calling `~~greenwood.Parametric.fit()`), with attributes
+        `params_`, `std_error_`{.gd-no-link}, `conf_low_`{.gd-no-link}, `conf_high_`{.gd-no-link},
+        `loglik_`, `aic_`, `bic_`, `n_`, and `n_event_`.
 
     Details
     -------
@@ -165,14 +166,14 @@ class Parametric:
             with its columns read from `data`.
         data
             A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns
-            named by the response. When `surv` is an `Outcome` or a formula, rows with a missing
-            value in any column used are dropped before fitting.
+            named by the response. When `surv`{.gd-no-link} is an `Outcome` or a formula, rows with
+            a missing value in any column used are dropped before fitting.
 
         Returns
         -------
         Parametric
-            The fitted object (for method chaining), with attributes `params_`, `std_error_`,
-            `loglik_`, `aic_`, `bic_`, etc.
+            The fitted object (for method chaining), with attributes `params_`,
+            `std_error_`{.gd-no-link}, `loglik_`, `aic_`, `bic_`, etc.
 
         Examples
         --------
@@ -676,8 +677,8 @@ def compare_distributions(
         `'Surv(time, status == 2)'` is also accepted, with its columns read from `data`.
     data
         A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns named
-        by the response. When `surv` is an `Outcome` or a formula, rows with a missing value in a
-        response column are dropped first.
+        by the response. When `surv`{.gd-no-link} is an `Outcome` or a formula, rows with a missing
+        value in a response column are dropped first.
     dists
         Distribution families to compare. The default is all four:
         `["weibull", "exponential", "lognormal", "loglogistic"]`.
@@ -687,8 +688,8 @@ def compare_distributions(
     Returns
     -------
     DataFrame
-        One row per distribution, sorted by AIC, with columns `dist`, `n_params`, `loglik`, `aic`,
-        and `bic`.
+        One row per distribution, sorted by AIC, with columns `dist`, `n_params`, `loglik`,
+        `aic`{.gd-no-link}, and `bic`{.gd-no-link}.
 
     Details
     -------

@@ -64,8 +64,8 @@ class CensoringType(str, Enum):
     - `LEFT`: left-censored, `Surv(time, event, type="left")`.
     - `INTERVAL`: interval-censored, from `type="interval"` or `type="interval2"`.
     - `COUNTING`: counting-process `(start, stop]` intervals, `Surv(start, stop, event)`.
-    - `MRIGHT`: multi-state right-censored, from a categorical `event`.
-    - `MCOUNTING`: multi-state counting-process, from a categorical `event` with start times.
+    - `MRIGHT`: multi-state right-censored, from a categorical `event=`.
+    - `MCOUNTING`: multi-state counting-process, from a categorical `event=` with start times.
 
     A response reports its type through `Surv(...).type`. Because `CensoringType` is a `str` enum,
     it compares equal to R's type strings, such as `"right"`.
@@ -210,11 +210,11 @@ class Surv:
     `Surv()` records a time-to-event outcome in one of R's forms. The type is inferred from the
     arguments, as in R:
 
-    - `Surv(time, event)` is right-censored. `event` may be logical, `0`/`1`, or `1`/`2` (as in
+    - `Surv(time, event)` is right-censored. `event=` may be logical, `0`/`1`, or `1`/`2` (as in
       the `lung` data, where `2` means died).
     - `Surv(start, stop, event)` is a counting-process response, for late entry (left truncation)
       and time-varying covariates.
-    - A categorical `event` (a pandas or Polars categorical, or an Arrow dictionary) gives a
+    - A categorical `event=` (a pandas or Polars categorical, or an Arrow dictionary) gives a
       multi-state response, whose first level means censored.
     - `type="left"`, `type="interval"`, and `type="interval2"` must be asked for.
 
@@ -224,7 +224,7 @@ class Surv:
 
     `Surv()` takes values: lists, arrays, or series already in hand. To start from a data frame,
     name the columns instead, in a formula such as `"Surv(time, status == 2) ~ age"` or with
-    `Outcome.surv(time="time", event="status == 2")`, and pass `data=` to `fit()`. That form is
+    `Outcome.surv(time="time", event="status == 2")`, and pass `data=` when fitting. That form is
     evaluated on the frame's own backend, so it works the same on pandas, Polars, PyArrow, DuckDB,
     and lazy frames.
 
@@ -234,8 +234,8 @@ class Surv:
         Follow-up time for right-censored data, or the start time for counting-process data, or
         the lower bound for interval data. Numeric, with `None` or `nan` for missing values.
     time2
-        Stop time for counting-process data, or the upper bound for interval data. When `event` is
-        not given and `type` is not an interval type, a second argument is the status (R's rule),
+        Stop time for counting-process data, or the upper bound for interval data. When `event=` is
+        not given and `type=` is not an interval type, a second argument is the status (R's rule),
         so `Surv(time, status)` works positionally.
     event
         The status. Logical, `0`/`1`, or `1`/`2` for right, left, and counting data. Codes `0`
@@ -302,8 +302,8 @@ class Surv:
     gw.Surv(time=[1, 2, 3], time2=[2, np.inf, 5], type="interval2")
     ```
 
-    Starting from a data frame, name the columns and let `fit()` read them. We'll use the bundled
-    `pbc` dataset, from a Mayo Clinic trial in primary biliary cholangitis, where `status` is `0`
+    Starting from a data frame, name the columns and let the model read them. We'll use the bundled
+    `pbc` dataset, from a Mayo Clinic trial in primary biliary cholangitis, where status is `0`
     (censored), `1` (transplant), or `2` (died):
 
     ```{python}
@@ -653,7 +653,7 @@ class Surv:
     def states(self) -> tuple[str, ...] | None:
         """The names of the event states of a multi-state response, otherwise `None`.
 
-        A multi-state response comes from a categorical `event` (or `first_event()`). Its first
+        A multi-state response comes from a categorical `event=` (or `first_event()`). Its first
         category means censored, and the remaining categories, in order, are the states. A row
         with status `k` reached `states[k - 1]`. For single-event responses this is `None`.
 
@@ -785,7 +785,7 @@ class Surv:
         """Whether the response has more than one kind of event.
 
         `True` for multi-state and competing-risks responses (types `MRIGHT` and `MCOUNTING`),
-        which come from a categorical `event` or from `first_event()`. Their state names are in
+        which come from a categorical `event=` or from `first_event()`. Their state names are in
         `states`. Estimators for a single event type, such as `KaplanMeier` and `CoxPH`, reject
         these responses. Competing-risks estimators such as `AalenJohansen` require them.
 
@@ -1154,14 +1154,14 @@ def first_event(
     For each row, the endpoint with the earliest observed event becomes the cause and its time
     becomes the event time. Ties go to the endpoint listed first. Rows with no observed event are
     censored at the latest endpoint time (the last time the subject was known to be event-free), or
-    at `censor_at` if given. This helper is Greenwood's own: R's `survival` has no direct
-    equivalent.
+    at `censor_at` if given. This helper is Greenwood's own: R's `survival`{.gd-no-link} has no
+    direct equivalent.
 
     Parameters
     ----------
     endpoints
-        A mapping of state name to a `(time, event)` pair, in priority order for ties. `event` is
-        logical or `0`/`1`.
+        A mapping of state name to a `(time, event)` pair, in priority order for ties.
+        `event`{.gd-no-link} is logical or `0`/`1`.
     censor_at
         The time at which rows with no observed event are censored. The default is the latest of
         the endpoint times.
@@ -1197,7 +1197,7 @@ def first_event(
     ```
 
     For a data frame such as the bundled `mgus2` (one column pair per endpoint), name the columns
-    with `Outcome.first_event()` and pass `data=` to `fit()`. PCM is listed first, so a PCM
+    with `Outcome.first_event()` and pass `data=` when fitting. PCM is listed first, so a PCM
     diagnosed at the same time as death counts as PCM:
 
     ```{python}

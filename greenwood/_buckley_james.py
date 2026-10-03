@@ -127,8 +127,8 @@ class BuckleyJames:
         (default `1e-6`).
     n_boot
         Number of bootstrap resamples for standard errors and confidence intervals. If `None`
-        (the default), `std_error_`, `conf_low_`, and `conf_high_` are `nan` (Buckley-James has
-        no closed-form variance).
+        (the default), `std_error_`{.gd-no-link}, `conf_low_`{.gd-no-link}, and
+        `conf_high_`{.gd-no-link} are `nan` (Buckley-James has no closed-form variance).
     seed
         Random seed for bootstrap resampling (ignored if `n_boot` is `None`).
     conf_level
@@ -137,9 +137,10 @@ class BuckleyJames:
     Returns
     -------
     Fitted estimator
-        Call `fit()` to produce a fitted estimator with cached results (`coef_`, `std_error_`,
-        `z_`, `p_value_`, `conf_low_`, `conf_high_`, `n_iter_`, `converged_`, `loglik_`-free since
-        there is no likelihood), accessible as arrays or exported to DataFrames.
+        Call `~~greenwood.BuckleyJames.fit()` to produce a fitted estimator with cached results
+        (`coef_`, `std_error_`{.gd-no-link}, `z_`, `p_value_`, `conf_low_`{.gd-no-link},
+        `conf_high_`{.gd-no-link}, `n_iter_`, `converged_`, `loglik_`-free since there is no
+        likelihood), accessible as arrays or exported to DataFrames.
 
     Details
     -------
@@ -221,16 +222,16 @@ class BuckleyJames:
             A list of column names in `data` also works.
         data
             A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns
-            named by the response and `covariates`. When `surv` is an `Outcome` or a formula, rows
-            with a missing value in any column used are dropped before fitting. Covariate formula
-            strings and lists of column names are also resolved here.
+            named by the response and `covariates`. When `surv`{.gd-no-link} is an `Outcome` or a
+            formula, rows with a missing value in any column used are dropped before fitting.
+            Covariate formula strings and lists of column names are also resolved here.
 
         Returns
         -------
         BuckleyJames
             The fitted estimator itself (for method chaining) with cached coefficient arrays
-            (`coef_`, `std_error_`, `z_`, `p_value_`) and convergence diagnostics (`n_iter_`,
-            `converged_`).
+            (`coef_`, `std_error_`{.gd-no-link}, `z_`, `p_value_`) and convergence diagnostics
+            (`n_iter_`, `converged_`).
 
         Examples
         --------

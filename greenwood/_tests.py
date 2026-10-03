@@ -346,7 +346,7 @@ def logrank_test(
     group
         Group labels, one per observation. Can be a Narwhals series (Polars/Pandas), 1-D
         array, or Python sequence. Labels can be strings, integers, or other hashable types.
-        Must have the same length as `surv`.
+        Must have the same length as `surv`{.gd-no-link}.
     rho, gamma
         Fleming-Harrington weight exponents applied to the pooled Kaplan-Meier survival
         $S(t-)$ at each event time. The weight is $S(t-)^\rho \, (1-S(t-))^\gamma$.
@@ -357,16 +357,16 @@ def logrank_test(
         - Other (rho, gamma): Flexible emphasis. Higher values emphasize the chosen phase.
 
     strata
-        Optional stratifying factor, one per observation. Same length as `surv`. When
+        Optional stratifying factor, one per observation. Same length as `surv`{.gd-no-link}. When
         provided, the test is computed separately within each stratum, then combined
         (stratified test). Use to control for confounding or variable that affects baseline
         hazard but not group differences. Example: stratify by site to account for
         site-specific differences in survival while testing an overall group effect.
     data
         A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns named
-        by the response, `group`, and `strata`. When `surv` is an `Outcome` or a formula, rows with
-        a missing value in any column used are dropped first, along with the matching rows of any
-        arrays passed alongside.
+        by the response, `group`, and `strata`. When `surv`{.gd-no-link} is an `Outcome` or a
+        formula, rows with a missing value in any column used are dropped first, along with the
+        matching rows of any arrays passed alongside.
     weights
         Case weights, one per row (a column name in `data`, or an array). Must be finite
         and strictly positive. Default is `None` (all weights `1`).
@@ -649,9 +649,9 @@ def maxcombo_test(
         (computed within each stratum, then combined).
     data
         A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns named
-        by the response, `group`, and `strata`. When `surv` is an `Outcome` or a formula, rows with
-        a missing value in any column used are dropped first, along with the matching rows of any
-        arrays passed alongside.
+        by the response, `group`, and `strata`. When `surv`{.gd-no-link} is an `Outcome` or a
+        formula, rows with a missing value in any column used are dropped first, along with the
+        matching rows of any arrays passed alongside.
     case_weights
         Case weights, one per row (a column name in `data`, or an array). Must be finite
         and strictly positive. Default is `None` (all weights `1`).
@@ -848,7 +848,7 @@ def pairwise_logrank_test(
     group
         Group labels, one per observation. Can be a Narwhals series, 1-D array, or Python
         sequence. Must have at least 3 unique levels (to create multiple pairs). Must have
-        the same length as `surv`.
+        the same length as `surv`{.gd-no-link}.
     rho, gamma
         Fleming-Harrington weight exponents for the log-rank test (same as `logrank_test`).
         Default `(0, 0)` gives standard log-rank; `(1, 0)` gives Peto-Peto (emphasizes early
@@ -872,9 +872,9 @@ def pairwise_logrank_test(
         `None`, a backend is auto-detected (Polars, then Pandas, then PyArrow).
     data
         A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns named
-        by the response, `group`, and `strata`. When `surv` is an `Outcome` or a formula, rows with
-        a missing value in any column used are dropped first, along with the matching rows of any
-        arrays passed alongside.
+        by the response, `group`, and `strata`. When `surv`{.gd-no-link} is an `Outcome` or a
+        formula, rows with a missing value in any column used are dropped first, along with the
+        matching rows of any arrays passed alongside.
     weights
         Case weights, one per row (a column name in `data`, or an array). Must be finite
         and strictly positive. Default is `None` (all weights `1`).
@@ -1050,7 +1050,7 @@ def trend_test(
     group
         Group labels (typically ordered categories like 0, 1, 2, 3 for dose levels or stages).
         Can be a Narwhals series, 1-D array, or Python sequence. Must have at least 2 groups.
-        Must have the same length as `surv`.
+        Must have the same length as `surv`{.gd-no-link}.
     scores
         Numeric scores assigned to each group to define the linear trend. If `None` (default),
         groups are sorted lexicographically and assigned scores 0, 1, 2, ..., (k-1) where k
@@ -1072,9 +1072,9 @@ def trend_test(
         confounding while testing a linear trend.
     data
         A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns named
-        by the response, `group`, and `strata`. When `surv` is an `Outcome` or a formula, rows with
-        a missing value in any column used are dropped first, along with the matching rows of any
-        arrays passed alongside.
+        by the response, `group`, and `strata`. When `surv`{.gd-no-link} is an `Outcome` or a
+        formula, rows with a missing value in any column used are dropped first, along with the
+        matching rows of any arrays passed alongside.
     weights
         Case weights, one per row (a column name in `data`, or an array). Must be finite
         and strictly positive. Default is `None` (all weights `1`).

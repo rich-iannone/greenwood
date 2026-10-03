@@ -203,7 +203,7 @@ def logrank_power(
 
     Power depends on three factors:
 
-    1. **Number of events** (`n_events`): More events → higher power
+    1. **Number of events** (`n_events`{.gd-no-link}): More events → higher power
     2. **Effect size** (`hazard_ratio`): Larger effects (HR far from 1.0) → higher power
     3. **Significance level** (`alpha`): More stringent (smaller alpha) → lower power
 

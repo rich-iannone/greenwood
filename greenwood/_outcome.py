@@ -39,6 +39,8 @@ Array = npt.NDArray[Any]
 _BACKTICK = re.compile(r"`([^`]+)`")
 # R's integer ranges such as `0:2`, which Python can't parse, become `c(0, 1, 2)`.
 _RANGE = re.compile(r"(?<![\w.])(-?\d+)\s*:\s*(-?\d+)(?![\w.])")
+# The per-endpoint arguments of a first_event outcome: time0, event0, time1, event1, ...
+_ENDPOINT_ARGUMENT = re.compile(r"(time|event)\d+")
 _SURV_TYPES = ("right", "left", "interval", "counting", "interval2", "mstate")
 
 
@@ -358,14 +360,13 @@ def _parse_argument(value: Any, arg: str) -> _Expr:
 # -- the Outcome ------------------------------------------------------------------------------
 
 
-@dataclass(frozen=True)
 class Outcome:
     """A reusable description of a survival response: column names and expressions, no data.
 
     An `Outcome` is the structured form of a formula's left-hand side. `Outcome.surv()` takes the
     arguments of R's `Surv()` and `Outcome.event_time()` those of `event_time()`, each written as
     it would be inside a formula: a column name, or an expression such as `"status == 2"`. Pass
-    the `Outcome` to any estimator's `fit()` together with `data=`. The estimator reads every
+    the `Outcome` to any estimator's fit method together with `data=`. The estimator reads every
     column it needs from that one frame, drops rows with missing values once (as R's `na.omit`
     does), evaluates the expressions, and builds the response with `Surv()` or `event_time()`.
 
@@ -386,7 +387,7 @@ class Outcome:
     Examples
     --------
     We'll use the bundled `lung` dataset, from a North Central Cancer Treatment Group trial in
-    advanced lung cancer. `time` is days of follow-up and `status` is `1` (censored) or `2` (died).
+    advanced lung cancer. `time` is days of follow-up and status is `1` (censored) or `2` (died).
     Here is what the dataset looks like:
 
     ```{python}
@@ -428,11 +429,48 @@ class Outcome:
     ```
     """
 
-    kind: str
-    arguments: tuple[tuple[str, _Expr], ...]
-    type: str | None = None
-    origin: float = 0.0
-    labels: tuple[str, ...] = field(default=(), repr=False)
+    __slots__ = ("_kind", "_arguments", "_type", "_origin", "_labels")
+
+    _kind: str
+    _arguments: tuple[tuple[str, _Expr], ...]
+    _type: str | None
+    _origin: float
+    _labels: tuple[str, ...]
+
+    def __init__(self) -> None:
+        raise TypeError(
+            "Build an Outcome with Outcome.surv(), Outcome.event_time(), Outcome.first_event(), "
+            "or Outcome.from_formula()."
+        )
+
+    @classmethod
+    def _new(
+        cls,
+        *,
+        kind: str,
+        arguments: tuple[tuple[str, _Expr], ...],
+        type: str | None = None,
+        origin: float = 0.0,
+        labels: tuple[str, ...] = (),
+    ) -> Outcome:
+        obj = object.__new__(cls)
+        obj._kind = kind
+        obj._arguments = arguments
+        obj._type = type
+        obj._origin = float(origin)
+        obj._labels = labels
+        return obj
+
+    def _key(self) -> tuple[Any, ...]:
+        return (self._kind, self._arguments, self._type, self._origin, self._labels)
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Outcome):
+            return NotImplemented
+        return self._key() == other._key()
+
+    def __hash__(self) -> int:
+        return hash(self._key())
 
     # -- constructors -------------------------------------------------------------------------
 
@@ -461,7 +499,7 @@ class Outcome:
             or `duration(...)` for a time computed from two date columns.
         time2
             The stop time for counting data, or the upper bound for interval data. As in R, a
-            second argument without `event` is the status.
+            second argument without `event=` is the status.
         event
             The status: a column, a comparison such as `"status == 2"`, or
             `"factor(cause, c(0, 1, 2), c('censor', 'pcm', 'death'))"` for a multi-state response.
@@ -507,7 +545,7 @@ class Outcome:
             arguments.append(("time2", _parse_argument(time2, "time2")))
         if event is not None:
             arguments.append(("event", _parse_argument(event, "event")))
-        return cls(
+        return cls._new(
             kind="surv", arguments=_surv_arguments(arguments, type), type=type, origin=float(origin)
         )
 
@@ -549,7 +587,7 @@ class Outcome:
         ]
         if time_max is not None:
             arguments.append(("time_max", _parse_argument(time_max, "time_max")))
-        return cls(kind="event_time", arguments=tuple(arguments))
+        return cls._new(kind="event_time", arguments=tuple(arguments))
 
     @classmethod
     def first_event(
@@ -600,7 +638,7 @@ class Outcome:
             arguments.append(("censor_at", _parse_argument(censor_at, "censor_at")))
         if start is not None:
             arguments.append(("start", _parse_argument(start, "start")))
-        return cls(
+        return cls._new(
             kind="first_event",
             arguments=tuple(arguments),
             labels=tuple(str(label) for label in endpoints),
@@ -620,7 +658,7 @@ class Outcome:
         ----------
         formula
             The response, optionally followed by `~ 1`. To include covariates, pass the full
-            formula to an estimator's `fit()` instead.
+            formula to an estimator's fit method instead.
 
         Returns
         -------
@@ -656,30 +694,184 @@ class Outcome:
     # -- views --------------------------------------------------------------------------------
 
     @property
+    def kind(self) -> str:
+        """Which function builds the response: `"surv"`, `"event_time"`, or `"first_event"`.
+
+        An `Outcome` from `Outcome.surv()` (or a `Surv(...)` formula) is bound with `Surv()`. One
+        from `Outcome.event_time()` (or an `event_time(...)` formula) is bound with `event_time()`
+        and then converted with `as_surv()`. One from `Outcome.first_event()` is bound with
+        `first_event()`. Every kind produces a `Surv` when bound.
+
+        Returns
+        -------
+        str
+            `"surv"`, `"event_time"`, or `"first_event"`.
+
+        Examples
+        --------
+        ```{python}
+        import greenwood as gw
+
+        gw.Outcome.from_formula(formula="event_time(time, code)").kind
+        ```
+        """
+        return self._kind
+
+    @property
+    def arguments(self) -> dict[str, str]:
+        """The arguments of the response, by name, written as they would be in a formula.
+
+        For a `surv` outcome the names are those of `Surv()` that were given (`time=`, `time2=`,
+        `event=`), and for an `event_time` outcome those of `event_time()` (`time=`, `status=`,
+        `time_max=`). Each value is a column name or an expression such as `"status == 2"`. As in
+        R, `Surv(time, x)` without `event=` reads `x` as the status, so it is listed as `event=`.
+        For a `first_event` outcome the endpoints are in `endpoints`, and this holds only
+        `censor_at=` and `start=` when they were given. The type and origin have their own
+        properties, `Outcome.type` and `Outcome.origin`.
+
+        Returns
+        -------
+        dict of str to str
+            Each argument name mapped to its expression text, in argument order.
+
+        Examples
+        --------
+        ```{python}
+        import greenwood as gw
+
+        gw.Outcome.from_formula(formula="Surv(tstart, tstop, status == 2)").arguments
+        ```
+        """
+        return {
+            arg: _expr_source(expr)
+            for arg, expr in self._arguments
+            if not (self._kind == "first_event" and _ENDPOINT_ARGUMENT.fullmatch(arg))
+        }
+
+    @property
+    def type(self) -> str | None:
+        """The `type=` passed to `Surv()`, or `None` to let it be inferred when the data is bound.
+
+        One of R's types: `"right"`, `"left"`, `"interval"`, `"counting"`, `"interval2"`, or
+        `"mstate"`. `None`, the usual case, means `Surv()` infers right-censored or
+        counting-process data from the arguments, or multi-state data from a `factor()` status.
+        The type of the bound response is reported by `Surv.type`. Always `None` for
+        `event_time` and `first_event` outcomes.
+
+        Returns
+        -------
+        str or None
+            The requested type, or `None`.
+
+        Examples
+        --------
+        ```{python}
+        import greenwood as gw
+
+        gw.Outcome.surv(time="lower", time2="upper", type="interval2").type
+        ```
+        """
+        return self._type
+
+    @property
+    def origin(self) -> float:
+        """The `origin=` passed to `Surv()`: a time subtracted from every time when bound.
+
+        `0` (the default) leaves the times unchanged. A non-zero origin shifts every time column,
+        as R's `Surv(origin=)` does. Always `0` for `event_time` and `first_event` outcomes.
+
+        Returns
+        -------
+        float
+            The origin.
+
+        Examples
+        --------
+        ```{python}
+        import greenwood as gw
+
+        gw.Outcome.from_formula(formula="Surv(age_at_exit, died, origin=40)").origin
+        ```
+        """
+        return self._origin
+
+    @property
+    def endpoints(self) -> dict[str, tuple[str, str]] | None:
+        """For a `first_event` outcome, each endpoint's time and event expressions.
+
+        The endpoints are in priority order, which decides ties: when two endpoints happen at the
+        same time, the first one listed wins. Each value is a `(time, event)` pair of expression
+        texts, as passed to `Outcome.first_event()`. `None` for other kinds of outcome.
+
+        Returns
+        -------
+        dict of str to tuple of str, or None
+            Each state name mapped to its `(time, event)` expressions, or `None`.
+
+        Examples
+        --------
+        ```{python}
+        import greenwood as gw
+
+        cr = gw.Outcome.first_event(
+            endpoints={"pcm": ("ptime", "pstat"), "death": ("futime", "death == 1")}
+        )
+        cr.endpoints
+        ```
+        """
+        if self._kind != "first_event":
+            return None
+        args = dict(self._arguments)
+        return {
+            label: (_expr_source(args[f"time{i}"]), _expr_source(args[f"event{i}"]))
+            for i, label in enumerate(self._labels)
+        }
+
+    @property
     def column_names(self) -> tuple[str, ...]:
-        """The columns this response reads, in order."""
+        """The data columns this response reads, in the order they first appear.
+
+        These are the columns named by every argument, including both columns of a `duration()`
+        and the column inside a comparison or `factor()`. When a model is fitted from an `Outcome`
+        and `data=`, rows with a missing value in any of these columns are dropped (together with
+        any covariate columns) before the response is built.
+
+        Returns
+        -------
+        tuple of str
+            The column names, each listed once.
+
+        Examples
+        --------
+        ```{python}
+        import greenwood as gw
+
+        died = gw.Outcome.from_formula(formula="Surv(duration(enroll, exit), outcome == 'died')")
+        died.column_names
+        ```
+        """
         names: list[str] = []
-        for _, expr in self.arguments:
+        for _, expr in self._arguments:
             names += _expr_columns(expr)
         return tuple(dict.fromkeys(names))
 
     def __repr__(self) -> str:
-        args = dict(self.arguments)
-        if self.kind == "first_event":
+        args = dict(self._arguments)
+        if self._kind == "first_event":
             pairs = ", ".join(
                 f"{label!r}: "
                 f"({_expr_source(args[f'time{i}'])!r}, {_expr_source(args[f'event{i}'])!r})"
-                for i, label in enumerate(self.labels)
+                for i, label in enumerate(self._labels)
             )
             parts = [f"endpoints={{{pairs}}}"]
             parts += [f"{a}={_expr_source(args[a])!r}" for a in ("censor_at", "start") if a in args]
             return f"Outcome.first_event({', '.join(parts)})"
-        parts = [f"{a}={_expr_source(e)!r}" for a, e in self.arguments]
-        if self.type is not None:
-            parts.append(f"type={self.type!r}")
-        if self.origin:
-            parts.append(f"origin={self.origin!r}")
-        return f"Outcome.{self.kind}({', '.join(parts)})"
+        parts = [f"{a}={_expr_source(e)!r}" for a, e in self._arguments]
+        if self._type is not None:
+            parts.append(f"type={self._type!r}")
+        if self._origin:
+            parts.append(f"origin={self._origin!r}")
+        return f"Outcome.{self._kind}({', '.join(parts)})"
 
     # -- binding --------------------------------------------------------------------------------
 
@@ -689,7 +881,7 @@ class Outcome:
         Each argument is evaluated against `data` and the results go through `Surv()`,
         `event_time()` (then `as_surv()`), or `first_event()`. Missing values are kept, as they are
         by `Surv()`. To drop incomplete rows together with the covariates, pass the `Outcome` to an
-        estimator's `fit()` with `data=` instead.
+        estimator's fit method with `data=` instead.
 
         Parameters
         ----------
@@ -712,19 +904,19 @@ class Outcome:
         ```
         """
         get = _column_getter(data, list(self.column_names))
-        values = {arg: _evaluate(expr, get) for arg, expr in self.arguments}
-        if self.kind == "surv":
+        values = {arg: _evaluate(expr, get) for arg, expr in self._arguments}
+        if self._kind == "surv":
             return Surv(
                 values["time"],
                 values.get("time2"),
                 values.get("event"),
-                type=self.type,
-                origin=self.origin,
+                type=self._type,
+                origin=self._origin,
             )
-        if self.kind == "event_time":
+        if self._kind == "event_time":
             return as_surv(event_time(values["time"], values["status"], values.get("time_max")))
         endpoints = {
-            label: (values[f"time{i}"], values[f"event{i}"]) for i, label in enumerate(self.labels)
+            label: (values[f"time{i}"], values[f"event{i}"]) for i, label in enumerate(self._labels)
         }
         return first_event(endpoints, censor_at=values.get("censor_at"), start=values.get("start"))
 
@@ -813,7 +1005,7 @@ def _parse_response(text: str) -> Outcome:
         arguments = tuple(
             (arg, parser.expr(given[arg], f"`{arg}`")) for arg in names if arg in given
         )
-        return Outcome(kind="event_time", arguments=arguments)
+        return Outcome._new(kind="event_time", arguments=arguments)
 
     if "time" not in given:
         raise ValueError("`Surv()` needs a `time` argument.")
@@ -830,7 +1022,7 @@ def _parse_response(text: str) -> Outcome:
         return "the status" if status_in_time2 and arg == "time2" else f"`{arg}`"
 
     arguments = [(arg, parser.expr(given[arg], what(arg))) for arg in names if arg in given]
-    return Outcome(
+    return Outcome._new(
         kind="surv", arguments=_surv_arguments(arguments, ctype), type=ctype, origin=origin
     )
 

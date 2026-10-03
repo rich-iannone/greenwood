@@ -237,8 +237,9 @@ class EventTime:
 
     The vector supports `len()`, indexing with an integer, a slice, an integer array, or a boolean
     mask (always returning an `EventTime`), and `EventTime.concat()` to combine vectors. Use
-    `extract_time()` and `extract_status()` to get the components back, and `to_frame()` for a
-    table with `time`, `status`, and `time_max` columns.
+    `extract_time()` and `extract_status()` to get the components back, and
+    `~~greenwood.EventTime.to_frame()` for a table with `time`, `status`{.gd-no-link}, and
+    `time_max` columns.
 
     Examples
     --------
@@ -454,7 +455,7 @@ class EventTime:
         return np.where(self._paired, self._time_max, np.nan)
 
     def to_frame(self, *, format: str | None = None) -> Any:
-        """Split the vector into a table with `time`, `status`, and `time_max` columns.
+        """Split the vector into a table with `time`, `status`{.gd-no-link}, and `time_max` columns.
 
         This is the counterpart of etd's `as_tibble()`. `time_max` is always included, and is
         missing for elements that aren't interval-censored. Missing values are nulls.
@@ -526,7 +527,7 @@ def event_time(time: Any, status: Any, time_max: Any = None) -> EventTime:
     Raises
     ------
     TypeError
-        If `time` or `time_max` isn't numeric, or `status` isn't a character vector.
+        If `time` or `time_max` isn't numeric, or `status`{.gd-no-link} isn't a character vector.
     ValueError
         If the lengths differ, or a value breaks one of the rules above.
 
@@ -551,7 +552,7 @@ def event_time(time: Any, status: Any, time_max: Any = None) -> EventTime:
     ```
 
     To start from a data frame, name the columns in a formula (or with `Outcome.event_time()`)
-    and pass `data=` to `fit()`, which works on every DataFrame backend:
+    and pass `data=` to `fit()`{.gd-no-link}, which works on every DataFrame backend:
 
     ```{python}
     import polars as pl
@@ -639,9 +640,10 @@ def new_event_time(time: Any = (), status: Any = ()) -> EventTime:
     Raises
     ------
     TypeError
-        If `time` isn't a sequence of numbers and pairs, or `status` isn't a character vector.
+        If `time` isn't a sequence of numbers and pairs, or `status`{.gd-no-link} isn't a character
+        vector.
     ValueError
-        If `time` and `status` differ in length.
+        If `time` and `status`{.gd-no-link} differ in length.
 
     Examples
     --------

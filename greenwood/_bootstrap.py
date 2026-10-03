@@ -331,9 +331,9 @@ def bootstrap(
         Time point for `"survival"` and `"survival_diff"` statistics.
     data
         A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns named
-        by the response, `by`, and `weights`. When `surv` is an `Outcome` or a formula, rows with a
-        missing value in any column used are dropped first, along with the matching rows of any
-        arrays passed alongside.
+        by the response, `by`, and `weights`. When `surv`{.gd-no-link} is an `Outcome` or a formula,
+        rows with a missing value in any column used are dropped first, along with the matching rows
+        of any arrays passed alongside.
 
     Returns
     -------

@@ -325,16 +325,16 @@ class Turnbull:
     identified, not its placement inside. `Turnbull` reports both bounds of every such interval.
     Where an interval degenerates to a single point (an exact death, or a region every subject's
     constraint resolves unambiguously), survival is known exactly there. Otherwise it is
-    genuinely unidentified and `predict()`/`quantile()` return `nan` rather than interpolate.
-    `rmst()`/`rmrl()` need a single number, so they instead fall back to Turnbull's own
-    right-endpoint convention (every atom's mass resolves at `interval_high_`); see their
-    docstrings for the resulting conservative (upper-bound) bias.
+    genuinely unidentified and `~~greenwood.Turnbull.predict()`/`quantile()` return `nan` rather
+    than interpolate. `rmst()`/`rmrl()` need a single number, so they instead fall back to
+    Turnbull's own right-endpoint convention (every atom's mass resolves at `interval_high_`); see
+    their docstrings for the resulting conservative (upper-bound) bias.
 
-    To use this estimator, call `fit()` with an interval-censored `Surv` response, built with
-    `gw.Surv(time=lower, time2=upper, type="interval2")` or from a `gw.event_time()` vector via
-    `gw.as_surv()`. With a data frame, name its columns in a formula such as
-    `"Surv(lower, upper, type='interval2')"` and pass `data=`. Right- and left-censored responses
-    are degenerate cases. Fitting a right-censored response through `Turnbull` reproduces
+    To use this estimator, call `~~greenwood.Turnbull.fit()` with an interval-censored `Surv`
+    response, built with `gw.Surv(time=lower, time2=upper, type="interval2")` or from a
+    `gw.event_time()` vector via `gw.as_surv()`. With a data frame, name its columns in a formula
+    such as `"Surv(lower, upper, type='interval2')"` and pass `data=`. Right- and left-censored
+    responses are degenerate cases. Fitting a right-censored response through `Turnbull` reproduces
     `KaplanMeier` exactly, since there is then no genuine interval ambiguity. Left-truncated
     (counting-process) and multi-state responses are not supported.
 
@@ -349,18 +349,18 @@ class Turnbull:
     Returns
     -------
     Fitted estimator
-        Call `fit()` to produce a fitted estimator with cached results (`interval_low_`,
-        `interval_high_`, `prob_mass_`, `survival_`), accessible as aligned arrays or exported
-        to DataFrames.
+        Call `~~greenwood.Turnbull.fit()` to produce a fitted estimator with cached results
+        (`interval_low_`, `interval_high_`, `prob_mass_`, `survival_`), accessible as aligned arrays
+        or exported to DataFrames.
 
     Details
     -------
-    Call `fit` with a `Surv` response. The maximal intersection intervals are found via the
-    Gentleman & Geyer (1994) construction: the finest partition induced by every subject's
-    `lower`/`upper` bounds is grouped into runs of consecutive atoms that every subject's
-    constraint either fully includes or fully excludes (only their combined mass is
-    identified). Probabilities on that support are then found by the EM self-consistency
-    algorithm, which is monotone in the likelihood and converges to the NPMLE.
+    Call `~~greenwood.Turnbull.fit` with a `Surv` response. The maximal intersection intervals are
+    found via the Gentleman & Geyer (1994) construction: the finest partition induced by every
+    subject's `lower`{.gd-no-link}/`upper` bounds is grouped into runs of consecutive atoms that
+    every subject's constraint either fully includes or fully excludes (only their combined mass is
+    identified). Probabilities on that support are then found by the EM self-consistency algorithm,
+    which is monotone in the likelihood and converges to the NPMLE.
 
     Examples
     --------
@@ -383,7 +383,8 @@ class Turnbull:
     tb
     ```
 
-    The fitted curve, one row per maximal intersection interval, is available via `to_frame`:
+    The fitted curve, one row per maximal intersection interval, is available via
+    `~~greenwood.Turnbull.to_frame`:
 
     ```{python}
     tb.to_frame(format="polars")
@@ -449,12 +450,12 @@ class Turnbull:
             Optional grouping variable (e.g., a column or array). Produces one fit per unique
             value of `by`. Default (`None`): a single, unstratified fit.
         weights
-            Optional case weights. Must have the same length as `surv`. Default (`None`): unit
-            weights.
+            Optional case weights. Must have the same length as `surv`{.gd-no-link}. Default
+            (`None`): unit weights.
         data
             A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns
-            named by the response, `by`, and `weights`. When `surv` is an `Outcome` or a formula,
-            rows with a missing value in any column used are dropped before fitting.
+            named by the response, `by`, and `weights`. When `surv`{.gd-no-link} is an `Outcome` or
+            a formula, rows with a missing value in any column used are dropped before fitting.
 
         Returns
         -------
@@ -543,9 +544,9 @@ class Turnbull:
         tuple or dict
             For a single stratum: `(estimate, lower, upper)`. `estimate` is `nan` when the
             crossing falls inside a non-degenerate (ambiguous) interval, in which case
-            `lower`/`upper` are that interval's bounds rather than a sampling confidence bound.
-            Otherwise `estimate == lower == upper`. For stratified fits: a `dict` keyed by
-            stratum label, with values as above.
+            `lower`{.gd-no-link}/`upper` are that interval's bounds rather than a sampling
+            confidence bound. Otherwise `estimate == lower == upper`. For stratified fits: a `dict`
+            keyed by stratum label, with values as above.
 
         Details
         -------
@@ -620,15 +621,15 @@ class Turnbull:
 
         Details
         -------
-        RMST is the area under the survival curve on $[0, \tau]$. Unlike `predict()` and
-        `quantile()`, which report the genuine identifiability gap as `nan`, RMST needs a single
-        number, so every atom's probability mass, ambiguous or not, is treated as resolving exactly
-        at that atom's *right* endpoint (`interval_high_`). This is Turnbull's own convention for
-        reporting a plottable curve from an otherwise partially-unidentified NPMLE. It is also the
-        most conservative choice for RMST: placing mass as late as possible maximizes the area under
-        the curve, so this systematically reports the *largest* RMST consistent with the data, not
-        an unbiased point estimate. There is no variance estimator for it (no confidence interval is
-        returned).
+        RMST is the area under the survival curve on $[0, \tau]$. Unlike
+        `~~greenwood.Turnbull.predict()` and `quantile()`, which report the genuine identifiability
+        gap as `nan`, RMST needs a single number, so every atom's probability mass, ambiguous or
+        not, is treated as resolving exactly at that atom's *right* endpoint (`interval_high_`).
+        This is Turnbull's own convention for reporting a plottable curve from an otherwise
+        partially-unidentified NPMLE. It is also the most conservative choice for RMST: placing mass
+        as late as possible maximizes the area under the curve, so this systematically reports the
+        *largest* RMST consistent with the data, not an unbiased point estimate. There is no
+        variance estimator for it (no confidence interval is returned).
 
         Examples
         --------

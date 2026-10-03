@@ -53,12 +53,12 @@ class CoxNet:
     $L_2$ (ridge) penalties: $\lambda(\alpha\|\beta\|_1 + \tfrac{1-\alpha}{2}\|\beta\|_2^2)$,
     where the mixing parameter $\alpha$ controls the trade-off between sparsity and smoothness.
 
-    Fit the model with `fit()` supplying a right-censored or counting-process `Surv` response
-    and a design matrix of covariates. The algorithm uses FISTA (Fast Iterative Shrinkage-
-    Thresholding Algorithm) to optimize the penalized partial likelihood. By default, covariates
-    are standardized before penalizing (for fair comparison of penalties across features), but
-    coefficients are returned on the original scale. Ridge (`l1_ratio=0`) encourages small,
-    spread-out coefficients. Lasso (`l1_ratio=1`) drives some coefficients exactly to zero.
+    Fit the model with `~~greenwood.CoxNet.fit()` supplying a right-censored or counting-process
+    `Surv` response and a design matrix of covariates. The algorithm uses FISTA (Fast Iterative
+    Shrinkage- Thresholding Algorithm) to optimize the penalized partial likelihood. By default,
+    covariates are standardized before penalizing (for fair comparison of penalties across
+    features), but coefficients are returned on the original scale. Ridge (`l1_ratio=0`) encourages
+    small, spread-out coefficients. Lasso (`l1_ratio=1`) drives some coefficients exactly to zero.
 
     The implementation follows the glmnet model for elastic-net regularization, using coordinate
     descent-like optimization with soft-thresholding. Results include penalized coefficients,
@@ -81,8 +81,8 @@ class CoxNet:
     Returns
     -------
     Fitted estimator
-        Call `fit()` to produce a fitted estimator with cached results (`coef_`,
-        `std_error_`, `n_features_in_`, `feature_names_in_`), accessible as arrays or
+        Call `~~greenwood.CoxNet.fit()` to produce a fitted estimator with cached results (`coef_`,
+        `std_error_`{.gd-no-link}, `n_features_in_`, `feature_names_in_`), accessible as arrays or
         exported to DataFrames.
 
     Details
@@ -184,9 +184,9 @@ class CoxNet:
             A list of column names in `data` also works.
         data
             A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns
-            named by the response and `covariates`. When `surv` is an `Outcome` or a formula, rows
-            with a missing value in any column used are dropped before fitting. Covariate formula
-            strings and lists of column names are also resolved here.
+            named by the response and `covariates`. When `surv`{.gd-no-link} is an `Outcome` or a
+            formula, rows with a missing value in any column used are dropped before fitting.
+            Covariate formula strings and lists of column names are also resolved here.
         weights
             Case weights, one per row (a column name in `data`, or an array). Must be finite
             and strictly positive. Default is `None` (all weights `1`).
@@ -401,7 +401,7 @@ class CoxNet:
         Raises
         ------
         ValueError
-            If `type` is not one of `"lp"`, `"risk"`, or `"survival"`.
+            If `type`{.gd-no-link} is not one of `"lp"`, `"risk"`, or `"survival"`.
 
         Details
         -------
@@ -882,9 +882,9 @@ def cv_coxnet(
         Covariate design (dataframe, 2-D array, or formula string with `data`).
     data
         A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns named
-        by the response and `covariates`. When `surv` is an `Outcome` or a formula, rows with a
-        missing value in any column used are dropped first, along with the matching rows of any
-        arrays passed alongside.
+        by the response and `covariates`. When `surv`{.gd-no-link} is an `Outcome` or a formula,
+        rows with a missing value in any column used are dropped first, along with the matching rows
+        of any arrays passed alongside.
     weights
         Case weights, one per row (a column name in `data`, or an array). Must be finite
         and strictly positive. Default is `None` (all weights `1`).
@@ -925,7 +925,7 @@ def cv_coxnet(
     -------
     CoxNetCVResult
         Object exposing `best_penalizer_`, `penalizer_1se_`, `mean_scores_`, `std_scores_`,
-        `n_nonzero_`, and a `to_frame()` method for the path.
+        `n_nonzero_`, and a `to_frame()`{.gd-no-link} method for the path.
 
     Details
     -------

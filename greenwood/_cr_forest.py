@@ -393,8 +393,8 @@ class CompetingRiskForest:
         Parameters
         ----------
         surv
-            A multi-state `Surv` response, built with `gw.Surv()` and a categorical `event`.
-            An `Outcome` or a formula string such as
+            A multi-state `Surv` response, built with `gw.Surv()` and a categorical
+            `event`{.gd-no-link}. An `Outcome` or a formula string such as
             `"Surv(time, factor(cause, c(0, 1, 2), c('censor', 'pcm', 'death'))) ~ age"` is also
             accepted, with its columns read from `data`. The right-hand side sets `covariates`.
         covariates
@@ -402,8 +402,8 @@ class CompetingRiskForest:
             A list of column names in `data` also works.
         data
             A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the
-            columns named by the response and `covariates`. When `surv` is an `Outcome` or a
-            formula, rows with a missing value in any column used are dropped before fitting.
+            columns named by the response and `covariates`. When `surv`{.gd-no-link} is an `Outcome`
+            or a formula, rows with a missing value in any column used are dropped before fitting.
             Covariate formula strings and lists of column names are also resolved here.
 
         Returns

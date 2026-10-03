@@ -371,15 +371,16 @@ class AFT:
     -------
     Fitted estimator
         Call `fit()` to produce a fitted estimator with cached results (`coef_`, `scale_`,
-        `threshold_`, `std_error_`, `z_`, `p_value_`, `conf_low_`, `conf_high_`, `loglik_`,
-        `aic_`, `bic_`), accessible as arrays or exported to DataFrames.
+        `threshold_`, `std_error_`{.gd-no-link}, `z_`, `p_value_`, `conf_low_`{.gd-no-link},
+        `conf_high_`{.gd-no-link}, `loglik_`, `aic_`, `bic_`), accessible as arrays or exported to
+        DataFrames.
 
     Details
     -------
     Call `fit(surv, covariates)` with a right-censored `Surv` response and a covariate design (a 2-D
     array or a dataframe). An intercept is added automatically; rows with missing covariates are
-    dropped. Results are exposed as arrays (`coef_`, `scale_`, `std_error_`, `z_`, `p_value_`) and
-    as tidy frames via `to_frame()` (optionally `format=`) and `greenwood.tidy`.
+    dropped. Results are exposed as arrays (`coef_`, `scale_`, `std_error_`{.gd-no-link}, `z_`,
+    `p_value_`) and as tidy frames via `to_frame()` (optionally `format=`) and `greenwood.tidy`.
 
     Examples
     --------
@@ -489,16 +490,16 @@ class AFT:
             A list of column names in `data` also works.
         data
             A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns
-            named by the response and `covariates`. When `surv` is an `Outcome` or a formula, rows
-            with a missing value in any column used are dropped before fitting. Covariate formula
-            strings and lists of column names are also resolved here.
+            named by the response and `covariates`. When `surv`{.gd-no-link} is an `Outcome` or a
+            formula, rows with a missing value in any column used are dropped before fitting.
+            Covariate formula strings and lists of column names are also resolved here.
 
         Returns
         -------
         AFT
             The fitted estimator object itself (for method chaining) with cached coefficient arrays
-            (`coef_`, `std_error_`, `z_`, `p_value_`), scale parameter (`scale_`), threshold
-            (`threshold_`, `0.0` unless `threshold=True`), and log-likelihood (`loglik_`).
+            (`coef_`, `std_error_`{.gd-no-link}, `z_`, `p_value_`), scale parameter (`scale_`),
+            threshold (`threshold_`, `0.0` unless `threshold=True`), and log-likelihood (`loglik_`).
 
         Details
         -------

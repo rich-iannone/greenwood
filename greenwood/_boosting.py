@@ -296,9 +296,9 @@ class GradientBoostingSurvivalAnalysis:
             A list of column names in `data` also works.
         data
             A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns
-            named by the response and `covariates`. When `surv` is an `Outcome` or a formula, rows
-            with a missing value in any column used are dropped before fitting. Covariate formula
-            strings and lists of column names are also resolved here.
+            named by the response and `covariates`. When `surv`{.gd-no-link} is an `Outcome` or a
+            formula, rows with a missing value in any column used are dropped before fitting.
+            Covariate formula strings and lists of column names are also resolved here.
 
         Returns
         -------

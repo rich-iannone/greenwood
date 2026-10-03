@@ -188,8 +188,8 @@ class ZPHResult:
         Returns
         -------
         pandas.DataFrame, polars.DataFrame, or pyarrow.Table
-            A table with test statistics. With `detail="windows"`, includes `window` and `n_events`
-            columns.
+            A table with test statistics. With `detail="windows"`, includes `window` and
+            `n_events`{.gd-no-link} columns.
 
         Examples
         --------
@@ -926,12 +926,12 @@ class CoxPH:
     covariate effects are estimated parametrically through the log-hazard-ratio coefficients
     $\beta$.
 
-    To use this model, call `fit()` with a right-censored or counting-process `Surv` response
-    and a design matrix of covariates (2-D array or DataFrame). The model automatically handles
-    stratification (via `by=` in fit), tied event times (via configurable tie-handling methods),
-    and can compute predictions, baseline hazards, and diagnostic residuals. Results include
-    coefficient estimates with confidence intervals, hazard ratios, standard errors, and
-    global significance tests.
+    To use this model, call `~~greenwood.CoxPH.fit()` with a right-censored or counting-process
+    `Surv` response and a design matrix of covariates (2-D array or DataFrame). The model
+    automatically handles stratification (via `by=` in fit), tied event times (via configurable
+    tie-handling methods), and can compute predictions, baseline hazards, and diagnostic residuals.
+    Results include coefficient estimates with confidence intervals, hazard ratios, standard errors,
+    and global significance tests.
 
     The implementation uses maximum partial likelihood to estimate coefficients. Variance
     estimates use the observed information matrix (Hessian). The model assumes proportional
@@ -948,17 +948,18 @@ class CoxPH:
     Returns
     -------
     Fitted estimator
-        Call `fit()` to produce a fitted estimator with cached results (`coef_`,
-        `hazard_ratio_`, `std_error_`, `z_`, `p_value_`, `conf_low_`, `conf_high_`,
-        `concordance_`, `lr_stat_`, `df_`), accessible as arrays or exported to DataFrames.
+        Call `~~greenwood.CoxPH.fit()` to produce a fitted estimator with cached results (`coef_`,
+        `hazard_ratio_`, `std_error_`{.gd-no-link}, `z_`, `p_value_`, `conf_low_`{.gd-no-link},
+        `conf_high_`{.gd-no-link}, `concordance_`, `lr_stat_`, `df_`), accessible as arrays or
+        exported to DataFrames.
 
     Details
     -------
-    Call `fit()` with a formula such as `"Surv(time, status) ~ age + sex"` and `data=`, or with a
-    `Surv` response and a covariate design (a 2-D array or a dataframe of covariates). Rows with
-    missing values are dropped (complete-case, as in R's default `na.omit`). Results are exposed as
-    arrays (`coef_`, `std_error_`, `hazard_ratio_`, …) and as tidy frames via `to_frame()`
-    (optionally `format=`) and `greenwood.tidy`.
+    Call `~~greenwood.CoxPH.fit()` with a formula such as `"Surv(time, status) ~ age + sex"` and
+    `data=`, or with a `Surv` response and a covariate design (a 2-D array or a dataframe of
+    covariates). Rows with missing values are dropped (complete-case, as in R's default `na.omit`).
+    Results are exposed as arrays (`coef_`, `std_error_`{.gd-no-link}, `hazard_ratio_`, …) and as
+    tidy frames via `~~greenwood.CoxPH.to_frame()` (optionally `format=`) and `greenwood.tidy`.
 
     Examples
     --------
@@ -1069,9 +1070,9 @@ class CoxPH:
         data
             A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns
             named by the response, `strata`, `cluster`, `frailty_cluster`, and `covariates`. When
-            `surv` is an `Outcome` or a formula, rows with a missing value in any column used are
-            dropped before fitting. Covariate formula strings and lists of column names are also
-            resolved here.
+            `surv`{.gd-no-link} is an `Outcome` or a formula, rows with a missing value in any
+            column used are dropped before fitting. Covariate formula strings and lists of column
+            names are also resolved here.
         weights
             Case weights, one per row (a column name in `data`, or an array). Must be finite
             and strictly positive. Default is `None` (all weights `1`).
@@ -1107,8 +1108,8 @@ class CoxPH:
         Returns
         -------
         CoxPH
-            Returns self with fitted attributes including `coef_`, `std_error_`, `hazard_ratio_`,
-            `z_`, `p_value_`, and other model diagnostics.
+            Returns self with fitted attributes including `coef_`, `std_error_`{.gd-no-link},
+            `hazard_ratio_`, `z_`, `p_value_`, and other model diagnostics.
 
         Examples
         --------
@@ -1653,7 +1654,7 @@ class CoxPH:
 
             - `time`: Event times at which the baseline hazard is evaluated.
             - `cumhaz`: Cumulative baseline hazard $H_0(t)$ at each time.
-            - `survival`: Baseline survival probability $S_0(t) = \exp(-H_0(t))$.
+            - `survival`{.gd-no-link}: Baseline survival probability $S_0(t) = \exp(-H_0(t))$.
             - `cumhaz_lower`, `cumhaz_upper` (if `ci=True`): Confidence bounds for cumulative
             hazard.
             - `survival_lower`, `survival_upper` (if `ci=True`): Confidence bounds for survival.
@@ -1843,7 +1844,7 @@ class CoxPH:
     ) -> Any:
         r"""Predict from the fitted model.
 
-        `type` is one of `"lp"` (centered linear predictor), `"risk"` (`exp(lp)`), or
+        `type`{.gd-no-link} is one of `"lp"` (centered linear predictor), `"risk"` (`exp(lp)`), or
         `"survival"`. For `"survival"`, returns a frame of survival probabilities at `times`
         (defaulting to the union of all event times), one column per row of `newdata`.
 
@@ -1857,7 +1858,7 @@ class CoxPH:
 
         With `ci=True` (survival only), the frame also carries `_lower` and `_upper` columns
         per subject: a pointwise confidence band from the cumulative-hazard standard error
-        (the log transform used by R's `survfit`), at the model's `conf_level`.
+        (the log transform used by R's `survfit`), at the model's `conf_level`{.gd-no-link}.
 
         `trajectory` predicts survival for a single subject whose covariates change over time.
         It is a DataFrame (any backend) with columns `tstart`, `tstop`, and one column per
@@ -2263,8 +2264,8 @@ class CoxPH:
     ) -> Any:
         r"""Predict the median survival time for each subject.
 
-        Convenience wrapper around `predict_quantile(p=0.5)`. See `predict_quantile()` for full
-        documentation.
+        Convenience wrapper around `predict_quantile(p=0.5)`. See
+        `~~greenwood.CoxPH.predict_quantile()` for full documentation.
 
         Parameters
         ----------
@@ -3271,7 +3272,8 @@ class CoxPH:
         -------
         SmoothHRResult
             Contains the evaluation grid, log-HR, HR, and pointwise confidence bands. Use
-            `to_frame()` for a tidy DataFrame or pass the result to `plot_smooth_hr()`.
+            `~~greenwood.CoxPH.to_frame()` for a tidy DataFrame or pass the result to
+            `plot_smooth_hr()`.
 
         Examples
         --------

@@ -420,8 +420,8 @@ def plot_predicted_survival(
     Parameters
     ----------
     model
-        A fitted estimator whose `predict` accepts `type=` and returns a `time` column plus one
-        column per subject (e.g. a survival forest).
+        A fitted estimator whose `predict`{.gd-no-link} accepts `type=` and returns a `time` column
+        plus one column per subject (e.g. a survival forest).
     newdata
         Covariates for the subjects to plot (a dataframe or 2-D array), passed to `model.predict`.
     type
@@ -433,7 +433,8 @@ def plot_predicted_survival(
     xlab
         X-axis label (default `"Time"`).
     ylab
-        Y-axis label. Defaults to `"Survival probability"` or `"Cumulative hazard"` by `type`.
+        Y-axis label. Defaults to `"Survival probability"` or `"Cumulative hazard"` by
+        `type`{.gd-no-link}.
     width, height
         Plot dimensions in pixels (defaults 500x300).
     backend

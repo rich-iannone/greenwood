@@ -202,9 +202,9 @@ def cross_validate(
 
     data
         A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns named
-        by the response and `covariates`. When `surv` is an `Outcome` or a formula, rows with a
-        missing value in any column used are dropped first, along with the matching rows of any
-        arrays passed alongside.
+        by the response and `covariates`. When `surv`{.gd-no-link} is an `Outcome` or a formula,
+        rows with a missing value in any column used are dropped first, along with the matching rows
+        of any arrays passed alongside.
     k
         Number of folds (default 5). Each fold serves as test data once; subjects are split randomly
         and evenly across folds. Typical choices: 5 or 10.

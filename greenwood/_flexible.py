@@ -140,10 +140,10 @@ class RoystonParmar:
     The model uses restricted cubic splines with a fixed number of degrees of freedom (controlled
     by knots placed at quantiles of event times). A low df value (e.g., df=1) reproduces a
     2-parameter AFT distribution exactly (Weibull under `"hazard"`, log-logistic under `"odds"`);
-    higher df values (e.g., df=3 or 4) provide greater flexibility. Call `fit()` with a
-    right-censored `Surv` response and a design matrix. The model reports spline and covariate
-    coefficients, fitted knot locations, log-likelihood, and supports predictions of survival at
-    specified times and covariate values.
+    higher df values (e.g., df=3 or 4) provide greater flexibility. Call
+    `~~greenwood.RoystonParmar.fit()` with a right-censored `Surv` response and a design matrix. The
+    model reports spline and covariate coefficients, fitted knot locations, log-likelihood, and
+    supports predictions of survival at specified times and covariate values.
 
     The implementation uses maximum likelihood estimation with constraints that ensure the
     transformed baseline is monotone increasing in time (required for both scales: cumulative
@@ -165,16 +165,17 @@ class RoystonParmar:
     Returns
     -------
     Fitted estimator
-        Call `fit()` to produce a fitted estimator with cached results (`coef_`,
-        `std_error_`, `z_`, `p_value_`, `conf_low_`, `conf_high_`, `knots_`, `loglik_`,
-        `aic_`, `bic_`), accessible as arrays or exported to DataFrames.
+        Call `~~greenwood.RoystonParmar.fit()` to produce a fitted estimator with cached results
+        (`coef_`, `std_error_`{.gd-no-link}, `z_`, `p_value_`, `conf_low_`{.gd-no-link},
+        `conf_high_`{.gd-no-link}, `knots_`, `loglik_`, `aic_`, `bic_`), accessible as arrays or
+        exported to DataFrames.
 
     Details
     -------
     Call `fit(surv, covariates)` with a right-censored `Surv` response and a covariate design
     (a dataframe, a 2-D array, or a formula string with `data`). Results are exposed as arrays
-    (`coef_`, `std_error_`, ...), the fitted `knots_`, and tidy frames via `to_frame()`
-    (optionally `format=`).
+    (`coef_`, `std_error_`{.gd-no-link}, ...), the fitted `knots_`, and tidy frames via
+    `~~greenwood.RoystonParmar.to_frame()` (optionally `format=`).
 
     Examples
     --------
@@ -268,16 +269,16 @@ class RoystonParmar:
             A list of column names in `data` also works.
         data
             A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns
-            named by the response and `covariates`. When `surv` is an `Outcome` or a formula, rows
-            with a missing value in any column used are dropped before fitting. Covariate formula
-            strings and lists of column names are also resolved here.
+            named by the response and `covariates`. When `surv`{.gd-no-link} is an `Outcome` or a
+            formula, rows with a missing value in any column used are dropped before fitting.
+            Covariate formula strings and lists of column names are also resolved here.
 
         Returns
         -------
         RoystonParmar
             The fitted estimator object itself (for method chaining) with cached coefficient
-            arrays (`coef_`, `std_error_`, `z_`, `p_value_`), fitted knot locations (`knots_`),
-            and model fit statistics.
+            arrays (`coef_`, `std_error_`{.gd-no-link}, `z_`, `p_value_`), fitted knot locations
+            (`knots_`), and model fit statistics.
 
         Details
         -------
@@ -725,8 +726,8 @@ class RoystonParmar:
     ) -> Any:
         r"""Predict the median survival time for each subject.
 
-        Convenience wrapper around `predict_quantile(p=0.5)`. See `predict_quantile` for
-        full documentation.
+        Convenience wrapper around `predict_quantile(p=0.5)`. See
+        `~~greenwood.RoystonParmar.predict_quantile` for full documentation.
 
         Parameters
         ----------

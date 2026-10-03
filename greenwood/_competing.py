@@ -335,15 +335,15 @@ def grays_test(
         column(s).
     group
         Group labels, one per observation. Can be a Narwhals series, 1-D array, or Python sequence.
-        Must have the same length as `surv`. At least two groups are required.
+        Must have the same length as `surv`{.gd-no-link}. At least two groups are required.
     cause
         The cause of interest to compare across groups. Can be a state label (string) or an integer
         cause code (1-indexed). Default is `1` (the first cause).
     data
         A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns named
-        by the response and `group`. When `surv` is an `Outcome` or a formula, rows with a missing
-        value in any column used are dropped first, along with the matching rows of any arrays
-        passed alongside.
+        by the response and `group`. When `surv`{.gd-no-link} is an `Outcome` or a formula, rows
+        with a missing value in any column used are dropped first, along with the matching rows of
+        any arrays passed alongside.
 
     Returns
     -------
@@ -457,10 +457,10 @@ class AalenJohansen:
 
     Unlike naive estimates that ignore censoring or competing events, the Aalen-Johansen CIF
     correctly accounts for both. It is computed using transition probabilities between states via
-    generalized Kaplan-Meier estimates. Call `fit()` with a multi-state response (an `Outcome` such
-    as `gw.Outcome.first_event(...)` with `data=`, or a `Surv` with a categorical `event`) to obtain
-    estimates for each competing cause. Results are returned as tidy DataFrames with one row per
-    combination of stratum, cause, and time.
+    generalized Kaplan-Meier estimates. Call `~~greenwood.AalenJohansen.fit()` with a multi-state
+    response (an `Outcome` such as `gw.Outcome.first_event(...)` with `data=`, or a `Surv` with a
+    categorical `event`{.gd-no-link}) to obtain estimates for each competing cause. Results are
+    returned as tidy DataFrames with one row per combination of stratum, cause, and time.
 
     The estimator uses the formula $\mathrm{CIF}_j(t) = \sum_{s \le t} \hat{S}(s^-) P_{0j}(s)$,
     where $\hat{S}(s^-)$ is the probability of being event-free before time $s$, and $P_{0j}(s)$ is
@@ -480,16 +480,17 @@ class AalenJohansen:
     Returns
     -------
     Fitted estimator
-        Call `fit()` to produce a fitted estimator with cached results (`states_`, and internal
-        transition matrices), accessible as tidy DataFrames.
+        Call `~~greenwood.AalenJohansen.fit()` to produce a fitted estimator with cached results
+        (`states_`, and internal transition matrices), accessible as tidy DataFrames.
 
     Details
     -------
     Call `fit(surv, by=..., data=...)` with a multi-state response: an `Outcome`, a formula such
     as `"Surv(etime, factor(cause, c(0, 1, 2), c('censor', 'pcm', 'death'))) ~ sex"`, or a `Surv`
-    with a categorical `event` whose first category is censoring and whose remaining categories
-    are the competing causes. Results are tidy frames via `to_frame()` (optionally `format=`) with
-    one row per stratum, cause, and time.
+    with a categorical `event`{.gd-no-link} whose first category is censoring and whose remaining
+    categories are the competing causes. Results are tidy frames via
+    `~~greenwood.AalenJohansen.to_frame()` (optionally `format=`) with one row per stratum, cause,
+    and time.
 
     Examples
     --------
@@ -557,7 +558,7 @@ class AalenJohansen:
         the Aalen-Johansen estimator accounts for competing events: subjects who experience a
         competing cause are removed from the risk set, preventing overly optimistic estimates of the
         probability of experiencing the target cause. Results are stored in the fitted object.
-        Access them via `to_frame()` (optionally `format=`).
+        Access them via `~~greenwood.AalenJohansen.to_frame()` (optionally `format=`).
 
         The Aalen-Johansen estimator generalizes both Kaplan-Meier and Nelson-Aalen to the
         competing-risks setting. For each cause $j$, it estimates $F_j(t)$, the cumulative
@@ -580,15 +581,15 @@ class AalenJohansen:
             unstratified set of CIFs.
         data
             A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns
-            named by the response and `by`. When `surv` is an `Outcome` or a formula, rows with a
-            missing value in any column used are dropped before fitting.
+            named by the response and `by`. When `surv`{.gd-no-link} is an `Outcome` or a formula,
+            rows with a missing value in any column used are dropped before fitting.
 
         Returns
         -------
         AalenJohansen
             The fitted estimator object itself (for method chaining) with cached cumulative
             incidence results (time arrays, CIF per cause, confidence bands) accessible via
-            `to_frame()` (optionally `format=`).
+            `~~greenwood.AalenJohansen.to_frame()` (optionally `format=`).
 
         Details
         -------
@@ -599,7 +600,8 @@ class AalenJohansen:
         no censoring.
 
         Left truncation is not yet supported. A multi-state response comes from an
-        `Outcome`, a formula with a `factor()` event, or a `Surv` with a categorical `event`.
+        `Outcome`, a formula with a `factor()` event, or a `Surv` with a categorical
+        `event`{.gd-no-link}.
 
         Examples
         --------
@@ -772,10 +774,10 @@ class FineGray:
     Technically, the Fine-Gray model uses a weighted Cox-like approach: subjects who experience a
     competing event remain in the risk set but with decreasing inverse-probability-of-censoring
     weights, reflecting their reduced ability to contribute information about the target cause. Call
-    `fit()` with a multi-state response (an `Outcome` or formula with `data=`, or a `Surv` with a
-    categorical event) and specify the target cause of interest. Coefficients, hazard ratios, and
-    standard errors are computed via weighted partial likelihood, with robust (clustered) standard
-    errors accounting for the weighting scheme.
+    `~~greenwood.FineGray.fit()` with a multi-state response (an `Outcome` or formula with `data=`,
+    or a `Surv` with a categorical event) and specify the target cause of interest. Coefficients,
+    hazard ratios, and standard errors are computed via weighted partial likelihood, with robust
+    (clustered) standard errors accounting for the weighting scheme.
 
     The implementation automatically computes event weights and handles censoring. Standard errors
     use the Lin-Wei robust (sandwich) estimator, validated against R's survival package. Unlike
@@ -792,16 +794,17 @@ class FineGray:
     Returns
     -------
     Fitted estimator
-        Call `fit()` to produce a fitted estimator with cached results (`coef_`,
-        `hazard_ratio_`, `std_error_`, `z_`, `p_value_`, `conf_low_`, `conf_high_`),
-        accessible as arrays or exported to DataFrames.
+        Call `~~greenwood.FineGray.fit()` to produce a fitted estimator with cached results
+        (`coef_`, `hazard_ratio_`, `std_error_`{.gd-no-link}, `z_`, `p_value_`,
+        `conf_low_`{.gd-no-link}, `conf_high_`{.gd-no-link}), accessible as arrays or exported to
+        DataFrames.
 
     Details
     -------
     Call `fit(surv, covariates, data=...)` with a multi-state response (an `Outcome`, a formula, or
-    a `Surv` with a categorical `event`) and specify the target `cause`. The model uses weighted
-    Cox-like optimization with robust standard errors. Results can be tidy frames via `to_frame()`
-    (optionally `format=`).
+    a `Surv` with a categorical `event`{.gd-no-link}) and specify the target `cause`. The model uses
+    weighted Cox-like optimization with robust standard errors. Results can be tidy frames via
+    `~~greenwood.FineGray.to_frame()` (optionally `format=`).
 
     Examples
     --------
@@ -894,7 +897,7 @@ class FineGray:
         covariates
             A dataframe (pandas or polars) or 2-D array of covariates to adjust for in the
             subdistribution hazard. An intercept is added automatically. Must have the same
-            number of rows as `surv`.
+            number of rows as `surv`{.gd-no-link}.
             A list of column names in `data` also works.
         max_iter
             Maximum number of Newton-Raphson iterations (default 30).
@@ -902,16 +905,16 @@ class FineGray:
             Convergence tolerance for coefficient changes (default 1e-9).
         data
             A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns
-            named by the response and `covariates`. When `surv` is an `Outcome` or a formula, rows
-            with a missing value in any column used are dropped before fitting. Covariate formula
-            strings and lists of column names are also resolved here.
+            named by the response and `covariates`. When `surv`{.gd-no-link} is an `Outcome` or a
+            formula, rows with a missing value in any column used are dropped before fitting.
+            Covariate formula strings and lists of column names are also resolved here.
 
         Returns
         -------
         FineGray
             The fitted estimator object itself (for method chaining) with cached coefficient
-            arrays (`coef_`, `std_error_`, `hazard_ratio_`, `z_`, `p_value_`), event counts,
-            and model fit statistics.
+            arrays (`coef_`, `std_error_`{.gd-no-link}, `hazard_ratio_`, `z_`, `p_value_`), event
+            counts, and model fit statistics.
 
         Details
         -------
@@ -1408,9 +1411,9 @@ class PenalizedFineGray:
             A list of column names in `data` also works.
         data
             A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns
-            named by the response and `covariates`. When `surv` is an `Outcome` or a formula, rows
-            with a missing value in any column used are dropped before fitting. Covariate formula
-            strings and lists of column names are also resolved here.
+            named by the response and `covariates`. When `surv`{.gd-no-link} is an `Outcome` or a
+            formula, rows with a missing value in any column used are dropped before fitting.
+            Covariate formula strings and lists of column names are also resolved here.
 
         Returns
         -------
@@ -1758,9 +1761,9 @@ class CauseSpecificCox:
         data
             A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns
             named by the response, `strata`, `cluster`, `frailty_cluster`, and `covariates`. When
-            `surv` is an `Outcome` or a formula, rows with a missing value in any column used are
-            dropped before fitting. Covariate formula strings and lists of column names are also
-            resolved here.
+            `surv`{.gd-no-link} is an `Outcome` or a formula, rows with a missing value in any
+            column used are dropped before fitting. Covariate formula strings and lists of column
+            names are also resolved here.
         strata, robust, cluster, frailty, frailty_cluster, frailty_theta, frailty_max_iter
             Passed through to `CoxPH.fit()`.
         max_iter, tol
@@ -1997,24 +2000,25 @@ class MultiState:
     r"""Aalen-Johansen estimator of multi-state transition and occupancy probabilities.
 
     Given counting-process intervals `(start, stop]` each labelled with the state occupied (`state`)
-    and the state transitioned to at `stop` (`event`, or a censoring marker), this forms the
-    Aalen-Johansen product $P(0, t) = \prod (I + dA(s))$ and reports the state occupancy
-    probabilities over time. Occupancy probabilities are validated to tolerance against R's
-    `survfit` multi-state `pstate`. (Competing risks and Kaplan-Meier are special cases handled by
-    `AalenJohansen` and `KaplanMeier`.)
+    and the state transitioned to at `stop`{.gd-no-link} (`event`{.gd-no-link}, or a censoring
+    marker), this forms the Aalen-Johansen product $P(0, t) = \prod (I + dA(s))$ and reports the
+    state occupancy probabilities over time. Occupancy probabilities are validated to tolerance
+    against R's `survfit` multi-state `pstate`. (Competing risks and Kaplan-Meier are special cases
+    handled by `AalenJohansen` and `KaplanMeier`.)
 
     Returns
     -------
     MultiState
-        Call `fit()` to produce a fitted estimator with attributes `states_`, `time_`, and
-        `occupancy_`, accessible as tidy DataFrames via `to_frame()`.
+        Call `~~greenwood.MultiState.fit()` to produce a fitted estimator with attributes `states_`,
+        `time_`{.gd-no-link}, and `occupancy_`, accessible as tidy DataFrames via
+        `~~greenwood.MultiState.to_frame()`.
 
     Details
     -------
     The data must be in counting-process (long) format: one row per interval `(start, stop]` that a
     subject spends in a given state. Each row carries the current state and the state transitioned
-    into at `stop` (or `None` / a censoring marker if the subject was censored). A subject who
-    passes through multiple states contributes one row per state-sojourn.
+    into at `stop`{.gd-no-link} (or `None` / a censoring marker if the subject was censored). A
+    subject who passes through multiple states contributes one row per state-sojourn.
 
     The Aalen-Johansen estimator generalises the Kaplan-Meier curve to an arbitrary state space. The
     occupancy probabilities at each event time sum to 1 across states, and the result can be read as
@@ -2109,38 +2113,41 @@ class MultiState:
             Start time of each interval. Can be a 1-D array-like (or Polars/Pandas Series).
             Intervals are half-open: (start, stop].
         stop
-            Stop (end) time of each interval. Must have the same length as `start`. Intervals define
-            subject-time windows.
+            Stop (end) time of each interval. Must have the same length as `start`{.gd-no-link}.
+            Intervals define subject-time windows.
         state
             The state occupied during each interval (the "from" state). Can be string, int, or other
-            hashable label. Must have the same length as `start` and `stop`.
+            hashable label. Must have the same length as `start`{.gd-no-link} and
+            `stop`{.gd-no-link}.
         event
             The state transitioned to at the stop time. If `None`, NaN, or 0, the subject was
             censored (no transition). Otherwise, must be a valid state label. Must have the same
-            length as `start` and `stop`.
+            length as `start`{.gd-no-link} and `stop`{.gd-no-link}.
         states
             Optional ordered sequence of all state labels (default: auto-detected from data). If
-            provided, must include all unique states in `state` and `event`. Useful for enforcing a
-            specific state ordering (e.g., disease progression order) or including states with no
-            observed transitions.
+            provided, must include all unique states in `state` and `event`{.gd-no-link}. Useful for
+            enforcing a specific state ordering (e.g., disease progression order) or including
+            states with no observed transitions.
         data
             A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) to look up column
-            names in. Any of `start`, `stop`, `state`, and `event` may then be a column name, such
-            as `fit(start="tstart", stop="tstop", state="from", event="to", data=intervals)`.
+            names in. Any of `start`{.gd-no-link}, `stop`{.gd-no-link}, `state`, and
+            `event`{.gd-no-link} may then be a column name, such as
+            `fit(start="tstart", stop="tstop", state="from", event="to", data=intervals)`.
 
         Returns
         -------
         MultiState
             The fitted estimator object itself (for method chaining) with cached results
-            (`states_`, `time_`, `occupancy_`, `transition_`) accessible via `to_frame()`
-            (optionally `format=`). Occupancy probabilities and transition probabilities can
-            be queried at any time via `predict()`.
+            (`states_`, `time_`{.gd-no-link}, `occupancy_`, `transition_`) accessible via
+            `~~greenwood.MultiState.to_frame()` (optionally `format=`). Occupancy probabilities and
+            transition probabilities can be queried at any time via
+            `~~greenwood.MultiState.predict()`.
 
         Details
         -------
         **Data format**: Intervals are half-open (start, stop]. Each row represents a
         subject-interval: the period during which the subject was in `state` and either
-        remained (censored) or transitioned to `event` at `stop`.
+        remained (censored) or transitioned to `event`{.gd-no-link} at `stop`{.gd-no-link}.
 
         **State labels**: States can be strings, integers, or other hashable types (e.g.,
         tuples). Mixed types are not allowed. Transitions between the same state (self-loops)

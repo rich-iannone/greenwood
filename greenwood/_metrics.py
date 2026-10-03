@@ -74,9 +74,9 @@ def concordance_index(surv: Surv | Outcome | str, risk: Any, *, data: Any = None
         Cox model linear predictor, predicted log-hazard, or predicted cumulative incidence.
     data
         A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns named
-        by the response and `risk`. When `surv` is an `Outcome` or a formula, rows with a missing
-        value in any column used are dropped first, along with the matching rows of any arrays
-        passed alongside.
+        by the response and `risk`. When `surv`{.gd-no-link} is an `Outcome` or a formula, rows with
+        a missing value in any column used are dropped first, along with the matching rows of any
+        arrays passed alongside.
 
     Returns
     -------
@@ -211,9 +211,9 @@ def concordance_index_ipcw(
         from low censoring survival in the tail. Defaults to the largest observed event time.
     data
         A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns named
-        by the response and `risk`. When `surv` is an `Outcome` or a formula, rows with a missing
-        value in any column used are dropped first, along with the matching rows of any arrays
-        passed alongside.
+        by the response and `risk`. When `surv`{.gd-no-link} is an `Outcome` or a formula, rows with
+        a missing value in any column used are dropped first, along with the matching rows of any
+        arrays passed alongside.
 
     Returns
     -------
@@ -373,9 +373,9 @@ def brier_score(
         the second dimension of `survival_prob`.
     data
         A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns named
-        by the response and `survival_prob`. When `surv` is an `Outcome` or a formula, rows with a
-        missing value in any column used are dropped first, along with the matching rows of any
-        arrays passed alongside.
+        by the response and `survival_prob`. When `surv`{.gd-no-link} is an `Outcome` or a formula,
+        rows with a missing value in any column used are dropped first, along with the matching rows
+        of any arrays passed alongside.
 
     Returns
     -------
@@ -529,9 +529,9 @@ def integrated_brier_score(
         under the Brier-score curve from times[0] to times[-1], normalized by the time span.
     data
         A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns named
-        by the response and `survival_prob`. When `surv` is an `Outcome` or a formula, rows with a
-        missing value in any column used are dropped first, along with the matching rows of any
-        arrays passed alongside.
+        by the response and `survival_prob`. When `surv`{.gd-no-link} is an `Outcome` or a formula,
+        rows with a missing value in any column used are dropped first, along with the matching rows
+        of any arrays passed alongside.
 
     Returns
     -------
@@ -665,15 +665,15 @@ def calibration(
         back to Pandas, then Pyarrow, and raises an error if no DataFrame library is available).
     data
         A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns named
-        by the response and `predicted`. When `surv` is an `Outcome` or a formula, rows with a
-        missing value in any column used are dropped first, along with the matching rows of any
-        arrays passed alongside.
+        by the response and `predicted`. When `surv`{.gd-no-link} is an `Outcome` or a formula, rows
+        with a missing value in any column used are dropped first, along with the matching rows of
+        any arrays passed alongside.
 
     Returns
     -------
     DataFrame
-        One row per bin with columns `bin`, `n`, `predicted` (mean), `observed`,
-        `observed_lower`, `observed_upper`. Format depends on the `format` parameter.
+        One row per bin with columns `bin`, `n`{.gd-no-link}, `predicted` (mean), `observed`,
+        `observed_lower`, `observed_upper`. Format depends on the `format`{.gd-no-link} parameter.
 
     Details
     -------
@@ -799,9 +799,9 @@ def time_dependent_auc(
         after the last observation yield `nan`.
     data
         A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns named
-        by the response and `marker`. When `surv` is an `Outcome` or a formula, rows with a missing
-        value in any column used are dropped first, along with the matching rows of any arrays
-        passed alongside.
+        by the response and `marker`. When `surv`{.gd-no-link} is an `Outcome` or a formula, rows
+        with a missing value in any column used are dropped first, along with the matching rows of
+        any arrays passed alongside.
 
     Returns
     -------
@@ -943,9 +943,9 @@ def integrated_auc(
         points (no cases or controls) are dropped before integration.
     data
         A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns named
-        by the response and `marker`. When `surv` is an `Outcome` or a formula, rows with a missing
-        value in any column used are dropped first, along with the matching rows of any arrays
-        passed alongside.
+        by the response and `marker`. When `surv`{.gd-no-link} is an `Outcome` or a formula, rows
+        with a missing value in any column used are dropped first, along with the matching rows of
+        any arrays passed alongside.
 
     Returns
     -------
@@ -1037,10 +1037,10 @@ def brier_score_incidence(
     Parameters
     ----------
     surv
-        A multi-state `Surv` response (from `gw.Surv()` with a categorical event). The `status`
-        column encodes 0 = censored, 1 = first cause, 2 = second cause, etc. An `Outcome` or a
-        formula response such as `'Surv(time, status == 2)'` is also accepted, with its columns
-        read from `data`.
+        A multi-state `Surv` response (from `gw.Surv()` with a categorical event). The
+        `status`{.gd-no-link} column encodes 0 = censored, 1 = first cause, 2 = second cause, etc.
+        An `Outcome` or a formula response such as `'Surv(time, status == 2)'` is also accepted,
+        with its columns read from `data`.
     incidence_prob
         Predicted cumulative incidence probabilities for the cause of interest, shape
         `(n_subjects, n_times)`. Each entry is a predicted probability that cause `cause` has
@@ -1054,9 +1054,9 @@ def brier_score_incidence(
         relapse and `cause=2` evaluates predictions for death.
     data
         A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns named
-        by the response and `incidence_prob`. When `surv` is an `Outcome` or a formula, rows with a
-        missing value in any column used are dropped first, along with the matching rows of any
-        arrays passed alongside.
+        by the response and `incidence_prob`. When `surv`{.gd-no-link} is an `Outcome` or a formula,
+        rows with a missing value in any column used are dropped first, along with the matching rows
+        of any arrays passed alongside.
 
     Returns
     -------
@@ -1219,9 +1219,9 @@ def integrated_brier_score_incidence(
         The cause of interest (integer event code from the `Surv` response).
     data
         A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns named
-        by the response and `incidence_prob`. When `surv` is an `Outcome` or a formula, rows with a
-        missing value in any column used are dropped first, along with the matching rows of any
-        arrays passed alongside.
+        by the response and `incidence_prob`. When `surv`{.gd-no-link} is an `Outcome` or a formula,
+        rows with a missing value in any column used are dropped first, along with the matching rows
+        of any arrays passed alongside.
 
     Returns
     -------
@@ -1318,9 +1318,9 @@ def concordance_index_incidence(
         largest observed time for the cause of interest.
     data
         A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns named
-        by the response and `incidence_prob`. When `surv` is an `Outcome` or a formula, rows with a
-        missing value in any column used are dropped first, along with the matching rows of any
-        arrays passed alongside.
+        by the response and `incidence_prob`. When `surv`{.gd-no-link} is an `Outcome` or a formula,
+        rows with a missing value in any column used are dropped first, along with the matching rows
+        of any arrays passed alongside.
 
     Returns
     -------
@@ -1498,9 +1498,9 @@ def calibration_incidence(
         The cause of interest, as an integer event code from the `Surv` response.
     data
         A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns named
-        by the response and `incidence_prob`. When `surv` is an `Outcome` or a formula, rows with a
-        missing value in any column used are dropped first, along with the matching rows of any
-        arrays passed alongside.
+        by the response and `incidence_prob`. When `surv`{.gd-no-link} is an `Outcome` or a formula,
+        rows with a missing value in any column used are dropped first, along with the matching rows
+        of any arrays passed alongside.
 
     Returns
     -------
@@ -1517,7 +1517,7 @@ def calibration_incidence(
 
     where $\bar{\hat{F}}_k(t) = \frac{1}{n}\sum_{i=1}^n \hat{F}_k(t \mid \mathbf{x}_i)$ is the mean
     predicted CIF and $\hat{F}_k^{\mathrm{AJ}}(t)$ is the marginal Aalen-Johansen CIF. The AJ
-    estimator is fit internally from the supplied `surv` response.
+    estimator is fit internally from the supplied `surv`{.gd-no-link} response.
 
     Examples
     --------
@@ -2110,9 +2110,9 @@ def concordance_index_ci(
         Scale for the CI: `"logit"` (default, recommended), `"log"`, or `"identity"`.
     data
         A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns named
-        by the response and `risk`. When `surv` is an `Outcome` or a formula, rows with a missing
-        value in any column used are dropped first, along with the matching rows of any arrays
-        passed alongside.
+        by the response and `risk`. When `surv`{.gd-no-link} is an `Outcome` or a formula, rows with
+        a missing value in any column used are dropped first, along with the matching rows of any
+        arrays passed alongside.
 
     Returns
     -------
@@ -2222,9 +2222,9 @@ def concordance_index_compare(
         Confidence level.
     data
         A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns named
-        by the response, `risk_a`, and `risk_b`. When `surv` is an `Outcome` or a formula, rows with
-        a missing value in any column used are dropped first, along with the matching rows of any
-        arrays passed alongside.
+        by the response, `risk_a`, and `risk_b`. When `surv`{.gd-no-link} is an `Outcome` or a
+        formula, rows with a missing value in any column used are dropped first, along with the
+        matching rows of any arrays passed alongside.
 
     Returns
     -------
@@ -2339,9 +2339,9 @@ def score_cr(
         DataFrame backend for the returned table.
     data
         A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns named
-        by the response and `incidence_prob`. When `surv` is an `Outcome` or a formula, rows with a
-        missing value in any column used are dropped first, along with the matching rows of any
-        arrays passed alongside.
+        by the response and `incidence_prob`. When `surv`{.gd-no-link} is an `Outcome` or a formula,
+        rows with a missing value in any column used are dropped first, along with the matching rows
+        of any arrays passed alongside.
 
     Returns
     -------

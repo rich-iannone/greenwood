@@ -43,11 +43,11 @@ def split_episodes(
     Parameters
     ----------
     baseline
-        The subject-level table. Must contain the `id`, `time`, and `event` columns. It may have
-        one row per subject, or it may be the same long table as `visits` when that table repeats
-        the follow-up time and event on every row. In that case the first row of each subject is
-        used, after checking that `time`, `event`, and any `baseline_covariates` are constant
-        within the subject.
+        The subject-level table. Must contain the `id`, `time`, and `event`{.gd-no-link} columns. It
+        may have one row per subject, or it may be the same long table as `visits` when that table
+        repeats the follow-up time and event on every row. In that case the first row of each
+        subject is used, after checking that `time`, `event`{.gd-no-link}, and any
+        `baseline_covariates` are constant within the subject.
     visits
         One row per (subject, visit). Must contain the `id` and `visit_time` columns.
     id
@@ -63,8 +63,8 @@ def split_episodes(
         every column other than `id` and `visit_time`.
     baseline_covariates
         The columns of `baseline` to carry as time-fixed covariates. The default (`None`) uses
-        every column other than `id`, `time`, and `event` when `baseline` has one row per
-        subject, and none when it repeats subjects (a long table usually holds per-visit columns
+        every column other than `id`, `time`, and `event`{.gd-no-link} when `baseline` has one row
+        per subject, and none when it repeats subjects (a long table usually holds per-visit columns
         that are not fixed in time).
     carry_forward
         If `True` (default), the last observed covariate value is carried forward to the

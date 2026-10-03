@@ -336,12 +336,13 @@ class KaplanMeier:
     This is the most widely used method for survival analysis and is the starting point for
     comparing survival between groups or assessing model fit.
 
-    To use this estimator, call `fit()` with a right-censored response: an `Outcome` such as
-    `gw.Outcome.surv(time="time", event="status")` or a formula such as `"Surv(time, status) ~ sex"`
-    together with `data=`, or a `Surv` built from values in hand. The estimator computes survival
-    probabilities, standard errors, and confidence intervals at each unique event time. Results can
-    be accessed as aligned arrays, exported to pandas/polars/pyarrow DataFrames, or queried through
-    methods like `median()`, `quantile()`, and `predict()`.
+    To use this estimator, call `~~greenwood.KaplanMeier.fit()` with a right-censored response: an
+    `Outcome` such as `gw.Outcome.surv(time="time", event="status")` or a formula such as
+    `"Surv(time, status) ~ sex"` together with `data=`, or a `Surv` built from values in hand. The
+    estimator computes survival probabilities, standard errors, and confidence intervals at each
+    unique event time. Results can be accessed as aligned arrays, exported to pandas/polars/pyarrow
+    DataFrames, or queried through methods like `~~greenwood.KaplanMeier.median()`,
+    `~~greenwood.KaplanMeier.quantile()`, and `~~greenwood.KaplanMeier.predict()`.
 
     The implementation uses the product-limit formula
 
@@ -369,15 +370,17 @@ class KaplanMeier:
     Returns
     -------
     Fitted estimator
-        Call `fit()` to produce a fitted estimator with cached results (`time_`, `surv_`,
-        `std_error_`, `conf_low_`, `conf_high_`, `n_risk_`, `n_event_`, `n_censor_`),
-        accessible as aligned arrays or exported to DataFrames.
+        Call `~~greenwood.KaplanMeier.fit()` to produce a fitted estimator with cached results
+        (`time_`, `surv_`, `std_error_`, `conf_low_`, `conf_high_`, `n_risk_`, `n_event_`,
+        `n_censor_`), accessible as aligned arrays or exported to DataFrames.
 
     Details
     -------
-    Call `fit` with a `Surv` response. Results are exposed as aligned arrays (`time_`,
-    `survival_`, `std_error_`, `conf_low_`, `conf_high_`, `strata_`), as tidy frames via
-    `to_frame()` (optionally `format=`), and through `median`, `quantile`, and `predict`.
+    Call `~~greenwood.KaplanMeier.fit` with a `Surv` response. Results are exposed as aligned arrays
+    (`time_`, `~~greenwood.KaplanMeier.survival_`, `std_error_`, `conf_low_`, `conf_high_`,
+    `~~greenwood.KaplanMeier.strata_`), as tidy frames via `~~greenwood.KaplanMeier.to_frame()`
+    (optionally `format=`), and through `~~greenwood.KaplanMeier.median`,
+    `~~greenwood.KaplanMeier.quantile`, and `~~greenwood.KaplanMeier.predict`.
 
     Examples
     --------
@@ -397,8 +400,8 @@ class KaplanMeier:
     km
     ```
 
-    The full step function, one row per event time, is available with `to_frame`. Pass `format=` to
-    choose the backend (here, Polars):
+    The full step function, one row per event time, is available with
+    `~~greenwood.KaplanMeier.to_frame`. Pass `format=` to choose the backend (here, Polars):
 
     ```{python}
     # Export the survival curve as a Polars DataFrame
@@ -466,10 +469,11 @@ class KaplanMeier:
 
         Computes the product-limit survival estimate from a `Surv` response (time-to-event
         data, possibly right-censored). The estimator remains in the fitted object after
-        calling `fit()`. Access it via attributes like `surv`, `time`, `n_risk`, etc., or
-        access raw tables with `to_frame()` (optionally `format=`). Pass `by=` to
-        produce separate curves per group (stratified analysis). Each group's fit is stored
-        independently and can be visualized with `plot_survival()`.
+        calling `~~greenwood.KaplanMeier.fit()`. Access it via attributes like `surv`{.gd-no-link},
+        `time`, `n_risk`, etc., or access raw tables with `~~greenwood.KaplanMeier.to_frame()`
+        (optionally `format=`). Pass `by=` to produce separate curves per group (stratified
+        analysis). Each group's fit is stored independently and can be visualized with
+        `plot_survival()`.
 
         The fit is exact and no distributional assumptions are made. Optionally supply
         `weights=` (e.g., inverse-probability-of-censoring weights from the survey literature)
@@ -487,12 +491,13 @@ class KaplanMeier:
         by
             Optional grouping variable (e.g., a column or array). Produces one fit (one curve) per
             unique value of `by`, enabling stratified Kaplan-Meier analysis. Each group's results
-            are stored and can be accessed separately via `to_frame()`, or visualized as separate
-            curves via `plot_survival()`. Default (`None`) means to fit a single, unstratified
-            curve.
+            are stored and can be accessed separately via `~~greenwood.KaplanMeier.to_frame()`, or
+            visualized as separate curves via `plot_survival()`. Default (`None`) means to fit a
+            single, unstratified curve.
         weights
             Optional weights (e.g., from survey design or inverse-probability-of-censoring
-            adjustments). Must have the same length as `surv`. Default (`None`): unit weights.
+            adjustments). Must have the same length as `surv`{.gd-no-link}. Default (`None`): unit
+            weights.
         cluster
             Optional cluster labels for grouped robust variance estimation. When provided,
             `robust=True` is implied. Per-subject influences are summed within each cluster before
@@ -500,8 +505,9 @@ class KaplanMeier:
             clustering.
         data
             A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns
-            named by the response, `by`, `weights`, and `cluster`. When `surv` is an `Outcome` or a
-            formula, rows with a missing value in any column used are dropped before fitting.
+            named by the response, `by`, `weights`, and `cluster`. When `surv`{.gd-no-link} is an
+            `Outcome` or a formula, rows with a missing value in any column used are dropped before
+            fitting.
 
         Returns
         -------
@@ -1051,8 +1057,9 @@ class NelsonAalen:
     This estimator is useful when you want to examine the hazard directly rather than survival
     probabilities, and is often used as the basis for other analyses. You can convert the
     cumulative hazard to a survival estimate via $S(t) = \exp(-H(t))$, though the Kaplan-Meier
-    estimator is typically preferred for direct survival estimation. Call `fit()` with a
-    right-censored `Surv` response to compute cumulative hazard at each event time.
+    estimator is typically preferred for direct survival estimation. Call
+    `~~greenwood.NelsonAalen.fit()` with a right-censored `Surv` response to compute cumulative
+    hazard at each event time.
 
     The variance of the cumulative hazard estimate uses Aalen's formula:
 
@@ -1073,15 +1080,16 @@ class NelsonAalen:
     Returns
     -------
     Fitted estimator
-        Call `fit()` to produce a fitted estimator with cached results (`time_`,
-        `cumulative_hazard_`, `std_error_`, `conf_low_`, `conf_high_`, `n_risk_`, `n_event_`,
-        `n_censor_`), accessible as aligned arrays or exported to DataFrames.
+        Call `~~greenwood.NelsonAalen.fit()` to produce a fitted estimator with cached results
+        (`~~greenwood.NelsonAalen.time_`, `cumulative_hazard_`,
+        `~~greenwood.NelsonAalen.std_error_`, `conf_low_`{.gd-no-link}, `conf_high_`{.gd-no-link},
+        `n_risk_`, `n_event_`, `n_censor_`), accessible as aligned arrays or exported to DataFrames.
 
     Details
     -------
-    Call `fit()` with a `Surv` response. Results are exposed as aligned arrays, as tidy
-    frames via `to_frame()` (optionally `format=`), and through the `predict()`,
-    `quantile()`, and other methods.
+    Call `~~greenwood.NelsonAalen.fit()` with a `Surv` response. Results are exposed as aligned
+    arrays, as tidy frames via `~~greenwood.NelsonAalen.to_frame()` (optionally `format=`), and
+    through the `predict()`{.gd-no-link}, `quantile()`{.gd-no-link}, and other methods.
 
     Examples
     --------
@@ -1152,8 +1160,8 @@ class NelsonAalen:
         assumptions. The Nelson-Aalen estimator is an alternative to Kaplan-Meier. It estimates
         the cumulative hazard directly (sum of $d/n$ at each event time), from which the survival
         probability can be derived via $S(t) = \exp(-H(t))$. Results are stored in the fitted
-        object. Access them via attributes or export to a DataFrame with `to_frame()`
-        (optionally `format=`).
+        object. Access them via attributes or export to a DataFrame with
+        `~~greenwood.NelsonAalen.to_frame()` (optionally `format=`).
 
         Pass `by=` to produce separate cumulative hazard curves per group (stratified analysis),
         enabling covariate-free comparison of hazard accumulation across groups. Optionally
@@ -1172,18 +1180,19 @@ class NelsonAalen:
             Nelson-Aalen analysis. Default (`None`): fit a single, unstratified curve.
         weights
             Optional weights (e.g., from survey design or inverse-probability-of-censoring
-            adjustments). Must have the same length as `surv`. Default (`None`): unit weights.
+            adjustments). Must have the same length as `surv`{.gd-no-link}. Default (`None`): unit
+            weights.
         data
             A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns
-            named by the response, `by`, and `weights`. When `surv` is an `Outcome` or a formula,
-            rows with a missing value in any column used are dropped before fitting.
+            named by the response, `by`, and `weights`. When `surv`{.gd-no-link} is an `Outcome` or
+            a formula, rows with a missing value in any column used are dropped before fitting.
 
         Returns
         -------
         NelsonAalen
             The fitted estimator object itself (for method chaining) with cached results
-            (`time_`, `cumulative_hazard_`, `conf_low_`, `conf_high_`, `n_risk_`, `n_event_`
-            as attributes).
+            (`~~greenwood.NelsonAalen.time_`, `cumulative_hazard_`, `conf_low_`{.gd-no-link},
+            `conf_high_`{.gd-no-link}, `n_risk_`, `n_event_` as attributes).
 
         Details
         -------
