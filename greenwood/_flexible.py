@@ -178,19 +178,18 @@ class RoystonParmar:
 
     Examples
     --------
-    Build a `Surv` response from the bundled `lung` dataset and fit a flexible model with three
-    spline degrees of freedom and `age` and `sex` as covariates. Printing the fitted object
-    reports the spline and covariate coefficients and the log-likelihood.
+    Fit a flexible model to the bundled `lung` dataset with three spline degrees of freedom and
+    `age` and `sex` as covariates. Printing the fitted object reports the spline and covariate
+    coefficients and the log-likelihood.
 
     ```{python}
     import greenwood as gw
 
-    # Load data and build a right-censored response
+    # Load the data
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
     # Fit a flexible model with three spline terms
-    rp = gw.RoystonParmar(df=3).fit(y, covariates=["age", "sex"], data=lung)
+    rp = gw.RoystonParmar(df=3).fit("Surv(time, status) ~ age + sex", data=lung)
     rp
     ```
 
@@ -198,7 +197,7 @@ class RoystonParmar:
 
     ```{python}
     # Fit a flexible proportional-odds model
-    rp_odds = gw.RoystonParmar(df=3, scale="odds").fit(y, covariates=["age", "sex"], data=lung)
+    rp_odds = gw.RoystonParmar(df=3, scale="odds").fit("Surv(time, status) ~ age + sex", data=lung)
     rp_odds
     ```
     """
@@ -259,7 +258,7 @@ class RoystonParmar:
         Parameters
         ----------
         surv
-            A right-censored `Surv` response. Built with `Surv.right()`.
+            A right-censored `Surv` response, built with `gw.Surv(time=..., event=...)`.
             An `Outcome` or a formula string such as `'Surv(time, status == 2) ~ age + sex'` is also
             accepted, with its columns read from `data`. The right-hand side sets `covariates`.
         covariates
@@ -299,12 +298,10 @@ class RoystonParmar:
         ```{python}
         import greenwood as gw
 
-        # Load data and build a right-censored response
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
         # Fit the model with three spline degrees of freedom
-        rp = gw.RoystonParmar(df=3).fit(y, covariates=["age", "sex"], data=lung)
+        rp = gw.RoystonParmar(df=3).fit("Surv(time, status) ~ age + sex", data=lung)
         rp
         ```
 
@@ -312,7 +309,7 @@ class RoystonParmar:
 
         ```{python}
         # Increase spline flexibility to five degrees of freedom
-        rp_flexible = gw.RoystonParmar(df=5).fit(y, covariates=["age", "sex"], data=lung)
+        rp_flexible = gw.RoystonParmar(df=5).fit("Surv(time, status) ~ age + sex", data=lung)
         rp_flexible
         ```
 
@@ -320,7 +317,7 @@ class RoystonParmar:
 
         ```{python}
         # Fit a baseline-only model with no covariates
-        rp_univariate = gw.RoystonParmar(df=3).fit(y)
+        rp_univariate = gw.RoystonParmar(df=3).fit("Surv(time, status)", data=lung)
         rp_univariate
         ```
         """
@@ -526,10 +523,9 @@ class RoystonParmar:
         ```{python}
         import greenwood as gw
 
-        # Load data and build a right-censored response
+        # Load the data
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-        rp = gw.RoystonParmar(df=3).fit(y, covariates=["age", "sex"], data=lung)
+        rp = gw.RoystonParmar(df=3).fit("Surv(time, status) ~ age + sex", data=lung)
 
         # Predict survival probabilities at 180 and 365 days for two subjects
         rp.predict(
@@ -633,8 +629,7 @@ class RoystonParmar:
         import greenwood as gw
 
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-        rp = gw.RoystonParmar(df=3).fit(y, covariates=["age", "sex"], data=lung)
+        rp = gw.RoystonParmar(df=3).fit("Surv(time, status) ~ age + sex", data=lung)
 
         # Predicted survival-time quartiles for three subjects
         rp.predict_quantile(lung[:3], p=[0.25, 0.5, 0.75], format="polars")
@@ -758,8 +753,7 @@ class RoystonParmar:
         import greenwood as gw
 
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-        rp = gw.RoystonParmar(df=3).fit(y, covariates=["age", "sex"], data=lung)
+        rp = gw.RoystonParmar(df=3).fit("Surv(time, status) ~ age + sex", data=lung)
 
         rp.predict_median(lung[:3], format="polars")
         ```
@@ -817,8 +811,7 @@ class RoystonParmar:
         import greenwood as gw
 
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-        rp = gw.RoystonParmar(df=3).fit(y, covariates=["age", "sex"], data=lung)
+        rp = gw.RoystonParmar(df=3).fit("Surv(time, status) ~ age + sex", data=lung)
 
         # Expected survival time up to one year for three subjects
         rp.predict_expectation(lung[:3], tau=365, format="polars")
@@ -950,10 +943,9 @@ class RoystonParmar:
         ```{python}
         import greenwood as gw
 
-        # Load data and build a right-censored response
+        # Load the data
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-        rp = gw.RoystonParmar(df=3).fit(y, covariates=["age", "sex"], data=lung)
+        rp = gw.RoystonParmar(df=3).fit("Surv(time, status) ~ age + sex", data=lung)
 
         # Export the coefficient table as a Polars DataFrame
         rp.to_frame(format="polars")
