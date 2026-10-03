@@ -18,14 +18,14 @@ from greenwood import Surv  # noqa: E402
 @pytest.fixture
 def km_grouped() -> gw.KaplanMeier:
     df = gw.load_dataset("lung", backend="polars")
-    y = Surv.right(df["time"], event=(df["status"] == 2))
+    y = Surv(time=df["time"], event=(df["status"] == 2))
     return gw.KaplanMeier(conf_type="log-log").fit(y, by=df["sex"])
 
 
 @pytest.fixture
 def km_overall() -> gw.KaplanMeier:
     df = gw.load_dataset("lung", backend="polars")
-    y = Surv.right(df["time"], event=(df["status"] == 2))
+    y = Surv(time=df["time"], event=(df["status"] == 2))
     return gw.KaplanMeier().fit(y)
 
 
