@@ -11,7 +11,7 @@ from greenwood import KaplanMeier, NelsonAalen, Surv
 
 def test_km_simple_survival() -> None:
     # Three ordered events, no censoring: S steps 2/3, 1/3, 0.
-    km = KaplanMeier().fit(Surv.right([1, 2, 3], [1, 1, 1]))
+    km = KaplanMeier().fit(Surv(time=[1, 2, 3], event=[1, 1, 1]))
 
     np.testing.assert_allclose(km.survival_, [2 / 3, 1 / 3, 0.0])
     np.testing.assert_array_equal(km.time_, [1, 2, 3])
@@ -19,7 +19,7 @@ def test_km_simple_survival() -> None:
 
 def test_km_censoring_holds_survival_flat() -> None:
     # A censor at t=2 does not drop survival, but reduces the risk set afterward.
-    km = KaplanMeier().fit(Surv.right([1, 2, 3], [1, 0, 1]))
+    km = KaplanMeier().fit(Surv(time=[1, 2, 3], event=[1, 0, 1]))
 
     # events only at t=1 and t=3; at t=1 S=1-1/3=2/3, at t=3 n=1 so S=0.
     df = km.to_frame(format="pandas")
@@ -29,28 +29,28 @@ def test_km_censoring_holds_survival_flat() -> None:
 
 
 def test_km_median() -> None:
-    km = KaplanMeier().fit(Surv.right([1, 2, 3, 4], [1, 1, 1, 1]))
+    km = KaplanMeier().fit(Surv(time=[1, 2, 3, 4], event=[1, 1, 1, 1]))
 
     # S = 0.75, 0.5, 0.25, 0; first time S <= 0.5 is t=2.
     assert km.median() == 2.0
 
 
 def test_km_predict_step_function() -> None:
-    km = KaplanMeier().fit(Surv.right([1, 2, 3], [1, 1, 1]))
+    km = KaplanMeier().fit(Surv(time=[1, 2, 3], event=[1, 1, 1]))
     pred = km.predict([0.5, 1.0, 1.5, 2.0, 3.0, 5.0])
 
     np.testing.assert_allclose(pred, [1.0, 2 / 3, 2 / 3, 1 / 3, 0.0, 0.0])
 
 
 def test_km_predict_cumhaz() -> None:
-    km = KaplanMeier().fit(Surv.right([1, 2, 3], [1, 1, 1]))
+    km = KaplanMeier().fit(Surv(time=[1, 2, 3], event=[1, 1, 1]))
     pred = km.predict([1.0, 2.0], what="cumhaz")
 
     np.testing.assert_allclose(pred, [1 / 3, 1 / 3 + 1 / 2])
 
 
 def test_km_grouped_returns_dict() -> None:
-    km = KaplanMeier().fit(Surv.right([1, 2, 1, 2], [1, 1, 1, 1]), by=["a", "a", "b", "b"])
+    km = KaplanMeier().fit(Surv(time=[1, 2, 1, 2], event=[1, 1, 1, 1]), by=["a", "a", "b", "b"])
     med = km.median()
 
     assert set(med) == {"a", "b"}
@@ -58,7 +58,7 @@ def test_km_grouped_returns_dict() -> None:
 
 
 def test_km_confidence_bracket_estimate() -> None:
-    km = KaplanMeier(conf_type="log-log").fit(Surv.right([1, 2, 3, 4, 5], [1, 1, 1, 1, 0]))
+    km = KaplanMeier(conf_type="log-log").fit(Surv(time=[1, 2, 3, 4, 5], event=[1, 1, 1, 1, 0]))
 
     assert np.all(km.conf_low_ <= km.survival_ + 1e-12)
     assert np.all(km.survival_ <= km.conf_high_ + 1e-12)
@@ -76,7 +76,7 @@ def test_km_invalid_conf_level() -> None:
 
 
 def test_km_to_pandas_columns() -> None:
-    km = KaplanMeier().fit(Surv.right([1, 2], [1, 1]))
+    km = KaplanMeier().fit(Surv(time=[1, 2], event=[1, 1]))
     df = km.to_frame(format="pandas")
 
     assert list(df.columns) == [
@@ -92,13 +92,13 @@ def test_km_to_pandas_columns() -> None:
 
 
 def test_km_to_pandas_grouped_has_strata() -> None:
-    km = KaplanMeier().fit(Surv.right([1, 2, 1, 2], [1, 1, 1, 1]), by=["a", "a", "b", "b"])
+    km = KaplanMeier().fit(Surv(time=[1, 2, 1, 2], event=[1, 1, 1, 1]), by=["a", "a", "b", "b"])
 
     assert "strata" in km.to_frame(format="pandas").columns
 
 
 def test_nelson_aalen_cumhaz() -> None:
-    na = NelsonAalen().fit(Surv.right([1, 2, 3], [1, 1, 1]))
+    na = NelsonAalen().fit(Surv(time=[1, 2, 3], event=[1, 1, 1]))
 
     np.testing.assert_allclose(na.cumhaz_, [1 / 3, 1 / 3 + 1 / 2, 1 / 3 + 1 / 2 + 1.0])
     np.testing.assert_allclose(na.std_error_**2, [1 / 9, 1 / 9 + 1 / 4, 1 / 9 + 1 / 4 + 1.0])
@@ -112,7 +112,7 @@ def test_nelson_aalen_cumhaz() -> None:
 class TestNelsonAalenTidy:
     def test_tidy_columns(self) -> None:
         lung = gw.load_dataset("lung", backend="pandas")
-        y = Surv.right(lung["time"], event=(lung["status"] == 2))
+        y = Surv(time=lung["time"], event=(lung["status"] == 2))
         na = NelsonAalen().fit(y)
         t = gw.tidy(na, format="pandas")
         expected = ["time", "n_risk", "n_event", "estimate", "std_error", "conf_low", "conf_high"]
@@ -120,14 +120,14 @@ class TestNelsonAalenTidy:
         assert list(t.columns) == expected
 
     def test_tidy_matches_to_frame(self) -> None:
-        na = NelsonAalen().fit(Surv.right([1, 2, 3, 4], [1, 0, 1, 1]))
+        na = NelsonAalen().fit(Surv(time=[1, 2, 3, 4], event=[1, 0, 1, 1]))
         t = gw.tidy(na, format="pandas")
         f = na.to_frame(format="pandas")
 
         assert t.equals(f)
 
     def test_tidy_stratified_has_strata(self) -> None:
-        na = NelsonAalen().fit(Surv.right([1, 2, 1, 2], [1, 1, 1, 1]), by=["a", "a", "b", "b"])
+        na = NelsonAalen().fit(Surv(time=[1, 2, 1, 2], event=[1, 1, 1, 1]), by=["a", "a", "b", "b"])
         t = gw.tidy(na, format="pandas")
 
         assert "strata" in t.columns
@@ -136,13 +136,13 @@ class TestNelsonAalenTidy:
     def test_tidy_format_polars(self) -> None:
         import polars as pl
 
-        na = NelsonAalen().fit(Surv.right([1, 2, 3], [1, 1, 1]))
+        na = NelsonAalen().fit(Surv(time=[1, 2, 3], event=[1, 1, 1]))
         t = gw.tidy(na, format="polars")
 
         assert isinstance(t, pl.DataFrame)
 
     def test_tidy_estimate_is_cumhaz(self) -> None:
-        na = NelsonAalen().fit(Surv.right([1, 2, 3], [1, 1, 1]))
+        na = NelsonAalen().fit(Surv(time=[1, 2, 3], event=[1, 1, 1]))
         t = gw.tidy(na, format="pandas")
 
         np.testing.assert_allclose(t["estimate"].values, na.cumhaz_)
@@ -151,7 +151,7 @@ class TestNelsonAalenTidy:
 class TestNelsonAalenGlance:
     def test_glance_columns(self) -> None:
         lung = gw.load_dataset("lung", backend="pandas")
-        y = Surv.right(lung["time"], event=(lung["status"] == 2))
+        y = Surv(time=lung["time"], event=(lung["status"] == 2))
         na = NelsonAalen().fit(y)
         g = gw.glance(na, format="pandas")
 
@@ -159,7 +159,7 @@ class TestNelsonAalenGlance:
         assert g.shape[0] == 1
 
     def test_glance_values(self) -> None:
-        na = NelsonAalen().fit(Surv.right([1, 2, 3], [1, 1, 1]))
+        na = NelsonAalen().fit(Surv(time=[1, 2, 3], event=[1, 1, 1]))
         g = gw.glance(na, format="pandas")
 
         assert g["n_start"].iloc[0] == 3.0
@@ -167,7 +167,7 @@ class TestNelsonAalenGlance:
         np.testing.assert_allclose(g["max_cumhaz"].iloc[0], na.cumhaz_[-1])
 
     def test_glance_stratified(self) -> None:
-        na = NelsonAalen().fit(Surv.right([1, 2, 1, 2], [1, 1, 1, 1]), by=["a", "a", "b", "b"])
+        na = NelsonAalen().fit(Surv(time=[1, 2, 1, 2], event=[1, 1, 1, 1]), by=["a", "a", "b", "b"])
         g = gw.glance(na, format="pandas")
 
         assert "strata" in g.columns
@@ -177,7 +177,7 @@ class TestNelsonAalenGlance:
     def test_glance_format_polars(self) -> None:
         import polars as pl
 
-        na = NelsonAalen().fit(Surv.right([1, 2, 3], [1, 1, 1]))
+        na = NelsonAalen().fit(Surv(time=[1, 2, 3], event=[1, 1, 1]))
         g = gw.glance(na, format="polars")
 
         assert isinstance(g, pl.DataFrame)
@@ -190,30 +190,30 @@ class TestNelsonAalenGlance:
 
 class TestKaplanMeierQuantile:
     def test_quantile_median_matches_median(self) -> None:
-        km = KaplanMeier().fit(Surv.right([1, 2, 3, 4], [1, 1, 1, 1]))
+        km = KaplanMeier().fit(Surv(time=[1, 2, 3, 4], event=[1, 1, 1, 1]))
 
         assert km.quantile(0.5) == km.median()
 
     def test_quantile_first_quartile(self) -> None:
-        km = KaplanMeier().fit(Surv.right([1, 2, 3, 4], [1, 1, 1, 1]))
+        km = KaplanMeier().fit(Surv(time=[1, 2, 3, 4], event=[1, 1, 1, 1]))
 
         # S = 0.75, 0.5, 0.25, 0. First time S <= 0.75 is t=1.
         assert km.quantile(0.25) == 1.0
 
     def test_quantile_third_quartile(self) -> None:
-        km = KaplanMeier().fit(Surv.right([1, 2, 3, 4], [1, 1, 1, 1]))
+        km = KaplanMeier().fit(Surv(time=[1, 2, 3, 4], event=[1, 1, 1, 1]))
 
         # First time S <= 0.25 is t=3.
         assert km.quantile(0.75) == 3.0
 
     def test_quantile_never_reached_returns_nan(self) -> None:
-        km = KaplanMeier().fit(Surv.right([1, 2, 3], [1, 0, 0]))
+        km = KaplanMeier().fit(Surv(time=[1, 2, 3], event=[1, 0, 0]))
 
         # S = 2/3, 2/3, 2/3. Never drops to 0.5, so median is nan.
         assert np.isnan(km.quantile(0.5))
 
     def test_quantile_with_ci(self) -> None:
-        km = KaplanMeier().fit(Surv.right([1, 2, 3, 4], [1, 1, 1, 1]))
+        km = KaplanMeier().fit(Surv(time=[1, 2, 3, 4], event=[1, 1, 1, 1]))
         result = km.quantile(0.5, ci=True)
 
         assert isinstance(result, tuple)
@@ -226,7 +226,7 @@ class TestKaplanMeierQuantile:
         assert upper >= estimate or np.isnan(upper)
 
     def test_quantile_ci_matches_median_ci(self) -> None:
-        km = KaplanMeier().fit(Surv.right([1, 2, 3, 4, 5, 6, 7, 8], [1, 1, 1, 1, 1, 0, 0, 0]))
+        km = KaplanMeier().fit(Surv(time=[1, 2, 3, 4, 5, 6, 7, 8], event=[1, 1, 1, 1, 1, 0, 0, 0]))
         q_est, q_lo, q_hi = km.quantile(0.5, ci=True)
         m_est, m_lo, m_hi = km.median(ci=True)
 
@@ -236,7 +236,7 @@ class TestKaplanMeierQuantile:
 
     def test_quantile_grouped(self) -> None:
         km = KaplanMeier().fit(
-            Surv.right([1, 2, 3, 4, 1, 2, 3, 4], [1, 1, 1, 1, 1, 1, 1, 1]),
+            Surv(time=[1, 2, 3, 4, 1, 2, 3, 4], event=[1, 1, 1, 1, 1, 1, 1, 1]),
             by=["a", "a", "a", "a", "b", "b", "b", "b"],
         )
         result = km.quantile(0.5)
@@ -248,7 +248,7 @@ class TestKaplanMeierQuantile:
 
     def test_quantile_grouped_with_ci(self) -> None:
         km = KaplanMeier().fit(
-            Surv.right([1, 2, 3, 4, 1, 2, 3, 4], [1, 1, 1, 1, 1, 1, 1, 1]),
+            Surv(time=[1, 2, 3, 4, 1, 2, 3, 4], event=[1, 1, 1, 1, 1, 1, 1, 1]),
             by=["a", "a", "a", "a", "b", "b", "b", "b"],
         )
         result = km.quantile(0.25, ci=True)
@@ -263,7 +263,7 @@ class TestKaplanMeierQuantile:
             assert upper >= est or np.isnan(upper)
 
     def test_quantile_ordering(self) -> None:
-        km = KaplanMeier().fit(Surv.right([1, 2, 3, 4, 5], [1, 1, 1, 1, 1]))
+        km = KaplanMeier().fit(Surv(time=[1, 2, 3, 4, 5], event=[1, 1, 1, 1, 1]))
         q25 = km.quantile(0.25)
         q50 = km.quantile(0.50)
         q75 = km.quantile(0.75)
@@ -272,7 +272,7 @@ class TestKaplanMeierQuantile:
 
     def test_quantile_real_data(self) -> None:
         lung = gw.load_dataset("lung", backend="pandas")
-        y = Surv.right(lung["time"], event=(lung["status"] == 2))
+        y = Surv(time=lung["time"], event=(lung["status"] == 2))
         km = KaplanMeier().fit(y)
         q25 = km.quantile(0.25)
         q50 = km.quantile(0.50)
@@ -287,20 +287,20 @@ class TestKaplanMeierQuantile:
 def test_km_rmst_equals_area_under_curve() -> None:
     # All events at 1,2,3: S = 2/3, 1/3, 0. Area to tau=3 is
     # 1*(1-0) + (2/3)*(2-1) + (1/3)*(3-2) = 1 + 2/3 + 1/3 = 2.
-    km = KaplanMeier().fit(Surv.right([1, 2, 3], [1, 1, 1]))
+    km = KaplanMeier().fit(Surv(time=[1, 2, 3], event=[1, 1, 1]))
 
     assert km.rmst(3.0) == pytest.approx(2.0)
 
 
 def test_km_rmst_truncates_at_tau() -> None:
-    km = KaplanMeier().fit(Surv.right([1, 2, 3], [1, 1, 1]))
+    km = KaplanMeier().fit(Surv(time=[1, 2, 3], event=[1, 1, 1]))
 
     # Up to tau=1.5: 1*(1) + (2/3)*(0.5) = 1.3333...
     assert km.rmst(1.5) == pytest.approx(1.0 + (2 / 3) * 0.5)
 
 
 def test_km_rmst_grouped_and_ci() -> None:
-    km = KaplanMeier().fit(Surv.right([1, 2, 1, 2], [1, 1, 1, 1]), by=["a", "a", "b", "b"])
+    km = KaplanMeier().fit(Surv(time=[1, 2, 1, 2], event=[1, 1, 1, 1]), by=["a", "a", "b", "b"])
     out = km.rmst(2.0, ci=True)
 
     assert set(out) == {"a", "b"}
@@ -312,7 +312,7 @@ def test_km_rmst_grouped_and_ci() -> None:
 
 def test_rmrl_at_zero_equals_rmst() -> None:
     # RMRL(0; tau) is exactly the restricted mean survival time (value and CI).
-    km = KaplanMeier().fit(Surv.right([5, 6, 4, 9, 3, 7, 2, 8], [1, 0, 1, 0, 1, 1, 1, 0]))
+    km = KaplanMeier().fit(Surv(time=[5, 6, 4, 9, 3, 7, 2, 8], event=[1, 0, 1, 0, 1, 1, 1, 0]))
     for tau in (4.0, 7.0, 9.0):
         assert km.rmrl(0.0, tau) == pytest.approx(km.rmst(tau))
         np.testing.assert_allclose(km.rmrl(0.0, tau, ci=True), km.rmst(tau, ci=True))
@@ -320,7 +320,9 @@ def test_rmrl_at_zero_equals_rmst() -> None:
 
 def test_rmrl_matches_conditional_area() -> None:
     # RMRL(s; tau) = integral_s^tau S(u) du / S(s). Check against a fine numerical integral.
-    km = KaplanMeier().fit(Surv.right([5, 6, 4, 9, 3, 7, 2, 8, 10], [1, 0, 1, 0, 1, 1, 1, 0, 1]))
+    km = KaplanMeier().fit(
+        Surv(time=[5, 6, 4, 9, 3, 7, 2, 8, 10], event=[1, 0, 1, 0, 1, 1, 1, 0, 1])
+    )
     s, tau = 3.0, 9.0
     grid = np.linspace(s, tau, 200001)
     expected = float(np.trapezoid(km.predict(grid), grid)) / float(km.predict([s])[0])
@@ -330,7 +332,7 @@ def test_rmrl_matches_conditional_area() -> None:
 
 def test_rmrl_grouped_and_ci() -> None:
     km = KaplanMeier().fit(
-        Surv.right([2, 4, 6, 3, 5, 7], [1, 1, 1, 1, 1, 1]), by=["a", "a", "a", "b", "b", "b"]
+        Surv(time=[2, 4, 6, 3, 5, 7], event=[1, 1, 1, 1, 1, 1]), by=["a", "a", "a", "b", "b", "b"]
     )
     out = km.rmrl(1.0, 6.0, ci=True)
 
@@ -343,13 +345,13 @@ def test_rmrl_grouped_and_ci() -> None:
 
 
 def test_rmrl_undefined_when_all_failed_before_s() -> None:
-    km = KaplanMeier().fit(Surv.right([1, 2, 3], [1, 1, 1]))  # S drops to 0 at t=3
+    km = KaplanMeier().fit(Surv(time=[1, 2, 3], event=[1, 1, 1]))  # S drops to 0 at t=3
 
     assert np.isnan(km.rmrl(5.0, 10.0))
 
 
 def test_rmrl_argument_validation() -> None:
-    km = KaplanMeier().fit(Surv.right([1, 2, 3], [1, 1, 1]))
+    km = KaplanMeier().fit(Surv(time=[1, 2, 3], event=[1, 1, 1]))
     with pytest.raises(ValueError, match="tau"):
         km.rmrl(5.0, 3.0)
     with pytest.raises(ValueError, match="non-negative"):
@@ -357,7 +359,7 @@ def test_rmrl_argument_validation() -> None:
 
 
 def test_km_tidy_and_glance_via_registry() -> None:
-    km = KaplanMeier().fit(Surv.right([1, 2, 3, 4], [1, 1, 1, 1]))
+    km = KaplanMeier().fit(Surv(time=[1, 2, 3, 4], event=[1, 1, 1, 1]))
     tidy_df = gw.tidy(km)
 
     assert "estimate" in tidy_df.columns
@@ -369,15 +371,15 @@ def test_km_tidy_and_glance_via_registry() -> None:
 
 
 def test_km_weights_scale_risk_set() -> None:
-    km = KaplanMeier().fit(Surv.right([1, 2], [1, 1], weights=[2.0, 2.0]))
+    km = KaplanMeier().fit(Surv(time=[1, 2], event=[1, 1]), weights=[2.0, 2.0])
 
     # Weighted n at t=1 is 4, one weighted event of 2 -> S = 1 - 2/4 = 0.5.
     np.testing.assert_allclose(km.survival_[0], 0.5)
 
 
 def test_km_robust_se_differs_from_greenwood() -> None:
-    km_green = KaplanMeier().fit(Surv.right([1, 2, 3, 4, 5], [1, 0, 1, 0, 1]))
-    km_robust = KaplanMeier(robust=True).fit(Surv.right([1, 2, 3, 4, 5], [1, 0, 1, 0, 1]))
+    km_green = KaplanMeier().fit(Surv(time=[1, 2, 3, 4, 5], event=[1, 0, 1, 0, 1]))
+    km_robust = KaplanMeier(robust=True).fit(Surv(time=[1, 2, 3, 4, 5], event=[1, 0, 1, 0, 1]))
 
     # Survival estimates are identical regardless of variance method.
     np.testing.assert_allclose(km_robust.survival_, km_green.survival_)
@@ -388,7 +390,7 @@ def test_km_robust_se_differs_from_greenwood() -> None:
 
 def test_km_robust_ci_brackets_estimate() -> None:
     km = KaplanMeier(robust=True).fit(
-        Surv.right([1, 2, 3, 4, 5, 6, 7, 8], [1, 0, 1, 0, 1, 0, 1, 0])
+        Surv(time=[1, 2, 3, 4, 5, 6, 7, 8], event=[1, 0, 1, 0, 1, 0, 1, 0])
     )
     valid = km.survival_ > 0
 
@@ -397,7 +399,7 @@ def test_km_robust_ci_brackets_estimate() -> None:
 
 
 def test_km_robust_weighted_se_smaller_with_unit_weights() -> None:
-    y = Surv.right([1, 2, 3, 4, 5], [1, 0, 1, 0, 1])
+    y = Surv(time=[1, 2, 3, 4, 5], event=[1, 0, 1, 0, 1])
     km_unit = KaplanMeier(robust=True).fit(y)
     km_double = KaplanMeier(robust=True).fit(y, weights=[2.0, 2.0, 2.0, 2.0, 2.0])
 
@@ -406,7 +408,7 @@ def test_km_robust_weighted_se_smaller_with_unit_weights() -> None:
 
 
 def test_km_robust_grouped() -> None:
-    y = Surv.right([1, 2, 3, 4, 5, 6], [1, 1, 1, 1, 1, 1])
+    y = Surv(time=[1, 2, 3, 4, 5, 6], event=[1, 1, 1, 1, 1, 1])
     group = [0, 0, 0, 1, 1, 1]
     km = KaplanMeier(robust=True).fit(y, by=group)
 
@@ -417,7 +419,7 @@ def test_km_robust_grouped() -> None:
 
 
 def test_km_cluster_implies_robust() -> None:
-    y = Surv.right([1, 2, 3, 4, 5, 6], [1, 0, 1, 0, 1, 0])
+    y = Surv(time=[1, 2, 3, 4, 5, 6], event=[1, 0, 1, 0, 1, 0])
     cluster = ["A", "A", "B", "B", "C", "C"]
     km_cluster = KaplanMeier().fit(y, cluster=cluster)
     km_robust = KaplanMeier(robust=True).fit(y)
@@ -430,7 +432,7 @@ def test_km_cluster_implies_robust() -> None:
 
 
 def test_km_cluster_se_larger_than_robust() -> None:
-    y = Surv.right([1, 2, 3, 4, 5, 6, 7, 8], [1, 1, 1, 1, 1, 1, 1, 1])
+    y = Surv(time=[1, 2, 3, 4, 5, 6, 7, 8], event=[1, 1, 1, 1, 1, 1, 1, 1])
     cluster = [0, 0, 1, 1, 2, 2, 3, 3]
     km_cluster = KaplanMeier().fit(y, cluster=cluster)
     km_robust = KaplanMeier(robust=True).fit(y)
@@ -440,7 +442,7 @@ def test_km_cluster_se_larger_than_robust() -> None:
 
 
 def test_km_cluster_singleton_clusters_equal_robust() -> None:
-    y = Surv.right([1, 2, 3, 4, 5], [1, 0, 1, 0, 1])
+    y = Surv(time=[1, 2, 3, 4, 5], event=[1, 0, 1, 0, 1])
 
     # Each subject is its own cluster — should equal unclustered robust.
     cluster = [0, 1, 2, 3, 4]
@@ -457,7 +459,7 @@ def test_km_cluster_singleton_clusters_equal_robust() -> None:
 
 class TestNelsonAalenCI:
     def test_ci_bracket_log(self) -> None:
-        na = NelsonAalen(conf_type="log").fit(Surv.right([1, 2, 3, 4, 5], [1, 1, 1, 1, 0]))
+        na = NelsonAalen(conf_type="log").fit(Surv(time=[1, 2, 3, 4, 5], event=[1, 1, 1, 1, 0]))
         df = na.to_frame(format="pandas")
 
         assert (df["conf_low"] <= df["estimate"] + 1e-12).all()
@@ -465,7 +467,7 @@ class TestNelsonAalenCI:
         assert (df["conf_low"] >= 0).all()
 
     def test_ci_bracket_plain(self) -> None:
-        na = NelsonAalen(conf_type="plain").fit(Surv.right([1, 2, 3, 4, 5], [1, 1, 1, 1, 0]))
+        na = NelsonAalen(conf_type="plain").fit(Surv(time=[1, 2, 3, 4, 5], event=[1, 1, 1, 1, 0]))
         df = na.to_frame(format="pandas")
 
         assert (df["conf_low"] <= df["estimate"] + 1e-12).all()
@@ -473,14 +475,14 @@ class TestNelsonAalenCI:
         assert (df["conf_low"] >= 0).all()
 
     def test_log_and_plain_estimates_agree(self) -> None:
-        y = Surv.right([1, 2, 3, 4, 5], [1, 0, 1, 0, 1])
+        y = Surv(time=[1, 2, 3, 4, 5], event=[1, 0, 1, 0, 1])
         na_log = NelsonAalen(conf_type="log").fit(y)
         na_plain = NelsonAalen(conf_type="plain").fit(y)
 
         np.testing.assert_allclose(na_log.cumhaz_, na_plain.cumhaz_)
 
     def test_log_and_plain_ci_differ(self) -> None:
-        y = Surv.right([1, 2, 3, 4, 5], [1, 0, 1, 0, 1])
+        y = Surv(time=[1, 2, 3, 4, 5], event=[1, 0, 1, 0, 1])
         df_log = NelsonAalen(conf_type="log").fit(y).to_frame(format="pandas")
         df_plain = NelsonAalen(conf_type="plain").fit(y).to_frame(format="pandas")
 
@@ -497,20 +499,20 @@ class TestNelsonAalenCI:
 
 class TestNelsonAalenWeighted:
     def test_weights_scale_risk_set(self) -> None:
-        na = NelsonAalen().fit(Surv.right([1, 2], [1, 1], weights=[2.0, 2.0]))
+        na = NelsonAalen().fit(Surv(time=[1, 2], event=[1, 1]), weights=[2.0, 2.0])
 
         # Weighted n_risk at t=1 is 4, weighted event is 2 -> H(1) = 2/4 = 0.5.
         np.testing.assert_allclose(na.cumhaz_[0], 0.5)
 
     def test_unit_weights_match_unweighted(self) -> None:
-        y = Surv.right([1, 2, 3, 4, 5], [1, 0, 1, 0, 1])
+        y = Surv(time=[1, 2, 3, 4, 5], event=[1, 0, 1, 0, 1])
         na_plain = NelsonAalen().fit(y)
         na_unit = NelsonAalen().fit(y, weights=[1.0, 1.0, 1.0, 1.0, 1.0])
 
         np.testing.assert_allclose(na_unit.cumhaz_, na_plain.cumhaz_)
 
     def test_double_weights_preserve_cumhaz(self) -> None:
-        y = Surv.right([1, 2, 3], [1, 1, 1])
+        y = Surv(time=[1, 2, 3], event=[1, 1, 1])
         na1 = NelsonAalen().fit(y)
         na2 = NelsonAalen().fit(y, weights=[2.0, 2.0, 2.0])
 
@@ -519,32 +521,32 @@ class TestNelsonAalenWeighted:
 
 class TestNelsonAalenEdgeCases:
     def test_ties_handled(self) -> None:
-        na = NelsonAalen().fit(Surv.right([1, 1, 2], [1, 1, 1]))
+        na = NelsonAalen().fit(Surv(time=[1, 1, 2], event=[1, 1, 1]))
 
         assert len(na.time_) == 2
         np.testing.assert_allclose(na.cumhaz_[0], 2 / 3)
 
     def test_all_censored_zero_cumhaz(self) -> None:
-        na = NelsonAalen().fit(Surv.right([1, 2, 3], [0, 0, 0]))
+        na = NelsonAalen().fit(Surv(time=[1, 2, 3], event=[0, 0, 0]))
 
         np.testing.assert_allclose(na.cumhaz_, 0.0)
 
     def test_single_event(self) -> None:
-        na = NelsonAalen().fit(Surv.right([5], [1]))
+        na = NelsonAalen().fit(Surv(time=[5], event=[1]))
 
         assert len(na.time_) == 1
         np.testing.assert_allclose(na.cumhaz_[0], 1.0)
 
     def test_cumhaz_nondecreasing(self) -> None:
         lung = gw.load_dataset("lung", backend="pandas")
-        y = Surv.right(lung["time"], event=(lung["status"] == 2))
+        y = Surv(time=lung["time"], event=(lung["status"] == 2))
         na = NelsonAalen().fit(y)
 
         assert np.all(np.diff(na.cumhaz_) >= 0)
 
     def test_grouped_to_frame_has_both_strata(self) -> None:
         na = NelsonAalen().fit(
-            Surv.right([1, 2, 3, 4, 5, 6], [1, 1, 1, 1, 1, 1]),
+            Surv(time=[1, 2, 3, 4, 5, 6], event=[1, 1, 1, 1, 1, 1]),
             by=["a", "a", "a", "b", "b", "b"],
         )
         df = na.to_frame(format="pandas")
@@ -555,7 +557,7 @@ class TestNelsonAalenEdgeCases:
     def test_to_frame_format_polars(self) -> None:
         import polars as pl
 
-        na = NelsonAalen().fit(Surv.right([1, 2, 3], [1, 1, 1]))
+        na = NelsonAalen().fit(Surv(time=[1, 2, 3], event=[1, 1, 1]))
         df = na.to_frame(format="polars")
 
         assert isinstance(df, pl.DataFrame)
@@ -563,7 +565,7 @@ class TestNelsonAalenEdgeCases:
         assert "conf_low" in df.columns
 
     def test_to_frame_columns(self) -> None:
-        na = NelsonAalen().fit(Surv.right([1, 2, 3], [1, 1, 1]))
+        na = NelsonAalen().fit(Surv(time=[1, 2, 3], event=[1, 1, 1]))
         df = na.to_frame(format="pandas")
 
         assert list(df.columns) == [
@@ -582,7 +584,7 @@ class TestNelsonAalenEdgeCases:
         assert "unfitted" in repr(na)
 
     def test_repr_fitted(self) -> None:
-        na = NelsonAalen().fit(Surv.right([1, 2, 3], [1, 1, 1]))
+        na = NelsonAalen().fit(Surv(time=[1, 2, 3], event=[1, 1, 1]))
         r = repr(na)
 
         assert "NelsonAalen" in r
