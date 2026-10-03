@@ -12,7 +12,7 @@ from greenwood import AalenAdditive, Surv
 @pytest.fixture(scope="module")
 def lung_data():
     lung = gw.load_dataset("lung", backend="pandas")
-    y = Surv.right(lung["time"], event=(lung["status"] == 2))
+    y = Surv(time=lung["time"], event=(lung["status"] == 2))
     return y, lung
 
 
@@ -94,19 +94,21 @@ class TestFit:
         assert m.n_ == 228
 
     def test_no_events_raises(self) -> None:
-        y = Surv.right(np.array([1.0, 2.0, 3.0]), event=np.array([False, False, False]))
+        y = Surv(time=np.array([1.0, 2.0, 3.0]), event=np.array([False, False, False]))
         x = np.array([[1.0], [2.0], [3.0]])
         with pytest.raises(ValueError, match="No events"):
             AalenAdditive().fit(y, x)
 
     def test_shape_mismatch_raises(self) -> None:
-        y = Surv.right(np.array([1.0, 2.0, 3.0]), event=np.array([True, False, True]))
+        y = Surv(time=np.array([1.0, 2.0, 3.0]), event=np.array([True, False, True]))
         x = np.array([[1.0], [2.0]])
         with pytest.raises(ValueError, match="same number of rows"):
             AalenAdditive().fit(y, x)
 
     def test_unsupported_surv_type_raises(self) -> None:
-        y = Surv.left(np.array([1.0, 2.0, 3.0]))
+        y = gw.as_surv(
+            gw.event_time(time=np.array([1.0, 2.0, 3.0]), status=np.array(["l", "l", "l"]))
+        )
         x = np.array([[1.0], [2.0], [3.0]])
         with pytest.raises(NotImplementedError, match="right-censored"):
             AalenAdditive().fit(y, x)
