@@ -52,9 +52,10 @@ authors:
 reference:
   - title: The response
     desc:
-      The Surv object, the spine of every analysis, event_time vectors for exact and right-,
-      left-, or interval-censored times (a port of the etd package), and Outcome, a reusable
-      description of a response that is bound to data at fit time.
+      Surv() and event_time() build a response from values (mirroring R's survival::Surv() and
+      the etd package). Outcome, the structured form of a formula response such as
+      "Surv(time, status == 2)", names columns instead and is evaluated against data= at fit time,
+      on any DataFrame backend.
     contents:
       - name: Surv
         members: true
@@ -64,6 +65,8 @@ reference:
         members: true
       - extract_time
       - extract_status
+      - as_surv
+      - first_event
       - name: Outcome
         members: true
       - duration
