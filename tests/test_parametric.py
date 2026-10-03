@@ -14,7 +14,7 @@ def lung_surv():  # type: ignore[no-untyped-def]
     # Pinned to pandas: these tests use pandas idioms (`.iloc`, `to_numpy(dtype=)`).
     # Backend-agnostic input is covered separately in test_backends.py.
     df = gw.load_dataset("lung", backend="pandas")
-    return df, Surv.right(df["time"], event=(df["status"] == 2))
+    return df, Surv(time=df["time"], event=(df["status"] == 2))
 
 
 def test_invalid_dist() -> None:
@@ -54,7 +54,7 @@ def test_length_mismatch(lung_surv) -> None:  # type: ignore[no-untyped-def]
 
 
 def test_interval_censoring_not_supported() -> None:
-    y = Surv.interval(lower=[1, 2, 3], upper=[2, 3, 4])
+    y = Surv(time=[1, 2, 3], time2=[2, 3, 4], type="interval2")
     with pytest.raises(NotImplementedError, match="right-censored"):
         AFT().fit(y, np.zeros((3, 1)))
 
@@ -338,7 +338,7 @@ def test_predict_survival_ci_vs_bootstrap(lung_surv) -> None:  # type: ignore[no
     for b in range(n_boot):
         idx = rng.choice(n, size=n, replace=True)
         df_b = df.iloc[idx].reset_index(drop=True)
-        y_b = Surv.right(df_b["time"], event=(df_b["status"] == 2))
+        y_b = Surv(time=df_b["time"], event=(df_b["status"] == 2))
         try:
             m_b = AFT("weibull").fit(y_b, df_b[["age", "sex"]])
             s_b = m_b.predict(nd, type="survival", times=list(times), format="pandas")
