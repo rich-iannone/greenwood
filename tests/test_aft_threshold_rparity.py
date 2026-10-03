@@ -26,7 +26,7 @@ from ._r_parity import load_fixture
 def test_threshold_weibull_matches_fitdistrplus() -> None:
     fixture = load_fixture("aft_threshold_weibull3")
     time = np.asarray(fixture["data"], dtype=float)
-    y = Surv.right(time, event=np.ones(time.shape[0]))
+    y = Surv(time=time, event=np.ones(time.shape[0]))
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -48,7 +48,7 @@ def test_threshold_weibull_mps_close_to_mle_reference() -> None:
     # well-conditioned (shape > 1) dataset.
     fixture = load_fixture("aft_threshold_weibull3")
     time = np.asarray(fixture["data"], dtype=float)
-    y = Surv.right(time, event=np.ones(time.shape[0]))
+    y = Surv(time=time, event=np.ones(time.shape[0]))
 
     aft = gw.AFT("weibull", method="mps", threshold=True).fit(y, np.zeros((time.shape[0], 0)))
 
