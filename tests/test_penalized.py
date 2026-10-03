@@ -18,7 +18,7 @@ from greenwood._cox import _cox_terms
 @pytest.fixture(scope="module")
 def data():
     lung = gw.load_dataset("lung", backend="pandas")
-    y = Surv.right(lung["time"], event=(lung["status"] == 2))
+    y = Surv(time=lung["time"], event=(lung["status"] == 2))
     cols = ["age", "sex", "ph.ecog", "ph.karno", "wt.loss"]
     x = lung[cols].fillna(lung[cols].mean())
     return y, x
@@ -376,7 +376,7 @@ def test_cv_coxnet_brier_requires_two_times(data) -> None:  # type: ignore[no-un
 
 
 def test_cv_coxnet_rejects_interval_censored() -> None:
-    y_int = Surv.interval(lower=[1, 2, 3, 4], upper=[2, 3, 4, 5])
+    y_int = Surv(time=[1, 2, 3, 4], time2=[2, 3, 4, 5], type="interval2")
     with pytest.raises(NotImplementedError, match="right-censored"):
         cv_coxnet(y_int, np.zeros((4, 1)))
 
@@ -388,7 +388,7 @@ def test_cv_coxnet_row_mismatch(data) -> None:  # type: ignore[no-untyped-def]
 
 
 def test_cv_coxnet_no_events() -> None:
-    y_no_events = Surv.right([1, 2, 3, 4], [0, 0, 0, 0])
+    y_no_events = Surv(time=[1, 2, 3, 4], event=[0, 0, 0, 0])
     with pytest.raises(ValueError, match="No events"):
         cv_coxnet(y_no_events, np.array([[1.0], [2.0], [3.0], [4.0]]))
 
@@ -408,7 +408,7 @@ def test_cv_coxnet_n_penalizers_zero(data) -> None:  # type: ignore[no-untyped-d
 def test_cv_coxnet_few_events_warning() -> None:
     times = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0])
     events = np.array([1, 1, 0, 0, 0, 0, 0, 0, 0, 0])
-    y = Surv.right(times, events)
+    y = Surv(time=times, event=events)
     x = np.random.default_rng(23).standard_normal((10, 2))
     with pytest.warns(UserWarning, match="fewer than"):
         cv_coxnet(y, x, k=5, penalizers=[0.1], seed=23)
@@ -446,7 +446,7 @@ def test_cv_coxnet_brier_metric(data) -> None:  # type: ignore[no-untyped-def]
 def test_aic_bic_unpenalized_matches_r(data) -> None:  # type: ignore[no-untyped-def]
     """penalizer=0 should reproduce R's AIC/BIC for the same Breslow Cox fit."""
     lung = gw.load_dataset("lung", backend="pandas")
-    y = Surv.right(lung["time"], event=(lung["status"] == 2))
+    y = Surv(time=lung["time"], event=(lung["status"] == 2))
     cn = CoxNet(penalizer=0.0).fit(y, lung[["age", "sex"]])
     np.testing.assert_allclose(cn.effective_df(), 2.0)
     np.testing.assert_allclose(cn.aic(), 1490.159, atol=0.01)
