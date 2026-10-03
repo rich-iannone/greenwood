@@ -476,7 +476,7 @@ def test_polars_input_polars_output() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Integration: result feeds directly into Surv.counting + CoxPH
+# Integration: result feeds directly into a counting-process Surv + CoxPH
 # ---------------------------------------------------------------------------
 
 
@@ -492,7 +492,7 @@ def test_split_then_cox_fit(simple_baseline: pd.DataFrame, simple_visits: pd.Dat
     )
     # All first visits are at day 0, so no NaN bili values expected here
     out_clean = out.dropna(subset=["bili"])
-    y = Surv.counting(out_clean["tstart"], out_clean["tstop"], out_clean["event"])
+    y = Surv(time=out_clean["tstart"], time2=out_clean["tstop"], event=out_clean["event"])
     cox = CoxPH().fit(y, out_clean[["bili"]])
     assert len(cox.coef_) == 1
 
@@ -554,7 +554,7 @@ def test_tvc_pbcseq_cox_rparity() -> None:
     assert len(long) == fx["n"]
     assert int(long["event_bin"].sum()) == fx["nevent"]
 
-    y = Surv.counting(long["tstart"], long["tstop"], long["event_bin"])
+    y = Surv(time=long["tstart"], time2=long["tstop"], event=long["event_bin"])
     cox = CoxPH().fit(y, long[["bili", "albumin", "protime"]])
 
     assert_allclose_to_r(cox.coef_, fx["coef"], rtol=1e-6, atol=1e-6, what="TVC Cox coef")
@@ -584,7 +584,7 @@ def tvc_cox() -> tuple[Any, Any]:
     )
     long = long.dropna(subset=["bili", "albumin", "protime"])
     long["event_bin"] = (long["status"] == 2).astype(int)
-    y = Surv.counting(long["tstart"], long["tstop"], long["event_bin"])
+    y = Surv(time=long["tstart"], time2=long["tstop"], event=long["event_bin"])
     cox = CoxPH().fit(y, long[["bili", "albumin", "protime"]])
     return cox, long
 
