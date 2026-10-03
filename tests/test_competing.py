@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pandas as pd
 import pytest
 
 import greenwood as gw
@@ -11,7 +12,12 @@ from greenwood import AalenJohansen, Surv
 
 def _simple_multistate() -> Surv:
     # Times 1..4, causes: pcm, death, pcm, censor.
-    return Surv.multistate([1, 2, 3, 4], event=[1, 2, 1, 0], states=("pcm", "death"))
+    return Surv(
+        time=[1, 2, 3, 4],
+        event=pd.Categorical.from_codes(
+            np.array([1, 2, 1, 0]), categories=["censor", "pcm", "death"]
+        ),
+    )
 
 
 def test_cif_bounded_and_monotone() -> None:
@@ -30,14 +36,14 @@ def test_cifs_sum_to_complement_of_survival() -> None:
     table = AalenJohansen().fit(y).to_frame(format="pandas")
     last = table[table["time"] == table["time"].max()]
     total_cif = last["estimate"].sum()
-    km = gw.KaplanMeier().fit(Surv.right(y.stop, event=y.event))
+    km = gw.KaplanMeier().fit(Surv(time=y.stop, event=y.event))
 
     assert total_cif == pytest.approx(1.0 - km.survival_[-1])
 
 
 def test_requires_multistate() -> None:
     with pytest.raises(ValueError, match="multi-state"):
-        AalenJohansen().fit(Surv.right([1, 2, 3], [1, 1, 1]))
+        AalenJohansen().fit(Surv(time=[1, 2, 3], event=[1, 1, 1]))
 
 
 def test_invalid_conf_level() -> None:
@@ -104,7 +110,12 @@ def test_to_pandas_columns() -> None:
 
 
 def test_grouped_has_strata_column() -> None:
-    y = Surv.multistate([1, 2, 3, 4], event=[1, 2, 1, 2], states=("pcm", "death"))
+    y = Surv(
+        time=[1, 2, 3, 4],
+        event=pd.Categorical.from_codes(
+            np.array([1, 2, 1, 2]), categories=["censor", "pcm", "death"]
+        ),
+    )
     table = AalenJohansen().fit(y, by=["a", "a", "b", "b"]).to_frame(format="pandas")
 
     assert "strata" in table.columns
@@ -123,14 +134,17 @@ def _mgus2_cr():  # type: ignore[no-untyped-def]
     df = gw.load_dataset("mgus2", backend="pandas")
     etime = np.where(df["pstat"] == 1, df["ptime"], df["futime"])
     cause = np.where(df["pstat"] == 1, 1, 2 * df["death"])
-    return df, gw.Surv.multistate(etime, event=cause, states=("pcm", "death"))
+    return df, gw.Surv(
+        time=etime,
+        event=pd.Categorical.from_codes(cause.astype(int), categories=["censor", "pcm", "death"]),
+    )
 
 
 def test_finegray_requires_multistate() -> None:
     from greenwood import FineGray
 
     with pytest.raises(ValueError, match="multi-state"):
-        FineGray("pcm").fit(gw.Surv.right([1, 2, 3], [1, 1, 1]), np.zeros((3, 1)))
+        FineGray("pcm").fit(gw.Surv(time=[1, 2, 3], event=[1, 1, 1]), np.zeros((3, 1)))
 
 
 def test_finegray_unknown_cause() -> None:
@@ -284,7 +298,12 @@ class TestAalenJohansenTidy:
         assert t.equals(f)
 
     def test_tidy_stratified_has_strata(self) -> None:
-        y = Surv.multistate([1, 2, 3, 4], event=[1, 2, 1, 2], states=("pcm", "death"))
+        y = Surv(
+            time=[1, 2, 3, 4],
+            event=pd.Categorical.from_codes(
+                np.array([1, 2, 1, 2]), categories=["censor", "pcm", "death"]
+            ),
+        )
         aj = AalenJohansen().fit(y, by=["a", "a", "b", "b"])
         t = gw.tidy(aj, format="pandas")
         assert "strata" in t.columns
@@ -317,7 +336,12 @@ class TestAalenJohansenGlance:
         assert g["causes"].iloc[0] == "pcm, death"
 
     def test_glance_stratified(self) -> None:
-        y = Surv.multistate([1, 2, 3, 4], event=[1, 2, 1, 2], states=("pcm", "death"))
+        y = Surv(
+            time=[1, 2, 3, 4],
+            event=pd.Categorical.from_codes(
+                np.array([1, 2, 1, 2]), categories=["censor", "pcm", "death"]
+            ),
+        )
         aj = AalenJohansen().fit(y, by=["a", "a", "b", "b"])
         g = gw.glance(aj, format="pandas")
         assert "strata" in g.columns
@@ -377,11 +401,12 @@ def test_multistate_predict_step_function() -> None:
 
 
 def test_aalen_johansen_rejects_truncated() -> None:
-    y_trunc = Surv.multistate(
-        [5, 6, 7, 8],
-        event=[1, 2, 1, 0],
-        states=("pcm", "death"),
-        start=[1, 2, 1, 2],
+    y_trunc = Surv(
+        time=[1, 2, 1, 2],
+        time2=[5, 6, 7, 8],
+        event=pd.Categorical.from_codes(
+            np.array([1, 2, 1, 0]), categories=["censor", "pcm", "death"]
+        ),
     )
     with pytest.raises(NotImplementedError, match="Left truncation"):
         AalenJohansen().fit(y_trunc)
@@ -499,7 +524,7 @@ def test_grays_test_death_cause() -> None:
 
 def test_grays_test_requires_multistate() -> None:
     with pytest.raises(ValueError, match="multi-state"):
-        gw.grays_test(Surv.right([1, 2, 3], [1, 1, 1]), group=[1, 1, 2])
+        gw.grays_test(Surv(time=[1, 2, 3], event=[1, 1, 1]), group=[1, 1, 2])
 
 
 def test_grays_test_invalid_cause() -> None:
@@ -527,7 +552,12 @@ def test_grays_test_single_group() -> None:
 
 
 def test_grays_test_no_target_events() -> None:
-    y = Surv.multistate([1, 2, 3, 4], event=[0, 2, 0, 2], states=("pcm", "death"))
+    y = Surv(
+        time=[1, 2, 3, 4],
+        event=pd.Categorical.from_codes(
+            np.array([0, 2, 0, 2]), categories=["censor", "pcm", "death"]
+        ),
+    )
     with pytest.raises(ValueError, match="No events"):
         gw.grays_test(y, group=[1, 1, 2, 2], cause="pcm")
 
@@ -762,7 +792,9 @@ class TestPenalizedFineGray:
 
     def test_requires_multistate(self) -> None:
         with pytest.raises(ValueError, match="multi-state"):
-            gw.PenalizedFineGray("pcm").fit(gw.Surv.right([1, 2, 3], [1, 1, 1]), np.zeros((3, 1)))
+            gw.PenalizedFineGray("pcm").fit(
+                gw.Surv(time=[1, 2, 3], event=[1, 1, 1]), np.zeros((3, 1))
+            )
 
     def test_unknown_cause(self, df_y) -> None:  # type: ignore[no-untyped-def]
         df, y = df_y
@@ -866,7 +898,7 @@ class TestCauseSpecificCox:
         df, y = df_y
         csc = gw.CauseSpecificCox("pcm").fit(y, df[["age", "sex"]])
         manual_event = (y.status == 1).astype(int)
-        manual = gw.CoxPH().fit(gw.Surv.right(y.stop, event=manual_event), df[["age", "sex"]])
+        manual = gw.CoxPH().fit(gw.Surv(time=y.stop, event=manual_event), df[["age", "sex"]])
         np.testing.assert_allclose(csc.coef_, manual.coef_)
 
     def test_repr_fitted(self, csc) -> None:  # type: ignore[no-untyped-def]
@@ -880,7 +912,9 @@ class TestCauseSpecificCox:
 
     def test_requires_multistate(self) -> None:
         with pytest.raises(ValueError, match="multi-state"):
-            gw.CauseSpecificCox("pcm").fit(gw.Surv.right([1, 2, 3], [1, 1, 1]), np.zeros((3, 1)))
+            gw.CauseSpecificCox("pcm").fit(
+                gw.Surv(time=[1, 2, 3], event=[1, 1, 1]), np.zeros((3, 1))
+            )
 
     def test_unknown_cause(self, df_y) -> None:  # type: ignore[no-untyped-def]
         df, y = df_y
