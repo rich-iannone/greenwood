@@ -31,7 +31,8 @@ We use the bundled `mgus2` dataset, which follows patients with monoclonal gammo
 events are progression to a plasma-cell malignancy and death without progression. The dataset
 records each endpoint in its own pair of columns: `ptime` and `pstat` for progression, and `futime`
 and `death` for death. A competing-risks analysis needs one time and one cause per subject, and
-`gw.Surv.first_event()` builds exactly that from the pairs.
+`gw.Outcome.first_event()` describes exactly that by naming the pairs. Like a formula, it holds
+column names rather than data, so each fit evaluates it against the frame passed as `data=`.
 
 ```{python}
 import greenwood as gw
@@ -40,10 +41,12 @@ import greenwood as gw
 mg = gw.load_dataset("mgus2", backend="polars")
 
 # Name each endpoint's (time, event) columns, and the first observed endpoint wins
-y = gw.Surv.first_event(
+pcm_or_death = gw.Outcome.first_event(
     endpoints={"pcm": ("ptime", "pstat"), "death": ("futime", "death")},
-    data=mg,
 )
+
+# Evaluate the description against the frame to see the response it produces
+y = pcm_or_death.bind(mg)
 y
 ```
 
@@ -63,17 +66,26 @@ y.to_frame(format="polars").head(8)
 ## The same response, built by hand
 
 `first_event()` replaces a recipe you may have seen elsewhere, which picks `ptime` for subjects who
-progressed and `futime` for everyone else, then codes the cause as `1`, `2`, or `0`:
+progressed and `futime` for everyone else, then codes the cause as `1`, `2`, or `0`. With those two
+columns in the frame, R's `factor()` turns the codes into states, whose first label means censoring,
+and the formula response is the one you would write in R:
 
 ```python
-etime = np.where(mg["pstat"] == 1, mg["ptime"], mg["futime"])
-cause = np.where(mg["pstat"] == 1, 1, 2 * mg["death"])
-y = gw.Surv.multistate(etime, cause, states={"pcm": 1, "death": 2})
+import polars as pl
+
+# The recipe: one event time and one cause code per subject
+mg_coded = mg.with_columns(
+    etime=pl.when(pl.col("pstat") == 1).then(pl.col("ptime")).otherwise(pl.col("futime")),
+    cause=pl.when(pl.col("pstat") == 1).then(1).otherwise(2 * pl.col("death")),
+)
+gw.AalenJohansen().fit(
+    "Surv(etime, factor(cause, 0:2, c('censor', 'pcm', 'death')))", data=mg_coded
+)
 ```
 
-Both give identical responses on `mgus2`. The helper states the rule once, and it also works when
-the data arrives as a DuckDB relation or a lazy frame. To bind the response at fit time instead,
-describe it with `gw.Outcome.first_event()` and pass `data=`.
+Both give identical responses on `mgus2`. `Outcome.first_event()` states the rule once and needs no
+extra columns. When the values are already in hand as arrays, `gw.first_event()` builds the same
+response from them directly.
 
 `first_event()` also checks the data. If a subject's event is recorded after another endpoint's
 follow-up had already ended (a progression at month 80 when survival follow-up stopped at month
@@ -93,16 +105,15 @@ The Aalen-Johansen estimator computes it. You fit it to the multi-state response
 curve for every cause.
 
 ```{python}
-# Rebuild the dataset and competing-risks response
+# Reload the dataset and describe the competing-risks response
 mg = gw.load_dataset("mgus2", backend="polars")
 
-y = gw.Surv.first_event(
+pcm_or_death = gw.Outcome.first_event(
     endpoints={"pcm": ("ptime", "pstat"), "death": ("futime", "death")},
-    data=mg,
 )
 
 # Fit the Aalen-Johansen estimator to get a CIF for each competing cause
-aj = gw.AalenJohansen().fit(y)
+aj = gw.AalenJohansen().fit(pcm_or_death, data=mg)
 aj
 ```
 
@@ -136,7 +147,7 @@ together in the fitted object.
 
 ```{python}
 # Fit separate CIFs for each level of sex
-aj_sex = gw.AalenJohansen().fit(y, by="sex", data=mg)
+aj_sex = gw.AalenJohansen().fit(pcm_or_death, by="sex", data=mg)
 aj_sex
 ```
 
@@ -177,16 +188,15 @@ not the same as `KaplanMeier`'s default of `conf_type="log"` (see
 You set the transform at construction time.
 
 ```{python}
-# Rebuild the dataset and competing-risks response
+# Reload the dataset and describe the competing-risks response
 mg = gw.load_dataset("mgus2", backend="polars")
 
-y = gw.Surv.first_event(
+pcm_or_death = gw.Outcome.first_event(
     endpoints={"pcm": ("ptime", "pstat"), "death": ("futime", "death")},
-    data=mg,
 )
 
 # Fit with the log-log confidence interval transform
-aj_loglog = gw.AalenJohansen(conf_type="log-log").fit(y)
+aj_loglog = gw.AalenJohansen(conf_type="log-log").fit(pcm_or_death, data=mg)
 
 # Inspect the pcm curve with its log-log bounds
 aj_loglog.to_frame(format="polars").filter(pl.col("cause") == "pcm").head(5)[
@@ -206,9 +216,9 @@ curve.
 
 ```{python}
 # Fit all three CI transforms
-aj_plain  = gw.AalenJohansen(conf_type="plain").fit(y)
-aj_log    = gw.AalenJohansen(conf_type="log").fit(y)
-aj_loglog = gw.AalenJohansen(conf_type="log-log").fit(y)
+aj_plain  = gw.AalenJohansen(conf_type="plain").fit(pcm_or_death, data=mg)
+aj_log    = gw.AalenJohansen(conf_type="log").fit(pcm_or_death, data=mg)
+aj_loglog = gw.AalenJohansen(conf_type="log-log").fit(pcm_or_death, data=mg)
 
 # PCM curve: take a handful of rows from each to compare limits
 rows = []
@@ -241,7 +251,7 @@ By default, Greenwood computes 95% confidence intervals. You can change this wit
 
 ```{python}
 # Fit with a 90% confidence level instead of the default 95%
-aj_90 = gw.AalenJohansen(conf_level=0.90).fit(y)
+aj_90 = gw.AalenJohansen(conf_level=0.90).fit(pcm_or_death, data=mg)
 
 # Inspect the narrower interval on the first three rows of the pcm curve
 aj_90.to_frame(format="polars").filter(pl.col("cause") == "pcm").head(3)[
@@ -264,16 +274,15 @@ of the log-rank test. It compares the cumulative incidence function for a specif
 groups, properly accounting for competing events.
 
 ```{python}
-# Rebuild the dataset and response
+# Reload the dataset and describe the response
 mg = gw.load_dataset("mgus2", backend="polars")
 
-y = gw.Surv.first_event(
+pcm_or_death = gw.Outcome.first_event(
     endpoints={"pcm": ("ptime", "pstat"), "death": ("futime", "death")},
-    data=mg,
 )
 
 # Test whether the CIF of pcm differs between sexes
-gw.grays_test(y, group="sex", data=mg, cause="pcm")
+gw.grays_test(pcm_or_death, group="sex", data=mg, cause="pcm")
 ```
 
 The test returns a `TestResult` with the chi-square statistic, degrees of freedom, p-value, and
@@ -282,7 +291,7 @@ by changing the `cause=` argument.
 
 ```{python}
 # Test the death cause instead
-gw.grays_test(y, group="sex", cause="death", data=mg)
+gw.grays_test(pcm_or_death, group="sex", cause="death", data=mg)
 ```
 
 Gray's test uses the subdistribution risk set, the same framework behind the Fine-Gray model.
@@ -307,16 +316,15 @@ constructed so that its coefficients describe the effect of covariates on the cu
 itself, which is usually what you want to report.
 
 ```{python}
-# Rebuild the dataset and response
+# Reload the dataset and describe the response
 mg = gw.load_dataset("mgus2", backend="polars")
 
-y = gw.Surv.first_event(
+pcm_or_death = gw.Outcome.first_event(
     endpoints={"pcm": ("ptime", "pstat"), "death": ("futime", "death")},
-    data=mg,
 )
 
 # Fit the Fine-Gray model for the pcm cause with age and sex as covariates
-fg = gw.FineGray(cause="pcm").fit(y, covariates=["age", "sex"], data=mg)
+fg = gw.FineGray(cause="pcm").fit(pcm_or_death, covariates=["age", "sex"], data=mg)
 fg
 ```
 
@@ -343,8 +351,8 @@ models, one for each cause, to compare the covariate effects across causes.
 import pandas as pd
 
 # Fit FineGray models for both competing causes
-fg_pcm = gw.FineGray(cause="pcm").fit(y, covariates=["age", "sex"], data=mg)
-fg_death = gw.FineGray(cause="death").fit(y, covariates=["age", "sex"], data=mg)
+fg_pcm = gw.FineGray(cause="pcm").fit(pcm_or_death, covariates=["age", "sex"], data=mg)
+fg_death = gw.FineGray(cause="death").fit(pcm_or_death, covariates=["age", "sex"], data=mg)
 
 # Compare the hazard ratios side-by-side
 pcm_tidy = gw.tidy(fg_pcm, exponentiate=True, format="pandas")
@@ -384,7 +392,7 @@ target cause counts as an event.
 
 ```{python}
 # Fit a cause-specific Cox model for the pcm cause
-csc_pcm = gw.CauseSpecificCox(cause="pcm").fit(y, covariates=["age", "sex"], data=mg)
+csc_pcm = gw.CauseSpecificCox(cause="pcm").fit(pcm_or_death, covariates=["age", "sex"], data=mg)
 csc_pcm
 ```
 
@@ -400,7 +408,7 @@ You can fit a second model for the competing cause and compare the two side by s
 
 ```{python}
 # Fit a cause-specific Cox model for death
-csc_death = gw.CauseSpecificCox(cause="death").fit(y, covariates=["age", "sex"], data=mg)
+csc_death = gw.CauseSpecificCox(cause="death").fit(pcm_or_death, covariates=["age", "sex"], data=mg)
 gw.tidy(csc_death, exponentiate=True, format="polars")
 ```
 
@@ -421,12 +429,11 @@ $F(t \mid x) = 1 - \exp\bigl(-H_0(t)\,\exp(x\beta)\bigr)$ for each subject.
 # Rebuild the dataset and fit the Fine-Gray model
 mg = gw.load_dataset("mgus2", backend="polars")
 
-y = gw.Surv.first_event(
+pcm_or_death = gw.Outcome.first_event(
     endpoints={"pcm": ("ptime", "pstat"), "death": ("futime", "death")},
-    data=mg,
 )
 
-fg = gw.FineGray(cause="pcm").fit(y, covariates=["age", "sex"], data=mg)
+fg = gw.FineGray(cause="pcm").fit(pcm_or_death, covariates=["age", "sex"], data=mg)
 
 # Predict cumulative incidence at 10, 20, and 30 years for three subjects
 fg.predict_cumulative_incidence(mg[:3], times=[120, 240, 360], format="polars")
@@ -456,17 +463,16 @@ The penalty is $\lambda\bigl(\alpha\|\beta\|_1 + \tfrac{1-\alpha}{2}\|\beta\|_2^
 `l1_ratio=0` gives ridge (smooth shrinkage), and values in between blend the two.
 
 ```{python}
-# Rebuild the dataset and response
+# Reload the dataset and describe the response
 mg = gw.load_dataset("mgus2", backend="polars")
 
-y = gw.Surv.first_event(
+pcm_or_death = gw.Outcome.first_event(
     endpoints={"pcm": ("ptime", "pstat"), "death": ("futime", "death")},
-    data=mg,
 )
 
 # Fit a lasso-penalized Fine-Gray model
 pfg = gw.PenalizedFineGray(cause="pcm", penalizer=0.01, l1_ratio=1.0).fit(
-    y, covariates=["age", "sex"], data=mg
+    pcm_or_death, covariates=["age", "sex"], data=mg
 )
 pfg
 ```
@@ -500,7 +506,7 @@ import numpy as np
 # Compare penalized models at different strengths
 for lam in [0.001, 0.01, 0.1]:
     m = gw.PenalizedFineGray(cause="pcm", penalizer=lam, l1_ratio=1.0).fit(
-        y, covariates=["age", "sex"], data=mg
+        pcm_or_death, covariates=["age", "sex"], data=mg
     )
     n_nz = int(np.count_nonzero(m.coef_))
     print(f"  penalizer={lam:.3f}  nonzero={n_nz}  coef={np.round(m.coef_, 4)}")
@@ -532,7 +538,7 @@ across all trees.
 # Fit a competing-risk forest
 crf = gw.CompetingRiskForest(
     n_estimators=100, max_depth=5, oob_score=True, random_state=0
-).fit(y, covariates=["age", "sex"], data=mg)
+).fit(pcm_or_death, covariates=["age", "sex"], data=mg)
 crf
 ```
 
