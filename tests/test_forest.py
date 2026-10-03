@@ -43,14 +43,14 @@ def test_fmt_pvalue_large() -> None:
 @pytest.fixture
 def lung_cox() -> CoxPH:
     lung = gw.load_dataset("lung", backend="pandas")
-    y = Surv.right(lung["time"], event=(lung["status"] == 2))
+    y = Surv(time=lung["time"], event=(lung["status"] == 2))
     return CoxPH().fit(y, lung[["age", "sex"]])
 
 
 @pytest.fixture
 def three_term_cox() -> CoxPH:
     lung = gw.load_dataset("lung", backend="pandas")
-    y = Surv.right(lung["time"], event=(lung["status"] == 2))
+    y = Surv(time=lung["time"], event=(lung["status"] == 2))
     return CoxPH().fit(y, lung[["age", "sex", "ph.ecog"]])
 
 
