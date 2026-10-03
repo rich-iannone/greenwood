@@ -402,14 +402,13 @@ class SurvivalTree:
     ```{python}
     import greenwood as gw
 
-    # Load data and build a right-censored response
     lung = gw.load_dataset("lung", backend="pandas").dropna(subset=["ph.ecog", "ph.karno"])
-    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-    cols = ["age", "sex", "ph.ecog", "ph.karno", "wt.loss"]
 
     # Fit a survival tree and score the first five subjects
-    tree = gw.SurvivalTree(max_depth=3, random_state=0).fit(y, covariates=lung[cols])
-    tree.predict(lung[cols])[:5]
+    tree = gw.SurvivalTree(max_depth=3, random_state=0).fit(
+        "Surv(time, status) ~ age + sex + ph.ecog + ph.karno + wt.loss", data=lung
+    )
+    tree.predict(lung)[:5]
     ```
     """
 
@@ -465,7 +464,7 @@ class SurvivalTree:
         Parameters
         ----------
         surv
-            A right-censored `Surv` response (built with `Surv.right()`).
+            A right-censored `Surv` response, built with `gw.Surv(time=..., event=...)`.
             An `Outcome` or a formula string such as `'Surv(time, status == 2) ~ age + sex'` is also
             accepted, with its columns read from `data`. The right-hand side sets `covariates`.
         covariates
@@ -502,12 +501,12 @@ class SurvivalTree:
         tree
         ```
 
-        The same fit can be done by passing the response and covariates separately:
+        The same fit can be done by passing an `Outcome` and the covariate columns separately:
 
         ```{python}
-        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+        death = gw.Outcome.surv(time="time", event="status == 2")
         tree2 = gw.SurvivalTree(max_depth=3, random_state=0).fit(
-            y, covariates=["age", "sex", "ph.ecog", "ph.karno"], data=lung
+            death, covariates=["age", "sex", "ph.ecog", "ph.karno"], data=lung
         )
         tree2
         ```
@@ -673,18 +672,18 @@ class SurvivalTree:
         lung = gw.load_dataset("lung", backend="pandas").dropna(
             subset=["ph.ecog", "ph.karno"]
         )
-        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-        cols = ["age", "sex", "ph.ecog", "ph.karno", "wt.loss"]
 
-        tree = gw.SurvivalTree(max_depth=3, random_state=0).fit(y, covariates=lung[cols])
-        tree.predict(lung[cols])[:5]
+        tree = gw.SurvivalTree(max_depth=3, random_state=0).fit(
+            "Surv(time, status) ~ age + sex + ph.ecog + ph.karno + wt.loss", data=lung
+        )
+        tree.predict(lung)[:5]
         ```
 
         Predict survival curves at specific time points. The result is a DataFrame with a
         `time` column and one column per subject:
 
         ```{python}
-        tree.predict(lung[cols], type="survival", times=[180, 365, 730])
+        tree.predict(lung, type="survival", times=[180, 365, 730])
         ```
         """
         if type not in _PREDICT_TYPES:
@@ -787,7 +786,7 @@ class _BaseSurvivalForest:
         Parameters
         ----------
         surv
-            A right-censored `Surv` response (built with `Surv.right()`).
+            A right-censored `Surv` response, built with `gw.Surv(time=..., event=...)`.
             An `Outcome` or a formula string such as `'Surv(time, status == 2) ~ age + sex'` is also
             accepted, with its columns read from `data`. The right-hand side sets `covariates`.
         covariates
@@ -815,11 +814,11 @@ class _BaseSurvivalForest:
         lung = gw.load_dataset("lung", backend="pandas").dropna(
             subset=["ph.ecog", "ph.karno"]
         )
-        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+        death = gw.Outcome.surv(time="time", event="status")
 
         rsf = gw.RandomSurvivalForest(
             n_estimators=100, oob_score=True, random_state=0
-        ).fit(y, covariates=["age", "sex", "ph.ecog", "ph.karno"], data=lung)
+        ).fit(death, covariates=["age", "sex", "ph.ecog", "ph.karno"], data=lung)
         rsf
         ```
 
@@ -913,7 +912,7 @@ class _BaseSurvivalForest:
         if scored.sum() < 2:
             return None
         risk = risk_sum[scored] / tree_count[scored]
-        y = Surv.right(self._time_train[scored], event=self._event_train[scored])
+        y = Surv(time=self._time_train[scored], event=self._event_train[scored])
         return float(concordance_index(y, risk))
 
     def _ensemble_curves(self, x: Array) -> tuple[Array, Array]:
@@ -971,19 +970,17 @@ class _BaseSurvivalForest:
         lung = gw.load_dataset("lung", backend="pandas").dropna(
             subset=["ph.ecog", "ph.karno"]
         )
-        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-        cols = ["age", "sex", "ph.ecog", "ph.karno", "wt.loss"]
 
-        rsf = gw.RandomSurvivalForest(
-            n_estimators=100, random_state=0
-        ).fit(y, covariates=lung[cols])
-        rsf.predict(lung[cols])[:5]
+        rsf = gw.RandomSurvivalForest(n_estimators=100, random_state=0).fit(
+            "Surv(time, status) ~ age + sex + ph.ecog + ph.karno + wt.loss", data=lung
+        )
+        rsf.predict(lung)[:5]
         ```
 
         Retrieve ensemble survival curves evaluated at one and two years:
 
         ```{python}
-        rsf.predict(lung[cols], type="survival", times=[365, 730])
+        rsf.predict(lung, type="survival", times=[365, 730])
         ```
         """
         if type not in _PREDICT_TYPES:
@@ -1055,7 +1052,7 @@ class _BaseSurvivalForest:
             return risk_sum[scored] / np.where(count[scored] == 0, 1, count[scored]), scored
 
         base_risk, scored = oob_risk(x)
-        y = Surv.right(time[scored], event=event[scored])
+        y = Surv(time=time[scored], event=event[scored])
         base_error = 1.0 - concordance_index(y, base_risk)
 
         importances = np.zeros(x.shape[1])
@@ -1065,7 +1062,7 @@ class _BaseSurvivalForest:
                 permuted = x.copy()
                 permuted[:, feat] = x[rng.permutation(x.shape[0]), feat]
                 risk, sc = oob_risk(permuted)
-                y_p = Surv.right(time[sc], event=event[sc])
+                y_p = Surv(time=time[sc], event=event[sc])
                 drop += (1.0 - concordance_index(y_p, risk)) - base_error
             importances[feat] = drop / n_repeats
         return importances
@@ -1113,15 +1110,12 @@ class RandomSurvivalForest(_BaseSurvivalForest):
     ```{python}
     import greenwood as gw
 
-    # Load data and build a right-censored response
     lung = gw.load_dataset("lung", backend="pandas").dropna(subset=["ph.ecog", "ph.karno"])
-    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-    cols = ["age", "sex", "ph.ecog", "ph.karno", "wt.loss"]
 
     # Fit the forest with an out-of-bag score
-    rsf = gw.RandomSurvivalForest(
-        n_estimators=100, oob_score=True, random_state=0
-    ).fit(y, covariates=lung[cols])
+    rsf = gw.RandomSurvivalForest(n_estimators=100, oob_score=True, random_state=0).fit(
+        "Surv(time, status) ~ age + sex + ph.ecog + ph.karno + wt.loss", data=lung
+    )
     rsf
     ```
     """
@@ -1170,15 +1164,12 @@ class ExtraSurvivalTrees(_BaseSurvivalForest):
     ```{python}
     import greenwood as gw
 
-    # Load data and build a right-censored response
     lung = gw.load_dataset("lung", backend="pandas").dropna(subset=["ph.ecog", "ph.karno"])
-    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-    cols = ["age", "sex", "ph.ecog", "ph.karno", "wt.loss"]
 
     # Fit with bootstrap sampling so an out-of-bag score is available
     ext = gw.ExtraSurvivalTrees(
         n_estimators=100, bootstrap=True, oob_score=True, random_state=0
-    ).fit(y, covariates=lung[cols])
+    ).fit("Surv(time, status) ~ age + sex + ph.ecog + ph.karno + wt.loss", data=lung)
     ext
     ```
     """
