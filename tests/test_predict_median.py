@@ -16,7 +16,7 @@ pytestmark = pytest.mark.rparity
 @pytest.fixture()
 def lung_data() -> tuple[Surv, np.ndarray]:
     df = gw.load_dataset("lung", backend="pandas")
-    y = Surv.right(df["time"], event=(df["status"] == 2))
+    y = Surv(time=df["time"], event=(df["status"] == 2))
     x = df[["age", "sex"]].values
     return y, x
 
@@ -343,7 +343,7 @@ def test_predict_quantile_nan_when_curve_never_crosses() -> None:
     times = rng.exponential(100, n)
     events = np.zeros(n, dtype=int)
     events[0] = 1
-    y = Surv.right(times, events)
+    y = Surv(time=times, event=events)
     x = rng.standard_normal((n, 2))
     cox = gw.CoxPH().fit(y, x)
     result = cox.predict_quantile(p=0.5, format="pandas")
