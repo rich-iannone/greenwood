@@ -2,8 +2,8 @@
 
 Greenwood's event-time response follows Max Kuhn's [etd](https://github.com/topepo/etd) package
 exactly. etd is the reference implementation. This document records which version we target, the
-contract in a language-neutral form, and where Python must adapt. The plan for the work is in
-[`EVENT_TIME_PLAN.md`](../EVENT_TIME_PLAN.md).
+contract in a language-neutral form, and where Python must adapt. The companion contract for the
+`Surv` response that `as_surv()` produces is [`surv.md`](surv.md).
 
 ## Reference implementation
 
@@ -34,7 +34,7 @@ outcome is a change in the contract.
 | `new_event_time(time = list(), status = character())` | `gw.new_event_time(time=(), status=())` |
 | `extract_time(x)` | `gw.extract_time(x)` |
 | `extract_status(x)` | `gw.extract_status(x)` |
-| `as_surv(x)` | `gw.as_surv(x)` (arrives with the Phase 2 `Surv` realignment) |
+| `as_surv(x)` | `gw.as_surv(x)` |
 | `as_tibble(x)` | `x.to_frame(format=None)` |
 | class `event_time` | class `EventTime` |
 | `length(x)`, `x[i]`, `print(x)`, `format(x)`, `is.na(x)` | `len(x)`, `x[i]`, `repr(x)`, `x.format()`, `x.is_na()` |
@@ -100,8 +100,8 @@ when the check has none). Messages reuse etd's wording without cli markup.
 - zero-length input: an empty right-censored `Surv`.
 
 Missing rows stay missing in the result. The resulting `Surv` columns use R's names: `time` and
-`status` for right and left, `time1`, `time2`, and `status` for interval. Matching this in Python
-depends on the `Surv` realignment in Phase 2 of the plan.
+`status` for right and left, `time1`, `time2`, and `status` for interval. Greenwood's `Surv` mirrors R's (see [`surv.md`](surv.md)), so the conversion matches column for
+column.
 
 ## Python adaptations
 
