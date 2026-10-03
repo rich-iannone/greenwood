@@ -10,7 +10,7 @@ import pytest
 import greenwood as gw
 from greenwood import Outcome
 
-DEATH = Outcome.right(time="time", event="status", event_value=2)
+DEATH = Outcome.surv(time="time", event="status == 2")
 
 
 @pytest.fixture(scope="module")
@@ -38,7 +38,7 @@ def test_columns_are_matched_by_name_not_position(lung: Any) -> None:
 
 
 def test_categorical_coding_uses_fitted_levels(veteran: Any) -> None:
-    vet = Outcome.right(time="time", event="status")
+    vet = Outcome.surv(time="time", event="status")
     cox = gw.CoxPH().fit(vet, covariates=["age", "celltype"], data=veteran)
     full = _lp(cox, veteran)
     # Two rows with a single cell type still get all three dummy columns
@@ -60,7 +60,7 @@ def test_missing_column_error(lung: Any) -> None:
 
 def test_unseen_level_error(veteran: Any) -> None:
     cox = gw.CoxPH().fit(
-        Outcome.right(time="time", event="status"), covariates=["celltype"], data=veteran
+        Outcome.surv(time="time", event="status"), covariates=["celltype"], data=veteran
     )
     new = veteran.head(1).assign(celltype="unknown")
     with pytest.raises(ValueError, match="not present when the model was fit"):
@@ -69,7 +69,7 @@ def test_unseen_level_error(veteran: Any) -> None:
 
 def test_array_designs_still_work(lung: Any) -> None:
     frame = lung.dropna(subset=["age", "sex"])
-    y = gw.Surv.right(time="time", event="status", data=frame, event_value=2)
+    y = gw.Surv(time=frame["time"], event=frame["status"] == 2)
     x = frame[["age", "sex"]].to_numpy()
     cox = gw.CoxPH().fit(y, covariates=x)
     np.testing.assert_allclose(_lp(cox, x[:3]), _lp(cox, x)[:3])
@@ -134,7 +134,7 @@ def veteran_na(veteran: Any) -> Any:
     return frame
 
 
-VET = Outcome.right(time="time", event="status")
+VET = Outcome.surv(time="time", event="status")
 
 
 @pytest.mark.parametrize("backend", ["pandas", "polars"])
@@ -143,10 +143,10 @@ def test_missing_category_drops_the_row(veteran_na: Any, backend: str) -> None:
 
     data = veteran_na if backend == "pandas" else pl.from_pandas(veteran_na)
     ref_frame = veteran_na.dropna(subset=["celltype"])
-    y_ref = gw.Surv.right(time="time", event="status", data=ref_frame)
+    y_ref = gw.Surv(time=ref_frame["time"], event=ref_frame["status"])
     ref = gw.CoxPH().fit(y_ref, covariates=["age", "celltype"], data=ref_frame)
     # A plain Surv over the full frame: the model's own complete-case step drops the rows
-    y = gw.Surv.right(time="time", event="status", data=data)
+    y = gw.Surv(time=data["time"], event=data["status"])
     cox = gw.CoxPH().fit(y, covariates=["age", "celltype"], data=data)
     np.testing.assert_allclose(cox.coef_, ref.coef_, rtol=1e-10)
     assert cox.n_dropped_ == 3
@@ -156,7 +156,7 @@ def test_missing_category_drops_the_row(veteran_na: Any, backend: str) -> None:
 def test_missing_category_in_formula_drops_the_row(veteran_na: Any) -> None:
     ref_frame = veteran_na.dropna(subset=["celltype"])
     ref = gw.CoxPH().fit("Surv(time, status) ~ age + C(celltype)", data=ref_frame)
-    y = gw.Surv.right(time="time", event="status", data=veteran_na)
+    y = gw.Surv(time=veteran_na["time"], event=veteran_na["status"])
     cox = gw.CoxPH().fit(y, covariates="age + C(celltype)", data=veteran_na)
     np.testing.assert_allclose(cox.coef_, ref.coef_, rtol=1e-10)
     assert cox.n_dropped_ == 3
