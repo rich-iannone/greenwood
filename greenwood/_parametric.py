@@ -383,19 +383,17 @@ class AFT:
 
     Examples
     --------
-    Build a `Surv` response from the bundled `lung` dataset and fit a Weibull AFT model with `age`
-    and `sex` as covariates. Printing the fitted object reports the coefficients (on the log-time
-    scale), the scale, and the log-likelihood.
+    Fit a Weibull AFT model to the bundled `lung` dataset with `age` and `sex` as covariates.
+    Printing the fitted object reports the coefficients (on the log-time scale), the scale, and the
+    log-likelihood.
 
     ```{python}
     import greenwood as gw
 
-    # Load data and build a right-censored response
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
     # Fit a Weibull AFT model with age and sex as covariates
-    aft = gw.AFT(dist="weibull").fit(y, covariates=["age", "sex"], data=lung)
+    aft = gw.AFT(dist="weibull").fit("Surv(time, status) ~ age + sex", data=lung)
     aft
     ```
     """
@@ -481,8 +479,8 @@ class AFT:
         Parameters
         ----------
         surv
-            A right-censored `Surv` response. Built with `Surv.right()`. Interval-censored or other
-            response types raise `NotImplementedError`.
+            A right-censored `Surv` response, built with `gw.Surv(time=..., event=...)`.
+            Interval-censored or other response types raise `NotImplementedError`.
             An `Outcome` or a formula string such as `'Surv(time, status == 2) ~ age + sex'` is also
             accepted, with its columns read from `data`. The right-hand side sets `covariates`.
         covariates
@@ -525,21 +523,20 @@ class AFT:
         ```{python}
         import greenwood as gw
 
-        # Load data and build a right-censored response
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
         # Fit a log-normal AFT model
-        aft = gw.AFT(dist="lognormal").fit(y, covariates=["age", "sex"], data=lung)
+        aft = gw.AFT(dist="lognormal").fit("Surv(time, status) ~ age + sex", data=lung)
         aft
         ```
 
-        Use a formula string with the `data=` argument:
+        The response and covariates can also be given separately, with an `Outcome` naming the
+        response columns and a right-hand-side formula for the covariates:
 
         ```{python}
-        # Fit via a formula string instead of a DataFrame
-        aft_formula = gw.AFT(dist="weibull").fit(y, covariates="age + sex", data=lung)
-        aft_formula
+        death = gw.Outcome.surv(time="time", event="status")
+        aft_weibull = gw.AFT(dist="weibull").fit(death, covariates="age + sex", data=lung)
+        aft_weibull
         ```
         """
         bound = bind_fit_inputs(
@@ -883,8 +880,7 @@ class AFT:
         import greenwood as gw
 
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-        aft = gw.AFT(dist="weibull").fit(y, covariates=["age", "sex"], data=lung)
+        aft = gw.AFT(dist="weibull").fit("Surv(time, status) ~ age + sex", data=lung)
 
         aft.residuals(type="martingale")[:5]
         ```
@@ -1081,8 +1077,7 @@ class AFT:
 
         # Load data and fit a Weibull AFT model
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-        aft = gw.AFT(dist="weibull").fit(y, covariates=["age", "sex"], data=lung)
+        aft = gw.AFT(dist="weibull").fit("Surv(time, status) ~ age + sex", data=lung)
 
         # Predict the linear predictor for the first two subjects
         aft.predict(lung[:2], type="lp")
@@ -1309,8 +1304,7 @@ class AFT:
         import greenwood as gw
 
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-        aft = gw.AFT(dist="weibull").fit(y, covariates=["age", "sex"], data=lung)
+        aft = gw.AFT(dist="weibull").fit("Surv(time, status) ~ age + sex", data=lung)
 
         # Predicted survival-time quartiles for three subjects
         aft.predict_quantile(lung[:3], p=[0.25, 0.5, 0.75], format="polars")
@@ -1392,8 +1386,7 @@ class AFT:
         import greenwood as gw
 
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-        aft = gw.AFT(dist="weibull").fit(y, covariates=["age", "sex"], data=lung)
+        aft = gw.AFT(dist="weibull").fit("Surv(time, status) ~ age + sex", data=lung)
 
         aft.predict_median(lung[:3], format="polars")
         ```
@@ -1451,8 +1444,7 @@ class AFT:
         import greenwood as gw
 
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-        aft = gw.AFT(dist="weibull").fit(y, covariates=["age", "sex"], data=lung)
+        aft = gw.AFT(dist="weibull").fit("Surv(time, status) ~ age + sex", data=lung)
 
         # Expected survival time up to one year for three subjects
         aft.predict_expectation(lung[:3], tau=365, format="polars")
@@ -1541,8 +1533,7 @@ class AFT:
         import greenwood as gw
 
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-        gg = gw.AFT(dist="gengamma").fit(y, covariates=["age", "sex"], data=lung)
+        gg = gw.AFT(dist="gengamma").fit("Surv(time, status) ~ age + sex", data=lung)
         gg.test_distributions(format="polars")
         ```
         """
@@ -1655,8 +1646,7 @@ class AFT:
 
         # Load data and fit a Weibull AFT model
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-        aft = gw.AFT(dist="weibull").fit(y, covariates=["age", "sex"], data=lung)
+        aft = gw.AFT(dist="weibull").fit("Surv(time, status) ~ age + sex", data=lung)
 
         # Export the coefficient table as a Polars DataFrame
         aft.to_frame(format="polars")
