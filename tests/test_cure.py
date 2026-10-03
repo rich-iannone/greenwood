@@ -12,7 +12,7 @@ from greenwood import MixtureCure, Surv
 @pytest.fixture(scope="module")
 def e1684_data():
     e1684 = gw.load_dataset("e1684", backend="pandas")
-    y = Surv.right(e1684["FAILTIME"], event=e1684["FAILCENS"].astype(bool))
+    y = Surv(time=e1684["FAILTIME"], event=e1684["FAILCENS"].astype(bool))
     return y, e1684
 
 
@@ -68,20 +68,22 @@ class TestFit:
         assert m.n_ == 284
 
     def test_no_events_raises(self) -> None:
-        y = Surv.right(np.array([1.0, 2.0, 3.0]), event=np.array([False, False, False]))
+        y = Surv(time=np.array([1.0, 2.0, 3.0]), event=np.array([False, False, False]))
         x = np.array([[1.0], [2.0], [3.0]])
         with pytest.raises(ValueError, match="No events"):
             MixtureCure().fit(y, latency=x, cure=x, nboot=0)
 
     def test_shape_mismatch_raises(self) -> None:
-        y = Surv.right(np.array([1.0, 2.0, 3.0]), event=np.array([True, False, True]))
+        y = Surv(time=np.array([1.0, 2.0, 3.0]), event=np.array([True, False, True]))
         x = np.array([[1.0], [2.0]])
         z = np.array([[1.0], [2.0], [3.0]])
         with pytest.raises(ValueError, match="same number of rows"):
             MixtureCure().fit(y, latency=x, cure=z, nboot=0)
 
     def test_unsupported_surv_type_raises(self) -> None:
-        y = Surv.left(np.array([1.0, 2.0, 3.0]))
+        y = gw.as_surv(
+            gw.event_time(time=np.array([1.0, 2.0, 3.0]), status=np.array(["l", "l", "l"]))
+        )
         x = np.array([[1.0], [2.0], [3.0]])
         with pytest.raises(NotImplementedError, match="right-censored"):
             MixtureCure().fit(y, latency=x, cure=x, nboot=0)
