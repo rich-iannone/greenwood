@@ -19,27 +19,23 @@ that way. This page covers the survival curve plot, confidence bands, censoring 
 numbers-at-risk table.
 
 Altair is an optional dependency. If you installed Greenwood with the `altair` extra, or with
-`all`, you already have it. We use the `lung` dataset throughout. First we build the response.
+`all`, you already have it. We use the `lung` dataset throughout.
 
 ```{python}
 import greenwood as gw
 
 # Load the bundled lung dataset as a Polars DataFrame
 lung = gw.load_dataset("lung", backend="polars")
-
-# Build a right-censored response, where a status of 2 marks a death
-y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-
-# Display the response summary
-y
 ```
 
 We then fit a Kaplan-Meier estimator stratified by sex, one curve per group, using the log-log
-confidence interval transform. Printing the fitted estimator summarizes each stratum.
+confidence interval transform. The formula's left-hand side builds the right-censored response from
+the `time` and `status` columns (a status of 2 marks a death), and its right-hand side names the
+grouping variable. Printing the fitted estimator summarizes each stratum.
 
 ```{python}
 # Fit Kaplan-Meier with log-log CI transform, stratified by sex
-km = gw.KaplanMeier(conf_type="log-log").fit(y, by="sex", data=lung)
+km = gw.KaplanMeier(conf_type="log-log").fit("Surv(time, status) ~ sex", data=lung)
 
 # Print per-stratum median survival
 km
@@ -68,12 +64,11 @@ The main entry point is `plot_survival()`. Given a fitted `KaplanMeier`, it draw
 each stratum, a shaded confidence band, and a small notch at each censoring time.
 
 ```{python}
-# Load data and build the response
+# Load the lung dataset
 lung = gw.load_dataset("lung", backend="polars")
-y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
 # Fit Kaplan-Meier stratified by sex with log-log CI
-km = gw.KaplanMeier(conf_type="log-log").fit(y, by="sex", data=lung)
+km = gw.KaplanMeier(conf_type="log-log").fit("Surv(time, status) ~ sex", data=lung)
 
 # Draw the interactive survival curve with confidence band and censoring marks
 gw.plot_survival(km)
@@ -94,7 +89,7 @@ plot it to visualize the estimated survival trajectory for a reference subject:
 
 ```{python}
 # Fit a Cox model and extract the baseline hazard with 95% CI
-cox = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung)
+cox = gw.CoxPH().fit("Surv(time, status) ~ age + sex", data=lung)
 baseline = cox.baseline_hazard(ci=True, format="polars")
 
 # The 'survival' column is S_0(t) and 'survival_lower'/'survival_upper' are the CI bounds
@@ -229,12 +224,11 @@ automatically and draws an interactive Altair chart with a log-scaled x-axis and
 line at HR = 1.
 
 ```{python}
-# Load data and build the response
+# Load the lung dataset
 lung = gw.load_dataset("lung", backend="polars")
-y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
 # Fit a Cox model with three covariates
-cox = gw.CoxPH().fit(y, covariates=["age", "sex", "ph.ecog"], data=lung)
+cox = gw.CoxPH().fit("Surv(time, status) ~ age + sex + ph.ecog", data=lung)
 
 # Draw a forest plot of hazard ratios with a log-scale x-axis
 gw.plot_forest(cox)
@@ -342,13 +336,12 @@ patient either progresses to overt plasma-cell malignancy (`pcm`), dies from an 
 mg = gw.load_dataset("mgus2", backend="polars")
 
 # Each endpoint has its own (time, event) column pair, and the first one observed wins
-y = gw.Surv.first_event(
+pcm_or_death = gw.Outcome.first_event(
     endpoints={"pcm": ("ptime", "pstat"), "death": ("futime", "death")},
-    data=mg,
 )
 
 # Fit the Aalen-Johansen estimator for the whole population (no grouping variable)
-aj = gw.AalenJohansen().fit(y)
+aj = gw.AalenJohansen().fit(pcm_or_death, data=mg)
 
 # Draw the cumulative incidence chart, one panel per competing cause
 gw.plot_cif(aj)
@@ -370,7 +363,7 @@ its own panel so you can see both differences side by side.
 
 ```{python}
 # Stratify by sex: fit separate CIF curves for each group
-aj_sex = gw.AalenJohansen().fit(y, by="sex", data=mg)
+aj_sex = gw.AalenJohansen().fit(pcm_or_death, by="sex", data=mg)
 
 # Draw CIF with one colored line per sex group, faceted by cause
 gw.plot_cif(aj_sex, title="Cumulative incidence by sex")
