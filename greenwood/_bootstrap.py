@@ -70,9 +70,9 @@ class BootstrapResult:
     import greenwood as gw
 
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+    death = gw.Outcome.surv(time="time", event="status")
 
-    result = gw.bootstrap(y, statistic="median", n_boot=500, seed=0)
+    result = gw.bootstrap(death, statistic="median", n_boot=500, seed=0, data=lung)
     result
     ```
 
@@ -120,9 +120,9 @@ class BootstrapResult:
         import greenwood as gw
 
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+        death = gw.Outcome.surv(time="time", event="status")
 
-        result = gw.bootstrap(y, statistic="median", n_boot=500, seed=0)
+        result = gw.bootstrap(death, statistic="median", n_boot=500, seed=0, data=lung)
         result.to_frame(format="polars")
         ```
         """
@@ -348,19 +348,19 @@ def bootstrap(
     import greenwood as gw
 
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+    death = gw.Outcome.surv(time="time", event="status")
 
-    gw.bootstrap(y, statistic="median", n_boot=500, seed=0)
+    gw.bootstrap(death, statistic="median", n_boot=500, seed=0, data=lung)
     ```
 
     Bootstrap the difference in restricted mean survival time (RMST) between two
-    groups. The `by=` argument defines the grouping variable and `tau=` sets the time
-    horizon:
+    groups. The formula's right-hand side defines the grouping variable (the same as
+    `by="sex"`) and `tau=` sets the time horizon:
 
     ```{python}
     gw.bootstrap(
-        y, statistic="rmst_diff", by="sex", data=lung,
-        tau=365, n_boot=500, seed=0
+        "Surv(time, status) ~ sex", statistic="rmst_diff", tau=365, n_boot=500, seed=0,
+        data=lung,
     )
     ```
 
@@ -369,7 +369,7 @@ def bootstrap(
 
     ```{python}
     gw.bootstrap(
-        y, statistic="median", n_boot=500, ci_type="bca", seed=0
+        death, statistic="median", n_boot=500, ci_type="bca", seed=0, data=lung
     )
     ```
     """
@@ -384,9 +384,9 @@ def bootstrap(
     by = bound.labels["by"]
     weights = bound.labels["weights"]
 
+    from ._ingest import to_1d_array as _to_1d_array
     from ._nonparametric import KaplanMeier as _KM
     from ._resample import _subset_surv
-    from ._surv import _to_1d_array
 
     if ci_type not in _VALID_CI_TYPES:
         raise ValueError(f"ci_type must be one of {sorted(_VALID_CI_TYPES)}, got {ci_type!r}.")
@@ -498,9 +498,9 @@ def _jackknife_values(
     is_diff: bool,
 ) -> Array:
     """Leave-one-out jackknife values for BCa acceleration constant."""
+    from ._ingest import to_1d_array as _to_1d_array
     from ._nonparametric import KaplanMeier as _KM
     from ._resample import _subset_surv
-    from ._surv import _to_1d_array
 
     n = surv.n
     jk = np.empty(n)
