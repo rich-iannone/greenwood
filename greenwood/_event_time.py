@@ -228,7 +228,7 @@ class EventTime:
 
     `EventTime` is the Python counterpart of etd's `event_time` vector. Create one with
     `event_time()`, which validates its input, or with `new_event_time()`, which only checks
-    types. Direct instantiation is for internal use.
+    types.
 
     Each element has a time and a single-letter status: `"e"` (exact event), `"r"`
     (right-censored), `"l"` (left-censored), or `"i"` (interval-censored, with an upper bound in
@@ -268,20 +268,29 @@ class EventTime:
     _paired: BoolArray
     _status: ObjectArray
 
-    def __init__(
-        self,
+    def __init__(self) -> None:
+        raise TypeError(
+            "Create an EventTime with event_time(), which validates its input, or "
+            "new_event_time(), which only checks types."
+        )
+
+    @classmethod
+    def _new(
+        cls,
         *,
         time: FloatArray,
         time_max: FloatArray,
         paired: BoolArray,
         status: ObjectArray,
-    ) -> None:
+    ) -> Self:
         # Columnar storage of etd's list field: `time` is each element's first number, and
         # `time_max` its second number where `paired` is true (an etd element of length 2).
-        self._time = time
-        self._time_max = time_max
-        self._paired = paired
-        self._status = status
+        obj = object.__new__(cls)
+        obj._time = time
+        obj._time_max = time_max
+        obj._paired = paired
+        obj._status = status
+        return obj
 
     # -- vector protocol ------------------------------------------------------------------
 
@@ -289,6 +298,50 @@ class EventTime:
         return int(self._time.shape[0])
 
     def __getitem__(self, key: Any) -> EventTime:
+        """Select elements, returning a new event-time vector.
+
+        Indexing always returns an `EventTime`, even for a single element, as subsetting an etd
+        vector with `x[i]` does in R. Each element keeps its time, status, and upper bound. Negative
+        integers count from the end, as usual in Python (R's `x[-1]`, which drops an element, has
+        no equivalent here).
+
+        Parameters
+        ----------
+        key
+            An integer, a slice, an array of integer positions, or a boolean mask with one value
+            per element.
+
+        Returns
+        -------
+        EventTime
+            The selected elements.
+
+        Raises
+        ------
+        IndexError
+            If an integer position is out of range.
+        TypeError
+            If `key` is not an integer, a slice, an integer array, or a boolean mask.
+
+        Examples
+        --------
+        ```{python}
+        import greenwood as gw
+
+        x = gw.event_time(
+            time=[7, 5, 3, 2, None],
+            status=["e", "r", "l", "i", None],
+            time_max=[None, None, None, 4, None],
+        )
+        x[1:4]
+        ```
+
+        A boolean mask keeps the elements where it is `True`, here the complete ones:
+
+        ```{python}
+        x[~x.is_na()]
+        ```
+        """
         if isinstance(key, (int, np.integer)):
             n = len(self)
             i = int(key)  # pyright: ignore[reportUnknownArgumentType]
@@ -304,7 +357,7 @@ class EventTime:
                     "EventTime indices must be an integer, a slice, an integer array, or a "
                     "boolean mask."
                 )
-        return EventTime(
+        return EventTime._new(
             time=self._time[index],
             time_max=self._time_max[index],
             paired=self._paired[index],
@@ -327,6 +380,10 @@ class EventTime:
     def concat(cls, items: Iterable[EventTime]) -> Self:
         """Combine event-time vectors end to end, as `c()` does in R.
 
+        The elements of each vector are placed one after another, in the order given. Each keeps
+        its time, status, and upper bound, so vectors with different kinds of censoring can be
+        combined freely. Combining an empty list gives an empty vector.
+
         Parameters
         ----------
         items
@@ -336,6 +393,12 @@ class EventTime:
         -------
         EventTime
             A vector holding every element of `items`.
+
+        Raises
+        ------
+        TypeError
+            If any item is not an `EventTime`. As in R, an event-time vector can't be combined
+            with plain numbers. Build them into an `EventTime` first with `event_time()`.
 
         Examples
         --------
@@ -352,13 +415,13 @@ class EventTime:
             if not isinstance(part, EventTime):  # pyright: ignore[reportUnnecessaryIsInstance]
                 raise TypeError(f"Can't combine an EventTime with {_type_name(part)}.")
         if not parts:
-            return cls(
+            return cls._new(
                 time=np.empty(0, dtype=np.float64),
                 time_max=np.empty(0, dtype=np.float64),
                 paired=np.empty(0, dtype=np.bool_),
                 status=np.empty(0, dtype=object),
             )
-        return cls(
+        return cls._new(
             time=np.concatenate([p._time for p in parts]),
             time_max=np.concatenate([p._time_max for p in parts]),
             paired=np.concatenate([p._paired for p in parts]),
@@ -370,13 +433,15 @@ class EventTime:
     def is_na(self) -> BoolArray:
         """Return which elements are missing.
 
-        An element is missing when any of its times is missing (`nan`), matching etd's
-        `is.na()`.
+        An element is missing when any of its times is missing (`nan`), as in etd's `is.na()`. For
+        an interval-censored element that includes a missing upper bound. A missing status alone
+        only occurs together with a missing time, because `event_time()` rejects a missing status
+        where the time is present. Estimators drop missing elements when fitting.
 
         Returns
         -------
         numpy.ndarray
-            A boolean array, one entry per element.
+            A boolean array with one value per element, `True` where the element is missing.
 
         Examples
         --------
@@ -386,16 +451,27 @@ class EventTime:
         x = gw.event_time(time=[7, None, 2], status=["e", None, "i"], time_max=[None, None, 4])
         x.is_na()
         ```
+
+        Select the complete elements with the inverted mask:
+
+        ```{python}
+        x[~x.is_na()]
+        ```
         """
         return np.isnan(self._time) | (self._paired & np.isnan(self._time_max))
 
     def format(self) -> list[str | None]:
         """Format each element as etd does, with `None` for missing elements.
 
-        Every number in the vector is formatted together, with R's rules: at most 7 significant
-        digits, a shared number of decimal places, and scientific notation when it is narrower.
-        Events get a trailing space, right-censored values a `+`, left-censored values a `-`, and
-        intervals are written as `[lower, upper]`.
+        This is the text the vector's printout shows, one string per element, and it matches
+        etd's `format()` character for character. Every number in the vector is formatted together
+        with R's rules: at most 7 significant digits, a shared number of decimal places, and
+        scientific notation when that is narrower. Then each element is marked by its status:
+
+        - Exact events get a trailing space: `"7 "`.
+        - Right-censored values get a `+`: `"5+"`.
+        - Left-censored values get a `-`: `"3-"`.
+        - Interval-censored values are written as `"[lower, upper]"`.
 
         Returns
         -------
@@ -409,6 +485,12 @@ class EventTime:
 
         x = gw.event_time(time=[7, 5.5, 3], status=["e", "r", "i"], time_max=[None, None, 4])
         x.format()
+        ```
+
+        Very different magnitudes share one layout, switching to scientific notation as R does:
+
+        ```{python}
+        gw.event_time(time=[0.001234, 12345.6, 7], status=["e", "r", "l"]).format()
         ```
         """
         flat: list[float] = []
@@ -455,10 +537,12 @@ class EventTime:
         return np.where(self._paired, self._time_max, np.nan)
 
     def to_frame(self, *, format: str | None = None) -> Any:
-        """Split the vector into a table with `time`, `status`{.gd-no-link}, and `time_max` columns.
+        """Split the vector into a table with `"time"`, `"status"`, and `"time_max"` columns.
 
-        This is the counterpart of etd's `as_tibble()`. `time_max` is always included, and is
-        missing for elements that aren't interval-censored. Missing values are nulls.
+        This is the counterpart of etd's `as_tibble()`: the reverse of `event_time()`, with one row
+        per element. The `"time_max"` column is always included, and is missing for elements that
+        are not interval-censored. Missing values are nulls. Use the table to inspect a vector, to
+        join it back onto other data, or to export it.
 
         Parameters
         ----------
@@ -469,7 +553,13 @@ class EventTime:
         Returns
         -------
         pandas.DataFrame, polars.DataFrame, or pyarrow.Table
-            One row per element.
+            One row per element, with the columns `"time"`, `"status"`, and `"time_max"`.
+
+        Raises
+        ------
+        ImportError
+            If the requested DataFrame library (or, with `format=None`, any of them) is not
+            installed.
 
         Examples
         --------
@@ -615,7 +705,7 @@ def event_time(time: Any, status: Any, time_max: Any = None) -> EventTime:
         "`time` must be smaller than `time_max` for interval-censored values.",
     )
 
-    return EventTime(time=time_a, time_max=time_max_a, paired=is_interval, status=status_a)
+    return EventTime._new(time=time_a, time_max=time_max_a, paired=is_interval, status=status_a)
 
 
 def new_event_time(time: Any = (), status: Any = ()) -> EventTime:
@@ -683,7 +773,7 @@ def new_event_time(time: Any = (), status: Any = ()) -> EventTime:
             f"{status_a.shape[0]}.",
             check="fields_size",
         )
-    return EventTime(
+    return EventTime._new(
         time=np.asarray(lower, dtype=np.float64),
         time_max=np.asarray(upper, dtype=np.float64),
         paired=np.asarray(paired, dtype=np.bool_),
