@@ -228,17 +228,17 @@ def plot_cif(
     malignancy (PCM) or die first:
 
     ```{python}
-    import numpy as np
     import greenwood as gw
 
-    # Load data and build a competing-risks response
     mg = gw.load_dataset("mgus2", backend="polars")
-    etime = np.where(mg["pstat"] == 1, mg["ptime"], mg["futime"])
-    cause = np.where(mg["pstat"] == 1, 1, 2 * mg["death"])
-    y = gw.Surv.multistate(time=etime, event=cause, states=("pcm", "death"))
+
+    # The first of progression (PCM) or death, from each endpoint's time and status columns
+    pcm_or_death = gw.Outcome.first_event(
+        endpoints={"pcm": ("ptime", "pstat"), "death": ("futime", "death")}
+    )
 
     # Fit the Aalen-Johansen estimator and plot cumulative incidence
-    aj = gw.AalenJohansen().fit(y)
+    aj = gw.AalenJohansen().fit(pcm_or_death, data=mg)
     gw.plot_cif(aj)
     ```
 
@@ -246,7 +246,7 @@ def plot_cif(
 
     ```{python}
     # Stratify by sex and compare groups across causes
-    aj_sex = gw.AalenJohansen().fit(y, by="sex", data=mg)
+    aj_sex = gw.AalenJohansen().fit(pcm_or_death, by="sex", data=mg)
     gw.plot_cif(aj_sex, title="Cumulative incidence by sex")
     ```
 
