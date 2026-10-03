@@ -15,7 +15,7 @@ from greenwood.viz._weibull import _transform_y, _weibull_columns  # noqa: E402
 @pytest.fixture
 def lung_surv() -> tuple[Surv, gw.data.DataFrameT]:
     df = gw.load_dataset("lung", backend="pandas")
-    y = Surv.right(df["time"], event=(df["status"] == 2))
+    y = Surv(time=df["time"], event=(df["status"] == 2))
     return y, df
 
 
@@ -119,7 +119,7 @@ def test_plot_weibull_custom_labels(km_overall: KaplanMeier) -> None:
 
 def test_weibull_columns_empty_block() -> None:
     """A single-event KM where S jumps from 1 to 0 produces no plottable points."""
-    y = Surv.right(np.array([5.0]), event=np.array([True]))
+    y = Surv(time=np.array([5.0]), event=np.array([True]))
     km = KaplanMeier().fit(y)
     cols = _weibull_columns(km, "weibull")
 
@@ -128,8 +128,8 @@ def test_weibull_columns_empty_block() -> None:
 
 
 def test_weibull_columns_filters_boundary() -> None:
-    y = Surv.right(
-        np.array([1.0, 2.0, 3.0, 4.0]),
+    y = Surv(
+        time=np.array([1.0, 2.0, 3.0, 4.0]),
         event=np.array([True, True, True, True]),
     )
     km = KaplanMeier().fit(y)
@@ -172,7 +172,7 @@ def test_weibull_transform_linearity() -> None:
     shape, scale = 1.5, 100.0
     times = rng.weibull(shape, size=500) * scale
     event = np.ones(500, dtype=bool)
-    y = Surv.right(times, event=event)
+    y = Surv(time=times, event=event)
     km = KaplanMeier().fit(y)
     cols = _weibull_columns(km, "weibull")
     x = np.array(cols["log_time"])
