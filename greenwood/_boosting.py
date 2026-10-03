@@ -233,16 +233,13 @@ class GradientBoostingSurvivalAnalysis:
     ```{python}
     import greenwood as gw
 
-    # Load data and build a right-censored response
     lung = gw.load_dataset("lung", backend="pandas").dropna(subset=["ph.ecog", "ph.karno"])
-    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-    cols = ["age", "sex", "ph.ecog", "ph.karno", "wt.loss"]
 
     # Fit the model and score the first five subjects
     gbm = gw.GradientBoostingSurvivalAnalysis(
         n_estimators=200, learning_rate=0.05, max_depth=2, random_state=0
-    ).fit(y, covariates=lung[cols])
-    gbm.predict(lung[cols])[:5]
+    ).fit("Surv(time, status) ~ age + sex + ph.ecog + ph.karno + wt.loss", data=lung)
+    gbm.predict(lung)[:5]
     ```
     """
 
@@ -291,7 +288,7 @@ class GradientBoostingSurvivalAnalysis:
         Parameters
         ----------
         surv
-            A right-censored `Surv` response (built with `Surv.right()`).
+            A right-censored `Surv` response, built with `gw.Surv(time=..., event=...)`.
             An `Outcome` or a formula string such as `'Surv(time, status == 2) ~ age + sex'` is also
             accepted, with its columns read from `data`. The right-hand side sets `covariates`.
         covariates
@@ -320,11 +317,10 @@ class GradientBoostingSurvivalAnalysis:
         lung = gw.load_dataset("lung", backend="pandas").dropna(
             subset=["ph.ecog", "ph.karno"]
         )
-        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
         gbm = gw.GradientBoostingSurvivalAnalysis(
             n_estimators=200, learning_rate=0.05, max_depth=2, random_state=0
-        ).fit(y, covariates=["age", "sex", "ph.ecog", "ph.karno", "wt.loss"], data=lung)
+        ).fit("Surv(time, status) ~ age + sex + ph.ecog + ph.karno + wt.loss", data=lung)
         gbm
         ```
 
