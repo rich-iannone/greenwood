@@ -25,16 +25,17 @@ import greenwood as gw
 # Load the bundled lung dataset as a Polars DataFrame
 lung = gw.load_dataset("lung", backend="polars")
 
-# Build a right-censored response, where a status of 2 marks a death
-y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+# Describe a right-censored response by naming its columns (a status of 2 marks a death)
+death = gw.Outcome.surv(time="time", event="status")
 
-# Display the response summary
-y
+# Evaluate the response against the data to see its summary
+death.bind(lung)
 ```
 
-The response `y` is a `Surv` object that pairs each subject's follow-up time with an event
-indicator, marking censored times with a tick. It records 165 events among 228 subjects, and it
-is the outcome the Cox model below regresses on the covariates.
+The outcome `death` names the column holding each subject's follow-up time and the column holding
+the event indicator. Binding it to `lung` gives a `Surv` object, which records 165 events among 228
+subjects. In a formula the same response is written `Surv(time, status)`, and it is the outcome the
+Cox models below regress on the covariates.
 
 ## The proportional hazards idea
 
@@ -51,18 +52,18 @@ called semiparametric, and why it is the default choice for most analyses.
 
 ## Fitting a model
 
-You fit the model with a `Surv` response and a set of covariates. Covariates can be a Pandas
-or Polars data frame. Numeric columns are used directly and non-numeric columns are turned
-into indicator variables automatically. Rows with missing covariate values are dropped, as
-in a standard complete-case analysis.
+You fit the model with a formula that names the response on the left and the covariates on the
+right, and you pass the data frame as `data`. The data can be a Pandas or Polars data frame.
+Numeric columns are used directly and non-numeric columns are turned into indicator variables
+automatically. Rows with a missing value in any column the formula uses are dropped, as in a
+standard complete-case analysis.
 
 ```{python}
-# Load data and build the response
+# Load the data
 lung = gw.load_dataset("lung", backend="polars")
-y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
 # Fit a Cox model with age, sex, and ECOG score as covariates
-cox = gw.CoxPH().fit(y, covariates=["age", "sex", "ph.ecog"], data=lung)
+cox = gw.CoxPH().fit("Surv(time, status) ~ age + sex + ph.ecog", data=lung)
 ```
 
 The call returns a fitted `CoxPH` estimator, held in `cox`. Printing it gives a compact
@@ -103,8 +104,8 @@ stick with the default (Efron).
 import pandas as pd
 
 # Compare Efron and Breslow tie-handling methods on the same data
-cox_efron = gw.CoxPH(ties="efron").fit(y, covariates=["age", "sex"], data=lung)
-cox_breslow = gw.CoxPH(ties="breslow").fit(y, covariates=["age", "sex"], data=lung)
+cox_efron = gw.CoxPH(ties="efron").fit("Surv(time, status) ~ age + sex", data=lung)
+cox_breslow = gw.CoxPH(ties="breslow").fit("Surv(time, status) ~ age + sex", data=lung)
 
 # Coefficients are nearly identical unless ties are very common
 pd.DataFrame({
@@ -137,18 +138,15 @@ standard deviation `1`:
 ```{python}
 import numpy as np
 
-# Load data and build the response
+# Load the data
 lung = gw.load_dataset("lung", backend="pandas")
-y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
-# Select the covariates to standardize
-cols = lung[["age", "sex"]].copy()
-
-# Standardize to zero mean, unit variance
-cols_std = (cols - cols.mean()) / cols.std()
+# Standardize the covariates to zero mean, unit variance
+cols = ["age", "sex"]
+lung_std = lung.assign(**{c: (lung[c] - lung[c].mean()) / lung[c].std() for c in cols})
 
 # Fit with standardized covariates and show the coefficient table
-gw.CoxPH().fit(y, covariates=cols_std).to_frame(format="polars")[
+gw.CoxPH().fit("Surv(time, status) ~ age + sex", data=lung_std).to_frame(format="polars")[
     ["term", "estimate", "conf_low", "conf_high"]
 ]
 ```
@@ -172,12 +170,11 @@ To interpret the model you exponentiate the coefficients, which turns log hazard
 hazard ratios. Greenwood does this for you through the tidy layer.
 
 ```{python}
-# Load data and build the response
+# Load the data
 lung = gw.load_dataset("lung", backend="polars")
-y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
 # Fit a Cox model with age, sex, and ECOG score as covariates
-cox = gw.CoxPH().fit(y, covariates=["age", "sex", "ph.ecog"], data=lung)
+cox = gw.CoxPH().fit("Surv(time, status) ~ age + sex + ph.ecog", data=lung)
 
 # Export hazard ratios (exponentiated coefficients) with confidence intervals
 gw.tidy(cox, exponentiate=True, format="polars")
@@ -205,12 +202,11 @@ log-likelihood, the AIC, and the likelihood-ratio test of the null hypothesis th
 coefficients are zero.
 
 ```{python}
-# Load data and build the response
+# Load the data
 lung = gw.load_dataset("lung", backend="polars")
-y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
 # Fit a Cox model with age, sex, and ECOG score as covariates
-cox = gw.CoxPH().fit(y, covariates=["age", "sex", "ph.ecog"], data=lung)
+cox = gw.CoxPH().fit("Surv(time, status) ~ age + sex + ph.ecog", data=lung)
 
 # Retrieve the one-row model summary: n, events, log-likelihood, AIC
 gw.glance(cox, format="polars")
@@ -235,14 +231,13 @@ also the default in R. The Breslow approximation is available and is faster but 
 accurate when ties are common.
 
 ```{python}
-# Load data and build the response
+# Load the data
 lung = gw.load_dataset("lung", backend="polars")
-y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
 # Fit with Breslow tie handling and show just the term and estimate columns
-gw.CoxPH(ties="breslow").fit(y, covariates=["age", "sex"], data=lung).to_frame(format="polars")[
-    ["term", "estimate"]
-]
+gw.CoxPH(ties="breslow").fit("Surv(time, status) ~ age + sex", data=lung).to_frame(
+    format="polars"
+)[["term", "estimate"]]
 ```
 
 Unless you have a specific reason to match another tool's Breslow output, the Efron default
@@ -302,7 +297,7 @@ The example below shows the correct layout.
 :::
 
 We build a small illustrative dataset where a treatment switches on for some subjects. The response
-is a `gw.Surv.counting` object rather than `gw.Surv.right`.
+uses the counting-process form, `Surv(start, stop, event)`, rather than the right-censored form.
 
 ```{python}
 # Build the time-varying covariate dataset: one row per (subject, interval)
@@ -321,16 +316,11 @@ intervals
 ```
 
 Subject 1, for example, is untreated over `(0, 4]` and treated over `(4, 10]`, with the event at day
-10. We pass the interval endpoints to `gw.Surv.counting` and fit as usual.
+10. We name the interval endpoints as the first two arguments of `Surv()` and fit as usual.
 
 ```{python}
-# Build the counting-process response from the interval endpoints
-y_tv = gw.Surv.counting(
-    start=intervals["start"], stop=intervals["stop"], event=intervals["event"]
-)
-
-# Fit the Cox model on the time-varying covariate layout
-gw.CoxPH().fit(y_tv, covariates=["treated"], data=intervals).to_frame(format="polars")[
+# Fit the Cox model on the time-varying covariate layout with a counting-process response
+gw.CoxPH().fit("Surv(start, stop, event) ~ treated", data=intervals).to_frame(format="polars")[
     ["term", "estimate", "p_value"]
 ]
 ```
@@ -424,7 +414,8 @@ df = (
 df
 ```
 
-Now you can use `start_relative` and `stop_relative` in `Surv.counting()`.
+Now you can use `start_relative` and `stop_relative` as the interval endpoints, as in
+`Surv(start_relative, stop_relative, event)`.
 
 **Note**: Greenwood warns when it detects widely-spaced entry times in counting-process data, since
 that pattern often indicates calendar time was used by mistake. This heuristic can also fire on a
@@ -444,12 +435,11 @@ may be misspecified, or when observations are not independent (e.g., repeated me
 data), use the sandwich (robust) variance estimator by setting `robust=True`:
 
 ```{python}
-# Load data and build the response
+# Load the data
 lung = gw.load_dataset("lung", backend="polars")
-y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
 # Fit with the Lin-Wei sandwich variance for robust standard errors
-cox_robust = gw.CoxPH().fit(y, covariates=["age", "sex"], data=lung, robust=True)
+cox_robust = gw.CoxPH().fit("Surv(time, status) ~ age + sex", data=lung, robust=True)
 
 # Display the coefficient table with robust standard errors
 gw.tidy(cox_robust, format="polars")
@@ -457,7 +447,8 @@ gw.tidy(cox_robust, format="polars")
 
 The standard errors adjust upward (more conservative) if there is overdispersion, or downward if
 there is underdispersion. For clustered data (e.g., family members, multiple measurements per
-subject), pass the cluster variable to ensure standard errors account for within-cluster dependence:
+subject), add a `cluster()` term naming the cluster variable to ensure standard errors account for
+within-cluster dependence:
 
 ```{python}
 # Simulate a cluster variable: assign subjects to families of 10
@@ -465,10 +456,9 @@ lung_with_cluster = lung.with_columns(family=((pl.int_range(len(lung)) % 10) + 1
 
 # Fit with clustered sandwich standard errors
 cox_cluster = gw.CoxPH().fit(
-    y,
-    covariates=["age", "sex"], data=lung_with_cluster,
+    "Surv(time, status) ~ age + sex + cluster(family)",
+    data=lung_with_cluster,
     robust=True,
-    cluster="family",
 )
 
 # Display the coefficient table (SEs reflect within-cluster correlation)
@@ -496,14 +486,13 @@ The variance parameter $\theta$ is estimated via an EM algorithm. The `frailty_e
 on the multiplicative scale and are always positive.
 
 ```{python}
-# Load data and build the response
+# Load the data
 lung = gw.load_dataset("lung", backend="polars")
-y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
 # Shared gamma frailty by institution (inst)
 cox_frailty = gw.CoxPH(ties="breslow").fit(
-    y,
-    covariates=["age", "sex"], data=lung,
+    "Surv(time, status) ~ age + sex",
+    data=lung,
     frailty="gamma",
     frailty_cluster="inst",
 )
@@ -512,13 +501,13 @@ cox_frailty = gw.CoxPH(ties="breslow").fit(
 cox_frailty
 ```
 
-The same model can be written as an R-style formula with a `frailty()` term, as in R's
+The frailty can also be written into the formula as a `frailty()` term, as in R's
 `coxph()`. `frailty(inst)` is a gamma frailty, and
 `frailty(inst, distribution="gaussian")` (or `frailty.gaussian(inst)`) is the lognormal one.
 
 ```{python}
 # The same shared gamma frailty, written as a formula
-gw.CoxPH(ties="breslow").fit("Surv(time, status == 2) ~ age + sex + frailty(inst)", data=lung)
+gw.CoxPH(ties="breslow").fit("Surv(time, status) ~ age + sex + frailty(inst)", data=lung)
 ```
 
 To get the frailty-variance inference directly, call `frailty_test()`:
@@ -553,8 +542,8 @@ REML step. The `frailty_effect_` values are on the log-hazard scale and can be n
 ```{python}
 # Log-normal shared frailty by institution (effects are on the log-hazard scale)
 cox_ln = gw.CoxPH(ties="breslow").fit(
-    y,
-    covariates=["age", "sex"], data=lung,
+    "Surv(time, status) ~ age + sex",
+    data=lung,
     frailty="lognormal",
     frailty_cluster="inst",
 )
@@ -575,7 +564,7 @@ effects that can shrink below zero on the log scale.
 ::: {.callout-note}
 ## Frailty vs clustered robust SEs
 
-- `cluster=` / `robust=True` keeps a standard Cox mean structure and adjusts uncertainty.
+- `cluster()` / `robust=True` keeps a standard Cox mean structure and adjusts uncertainty.
 - `frailty="gamma"` or `frailty="lognormal"` changes the model itself by adding cluster-level random
 effects.
 
@@ -588,21 +577,24 @@ nuisance for inference.
 
 Both frailty distributions currently require:
 
-- right-censored `Surv.right(...)` responses,
+- right-censored responses, such as `Surv(time, status)`,
 - `ties="breslow"`,
-- no `strata=`, and
+- no `strata()` term, and
 - no simultaneous robust/cluster sandwich variance options.
 :::
 
-Instead of selecting columns yourself, you can describe the model with a formula, passing the
-right-hand side as a string and the data frame as `data`. This is convenient for categorical
-variables, interactions, and transformations, and it mirrors the notation used in R. The formula
+## Formula terms
+
+The right-hand side of the formulas used on this page follows the Wilkinson notation used in R,
+which is convenient for categorical variables, interactions, and transformations. The formula
 support uses [formulaic](https://matthewwardrop.github.io/formulaic/), installed with the `formula`
 extra.
 
 ```{python}
-# Fit using a Wilkinson formula string (categorical columns are dummy-coded automatically)
-gw.CoxPH().fit(y, covariates="age + sex", data=lung).to_frame(format="polars")[["term", "estimate"]]
+# Fit using a formula (categorical columns are dummy-coded automatically)
+gw.CoxPH().fit("Surv(time, status) ~ age + sex", data=lung).to_frame(format="polars")[
+    ["term", "estimate"]
+]
 ```
 
 Categorical columns are expanded into indicator terms automatically, and interactions are written
@@ -611,7 +603,9 @@ like `C(ph.ecog)` forces a column to be treated as categorical.
 
 ```{python}
 # The * operator expands to main effects plus their interaction term
-gw.CoxPH().fit(y, covariates="age * sex", data=lung).to_frame(format="polars")[["term", "estimate"]]
+gw.CoxPH().fit("Surv(time, status) ~ age * sex", data=lung).to_frame(format="polars")[
+    ["term", "estimate"]
+]
 ```
 
 ### Controlling the reference category
@@ -621,7 +615,7 @@ baseline, pass `contr.treatment(base=...)` inside `C()`:
 
 ```python
 # "female" is the reference and the model reports the HR for "male" vs. "female"
-gw.CoxPH().fit(y, covariates="C(sex, contr.treatment(base='female')) + age", data=df)
+gw.CoxPH().fit("Surv(time, status) ~ C(sex, contr.treatment(base='female')) + age", data=df)
 ```
 
 ::: {.callout-important}
@@ -631,8 +625,8 @@ the log-hazard effect of category 1. Use `C(col)` (or cast the column to a strin
 before fitting) so that each level gets its own indicator term.
 :::
 
-Rows with a missing value in any formula term are dropped, the same complete-case rule used when you
-pass columns directly. The formula interface is also available on `AFT`.
+Rows with a missing value in any formula term are dropped, as in a complete-case analysis. The
+formula interface is also available on `AFT` and the other regression models.
 
 ## Penalized regression
 
@@ -642,15 +636,15 @@ lasso, sets some of them to exactly zero, which selects variables. The `penalize
 overall strength, and `l1_ratio` mixes the lasso (`1.0`) and ridge (`0.0`) penalties.
 
 ```{python}
-# Load data and build the response
+# Load the data
 lung = gw.load_dataset("lung", backend="polars")
-y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
-# Select the covariates to include in the penalized model
+# Name the covariates to include in the penalized model and build the formula
 cols = ["age", "sex", "ph.ecog", "ph.karno", "wt.loss"]
+formula = "Surv(time, status) ~ " + " + ".join(cols)
 
 # Fit a lasso Cox model (l1_ratio=1.0 drives weak coefficients to zero)
-lasso = gw.CoxNet(penalizer=0.05, l1_ratio=1.0).fit(y, covariates=lung[cols])
+lasso = gw.CoxNet(penalizer=0.05, l1_ratio=1.0).fit(formula, data=lung)
 
 # Print the surviving (non-zero) coefficients
 lasso
@@ -670,7 +664,7 @@ the one with the best held-out performance.
 
 ```{python}
 # Search a 50-value log-spaced lambda path with 5-fold CV (lasso, concordance metric)
-cv_result = gw.cv_coxnet(y, covariates=lung[cols], l1_ratio=1.0, seed=23)
+cv_result = gw.cv_coxnet(formula, data=lung, l1_ratio=1.0, seed=23)
 cv_result
 ```
 
@@ -692,7 +686,7 @@ Once you have selected a penalizer, fit the final model on all of the data:
 ```{python}
 # Fit a final lasso model at the best CV penalizer
 final_lasso = gw.CoxNet(penalizer=cv_result.best_penalizer_, l1_ratio=1.0).fit(
-    y, covariates=lung[cols]
+    formula, data=lung
 )
 final_lasso
 ```
@@ -702,7 +696,7 @@ To prefer parsimony, use the 1-SE penalizer instead:
 ```{python}
 # Sparser model: same l1_ratio, stricter regularisation
 sparse_lasso = gw.CoxNet(penalizer=cv_result.penalizer_1se_, l1_ratio=1.0).fit(
-    y, covariates=lung[cols]
+    formula, data=lung
 )
 sparse_lasso
 ```
@@ -722,8 +716,8 @@ The `cv_coxnet()` function also supports the Brier score metric for calibration-
 ```{python}
 # Tune for calibration (integrated Brier score) instead of discrimination
 cv_brier = gw.cv_coxnet(
-    y,
-    covariates=lung[cols],
+    formula,
+    data=lung,
     l1_ratio=1.0,
     metric="brier",
     times=[180, 365, 540],
@@ -753,8 +747,8 @@ accounts for the continuous shrinkage applied to each coefficient.
 
 ```{python}
 # Fit ridge (l1_ratio=0) and lasso (l1_ratio=1) models at the same penalty
-ridge = gw.CoxNet(penalizer=0.01, l1_ratio=0.0).fit(y, covariates=lung[cols])
-lasso = gw.CoxNet(penalizer=0.01, l1_ratio=1.0).fit(y, covariates=lung[cols])
+ridge = gw.CoxNet(penalizer=0.01, l1_ratio=0.0).fit(formula, data=lung)
+lasso = gw.CoxNet(penalizer=0.01, l1_ratio=1.0).fit(formula, data=lung)
 
 # Ridge shrinks continuously: effective df < number of covariates
 ridge.effective_df()
@@ -789,7 +783,7 @@ import numpy as np
 penalizers = np.logspace(-3, 0, 20)
 aic_values = []
 for lam in penalizers:
-    model = gw.CoxNet(penalizer=lam, l1_ratio=1.0).fit(y, covariates=lung[cols])
+    model = gw.CoxNet(penalizer=lam, l1_ratio=1.0).fit(formula, data=lung)
     aic_values.append(model.aic())
 
 # The penalty that minimizes AIC
@@ -815,7 +809,7 @@ group and drop the rest, while elastic-net keeps the group together.
 
 ```{python}
 # Elastic-net with equal lasso and ridge contributions
-enet = gw.CoxNet(penalizer=0.05, l1_ratio=0.5).fit(y, covariates=lung[cols])
+enet = gw.CoxNet(penalizer=0.05, l1_ratio=0.5).fit(formula, data=lung)
 enet
 ```
 
@@ -825,7 +819,7 @@ Cross-validation works the same way. To search over both `penalizer` and `l1_rat
 ```{python}
 # Compare CV scores at three mixing levels
 for ratio in [0.2, 0.5, 1.0]:
-    cv = gw.cv_coxnet(y, covariates=lung[cols], l1_ratio=ratio, seed=23)
+    cv = gw.cv_coxnet(formula, data=lung, l1_ratio=ratio, seed=23)
     print(f"l1_ratio={ratio:.1f}  best_penalizer={cv.best_penalizer_:.4f}  "
           f"mean_score={cv.best_score_:.4f}")
 ```
@@ -845,10 +839,10 @@ Start by refitting the final model at the CV-selected penalty:
 
 ```{python}
 # Refit the final model from CV
-final = gw.CoxNet(penalizer=cv_result.best_penalizer_, l1_ratio=1.0).fit(y, covariates=lung[cols])
+final = gw.CoxNet(penalizer=cv_result.best_penalizer_, l1_ratio=1.0).fit(formula, data=lung)
 
 # Linear predictor (risk score) for the first three subjects
-final.predict(lung[cols][:3], type="lp")
+final.predict(lung.head(3), type="lp")
 ```
 
 The linear predictor is centered so that the average training subject scores near zero. Positive
@@ -857,7 +851,7 @@ risk, which is often more interpretable:
 
 ```{python}
 # Relative risk for the same subjects
-final.predict(lung[cols][:3], type="risk")
+final.predict(lung.head(3), type="risk")
 ```
 
 For survival predictions, pass `type="survival"` together with the time points of interest. The
@@ -866,7 +860,7 @@ estimated probability that the subject survives beyond that time:
 
 ```{python}
 # Predicted survival curves at 6-month intervals
-surv = final.predict(lung[cols][:3], type="survival", times=[180, 365, 540], format="polars")
+surv = final.predict(lung.head(3), type="survival", times=[180, 365, 540], format="polars")
 surv
 ```
 
@@ -892,7 +886,7 @@ draws one step-function curve per subject, using the same `predict()` machinery 
 
 ```{python}
 # Predicted survival curves for four subjects from the penalized model
-gw.plot_predicted_survival(final, newdata=lung[cols][:4])
+gw.plot_predicted_survival(final, newdata=lung.head(4))
 ```
 
 Each curve traces the estimated probability of surviving past each time point. Subjects whose
@@ -903,7 +897,7 @@ parameter to make the legend more informative.
 # Add descriptive labels to the predicted curves
 gw.plot_predicted_survival(
     final,
-    newdata=lung[cols][:4],
+    newdata=lung.head(4),
     labels=["Subject 1", "Subject 2", "Subject 3", "Subject 4"],
 )
 ```
@@ -921,7 +915,7 @@ import numpy as np
 penalizers = np.logspace(-4, 0, 40)
 paths = {name: [] for name in cols}
 for lam in penalizers:
-    m = gw.CoxNet(penalizer=lam, l1_ratio=1.0).fit(y, covariates=lung[cols])
+    m = gw.CoxNet(penalizer=lam, l1_ratio=1.0).fit(formula, data=lung)
     for j, name in enumerate(cols):
         paths[name].append(m.coef_[j])
 ```
@@ -1013,12 +1007,11 @@ intervals quantify the uncertainty in the baseline hazard estimate.
 You can retrieve the baseline hazard with confidence intervals using the `ci=True` parameter:
 
 ```{python}
-# Load data and build the response
+# Load the data
 lung = gw.load_dataset("lung", backend="polars")
-y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
 # Fit a Cox model with age, sex, and ECOG score as covariates
-cox = gw.CoxPH().fit(y, covariates=["age", "sex", "ph.ecog"], data=lung)
+cox = gw.CoxPH().fit("Surv(time, status) ~ age + sex + ph.ecog", data=lung)
 
 # Retrieve baseline cumulative hazard and survival with 95% CI (log-log transform)
 baseline = cox.baseline_hazard(ci=True, conf_type="log-log", format="polars")
@@ -1048,7 +1041,7 @@ corresponding confidence intervals.
 
 ```{python}
 # For stratified models, each stratum gets its own baseline hazard and CI
-cox_strat = gw.CoxPH().fit(y, covariates=["age", "ph.ecog"], data=lung, strata="sex")
+cox_strat = gw.CoxPH().fit("Surv(time, status) ~ age + ph.ecog + strata(sex)", data=lung)
 baseline_strat = cox_strat.baseline_hazard(ci=True, format="polars")
 
 # Preview the per-stratum baseline frame
@@ -1069,16 +1062,15 @@ is violated or when you want to see how a covariate's influence evolves.
 
 ### Fitting the model
 
-`AalenAdditive` is fit by ordinary least squares at each event time. It requires a `Surv` response
-and a covariate frame, just like `CoxPH`. An intercept ($\beta_0(t)$) is added automatically.
+`AalenAdditive` is fit by ordinary least squares at each event time. It takes a formula and a
+data frame, just like `CoxPH`. An intercept ($\beta_0(t)$) is added automatically.
 
 ```{python}
-# Load data and build the response
+# Load the data
 lung = gw.load_dataset("lung", backend="polars")
-y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
 # Fit the Aalen additive hazards model
-aalen = gw.AalenAdditive().fit(y, covariates=["age", "sex"], data=lung)
+aalen = gw.AalenAdditive().fit("Surv(time, status) ~ age + sex", data=lung)
 
 # Print the summary (slope test for each covariate)
 aalen
