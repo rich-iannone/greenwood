@@ -23,7 +23,7 @@ def fixture():
 @pytest.fixture(scope="module")
 def fitted_model():
     e1684 = gw.load_dataset("e1684", backend="pandas")
-    y = Surv.right(e1684["FAILTIME"], event=e1684["FAILCENS"].astype(bool))
+    y = Surv(time=e1684["FAILTIME"], event=e1684["FAILCENS"].astype(bool))
     return MixtureCure(emmax=50, eps=1e-7).fit(
         y, latency=e1684[["TRT"]], cure=e1684[["TRT"]], nboot=0
     )
