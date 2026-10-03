@@ -14,7 +14,7 @@ from greenwood import CoxPH, Surv
 @pytest.fixture
 def lung_surv():  # type: ignore[no-untyped-def]
     df = gw.load_dataset("lung", backend="pandas")
-    return df, Surv.right(df["time"], event=(df["status"] == 2))
+    return df, Surv(time=df["time"], event=df["status"] == 2)
 
 
 def test_invalid_ties() -> None:
@@ -132,7 +132,7 @@ def test_formula_interaction_and_categorical(lung_surv) -> None:  # type: ignore
     inter = CoxPH().fit(y, "age * sex", data=df)
     assert inter.term_names_ == ["age", "sex", "age:sex"]
     vet = gw.load_dataset("veteran", backend="pandas")
-    yv = Surv.right(vet["time"], event=vet["status"])
+    yv = Surv(time=vet["time"], event=vet["status"])
     # Categorical: same model as explicit dummy coding, up to the reference level, so the
     # log-likelihood (reference-invariant) agrees exactly.
     by_formula = CoxPH(ties="breslow").fit(yv, "celltype", data=vet)
@@ -169,7 +169,7 @@ def test_higher_risk_score_direction() -> None:
     time = [1, 2, 3, 4, 5, 6]
     event = [1, 1, 1, 1, 1, 1]
     x = np.array([[6.0], [5.0], [4.0], [3.0], [2.0], [1.0]])  # larger x fails sooner
-    cox = CoxPH().fit(Surv.right(time, event), x)
+    cox = CoxPH().fit(Surv(time=time, event=event), x)
     assert cox.coef_[0] > 0
 
 
@@ -177,14 +177,14 @@ def test_array_covariates_default_names() -> None:
     x = np.random.default_rng(0).normal(size=(50, 2))
     time = np.arange(1, 51, dtype=float)
     event = np.ones(50)
-    cox = CoxPH().fit(Surv.right(time, event), x)
+    cox = CoxPH().fit(Surv(time=time, event=event), x)
     assert cox.term_names_ == ["x0", "x1"]
 
 
 def test_categorical_covariate_dummy_encoding(lung_surv) -> None:  # type: ignore[no-untyped-def]
     df, _ = lung_surv
     vt = gw.load_dataset("veteran", backend="pandas")
-    y = Surv.right(vt["time"], event=vt["status"])
+    y = Surv(time=vt["time"], event=vt["status"])
     cox = CoxPH().fit(y, vt[["celltype"]])
     # celltype has 4 levels; drop-first leaves 3 dummy terms, all prefixed "celltype".
     assert len(cox.term_names_) == 3
@@ -733,7 +733,7 @@ def test_counting_process_proper_data_no_warning() -> None:
         }
     )
 
-    surv = Surv.counting(start=df["start"], stop=df["stop"], event=df["event"])
+    surv = Surv(time=df["start"], time2=df["stop"], event=df["event"])
 
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
@@ -755,7 +755,7 @@ def test_counting_process_mixed_start_times_warns() -> None:
         }
     )
 
-    surv = Surv.counting(start=df["start"], stop=df["stop"], event=df["event"])
+    surv = Surv(time=df["start"], time2=df["stop"], event=df["event"])
 
     with pytest.warns(UserWarning, match="start time.*calendar time"):
         CoxPH().fit(surv, df[["x"]])
@@ -774,7 +774,7 @@ def test_counting_process_large_gaps_warns() -> None:
         }
     )
 
-    surv = Surv.counting(start=df["start"], stop=df["stop"], event=df["event"])
+    surv = Surv(time=df["start"], time2=df["stop"], event=df["event"])
 
     with (
         pytest.warns(UserWarning, match="start time.*calendar time"),
@@ -797,7 +797,7 @@ def test_counting_process_negative_start_warns() -> None:
         }
     )
 
-    surv = Surv.counting(start=df["start"], stop=df["stop"], event=df["event"])
+    surv = Surv(time=df["start"], time2=df["stop"], event=df["event"])
 
     with pytest.warns(UserWarning, match="negative.*start time"):
         CoxPH().fit(surv, df[["x"]])
@@ -817,7 +817,7 @@ def test_right_censored_data_no_warning() -> None:
         }
     )
 
-    surv = Surv.right(df["time"], event=df["event"])
+    surv = Surv(time=df["time"], event=df["event"])
 
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
@@ -835,18 +835,15 @@ def test_weight_invariance(lung_surv) -> None:  # type: ignore[no-untyped-def]
     coef_unweighted = cox_unweighted.coef_
 
     # Fit with uniform weights of 1 (should be identical to unweighted)
-    y_weight1 = Surv.right(df["time"], event=(df["status"] == 2), weights=np.ones(len(df)))
-    cox_weight1 = CoxPH().fit(y_weight1, df[["age", "sex"]])
+    cox_weight1 = CoxPH().fit(y, df[["age", "sex"]], weights=np.ones(len(df)))
     np.testing.assert_allclose(cox_weight1.coef_, coef_unweighted, rtol=1e-10)
 
     # Fit with uniform weights of 2 (should be identical to unweighted)
-    y_weight2 = Surv.right(df["time"], event=(df["status"] == 2), weights=2.0 * np.ones(len(df)))
-    cox_weight2 = CoxPH().fit(y_weight2, df[["age", "sex"]])
+    cox_weight2 = CoxPH().fit(y, df[["age", "sex"]], weights=2.0 * np.ones(len(df)))
     np.testing.assert_allclose(cox_weight2.coef_, coef_unweighted, rtol=1e-10)
 
     # Fit with uniform weights of 5 (should be identical to unweighted)
-    y_weight5 = Surv.right(df["time"], event=(df["status"] == 2), weights=5.0 * np.ones(len(df)))
-    cox_weight5 = CoxPH().fit(y_weight5, df[["age", "sex"]])
+    cox_weight5 = CoxPH().fit(y, df[["age", "sex"]], weights=5.0 * np.ones(len(df)))
     np.testing.assert_allclose(cox_weight5.coef_, coef_unweighted, rtol=1e-10)
 
 
@@ -860,10 +857,9 @@ def test_weight_invariance_efron_ties(lung_surv) -> None:  # type: ignore[no-unt
 
     # Scale weights by different factors
     for scale in [1.0, 2.0, 0.5, 10.0]:
-        y_weighted = Surv.right(
-            df["time"], event=(df["status"] == 2), weights=scale * np.ones(len(df))
+        cox_weighted = CoxPH(ties="efron").fit(
+            y, df[["age", "sex"]], weights=scale * np.ones(len(df))
         )
-        cox_weighted = CoxPH(ties="efron").fit(y_weighted, df[["age", "sex"]])
         np.testing.assert_allclose(cox_weighted.coef_, coef_unweighted, rtol=1e-10)
 
 
@@ -877,8 +873,9 @@ def test_weight_invariance_robust_variance(lung_surv) -> None:  # type: ignore[n
     var_unweighted = cox_unweighted.vcov_
 
     # Fit with scaled weights
-    y_weighted = Surv.right(df["time"], event=(df["status"] == 2), weights=2.0 * np.ones(len(df)))
-    cox_weighted = CoxPH(conf_level=0.95).fit(y_weighted, df[["age", "sex"]], robust=True)
+    cox_weighted = CoxPH(conf_level=0.95).fit(
+        y, df[["age", "sex"]], robust=True, weights=2.0 * np.ones(len(df))
+    )
 
     # Coefficients should match
     np.testing.assert_allclose(cox_weighted.coef_, coef_unweighted, rtol=1e-10)
@@ -896,8 +893,7 @@ def test_weight_invariance_stratified(lung_surv) -> None:  # type: ignore[no-unt
     coef_unweighted = cox_unweighted.coef_
 
     # Fit with scaled weights
-    y_weighted = Surv.right(df["time"], event=(df["status"] == 2), weights=3.0 * np.ones(len(df)))
-    cox_weighted = CoxPH().fit(y_weighted, df[["age"]], strata=df["sex"])
+    cox_weighted = CoxPH().fit(y, df[["age"]], strata=df["sex"], weights=3.0 * np.ones(len(df)))
 
     np.testing.assert_allclose(cox_weighted.coef_, coef_unweighted, rtol=1e-10)
 
@@ -909,8 +905,7 @@ def test_weight_invariance_predictions_and_residuals(lung_surv) -> None:  # type
 
     # Fit unweighted and weighted models
     cox_unweighted = CoxPH().fit(y, df[["age", "sex"]])
-    y_weighted = Surv.right(df["time"], event=(df["status"] == 2), weights=2.5 * np.ones(len(df)))
-    cox_weighted = CoxPH().fit(y_weighted, df[["age", "sex"]])
+    cox_weighted = CoxPH().fit(y, df[["age", "sex"]], weights=2.5 * np.ones(len(df)))
 
     # Linear predictors should match
     pred_unweighted = cox_unweighted.predict(test_data, type="lp")
@@ -937,8 +932,7 @@ def test_weight_invariance_concordance(lung_surv) -> None:  # type: ignore[no-un
 
     # Fit unweighted and weighted models
     cox_unweighted = CoxPH().fit(y, df[["age", "sex"]])
-    y_weighted = Surv.right(df["time"], event=(df["status"] == 2), weights=2.0 * np.ones(len(df)))
-    cox_weighted = CoxPH().fit(y_weighted, df[["age", "sex"]])
+    cox_weighted = CoxPH().fit(y, df[["age", "sex"]], weights=2.0 * np.ones(len(df)))
 
     # Concordance should match
     c_unweighted = cox_unweighted.concordance()
@@ -955,13 +949,11 @@ def test_weight_invariance_extreme_scales(lung_surv) -> None:  # type: ignore[no
     coef_unweighted = cox_unweighted.coef_
 
     # Test with very small weights
-    y_small = Surv.right(df["time"], event=(df["status"] == 2), weights=1e-6 * np.ones(len(df)))
-    cox_small = CoxPH().fit(y_small, df[["age", "sex"]])
+    cox_small = CoxPH().fit(y, df[["age", "sex"]], weights=1e-6 * np.ones(len(df)))
     np.testing.assert_allclose(cox_small.coef_, coef_unweighted, rtol=1e-9)
 
     # Test with very large weights
-    y_large = Surv.right(df["time"], event=(df["status"] == 2), weights=1e6 * np.ones(len(df)))
-    cox_large = CoxPH().fit(y_large, df[["age", "sex"]])
+    cox_large = CoxPH().fit(y, df[["age", "sex"]], weights=1e6 * np.ones(len(df)))
     np.testing.assert_allclose(cox_large.coef_, coef_unweighted, rtol=1e-9)
 
 
@@ -975,10 +967,7 @@ def test_weight_invariance_single_covariate(lung_surv) -> None:  # type: ignore[
 
     # Test multiple weight scales
     for scale in [0.1, 1.0, 5.0, 100.0]:
-        y_weighted = Surv.right(
-            df["time"], event=(df["status"] == 2), weights=scale * np.ones(len(df))
-        )
-        cox_weighted = CoxPH().fit(y_weighted, df[["age"]])
+        cox_weighted = CoxPH().fit(y, df[["age"]], weights=scale * np.ones(len(df)))
         np.testing.assert_allclose(
             cox_weighted.coef_,
             coef_unweighted,
@@ -997,8 +986,7 @@ def test_weight_invariance_many_covariates(lung_surv) -> None:  # type: ignore[n
     coef_unweighted = cox_unweighted.coef_
 
     # Fit with scaled weights
-    y_weighted = Surv.right(df["time"], event=(df["status"] == 2), weights=1.5 * np.ones(len(df)))
-    cox_weighted = CoxPH().fit(y_weighted, df[covariates])
+    cox_weighted = CoxPH().fit(y, df[covariates], weights=1.5 * np.ones(len(df)))
 
     np.testing.assert_allclose(cox_weighted.coef_, coef_unweighted, rtol=1e-10)
 
@@ -1009,7 +997,7 @@ def test_poorly_scaled_covariates_warns() -> None:
     import numpy as np
 
     lung = gw.load_dataset("lung", backend="pandas")
-    y = Surv.right(lung["time"], event=(lung["status"] == 2))
+    y = Surv(time=lung["time"], event=lung["status"] == 2)
 
     # 'age' has std ~10; add an independent covariate with std ~10,000 (income-like).
     # Using a random column ensures no collinearity with age.
@@ -1069,7 +1057,9 @@ def test_cox_frailty_max_iter_zero(lung_surv) -> None:  # type: ignore[no-untype
 
 def test_cox_frailty_counting_process_not_supported(lung_surv) -> None:  # type: ignore[no-untyped-def]
     df, _ = lung_surv
-    y_cp = Surv.counting(np.zeros(df.shape[0]), df["time"].values, (df["status"] == 2).values)
+    y_cp = Surv(
+        time=np.zeros(df.shape[0]), time2=df["time"].values, event=(df["status"] == 2).values
+    )
     with pytest.raises(NotImplementedError, match="right-censored"):
         CoxPH(ties="breslow").fit(
             y_cp, df[["age", "sex"]], frailty="gamma", frailty_cluster=df["inst"]
@@ -1303,7 +1293,7 @@ def test_well_scaled_covariates_no_warning() -> None:
     import warnings
 
     lung = gw.load_dataset("lung", backend="pandas")
-    y = Surv.right(lung["time"], event=(lung["status"] == 2))
+    y = Surv(time=lung["time"], event=lung["status"] == 2)
 
     with warnings.catch_warnings():
         warnings.simplefilter("error", UserWarning)
