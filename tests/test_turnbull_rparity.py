@@ -25,7 +25,7 @@ from ._r_parity import assert_allclose_to_r, load_fixture
 def test_turnbull_veteran_matches_r_km_equivalence() -> None:
     fixture = load_fixture("turnbull_veteran_km_equivalence")
     veteran = gw.load_dataset("veteran", backend="pandas")
-    y = Surv.right(veteran["time"], event=(veteran["status"] == 1))
+    y = Surv(time=veteran["time"], event=(veteran["status"] == 1))
     tb = Turnbull().fit(y)
 
     r_time = np.asarray(fixture["time"], dtype=float)
