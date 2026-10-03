@@ -20,7 +20,7 @@ def lung_data():
     lung = gw.load_dataset("lung", backend="pandas").dropna(
         subset=["ph.ecog", "ph.karno", "wt.loss"]
     )
-    y = Surv.right(lung["time"], event=(lung["status"] == 2))
+    y = Surv(time=lung["time"], event=(lung["status"] == 2))
     return y, lung
 
 
@@ -94,7 +94,7 @@ class TestCensoringDistribution:
         assert "censored=" in r
 
     def test_no_censoring(self) -> None:
-        y = Surv.right(np.array([1.0, 2.0, 3.0]), event=np.array([True, True, True]))
+        y = Surv(time=np.array([1.0, 2.0, 3.0]), event=np.array([True, True, True]))
         cens = CensoringDistribution(y)
         w = cens.weights()
         assert np.allclose(w, 1.0)
@@ -184,15 +184,13 @@ class TestIPCRidge:
             IPCRidge(alpha=-1.0)
 
     def test_no_events_raises(self) -> None:
-        y = Surv.right(np.array([1.0, 2.0, 3.0]), event=np.array([False, False, False]))
+        y = Surv(time=np.array([1.0, 2.0, 3.0]), event=np.array([False, False, False]))
         with pytest.raises(ValueError, match="No events"):
             IPCRidge(alpha=1.0).fit(y, np.array([[1.0], [2.0], [3.0]]))
 
     def test_right_censored_only(self) -> None:
-        y = Surv.counting(
-            start=np.array([0.0, 0.0]),
-            stop=np.array([1.0, 2.0]),
-            event=np.array([True, False]),
+        y = Surv(
+            time=np.array([0.0, 0.0]), time2=np.array([1.0, 2.0]), event=np.array([True, False])
         )
         with pytest.raises(NotImplementedError, match="right-censored"):
             IPCRidge(alpha=1.0).fit(y, np.array([[1.0], [2.0]]))
@@ -222,7 +220,7 @@ class TestIPCRidge:
         y, lung = lung_data
         cols = ["age", "sex", "ph.ecog", "ph.karno", "wt.loss"]
         lung_with_na = gw.load_dataset("lung", backend="pandas")
-        y_full = Surv.right(lung_with_na["time"], event=(lung_with_na["status"] == 2))
+        y_full = Surv(time=lung_with_na["time"], event=(lung_with_na["status"] == 2))
         model = IPCRidge(alpha=1.0).fit(y_full, lung_with_na[cols])
         assert model.n_ > 0
         assert model.n_ <= len(lung_with_na)
