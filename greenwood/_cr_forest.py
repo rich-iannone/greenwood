@@ -51,7 +51,7 @@ def _prepare_cr_response(surv: Surv) -> tuple[Array, Array, tuple[str, ...], lis
     if surv.states is None:
         raise NotImplementedError(
             "CompetingRiskForest requires a multistate response built with "
-            "`Surv.multistate()`, not a plain right-censored response."
+            "`Surv()` with a categorical `event`, not a plain right-censored response."
         )
     time = np.asarray(surv.stop, dtype=float)
     status = np.asarray(surv.status, dtype=int)
@@ -327,15 +327,16 @@ class CompetingRiskForest:
     --------
     ```{python}
     import greenwood as gw
-    import numpy as np
 
-    mg = gw.load_dataset("mgus2", backend="pandas")
-    etime = np.where(mg["pstat"] == 1, mg["ptime"], mg["futime"])
-    cause = np.where(mg["pstat"] == 1, 1, 2 * mg["death"])
-    y = gw.Surv.multistate(time=etime, event=cause, states=("pcm", "death"))
+    mg = gw.load_dataset("mgus2")
+
+    # The first of progression (PCM) or death, from each endpoint's time and status columns
+    pcm_or_death = gw.Outcome.first_event(
+        endpoints={"pcm": ("ptime", "pstat"), "death": ("futime", "death")}
+    )
 
     crf = gw.CompetingRiskForest(n_estimators=50, random_state=0).fit(
-        y, covariates=["age", "sex"], data=mg
+        pcm_or_death, covariates=["age", "sex"], data=mg
     )
     crf
     ```
@@ -392,17 +393,18 @@ class CompetingRiskForest:
         Parameters
         ----------
         surv
-            A multistate `Surv` response built with `Surv.multistate()`.
-            An `Outcome` or a formula string such as `'Surv(time, status == 2) ~ age + sex'` is also
+            A multi-state `Surv` response, built with `gw.Surv()` and a categorical `event`.
+            An `Outcome` or a formula string such as
+            `"Surv(time, factor(cause, c(0, 1, 2), c('censor', 'pcm', 'death'))) ~ age"` is also
             accepted, with its columns read from `data`. The right-hand side sets `covariates`.
         covariates
             A dataframe, a 2-D array, or a formula string evaluated against `data`.
             A list of column names in `data` also works.
         data
-            A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns
-            named by the response and `covariates`. When `surv` is an `Outcome` or a formula, rows
-            with a missing value in any column used are dropped before fitting. Covariate formula
-            strings and lists of column names are also resolved here.
+            A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the
+            columns named by the response and `covariates`. When `surv` is an `Outcome` or a
+            formula, rows with a missing value in any column used are dropped before fitting.
+            Covariate formula strings and lists of column names are also resolved here.
 
         Returns
         -------
@@ -417,16 +419,15 @@ class CompetingRiskForest:
 
         ```{python}
         import greenwood as gw
-        import numpy as np
 
-        mg = gw.load_dataset("mgus2", backend="pandas")
-        etime = np.where(mg["pstat"] == 1, mg["ptime"], mg["futime"])
-        cause = np.where(mg["pstat"] == 1, 1, 2 * mg["death"])
-        y = gw.Surv.multistate(time=etime, event=cause, states=("pcm", "death"))
+        mg = gw.load_dataset("mgus2")
+        pcm_or_death = gw.Outcome.first_event(
+            endpoints={"pcm": ("ptime", "pstat"), "death": ("futime", "death")}
+        )
 
         crf = gw.CompetingRiskForest(
             n_estimators=50, oob_score=True, random_state=0
-        ).fit(y, covariates=["age", "sex"], data=mg)
+        ).fit(pcm_or_death, covariates=["age", "sex"], data=mg)
         crf
         ```
         """
@@ -691,7 +692,7 @@ class CompetingRiskForest:
         risk = risk_sum[scored] / tree_count[scored]
         # Build right-censored response for cause 1 (competing events = censored)
         cs_event = self._status_train[scored] == target
-        y = Surv.right(self._time_train[scored], event=cs_event)
+        y = Surv(time=self._time_train[scored], event=cs_event)
         return float(concordance_index(y, risk))
 
     def variable_importance(
@@ -755,7 +756,7 @@ class CompetingRiskForest:
 
         base_risk, scored = oob_risk(x)
         cs_event = status[scored] == cause_code
-        y = Surv.right(time[scored], event=cs_event)
+        y = Surv(time=time[scored], event=cs_event)
         base_error = 1.0 - concordance_index(y, base_risk)
 
         importances = np.zeros(x.shape[1])
@@ -765,7 +766,7 @@ class CompetingRiskForest:
                 permuted = x.copy()
                 permuted[:, feat] = x[vimp_rng.permutation(x.shape[0]), feat]
                 risk, sc = oob_risk(permuted)
-                y_p = Surv.right(time[sc], event=(status[sc] == cause_code))
+                y_p = Surv(time=time[sc], event=(status[sc] == cause_code))
                 drop += (1.0 - concordance_index(y_p, risk)) - base_error
             importances[feat] = drop / n_repeats
 
