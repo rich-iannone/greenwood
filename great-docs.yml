@@ -244,3 +244,4 @@ reference:
     contents:
       - get_risk_table_frame
       - theme_forest
+      - theme_survival
