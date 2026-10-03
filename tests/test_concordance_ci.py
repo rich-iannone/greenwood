@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pandas as pd
 import pytest
 
 import greenwood as gw
@@ -16,7 +17,7 @@ import greenwood as gw
 def lung_data():
     """Right-censored lung data with two Cox models."""
     lung = gw.load_dataset("lung", backend="pandas").dropna(subset=["ph.ecog"])
-    y = gw.Surv.right(lung["time"], event=(lung["status"] == 2))
+    y = gw.Surv(time=lung["time"], event=(lung["status"] == 2))
     cox_full = gw.CoxPH().fit(y, lung[["age", "sex"]])
     cox_age = gw.CoxPH().fit(y, lung[["age"]])
     lp_full = cox_full.predict(type="lp")
@@ -30,7 +31,12 @@ def cr_data():
     mg = gw.load_dataset("mgus2", backend="pandas")
     etime = np.where(mg["pstat"] == 1, mg["ptime"], mg["futime"])
     cause = np.where(mg["pstat"] == 1, 1, 2 * mg["death"])
-    y = gw.Surv.multistate(etime, event=cause, states=("pcm", "death"))
+    y = gw.Surv(
+        time=etime,
+        event=pd.Categorical.from_codes(
+            np.asarray(cause, dtype=int), categories=["censor", "pcm", "death"]
+        ),
+    )
     fg = gw.FineGray("pcm").fit(y, mg[["age", "sex"]])
     return y, fg, mg
 
