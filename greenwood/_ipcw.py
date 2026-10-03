@@ -79,9 +79,9 @@ class CensoringDistribution:
     import greenwood as gw
 
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
 
-    # Fit the censoring distribution
+    # Build the response from the named columns, then fit the censoring distribution
+    y = gw.Outcome.surv(time="time", event="status").bind(lung)
     cens = gw.CensoringDistribution(y)
     cens
     ```
@@ -133,7 +133,7 @@ class CensoringDistribution:
         import greenwood as gw
 
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+        y = gw.Outcome.surv(time="time", event="status").bind(lung)
 
         cens = gw.CensoringDistribution(y)
         cens.survival([365, 730])
@@ -170,7 +170,7 @@ class CensoringDistribution:
         import greenwood as gw
 
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+        y = gw.Outcome.surv(time="time", event="status").bind(lung)
 
         cens = gw.CensoringDistribution(y)
         cens.survival_left([365, 730])
@@ -235,7 +235,7 @@ class CensoringDistribution:
         import greenwood as gw
 
         lung = gw.load_dataset("lung", backend="polars")
-        y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
+        y = gw.Outcome.surv(time="time", event="status").bind(lung)
 
         cens = gw.CensoringDistribution(y)
         cens.to_frame(format="polars")
@@ -283,10 +283,8 @@ class IPCRidge:
     import greenwood as gw
 
     lung = gw.load_dataset("lung", backend="polars")
-    y = gw.Surv.right(time="time", event="status", data=lung, event_value=2)
-    cols = ["age", "sex"]
 
-    ridge = gw.IPCRidge(alpha=1.0).fit(y, covariates=lung[cols])
+    ridge = gw.IPCRidge(alpha=1.0).fit("Surv(time, status) ~ age + sex", data=lung)
     ridge
     ```
     """
@@ -333,7 +331,7 @@ class IPCRidge:
         Parameters
         ----------
         surv
-            A right-censored `Surv` response (built with `Surv.right()`).
+            A right-censored `Surv` response, built with `gw.Surv(time=..., event=...)`.
             An `Outcome` or a formula string such as `'Surv(time, status == 2) ~ age + sex'` is also
             accepted, with its columns read from `data`. The right-hand side sets `covariates`.
         covariates
