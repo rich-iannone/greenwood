@@ -32,7 +32,7 @@ def data():
     lung = gw.load_dataset("lung", backend="pandas").dropna(
         subset=["ph.ecog", "ph.karno", "wt.loss"]
     )
-    y = Surv.right(lung["time"], event=(lung["status"] == 2))
+    y = Surv(time=lung["time"], event=(lung["status"] == 2))
     cols = ["age", "sex", "ph.ecog", "ph.karno", "wt.loss"]
     return y, lung[cols]
 
@@ -88,7 +88,7 @@ def test_tree_predict_requires_newdata(data) -> None:
 
 
 def test_tree_rejects_non_right_censored() -> None:
-    y = Surv.counting(start=[0, 1, 2], stop=[5, 6, 7], event=[1, 0, 1])
+    y = Surv(time=[0, 1, 2], time2=[5, 6, 7], event=[1, 0, 1])
     x = np.array([[1.0], [2.0], [3.0]])
     with pytest.raises(NotImplementedError, match="right-censored"):
         SurvivalTree().fit(y, x)
@@ -457,7 +457,7 @@ def test_survival_tree_fit_row_mismatch(data) -> None:
 
 
 def test_survival_tree_fit_no_events() -> None:
-    y = Surv.right(time=[5, 6, 7, 8], event=[0, 0, 0, 0])
+    y = Surv(time=[5, 6, 7, 8], event=[0, 0, 0, 0])
     x = np.array([[1.0], [2.0], [3.0], [4.0]])
     with pytest.raises(ValueError, match="No events remain"):
         SurvivalTree().fit(y, x)
@@ -583,7 +583,7 @@ def test_forest_fit_row_mismatch(data) -> None:
 
 
 def test_forest_fit_no_events() -> None:
-    y = Surv.right(time=[5, 6, 7, 8, 9, 10], event=[0, 0, 0, 0, 0, 0])
+    y = Surv(time=[5, 6, 7, 8, 9, 10], event=[0, 0, 0, 0, 0, 0])
     x = np.arange(6.0).reshape(6, 1)
     with pytest.raises(ValueError, match="No events remain"):
         RandomSurvivalForest(n_estimators=3, random_state=0).fit(y, x)
