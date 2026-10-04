@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import contextlib
+import warnings
 
 import numpy as np
 import pytest
@@ -742,8 +742,16 @@ def test_counting_process_proper_data_no_warning() -> None:
         assert len(our_warnings) == 0, "Should not warn for proper data starting at 0"
 
 
-def test_counting_process_mixed_start_times_warns() -> None:
-    """Counting-process data with mixed start times should warn."""
+def _calendar_time_warnings(caught: list[warnings.WarningMessage]) -> list[str]:
+    return [str(w.message) for w in caught if "calendar time" in str(w.message)]
+
+
+def test_counting_process_mixed_start_times_do_not_warn() -> None:
+    """Rows starting at 0 and later are the normal layout of time-varying data, so no warning.
+
+    Earlier versions warned that such start times "may be calendar time". R's `coxph()` does not,
+    and the layout is exactly what `split_episodes()` produces.
+    """
     import pandas as pd
 
     df = pd.DataFrame(
@@ -757,31 +765,30 @@ def test_counting_process_mixed_start_times_warns() -> None:
 
     surv = Surv(time=df["start"], time2=df["stop"], event=df["event"])
 
-    with pytest.warns(UserWarning, match="start time.*calendar time"):
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
         CoxPH().fit(surv, df[["x"]])
+    assert _calendar_time_warnings(caught) == []
 
 
-def test_counting_process_large_gaps_warns() -> None:
-    """Counting-process data with large gaps in start times should warn."""
-    import pandas as pd
-
-    df = pd.DataFrame(
-        {
-            "start": [0, 5, 200, 205],  # Large gap from 5 to 200
-            "stop": [5, 15, 205, 215],
-            "event": [0, 1, 0, 1],
-            "x": [1.0, 1.0, 2.0, 2.0],
-        }
+def test_split_episodes_fit_does_not_warn() -> None:
+    """Fitting `split_episodes()` output, with large gaps between start times, gives no warning."""
+    pbcseq = gw.load_dataset("pbcseq", backend="pandas")
+    long = gw.split_episodes(
+        baseline=pbcseq,
+        visits=pbcseq,
+        id="id",
+        time="futime",
+        event="status",
+        visit_time="day",
+        covariates=["bili"],
+        format="pandas",
     )
 
-    surv = Surv(time=df["start"], time2=df["stop"], event=df["event"])
-
-    with (
-        pytest.warns(UserWarning, match="start time.*calendar time"),
-        contextlib.suppress(np.linalg.LinAlgError),
-    ):
-        # Large gaps may cause numerical issues; that's expected
-        CoxPH().fit(surv, df[["x"]])
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        CoxPH().fit("Surv(tstart, tstop, status == 2) ~ bili", data=long)
+    assert _calendar_time_warnings(caught) == []
 
 
 def test_counting_process_negative_start_warns() -> None:
