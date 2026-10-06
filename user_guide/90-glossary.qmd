@@ -384,7 +384,7 @@ Event-time vector
 : A vector that pairs each time with a one-letter status saying what the time means: `"e"` for
   an exact event, `"r"` for right-censored, `"l"` for left-censored, and `"i"` for
   interval-censored (with the upper bound in `time_max`). Built with
-  `event_time(time, status, time_max)`, a port of Max Kuhn's etd R package. It prints in the
+  `event_time(time, status, time_max)`. It prints in the
   familiar notation (`5+`, `3-`, `[2, 4]`), converts to a `Surv` with `as_surv()`, and can be
   passed to estimators directly.
 
