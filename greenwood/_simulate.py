@@ -17,7 +17,7 @@ Array = npt.NDArray[Any]
 
 @dataclass(frozen=True)
 class SimulatedCompetingRisks:
-    """Result of :func:`simulate_competing_risks`.
+    """Result of `simulate_competing_risks()`.
 
     Bundles the simulated survival response, covariate matrix, and latent ground-truth
     times into a single object. This makes it easy to pass synthetic data directly to
