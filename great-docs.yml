@@ -52,8 +52,8 @@ authors:
 reference:
   - title: The response
     desc:
-      Surv() and event_time() build a response from values (mirroring R's survival::Surv() and
-      the etd package). Outcome, the structured form of a formula response such as
+      Surv() and event_time() build a response from values (Surv() mirrors R's
+      survival::Surv()). Outcome, the structured form of a formula response such as
       "Surv(time, status == 2)", names columns instead and is evaluated against data= at fit time,
       on any DataFrame backend.
     contents:
