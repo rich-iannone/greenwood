@@ -70,6 +70,8 @@ reference:
       - name: Outcome
         members: true
       - duration
+      - name: Duration
+        members: true
       - CensoringType
 
   - title: Non-parametric estimators
@@ -93,7 +95,8 @@ reference:
 
   - title: Regression
     desc:
-      Cox proportional hazards, parametric AFT models, rank-based Buckley-James regression, and
+      Cox proportional hazards, parametric AFT models, rank-based Buckley-James regression,
+      Aalen additive hazards, mixture cure models, IPC-weighted ridge regression, and
       time-varying covariate utilities.
     contents:
       - split_episodes
@@ -116,6 +119,12 @@ reference:
         members: true
       - name: PiecewiseExponential
         members: true
+      - name: AalenAdditive
+        members: true
+      - name: MixtureCure
+        members: true
+      - name: IPCRidge
+        members: true
       - name: RoystonParmar
         members: true
 
@@ -136,8 +145,9 @@ reference:
   - title: Competing risks & multi-state
     desc:
       Cumulative incidence, the Fine-Gray subdistribution hazard model (with elastic-net
-      penalization), cause-specific Cox regression, a competing-risk random forest, and
-      multi-state transition probabilities.
+      penalization), cause-specific Cox regression, a competing-risk random forest, gradient-boosted
+      cumulative incidence, multi-state transition probabilities, and simulated competing-risks
+      data.
     contents:
       - name: AalenJohansen
         members: true
@@ -149,7 +159,12 @@ reference:
         members: true
       - name: CompetingRiskForest
         members: true
+      - name: SurvivalBoost
+        members: true
       - name: MultiState
+        members: true
+      - simulate_competing_risks
+      - name: SimulatedCompetingRisks
         members: true
 
   - title: Group comparisons
@@ -164,6 +179,8 @@ reference:
       - pairwise_logrank_test
       - grays_test
       - name: TestResult
+        members: true
+      - name: MaxComboResult
         members: true
       - rmst_test
       - rmst_diff
@@ -185,8 +202,8 @@ reference:
   - title: Prediction performance
     desc:
       Concordance, IPCW Brier score, time-dependent AUC, calibration, concordance
-      confidence intervals with delta-method comparison, and a bundled competing-risks
-      scorer.
+      confidence intervals with delta-method comparison, a bundled competing-risks
+      scorer, and the censoring distribution behind IPC weights.
     contents:
       - concordance_index
       - concordance_index_ipcw
@@ -205,12 +222,15 @@ reference:
       - integrated_auc
       - calibration
       - calibration_incidence
+      - accuracy_in_time
       - score_cr
+      - name: CensoringDistribution
+        members: true
 
   - title: Visualization
     desc:
       Interactive survival curves, forest plots, and cumulative incidence visualizations with
-      aligned numbers-at-risk tables.
+      aligned numbers-at-risk tables, plus Schoenfeld residual and probability-plot diagnostics.
     contents:
       - plot_survival
       - plot_predicted_survival
@@ -218,6 +238,8 @@ reference:
       - plot_cif
       - plot_influence
       - plot_smooth_hr
+      - plot_schoenfeld
+      - plot_weibull
       - risk_table
   - title: Core kernel
     desc: The risk-set / event-table tabulation shared by KM, log-rank, and Cox.
