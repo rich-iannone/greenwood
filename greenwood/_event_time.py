@@ -226,13 +226,12 @@ def _as_character(x: Any, arg: str) -> ObjectArray:
 class EventTime:
     """A vector of event times that may be exact, or right-, left-, or interval-censored.
 
-    `EventTime` is the Python counterpart of etd's `event_time` vector. Create one with
-    `event_time()`, which validates its input, or with `new_event_time()`, which only checks
-    types.
+    Create one with `event_time()`, which validates its input, or with `new_event_time()`, which
+    only checks types.
 
     Each element has a time and a single-letter status: `"e"` (exact event), `"r"`
     (right-censored), `"l"` (left-censored), or `"i"` (interval-censored, with an upper bound in
-    `time_max`). Elements print the way etd prints them: `7` for an event, `5+` for right
+    `time_max`). Elements print as `7` for an event, `5+` for right
     censoring, `3-` for left censoring, and `[2, 4]` for an interval.
 
     The vector supports `len()`, indexing with an integer, a slice, an integer array, or a boolean
@@ -300,10 +299,9 @@ class EventTime:
     def __getitem__(self, key: Any) -> EventTime:
         """Select elements, returning a new event-time vector.
 
-        Indexing always returns an `EventTime`, even for a single element, as subsetting an etd
-        vector with `x[i]` does in R. Each element keeps its time, status, and upper bound. Negative
-        integers count from the end, as usual in Python (R's `x[-1]`, which drops an element, has
-        no equivalent here).
+        Indexing always returns an `EventTime`, even for a single element. Each element keeps its
+        time, status, and upper bound. Negative integers count from the end, as usual in Python (R's
+        `x[-1]`, which drops an element, has no equivalent here).
 
         Parameters
         ----------
@@ -433,8 +431,8 @@ class EventTime:
     def is_na(self) -> BoolArray:
         """Return which elements are missing.
 
-        An element is missing when any of its times is missing (`nan`), as in etd's `is.na()`. For
-        an interval-censored element that includes a missing upper bound. A missing status alone
+        An element is missing when any of its times is missing (`nan`). For an interval-censored
+        element that includes a missing upper bound. A missing status alone
         only occurs together with a missing time, because `event_time()` rejects a missing status
         where the time is present. Estimators drop missing elements when fitting.
 
@@ -461,12 +459,12 @@ class EventTime:
         return np.isnan(self._time) | (self._paired & np.isnan(self._time_max))
 
     def format(self) -> list[str | None]:
-        """Format each element as etd does, with `None` for missing elements.
+        """Format each element as text, with `None` for missing elements.
 
-        This is the text the vector's printout shows, one string per element, and it matches
-        etd's `format()` character for character. Every number in the vector is formatted together
-        with R's rules: at most 7 significant digits, a shared number of decimal places, and
-        scientific notation when that is narrower. Then each element is marked by its status:
+        This is the text the vector's printout shows, one string per element. Every number in the
+        vector is formatted together with R's rules: at most 7 significant digits, a shared number
+        of decimal places, and scientific notation when that is narrower. Then each element is
+        marked by its status:
 
         - Exact events get a trailing space: `"7 "`.
         - Right-censored values get a `+`: `"5+"`.
@@ -539,10 +537,10 @@ class EventTime:
     def to_frame(self, *, format: str | None = None) -> Any:
         """Split the vector into a table with `"time"`, `"status"`, and `"time_max"` columns.
 
-        This is the counterpart of etd's `as_tibble()`: the reverse of `event_time()`, with one row
-        per element. The `"time_max"` column is always included, and is missing for elements that
-        are not interval-censored. Missing values are nulls. Use the table to inspect a vector, to
-        join it back onto other data, or to export it.
+        This is the reverse of `event_time()`, with one row per element. The `"time_max"` column is
+        always included, and is missing for elements that are not interval-censored. Missing values
+        are nulls. Use the table to inspect a vector, to join it back onto other data, or to export
+        it.
 
         Parameters
         ----------
@@ -591,8 +589,8 @@ def event_time(time: Any, status: Any, time_max: Any = None) -> EventTime:
     """Create a vector of event times.
 
     `event_time()` creates a vector of event times that may be exact, or right-, left-, or
-    interval-censored. It is a port of etd's `event_time()` and validates its input with the same
-    rules, in the same order.
+    interval-censored. It validates its input and raises an error describing the first problem
+    found.
 
     Parameters
     ----------
@@ -711,8 +709,7 @@ def event_time(time: Any, status: Any, time_max: Any = None) -> EventTime:
 def new_event_time(time: Any = (), status: Any = ()) -> EventTime:
     """Create an event-time vector with only minimal type checks.
 
-    The low-level constructor, a port of etd's `new_event_time()`. Use `event_time()` to create a
-    validated vector.
+    The low-level constructor. Use `event_time()` to create a validated vector.
 
     Parameters
     ----------
@@ -788,7 +785,7 @@ def new_event_time(time: Any = (), status: Any = ()) -> EventTime:
 def extract_time(x: Any) -> FloatArray:
     """Extract the times from an event-time vector.
 
-    A port of etd's `extract_time()`. Like etd, the shape depends on the data: a 1-D array when no
+    The shape depends on the data: a 1-D array when no
     element is interval-censored, otherwise a 2-D array with columns `time` and `time_max`, where
     `time_max` is missing (`nan`) for elements that aren't interval-censored.
 
@@ -833,7 +830,7 @@ def _(x: EventTime) -> FloatArray:
 def extract_status(x: Any) -> list[str | None]:
     """Extract the status codes from an event-time vector.
 
-    A port of etd's `extract_status()`.
+    Returns one single-letter code per element: `"e"`, `"r"`, `"l"`, or `"i"`.
 
     Parameters
     ----------
@@ -870,7 +867,7 @@ def _(x: EventTime) -> list[str | None]:
 def as_surv(x: Any) -> Surv:
     """Convert an event-time vector to a `Surv` response.
 
-    A port of etd's `as_surv()`. The type of the result depends on the status codes present,
+    The type of the result depends on the status codes present,
     ignoring missing elements:
 
     - only `"e"` and `"r"`: a right-censored response, with status `1` for events.
