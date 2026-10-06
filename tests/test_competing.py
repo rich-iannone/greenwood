@@ -189,7 +189,8 @@ def test_finegray_length_mismatch() -> None:
 
 class TestFineGrayToFrame:
     @pytest.fixture(scope="class")
-    def fg(self):  # type: ignore[no-untyped-def]
+    @classmethod
+    def fg(cls):  # type: ignore[no-untyped-def]
         from greenwood import FineGray
 
         df, y = _mgus2_cr()
@@ -634,7 +635,8 @@ class TestAalenJohansenToFrame:
 
 class TestMultiStatePredict:
     @pytest.fixture(scope="class")
-    def ms(self):  # type: ignore[no-untyped-def]
+    @classmethod
+    def ms(cls):  # type: ignore[no-untyped-def]
         from greenwood import MultiState
 
         return MultiState().fit(
@@ -679,14 +681,16 @@ class TestMultiStatePredict:
 
 class TestFineGrayPredict:
     @pytest.fixture(scope="class")
-    def fg(self):  # type: ignore[no-untyped-def]
+    @classmethod
+    def fg(cls):  # type: ignore[no-untyped-def]
         from greenwood import FineGray
 
         df, y = _mgus2_cr()
         return FineGray("pcm").fit(y, df[["age", "sex"]])
 
     @pytest.fixture(scope="class")
-    def df_y(self):  # type: ignore[no-untyped-def]
+    @classmethod
+    def df_y(cls):  # type: ignore[no-untyped-def]
         return _mgus2_cr()
 
     def test_predict_lp_shape(self, fg, df_y) -> None:  # type: ignore[no-untyped-def]
@@ -767,11 +771,13 @@ class TestFineGrayPredict:
 
 class TestPenalizedFineGray:
     @pytest.fixture(scope="class")
-    def df_y(self):  # type: ignore[no-untyped-def]
+    @classmethod
+    def df_y(cls):  # type: ignore[no-untyped-def]
         return _mgus2_cr()
 
     @pytest.fixture(scope="class")
-    def pfg(self, df_y):  # type: ignore[no-untyped-def]
+    @classmethod
+    def pfg(cls, df_y):  # type: ignore[no-untyped-def]
         df, y = df_y
         return gw.PenalizedFineGray("pcm", penalizer=0.01, l1_ratio=1.0).fit(y, df[["age", "sex"]])
 
@@ -886,11 +892,13 @@ class TestPenalizedFineGray:
 
 class TestCauseSpecificCox:
     @pytest.fixture(scope="class")
-    def df_y(self):  # type: ignore[no-untyped-def]
+    @classmethod
+    def df_y(cls):  # type: ignore[no-untyped-def]
         return _mgus2_cr()
 
     @pytest.fixture(scope="class")
-    def csc(self, df_y):  # type: ignore[no-untyped-def]
+    @classmethod
+    def csc(cls, df_y):  # type: ignore[no-untyped-def]
         df, y = df_y
         return gw.CauseSpecificCox("pcm").fit(y, df[["age", "sex"]])
 
