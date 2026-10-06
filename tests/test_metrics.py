@@ -226,7 +226,8 @@ def test_ipcw_concordance_in_unit_range() -> None:
 
 class TestTimeDependentAUC:
     @pytest.fixture(scope="class")
-    def lung_cox(self):  # type: ignore[no-untyped-def]
+    @classmethod
+    def lung_cox(cls):  # type: ignore[no-untyped-def]
         df = gw.load_dataset("lung", backend="pandas")
         y = Surv(time=df["time"], event=(df["status"] == 2))
         cox = gw.CoxPH().fit(y, df[["age", "sex"]])
@@ -323,7 +324,8 @@ class TestTimeDependentAUC:
 
 class TestIntegratedAUC:
     @pytest.fixture(scope="class")
-    def lung_cox(self):  # type: ignore[no-untyped-def]
+    @classmethod
+    def lung_cox(cls):  # type: ignore[no-untyped-def]
         df = gw.load_dataset("lung", backend="pandas")
         y = Surv(time=df["time"], event=(df["status"] == 2))
         cox = gw.CoxPH().fit(y, df[["age", "sex"]])
