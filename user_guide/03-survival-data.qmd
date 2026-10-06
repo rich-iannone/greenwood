@@ -552,8 +552,7 @@ more than two codes was used without a comparison. The section on
 ### Writing it as an event-time vector
 
 Sometimes the clearest way to describe a censored time is to say what kind it is. `gw.event_time()`
-does exactly that. It is a port of Max Kuhn's etd R package, and it pairs each time with a
-one-letter status: `"e"` for an exact event, `"r"` for right-censored,
+does exactly that. It pairs each time with a one-letter status: `"e"` for an exact event, `"r"` for right-censored,
 `"l"` for left-censored, and `"i"` for interval-censored. For interval-censored values, `time_max=`
 holds the upper end of the interval.
 
