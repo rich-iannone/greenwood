@@ -124,10 +124,10 @@ surv_columns <- function(s) {
 }
 
 expect_surv_matches <- function(actual, expected, label) {
+  testthat::expect_s3_class(actual, "Surv")
   testthat::expect_identical(attr(actual, "type"), expected$type, label = label)
-  if (!is.null(expected$states)) {
-    testthat::expect_identical(attr(actual, "states"), r_strings(expected$states), label = label)
-  }
+  expected_states <- if (is.null(expected$states)) NULL else r_strings(expected$states)
+  testthat::expect_identical(attr(actual, "states"), expected_states, label = label)
   columns <- surv_columns(actual)
   testthat::expect_identical(names(columns), names(expected$columns), label = label)
   for (name in names(expected$columns)) {
