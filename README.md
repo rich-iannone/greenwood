@@ -20,20 +20,21 @@ holds both language implementations:
 | Package | Directory | Status |
 |---|---|---|
 | Python | [`python/`](python/) | Feature-rich. See the [Python README](python/README.md) and the [documentation site](https://rich-iannone.github.io/greenwood/). |
-| R | [`r/`](r/) | Early. Provides the shared `Surv()` response. See the [R README](r/README.md). |
+| R | [`r/`](r/) | Early. A native `Surv()`, held to the same contract as Python. See the [R README](r/README.md). |
 
 ## Shared across languages
 
-Both packages are validated against R's **survival** package and replay the same cases, so they
-agree on inputs and results.
+Both packages are native implementations, validated against R's **survival** package. They replay
+the same cases, so they agree on inputs and results.
 
 - [`spec/`](spec/) holds the language-neutral contracts (`Surv()`, `event_time()`, formulas) and
   their conformance cases as JSON. The R package replays the `Surv()` cases so far.
 - [`fixtures/r/`](fixtures/r/) holds numeric fixtures exported from R for the parity tests.
 - [`scripts/`](scripts/) holds the R scripts that generate both.
 
-Package-level names stay identical across languages. Language-level conventions follow each
-language (for example, 0-based error locations and `NaN`/`None` in Python), and any differences are
+Shared functions keep the same names in both languages (`Surv()`, metrics). Estimators follow each
+language's idiom: classes in Python (`KaplanMeier`) and lower snake case functions returning S3
+objects in R (`kaplan_meier()`). Language-level conventions follow each language (for example, 0-based error locations and `NaN`/`None` in Python), and any differences are
 recorded as adaptations in `spec/`.
 
 ## Development
