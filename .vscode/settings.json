@@ -15,6 +15,7 @@
       "source.organizeImports": "always"
     }
   },
+  "python.testing.cwd": "${workspaceFolder}/python",
   "python.testing.pytestArgs": ["tests"],
   "python.testing.unittestEnabled": false,
   "python.testing.pytestEnabled": true,
