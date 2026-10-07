@@ -32,6 +32,17 @@ def _fmt_pvalue(p: float) -> str:
     return f"{p:.2f}"
 
 
+def _is_eager_frame(obj: Any) -> bool:
+    """Whether *obj* is an eager DataFrame of any backend Narwhals supports."""
+    import narwhals as nw  # pyright: ignore[reportMissingImports]
+
+    try:
+        nw.from_native(obj, eager_only=True)
+    except TypeError:
+        return False
+    return True
+
+
 def _extract_forest_frame(
     result: Any,
     *,
@@ -68,15 +79,14 @@ def _extract_forest_frame(
                 "p_value": p_values,
             }
         )
-    elif hasattr(result, "__dataframe__") or isinstance(result, dict):
+    elif isinstance(result, dict) or _is_eager_frame(result):
         # Tidy DataFrame (pandas / polars / pyarrow) or plain dict
         if isinstance(result, dict):
             df = pd.DataFrame(result)
         else:
-            try:
-                df = result.to_pandas()  # polars / pyarrow
-            except AttributeError:
-                df = pd.DataFrame(result)
+            import narwhals as nw  # pyright: ignore[reportMissingImports]
+
+            df = nw.from_native(result, eager_only=True).to_pandas()
         # Normalise column names
         df = df.rename(
             columns={"conf_low": "ci_lower", "conf_high": "ci_upper", "std_error": "se"},

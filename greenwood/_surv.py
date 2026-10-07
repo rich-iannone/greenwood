@@ -32,6 +32,7 @@ from enum import Enum
 from typing import Any
 
 import narwhals as nw  # pyright: ignore[reportMissingImports]  # installed + typed; pyright quirk
+import narwhals.stable.v2 as nw_v2  # pyright: ignore[reportMissingImports]
 import numpy as np
 import numpy.typing as npt
 from typing_extensions import Self
@@ -235,7 +236,10 @@ def _values(x: Any) -> tuple[list[Any], str, list[str] | None]:
         raw = series.to_list()
         values = [None if null else v for v, null in zip(raw, nulls, strict=True)]
         if series.dtype in (nw.Categorical, nw.Enum):
-            levels = [str(level) for level in series.cat.get_categories().to_list()]
+            # The stable API's get_categories() returns the declared levels. Since Narwhals 2.26
+            # the main namespace returns only the values present, in order of appearance.
+            stable = nw_v2.from_native(series.to_native(), series_only=True)
+            levels = [str(level) for level in stable.cat.get_categories().to_list()]
             return values, "categorical", levels
 
     present = [v for v in values if v is not None and not (isinstance(v, float) and math.isnan(v))]
