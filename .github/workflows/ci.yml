@@ -10,6 +10,12 @@ on:
   release:
     types: [published]
 
+# The Python package lives in python/. Its tests also read the shared spec/ and fixtures/r/
+# directories at the repo root, so the whole repo is checked out.
+defaults:
+  run:
+    working-directory: python
+
 jobs:
   lint:
     runs-on: ubuntu-latest
@@ -87,7 +93,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: dist
-          path: dist/
+          path: python/dist/
 
   publish:
     name: Publish to PyPI
