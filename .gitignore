@@ -225,6 +225,7 @@ great-docs/
 .great-docs-cache/
 /*.md
 !README.md
+!RELEASING.md
 .DS_Store
 
 # R package (r/)
