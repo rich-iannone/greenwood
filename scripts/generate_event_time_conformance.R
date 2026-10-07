@@ -4,8 +4,8 @@
 # Greenwood ports etd (https://github.com/topepo/etd) to Python and follows it exactly. These
 # fixtures are the executable form of that contract: each case records an input and what etd
 # does with it (the result, or which validation check fails and where). The Python suite
-# (tests/test_event_time_conformance.py) replays every case. A future R Greenwood can replay the
-# same JSON. See spec/event_time.md.
+# (python/tests/test_event_time_conformance.py) replays every case. An R Greenwood port of
+# event_time() could replay the same JSON. See spec/event_time.md.
 #
 # Install the pinned etd first, then run from the repo root:
 #
@@ -17,7 +17,7 @@
 # Writes JSON into spec/conformance/event_time/. Encoding conventions:
 #
 # - Numeric vectors are arrays. Missing values are the strings "NA" and "NaN", infinities are
-#   "Inf" and "-Inf" (jsonlite's encoding, which tests/_r_parity.py already understands).
+#   "Inf" and "-Inf" (jsonlite's encoding, which python/tests/_r_parity.py already understands).
 # - Character and logical missing values are JSON null.
 # - R inputs are wrapped as {"r_type": ..., "values": ...} so the replaying side knows whether
 #   R saw a double, integer, logical, character, factor, or list.

@@ -4,8 +4,8 @@
 # Greenwood's `Surv()` mirrors `survival::Surv()` exactly: the same arguments, the same type
 # inference, the same status coding, and the same errors and warnings. Each case records a call's
 # arguments and what `survival::Surv()` returned (the matrix columns, type, and states) or the
-# error it raised. The Python suite (tests/test_surv_conformance.py) replays every case. See
-# spec/surv.md.
+# error it raised. The Python suite (python/tests/test_surv_conformance.py) and the R package
+# (r/tests/testthat/test-surv-conformance.R) both replay every case. See spec/surv.md.
 #
 # Run from the repo root:
 #

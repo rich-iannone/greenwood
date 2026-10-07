@@ -11,7 +11,7 @@ result through `Surv()`.
 | Reference | `survival::Surv()` (fixtures generated with the version in `conformance/surv/metadata.json`) |
 | Fixtures | [`conformance/surv/`](conformance/surv/) |
 | Generator | [`scripts/generate_surv_conformance.R`](../scripts/generate_surv_conformance.R) |
-| Python harness | [`tests/test_surv_conformance.py`](../tests/test_surv_conformance.py) |
+| Python harness | [`python/tests/test_surv_conformance.py`](../python/tests/test_surv_conformance.py) |
 
 Regenerate from the repo root, then review the diff in `spec/conformance/surv/`:
 

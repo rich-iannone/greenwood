@@ -3,6 +3,8 @@ requires = ["setuptools>=45", "wheel", "setuptools_scm>=6.2"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools_scm]
+# The Python package lives in python/ of the Greenwood monorepo, so the git root is one up.
+root = ".."
 
 [tool.setuptools.packages.find]
 include = ["greenwood", "greenwood.*"]
