@@ -62,6 +62,11 @@ code, numpydoc section headers (`Parameters`, `Returns`).
 - Implementation lives in underscore-prefixed private modules and the public surface is
 curated explicitly in `__init__.py`.
 
+## Releases
+
+The Python and R packages are versioned and released separately: Python with `v*` tags and R with
+`r-v*` tags. See [`RELEASING.md`](../RELEASING.md).
+
 ## Pull requests
 
 - Keep PRs focused and add tests for new behavior (target >=90% coverage).
