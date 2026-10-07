@@ -5,7 +5,7 @@ toc: false
 
 ## Modern survival analysis for Python
 
-Greenwood turns time-to-event data into estimates, tests, models, and figures. Whether you're tracking patient outcomes, equipment failure times, or any event that takes time to happen, Greenwood provides a complete, production-ready toolkit for survival analysis.
+Greenwood turns time-to-event data into estimates, tests, models, and figures. Whether you're tracking patient outcomes, equipment failure times, or any event that takes time to happen, Greenwood provides a complete toolkit for survival analysis.
 
 Unlike many statistical libraries, Greenwood is built on [Narwhals](https://narwhals-dev.github.io/narwhals/) for backend-agnostic compute, validated to tolerance against R's gold-standard **survival** package, and visualized with publication-quality interactive plots and tables. It works with Pandas, Polars, PyArrow, or any dataframe library you prefer.
 
