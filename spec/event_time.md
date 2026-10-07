@@ -13,7 +13,7 @@ contract in a language-neutral form, and where Python must adapt. The companion 
 | Pinned commit | `3d5caff4f03d771a6b65b9605c9b0e48a912482f` |
 | Fixtures | [`conformance/event_time/`](conformance/event_time/) |
 | Generator | [`scripts/generate_event_time_conformance.R`](../scripts/generate_event_time_conformance.R) |
-| Python harness | [`tests/test_event_time_conformance.py`](../tests/test_event_time_conformance.py) |
+| Python harness | [`python/tests/test_event_time_conformance.py`](../python/tests/test_event_time_conformance.py) |
 
 To regenerate after etd moves, update the pinned commit in all three places (the generator, the
 Python harness, and this table), then run from the repo root:

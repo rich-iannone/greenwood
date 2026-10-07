@@ -220,9 +220,19 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
-# Great Docs build output
+# Great Docs build output (the docs project lives in python/)
 great-docs/
+.great-docs-cache/
 /*.md
 !README.md
-!ROADMAP.md
 .DS_Store
+
+# R package (r/)
+.Rproj.user/
+.Rhistory
+.RData
+.Rdata
+r/greenwood.Rcheck/
+r/greenwood_*.tar.gz
+r/check/
+r/docs/

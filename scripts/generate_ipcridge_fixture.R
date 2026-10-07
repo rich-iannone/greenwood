@@ -15,7 +15,7 @@ suppressPackageStartupMessages({
   }
 })
 
-out_dir <- file.path("tests", "fixtures", "r")
+out_dir <- file.path("fixtures", "r")
 dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
 
 write_json_fixture <- function(obj, name) {

@@ -1,4 +1,4 @@
-name: CI
+name: Python CI
 
 on:
   push:
@@ -10,8 +10,15 @@ on:
   release:
     types: [published]
 
+# The Python package lives in python/. Its tests also read the shared spec/ and fixtures/r/
+# directories at the repo root, so the whole repo is checked out.
+defaults:
+  run:
+    working-directory: python
+
 jobs:
   lint:
+    name: Python lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -30,6 +37,7 @@ jobs:
         run: pyright greenwood
 
   test:
+    name: Python test (${{ matrix.os }}, ${{ matrix.python-version }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -51,6 +59,7 @@ jobs:
         run: pytest tests -n auto
 
   parity:
+    name: Python parity (Numba, scikit-survival)
     # Optional cross-checks that need heavier, less-portable extras: Numba (accelerated
     # split kernel) and scikit-survival (GPL, Python >= 3.11 only), so this runs on a
     # single well-supported interpreter rather than the full matrix. The relevant tests
@@ -69,7 +78,7 @@ jobs:
         run: pytest tests/test_forest_rsf.py tests/test_boosting.py tests/test_forest_sksurv_parity.py -n auto
 
   build:
-    name: Build distribution
+    name: Build Python distribution
     runs-on: ubuntu-latest
     needs: [lint, test]
     if: github.event_name == 'release'
@@ -87,7 +96,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: dist
-          path: dist/
+          path: python/dist/
 
   publish:
     name: Publish to PyPI

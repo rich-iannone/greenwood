@@ -8,9 +8,9 @@ themes) and one `::: {#fig-...}` block per figure. This script rewrites those bl
 
 Run from the repo root after changing a figure here:
 
-    .venv/bin/python scripts/generate_guide_figures.py           # update the pages
-    .venv/bin/python scripts/generate_guide_figures.py --check   # fail if the pages are stale
-    .venv/bin/python scripts/generate_guide_figures.py --preview out.html  # standalone preview
+    .venv/bin/python python/scripts/generate_guide_figures.py            # update the pages
+    .venv/bin/python python/scripts/generate_guide_figures.py --check    # fail if stale
+    .venv/bin/python python/scripts/generate_guide_figures.py --preview out.html
 
 Design rules (see the dataviz guidance used to build them):
 

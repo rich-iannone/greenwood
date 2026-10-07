@@ -1,0 +1,6 @@
+^.*\.Rproj$
+^\.Rproj\.user$
+^LICENSE\.md$
+^greenwood\.Rcheck$
+^greenwood_.*\.tar\.gz$
+^check$

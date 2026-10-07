@@ -5,7 +5,7 @@
 # risk-set/event-table kernel is validated against `survfit`'s tabulation. Run from the
 # repo root:  Rscript scripts/regenerate_r_fixtures.R
 #
-# Writes JSON into tests/fixtures/r/. The Python harness (tests/_r_parity.py) loads these
+# Writes JSON into fixtures/r/. The Python harness (python/tests/_r_parity.py) loads these
 # and asserts to tolerance.
 
 suppressPackageStartupMessages({
@@ -15,7 +15,7 @@ suppressPackageStartupMessages({
   }
 })
 
-out_dir <- file.path("tests", "fixtures", "r")
+out_dir <- file.path("fixtures", "r")
 dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
 
 write_json_fixture <- function(obj, name) {
