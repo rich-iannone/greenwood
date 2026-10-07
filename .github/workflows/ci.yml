@@ -10,6 +10,9 @@ on:
   release:
     types: [published]
 
+# Releases: Python is tagged `v*` and R `r-v*` (see RELEASING.md). Every job below is skipped for an
+# R release, so only a `v*` release builds and publishes to PyPI.
+#
 # The Python package lives in python/. Its tests also read the shared spec/ and fixtures/r/
 # directories at the repo root, so the whole repo is checked out.
 defaults:
@@ -19,6 +22,7 @@ defaults:
 jobs:
   lint:
     name: Python lint
+    if: github.event_name != 'release' || startsWith(github.event.release.tag_name, 'v')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -38,6 +42,7 @@ jobs:
 
   test:
     name: Python test (${{ matrix.os }}, ${{ matrix.python-version }})
+    if: github.event_name != 'release' || startsWith(github.event.release.tag_name, 'v')
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -60,6 +65,7 @@ jobs:
 
   parity:
     name: Python parity (Numba, scikit-survival)
+    if: github.event_name != 'release' || startsWith(github.event.release.tag_name, 'v')
     # Optional cross-checks that need heavier, less-portable extras: Numba (accelerated
     # split kernel) and scikit-survival (GPL, Python >= 3.11 only), so this runs on a
     # single well-supported interpreter rather than the full matrix. The relevant tests
@@ -81,7 +87,7 @@ jobs:
     name: Build Python distribution
     runs-on: ubuntu-latest
     needs: [lint, test]
-    if: github.event_name == 'release'
+    if: github.event_name == 'release' && startsWith(github.event.release.tag_name, 'v')
     steps:
       - uses: actions/checkout@v4
         with:
@@ -89,6 +95,18 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Check the version matches the tag
+        # setuptools_scm derives the version from the tag, so a mismatch means the tag isn't a
+        # valid Python release tag (for example `v1.0-final`).
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          pip install "setuptools_scm>=9"
+          version="$(python -m setuptools_scm)"
+          if [ "$version" != "${TAG#v}" ]; then
+            echo "::error::Tag $TAG gives version $version, expected ${TAG#v}."
+            exit 1
+          fi
       - name: Build sdist and wheel
         run: |
           pip install build
@@ -102,7 +120,7 @@ jobs:
     name: Publish to PyPI
     needs: build
     runs-on: ubuntu-latest
-    if: github.event_name == 'release'
+    if: github.event_name == 'release' && startsWith(github.event.release.tag_name, 'v')
     environment:
       name: pypi
       url: https://pypi.org/project/greenwood/
