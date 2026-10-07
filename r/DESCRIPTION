@@ -4,18 +4,19 @@ Version: 0.0.0.9000
 Authors@R:
     person("Richard", "Iannone", , "riannone@me.com", role = c("aut", "cre"),
            comment = c(ORCID = "0000-0003-3925-190X"))
-Description: Survival analysis with a response model shared with the Python
-    package of the same name. 'Surv' objects follow the 'survival' package, so
-    both languages accept the same inputs and give the same results.
+Description: Tools for survival analysis, the study of time-to-event data.
+    Represents censored and multi-state outcomes and provides methods for
+    estimating, comparing, and modeling survival.
 License: MIT + file LICENSE
 URL: https://github.com/rich-iannone/greenwood
 BugReports: https://github.com/rich-iannone/greenwood/issues
 Depends:
     R (>= 4.1.0)
 Imports:
-    survival
+    stats
 Suggests:
     jsonlite,
+    survival,
     testthat (>= 3.0.0)
 Config/testthat/edition: 3
 Encoding: UTF-8
