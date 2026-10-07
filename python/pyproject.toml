@@ -1,10 +1,17 @@
 [build-system]
-requires = ["setuptools>=45", "wheel", "setuptools_scm>=6.2"]
+requires = ["setuptools>=45", "wheel", "setuptools_scm>=9"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools_scm]
 # The Python package lives in python/ of the Greenwood monorepo, so the git root is one up.
 root = ".."
+# Python releases are tagged `v*` and R releases `r-v*` (see RELEASING.md). Only `v*` tags may
+# set the Python version. setuptools_scm's default pattern accepts any prefix, so an `r-v0.1.0`
+# tag would otherwise become Python version 0.1.0.
+tag_regex = '^v(?P<version>\d+(?:\.\d+)*(?:[-.]?(?:a|b|rc|dev|post)\d*)?)$'
+
+[tool.setuptools_scm.scm.git]
+describe_command = ["git", "describe", "--dirty", "--tags", "--long", "--match", "v[0-9]*"]
 
 [tool.setuptools.packages.find]
 include = ["greenwood", "greenwood.*"]
