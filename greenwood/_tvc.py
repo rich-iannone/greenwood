@@ -38,7 +38,9 @@ def split_episodes(
 
     The covariate value measured at visit time `v` applies to the interval `[v, next_v)`.
     The event indicator is 1 only on the final interval for subjects who experienced the
-    event; all earlier intervals carry 0.
+    event; all earlier intervals carry 0. A visit at the follow-up end does not create
+    a new interval: the interval ending there retains the event and the covariate
+    value measured before the endpoint.
 
     Parameters
     ----------

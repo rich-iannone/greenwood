@@ -55,6 +55,11 @@ merges them into the counting-process long format. The `id` column links the two
 `visit_time` names the column in `visits` that carries measurement times. `covariates=` chooses
 which columns of `visits` become time-varying covariates.
 
+A visit exactly at the end of follow-up does not create a zero-length interval.
+The preceding interval still carries the subject's event indicator and uses the
+covariate value measured before that endpoint. If the only visit is at the endpoint,
+`carry_forward=True` keeps `(0, time]` with missing covariates and the original event.
+
 `pbcseq` already repeats each subject's follow-up time and status on every visit row, so the same
 table can serve as both inputs. `split_episodes()` then uses the first row of each subject as its
 baseline, after checking that `futime` and `status` really are constant within the subject.
