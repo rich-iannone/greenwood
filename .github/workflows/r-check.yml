@@ -1,4 +1,4 @@
-name: R-CMD-check
+name: R CMD check
 
 on:
   push:
@@ -13,7 +13,7 @@ jobs:
     # The R package lives in r/. Its tests replay the shared spec/ and fixtures/r/ directories at the
     # repo root, which they find by walking up from the check directory.
     runs-on: ${{ matrix.config.os }}
-    name: ${{ matrix.config.os }} (${{ matrix.config.r }})
+    name: R CMD check (${{ matrix.config.os }}, R ${{ matrix.config.r }})
     strategy:
       fail-fast: false
       matrix:
