@@ -6,17 +6,9 @@
 \alias{greenwood-package}
 \title{greenwood: Modern Survival Analysis}
 \description{
-Greenwood is developed as an R and Python monorepo. Both packages share one
-response model and one set of contracts:
-}
-\details{
-\itemize{
-\item \code{\link[=Surv]{Surv()}} is \code{survival::Surv()}, re-exported unchanged.
-}
-
-The Python package implements the same function under the same name. The
-contracts and the cases both test suites replay live in the repository's
-\verb{spec/} directory.
+Greenwood provides tools for survival analysis, the study of time-to-event
+data. \code{\link[=Surv]{Surv()}} builds the survival response that models and estimators take
+as their outcome.
 }
 \seealso{
 Useful links:
