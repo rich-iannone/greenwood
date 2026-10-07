@@ -5,4 +5,5 @@
 #' as their outcome.
 #'
 #' @keywords internal
+#' @importFrom stats median quantile
 "_PACKAGE"
