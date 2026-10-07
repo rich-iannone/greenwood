@@ -38,7 +38,9 @@ def split_episodes(
 
     The covariate value measured at visit time `v` applies to the interval `[v, next_v)`.
     The event indicator is 1 only on the final interval for subjects who experienced the
-    event; all earlier intervals carry 0.
+    event; all earlier intervals carry 0. A visit at the follow-up end does not create
+    a new interval: the interval ending there retains the event and the covariate
+    value measured before the endpoint.
 
     Parameters
     ----------
@@ -239,7 +241,12 @@ def split_episodes(
         # pre-first-visit interval: (0, v_times[0]) with NaN TVC
         if v_times[0] > 0.0 and carry_forward:
             _append(
-                subj_id, 0.0, v_times[0], 0, static_vals, {col: float("nan") for col in tvc_cols}
+                subj_id,
+                0.0,
+                v_times[0],
+                ev if v_times[0] == t_end else 0,
+                static_vals,
+                {col: float("nan") for col in tvc_cols},
             )
             intervals_added_for_subject += 1
 
@@ -260,8 +267,9 @@ def split_episodes(
                 if carry_forward or intervals_added_for_subject == 0:
                     _append(subj_id, tstart, tstop, ev, static_vals, tvc_here)
             else:
-                # Intermediate intervals are always included; event=0
-                _append(subj_id, tstart, tstop, 0, static_vals, tvc_here)
+                # A terminal visit has no interval of its own. Preserve the event
+                # on the preceding interval when it reaches the follow-up end.
+                _append(subj_id, tstart, tstop, ev if tstop == t_end else 0, static_vals, tvc_here)
                 intervals_added_for_subject += 1
 
     if not out_id and not any(vis_by_id.get(subj_id) for subj_id in base_ids):

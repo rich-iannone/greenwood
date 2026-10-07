@@ -331,6 +331,45 @@ def test_visit_at_exactly_end_time_skipped() -> None:
     assert float(out["tstop"].max()) == pytest.approx(10.0)
 
 
+@pytest.mark.parametrize("carry_forward", [True, False])
+@pytest.mark.parametrize("event_value", [0, 1, 2])
+@pytest.mark.parametrize("visit_times", [[0.0, 10.0], [0.0, 5.0, 10.0, 10.0]])
+def test_terminal_visit_preserves_event(
+    carry_forward: bool, event_value: int, visit_times: list[float]
+) -> None:
+    baseline = pd.DataFrame({"id": [1], "time": [10.0], "event": [event_value]})
+    visits = pd.DataFrame(
+        {"id": [1] * len(visit_times), "day": visit_times, "bili": range(len(visit_times))}
+    )
+    out = gw.split_episodes(
+        baseline,
+        visits,
+        id="id",
+        time="time",
+        event="event",
+        visit_time="day",
+        carry_forward=carry_forward,
+        format="pandas",
+    )
+    expected_starts = [0.0] if len(visit_times) == 2 else [0.0, 5.0]
+    assert out["tstart"].tolist() == expected_starts
+    assert out["event"].tolist() == [0] * (len(out) - 1) + [event_value]
+    assert float(out["tstop"].iloc[-1]) == 10.0
+    assert int(out["bili"].iloc[-1]) == (0 if len(visit_times) == 2 else 1)
+
+
+def test_terminal_first_visit_preserves_event_in_previsit_interval() -> None:
+    baseline = pd.DataFrame({"id": [1], "time": [10.0], "event": [1]})
+    visits = pd.DataFrame({"id": [1], "day": [10.0], "bili": [2.0]})
+    out = gw.split_episodes(
+        baseline, visits, id="id", time="time", event="event", visit_time="day", format="pandas"
+    )
+    assert out["tstart"].tolist() == [0.0]
+    assert out["tstop"].tolist() == [10.0]
+    assert out["event"].tolist() == [1]
+    assert np.isnan(out["bili"].iloc[0])
+
+
 def test_duplicate_visit_times_degenerate_dropped() -> None:
     baseline = pd.DataFrame({"id": [1], "time": [10.0], "event": [1]})
     visits = pd.DataFrame({"id": [1, 1, 1], "day": [0.0, 5.0, 5.0], "bili": [1.0, 2.0, 3.0]})
