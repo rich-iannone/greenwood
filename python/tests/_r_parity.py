@@ -2,7 +2,8 @@
 
 Correctness against R's `survival` is non-negotiable, so statistics are checked to
 tolerance against values exported by `scripts/regenerate_r_fixtures.R` and checked in under
-`tests/fixtures/r/`.
+the shared `fixtures/r/` directory at the repo root, which the R package's tests
+also read.
 """
 
 from __future__ import annotations
@@ -13,7 +14,8 @@ from typing import Any
 
 import numpy as np
 
-FIXTURE_DIR = Path(__file__).parent / "fixtures" / "r"
+# The fixtures live at the repo root, shared with the R package: python/tests -> repo root.
+FIXTURE_DIR = Path(__file__).resolve().parents[2] / "fixtures" / "r"
 
 DEFAULT_RTOL = 1e-9
 DEFAULT_ATOL = 1e-9

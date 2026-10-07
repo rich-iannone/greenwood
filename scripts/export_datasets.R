@@ -4,12 +4,12 @@
 # These back the R-parity harness and the docs examples. Run from the repo root:
 #   Rscript scripts/export_datasets.R
 #
-# Outputs gzipped CSVs into greenwood/data/. Provenance (all survival::):
+# Outputs gzipped CSVs into python/greenwood/data/. Provenance (all survival::):
 #   lung, veteran, ovarian, pbc, colon.
 
 suppressPackageStartupMessages(library(survival))
 
-out_dir <- file.path("greenwood", "data")
+out_dir <- file.path("python", "greenwood", "data")
 dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
 
 write_gz <- function(df, name) {

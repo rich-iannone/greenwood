@@ -2,8 +2,9 @@
 
 Greenwood's `Surv()` mirrors R's `survival::Surv()` exactly. R is the reference implementation:
 the same arguments, the same type inference, the same status coding, the same columns, and the
-same errors and warnings. A future R Greenwood uses `survival::Surv()` directly, so this is what
-keeps the two languages in step. `as_surv()` (see [`event_time.md`](event_time.md)) builds its
+same errors and warnings. Both Greenwood packages implement this contract natively (neither calls
+`survival::Surv()`), and both replay the same recorded cases, so this is what keeps the two
+languages in step. `as_surv()` (see [`event_time.md`](event_time.md)) builds its
 result through `Surv()`.
 
 | | |
@@ -11,7 +12,8 @@ result through `Surv()`.
 | Reference | `survival::Surv()` (fixtures generated with the version in `conformance/surv/metadata.json`) |
 | Fixtures | [`conformance/surv/`](conformance/surv/) |
 | Generator | [`scripts/generate_surv_conformance.R`](../scripts/generate_surv_conformance.R) |
-| Python harness | [`tests/test_surv_conformance.py`](../tests/test_surv_conformance.py) |
+| Python harness | [`python/tests/test_surv_conformance.py`](../python/tests/test_surv_conformance.py) |
+| R harness | [`r/tests/testthat/test-surv-conformance.R`](../r/tests/testthat/test-surv-conformance.R) |
 
 Regenerate from the repo root, then review the diff in `spec/conformance/surv/`:
 
@@ -81,8 +83,23 @@ comparison (`status == 2`). Case weights go to `fit(weights=)`.
 | R's `max()` warning on an all-missing status | not raised | It comes from R itself, not from `Surv()`'s rules. |
 | `Surv` matrix subsetting | `y[i]` with integers, slices, integer arrays, boolean masks | |
 
+## R adaptations
+
+| survival | R Greenwood | Why |
+|---|---|---|
+| class `"Surv"` | class `c("greenwood_surv", "Surv")`, same matrix, columns, and attributes | survival's functions accept it, and Greenwood's methods (`print`, `format`, `[`, `is.na`, `length`) never replace survival's when both are loaded. |
+| levels from `as.factor()` under `type = "mstate"` | sorted in the C locale (`method = "radix"`) | Matches the Python package's order on every platform. |
+| R's `max()` warning on an all-missing status | not raised | It comes from `max()`, not from `Surv()`'s rules (as in Python). |
+
+## Reference drift
+
+The fixtures record the survival version in `conformance/surv/metadata.json` (3.5.3). survival
+3.8-6 additionally warns "type= 'mstate' is deprecated, use a factor variable as status" for
+`type = "mstate"`. Neither Greenwood package raises it yet. Whether to adopt it is decided when the
+fixtures are regenerated on a current survival.
+
 ## Greenwood additions
 
 `gw.first_event(endpoints, censor_at=None, start=None)` builds a multi-state response from one
 `(time, event)` pair per endpoint, with the earliest observed event winning. R's `survival` has no
-direct equivalent, so this helper is Greenwood's own and an R Greenwood would ship the same one.
+direct equivalent, so this helper is Greenwood's own. The R package will ship the same one.

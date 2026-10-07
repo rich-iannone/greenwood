@@ -17,7 +17,8 @@ import math
 from pathlib import Path
 from typing import Any
 
-SPEC_DIR = Path(__file__).resolve().parents[1] / "spec"
+# `spec/` lives at the repo root, shared with the R package: python/tests -> repo root.
+SPEC_DIR = Path(__file__).resolve().parents[2] / "spec"
 CONFORMANCE_DIR = SPEC_DIR / "conformance"
 
 # R's missing and non-finite tokens as written by jsonlite (`na = "string"`).
