@@ -1,10 +1,30 @@
 name: Python Docs
 
+# Path filters: a workflow runs only when files it depends on change. The docs site is built from
+# python/ plus the shared community files linked into it. main has no required status checks, so a
+# skipped workflow can't block a PR. If checks become required, replace these filters with an
+# always-running gate job.
 on:
   push:
     branches:
       - main
+    paths:
+      - "python/**"
+      - "CITATION.cff"
+      - ".github/CONTRIBUTING.md"
+      - ".github/CODE_OF_CONDUCT.md"
+      - ".github/SECURITY.md"
+      - ".github/workflows/docs.yml"
   pull_request:
+    paths:
+      - "python/**"
+      - "CITATION.cff"
+      - ".github/CONTRIBUTING.md"
+      - ".github/CODE_OF_CONDUCT.md"
+      - ".github/SECURITY.md"
+      - ".github/workflows/docs.yml"
+  # Run by hand to refresh the site, for example the changelog page after a release.
+  workflow_dispatch:
 
 jobs:
   build-docs:
