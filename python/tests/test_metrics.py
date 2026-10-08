@@ -700,6 +700,33 @@ class TestCalibrationIncidence:
 
 
 class TestAccuracyInTime:
+    @pytest.mark.parametrize("indices", [[0, 1], [1, 2], [0, 2]])
+    def test_subset_preserves_declared_causes(self, indices: list[int]) -> None:
+        y = Surv(
+            time=[1.0, 2.0, 3.0],
+            event=pd.Categorical(["a", "b", "c"], categories=["censor", "a", "b", "c"]),
+        )[indices]
+        assert y.states == ("a", "b", "c")
+        probs = np.zeros((y.n, 3, 1))
+        probs[np.arange(y.n), indices, 0] = 1.0
+
+        np.testing.assert_allclose(gw.accuracy_in_time(y, probs, times=[4.0]), [1.0])
+
+    def test_all_censored_retains_declared_causes(self) -> None:
+        y = Surv(
+            time=[1.0, 2.0],
+            event=pd.Categorical(["censor", "censor"], categories=["censor", "a", "b"]),
+        )
+        probs = np.zeros((y.n, 2, 2))
+
+        np.testing.assert_allclose(gw.accuracy_in_time(y, probs, times=[0.5, 3.0]), [1.0, np.nan])
+
+    def test_compressed_cause_axis_is_rejected(self) -> None:
+        y = Surv(time=[1.0], event=pd.Categorical(["b"], categories=["censor", "a", "b"]))
+
+        with pytest.raises(ValueError, match="must have 2 causes"):
+            gw.accuracy_in_time(y, np.ones((1, 1, 1)), times=[2.0])
+
     def test_3d_required(self, competing_data) -> None:
         y = competing_data
         with pytest.raises(ValueError, match="3-D"):

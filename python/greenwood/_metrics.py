@@ -1630,7 +1630,8 @@ def accuracy_in_time(
     incidence_probs
         Predicted cumulative incidence probabilities, shape
         `(n_subjects, n_causes, n_times)`. Axis 1 indexes causes in the same order as the states in
-        the `Surv` response (cause 1 first, cause 2 second, etc.). The survival probability (no
+        the `Surv` response (cause 1 first, cause 2 second, etc.), including declared states with
+        no observed events in the evaluation data. The survival probability (no
         event) is computed internally as `1 - sum(CIFs)` and used as class 0 in the argmax.
     times
         Evaluation times. 1-D array-like. Must have length equal to the third dimension of
@@ -1717,7 +1718,12 @@ def accuracy_in_time(
             f"(n_subjects, n_causes, n_times), got shape {preds.shape}."
         )
 
-    n_causes_expected = len(np.unique(surv.status[surv.status > 0]))
+    # Subsetting preserves state codes, even when some causes have no observed events.
+    n_causes_expected = (
+        len(surv.states)
+        if surv.states is not None
+        else len(np.unique(surv.status[surv.status > 0]))
+    )
     if preds.shape[0] != surv.n:
         raise ValueError(
             f"incidence_probs must have {surv.n} subjects (axis 0), got {preds.shape[0]}."
