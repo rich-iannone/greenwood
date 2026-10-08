@@ -34,8 +34,8 @@ pip install "greenwood[all]"
 ```bash
 git clone https://github.com/rich-iannone/greenwood.git
 cd greenwood
-make install   # pip install -e ".[dev]"
-make check     # ruff + pyright + pytest
+make py-install   # pip install -e "python[dev]"
+make py-check     # ruff + pyright + pytest
 ```
 
 The version is derived from git tags by `setuptools_scm`; no version string is committed.
