@@ -15,8 +15,8 @@ Greenwood is an R and Python monorepo:
 - `fixtures/r/`: numeric fixtures exported from R, replayed by both test suites.
 - `scripts/`: the R scripts that generate `spec/conformance/` and `fixtures/r/`.
 
-Run `make` targets from the repository root. Python targets keep their usual names (`make test`),
-and R targets are prefixed with `r-` (`make r-test`).
+Run `make` targets from the repository root. Targets name their language (`make py-test`,
+`make r-test`), and the bare names run both (`make test`, `make check`).
 
 ## Development setup
 
@@ -24,33 +24,33 @@ and R targets are prefixed with `r-` (`make r-test`).
 git clone https://github.com/rich-iannone/greenwood.git
 cd greenwood
 python -m venv .venv && source .venv/bin/activate
-make install          # pip install -e "python[dev]"
+make py-install       # Python package with dev extras, into .venv
+make r-deps           # the R package's dependencies (with pak)
 pre-commit install    # optional but recommended
 ```
 
-For the R package, install its dependencies:
-
-```r
-pak::local_install_deps("r", dependencies = TRUE)
-```
+`make install` does both.
 
 ## The check gate
 
 Before opening a pull request, make sure the full gate is green:
 
 ```bash
-make check            # ruff format + ruff check + pyright + pytest
+make check            # both packages: make py-check and make r-check
 ```
 
-Individual targets: `make lint`, `make type-check`, `make test`, `make test-rparity`.
-For the R package, run `make r-test` and `make r-check`. Run `make help` for the full list.
+If you only changed one package, its gate is enough: `make py-check` (ruff, pyright, pytest) or
+`make r-check` (R CMD check).
+
+Individual targets include `make py-lint`, `make py-type-check`, `make py-test`,
+`make py-test-rparity`, `make r-test`, and `make r-document`. Run `make help` for the full list.
 
 ## House conventions
 
 - **R-validated numerics.** Correctness to tolerance against R's **survival** (and
 `cmprsk`/`flexsurv`/`riskRegression`/`mstate` for specialized estimators) is the brand.
 Regenerate fixtures from the repository root with `Rscript scripts/regenerate_r_fixtures.R`
-(they are written to `fixtures/r/`) and validate with `make test-rparity` and `make r-test`.
+(they are written to `fixtures/r/`) and validate with `make py-test-rparity` and `make r-test`.
 - **Cross-language parity.** Package-level names stay identical across Python and R. Language
 conventions follow each language, and differences are recorded as adaptations in `spec/`.
 - **Narwhals-native.** Never assume Pandas but write data handling against Narwhals and drop
