@@ -1,12 +1,26 @@
 name: R CMD check
 
+# Path filters: a workflow runs only when files it depends on change. spec/ and fixtures/ are shared,
+# so they run both packages' checks. main has no required status checks, so a skipped workflow can't
+# block a PR. If checks become required, replace these filters with an always-running gate job.
 on:
   push:
     branches:
       - main
+    paths:
+      - "r/**"
+      - "spec/**"
+      - "fixtures/**"
+      - ".github/workflows/r-check.yml"
   pull_request:
     branches:
       - main
+    paths:
+      - "r/**"
+      - "spec/**"
+      - "fixtures/**"
+      - ".github/workflows/r-check.yml"
+  workflow_dispatch:
 
 jobs:
   R-CMD-check:
