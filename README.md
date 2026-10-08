@@ -45,10 +45,10 @@ recorded as adaptations in `spec/`.
 From the repository root:
 
 ```bash
-make install    # Python package with dev extras, into .venv
-make check      # Python: ruff, pyright, pytest
-make r-test     # R: testthat
-make r-check    # R: R CMD check
+make install    # Python package (dev extras, into .venv) and R dependencies
+make test       # both test suites (make py-test, make r-test)
+make check      # both gates: ruff, pyright, pytest, and R CMD check
+make py-check   # one package only (or make r-check)
 ```
 
 Run `make help` for every target, and see [`CONTRIBUTING.md`](.github/CONTRIBUTING.md).
