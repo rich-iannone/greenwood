@@ -1293,6 +1293,9 @@ class BoundInputs:
     n_dropped: int = 0
     n_input: int = 0
     options: dict[str, Any] = field(default_factory=lambda: {})
+    # The column names behind each label argument (one for `by="sex"`, several for `~ sex + ecog`),
+    # or `None` when the label was given as values. Curve labels use them (`sex=1`).
+    label_names: dict[str, tuple[str, ...] | None] = field(default_factory=lambda: {})
 
 
 @dataclass(frozen=True)
@@ -1366,6 +1369,12 @@ def bind_fit_inputs(
     else:
         bound = _bind_outcome(outcome, data, designs, labels)
     bound.options = options
+    bound.label_names = {
+        key: (value,)
+        if isinstance(value, str)
+        else (value.names if isinstance(value, _GroupTerms) else None)
+        for key, value in labels.items()
+    }
     _drop_missing_response(bound)
     if "weights" in labels:
         bound.labels["weights"] = _case_weights(bound.labels["weights"], bound.surv)
@@ -1653,9 +1662,11 @@ def _group_labels(frame: Any, names: tuple[str, ...]) -> Array:
     columns = [as_1d(frame.get_column(n).to_numpy()) for n in names]
     if len(columns) == 1:
         return columns[0]
+    from ._strata import format_value
+
     return np.array(
         [
-            ", ".join(f"{n}={v}" for n, v in zip(names, row, strict=True))
+            ", ".join(f"{n}={format_value(v)}" for n, v in zip(names, row, strict=True))
             for row in zip(*columns, strict=True)
         ],
         dtype=object,

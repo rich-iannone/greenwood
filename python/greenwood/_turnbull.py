@@ -26,6 +26,7 @@ import numpy.typing as npt
 
 from ._backends import to_dataframe
 from ._outcome import bind_fit_inputs
+from ._strata import resolve_strata
 
 if TYPE_CHECKING:
     from ._outcome import Outcome
@@ -204,7 +205,7 @@ def _resolve_weights(surv: Surv, weights: Any) -> Array:
 class _TurnbullBlock:
     """One stratum's fitted NPMLE."""
 
-    label: object
+    label: str
     n: int
     interval_low: Array
     interval_high: Array
@@ -215,24 +216,14 @@ class _TurnbullBlock:
 
 
 def _fit_turnbull_blocks(
-    surv: Surv, by: Any, weights: Any, tol: float, max_iter: int
+    surv: Surv, strata: Array, weights: Any, tol: float, max_iter: int
 ) -> list[_TurnbullBlock]:
+    """One NPMLE per curve label in `strata` ("all" for an ungrouped fit), in first-seen order."""
     lower, upper = _to_interval_bounds(surv)
     weight = _resolve_weights(surv, weights)
 
-    if by is None:
-        labels: list[Any] = [None]
-        masks = [np.ones(surv.n, dtype=bool)]
-    else:
-        from ._ingest import to_1d_array as _to_1d_array
-
-        group_labels = _to_1d_array(by, dtype=object)
-        if group_labels.shape[0] != surv.n:
-            raise ValueError("`by` must have the same length as the response.")
-        _, first_idx = np.unique(group_labels, return_index=True)
-        ordered_levels = group_labels[np.sort(first_idx)]
-        labels = list(ordered_levels)
-        masks = [group_labels == lev for lev in ordered_levels]
+    labels: list[str] = list(dict.fromkeys(strata.tolist()))
+    masks = [strata == label for label in labels]
 
     blocks: list[_TurnbullBlock] = []
     for label, mask in zip(labels, masks, strict=True):
@@ -309,6 +300,24 @@ def _rmrl_value(interval_high: Array, survival: Array, s_time: float, tau: float
     hi = np.clip(next_starts, s_time, tau)
     area_window = float((heights * np.clip(hi - lo, 0.0, None)).sum())
     return area_window / s_at
+
+
+def _predict_block(b: _TurnbullBlock, query: Array) -> Array:
+    """Survival at `query`, `nan` strictly inside an ambiguous interval."""
+    m = b.interval_high.shape[0]
+    if m == 0:
+        return np.ones_like(query)
+    idx = np.searchsorted(b.interval_high, query, side="right") - 1
+    out = np.where(idx >= 0, b.survival[idx.clip(min=0)], 1.0)
+
+    idx2 = np.searchsorted(b.interval_high, query, side="left")
+    valid = idx2 < m
+    in_gap = np.zeros(query.shape, dtype=bool)
+    clipped = idx2[valid].clip(max=m - 1)
+    lo = b.interval_low[clipped]
+    hi = b.interval_high[clipped]
+    in_gap[valid] = (query[valid] > lo) & (query[valid] < hi) & (lo != hi)
+    return np.where(in_gap, np.nan, out)
 
 
 class Turnbull:
@@ -417,11 +426,8 @@ class Turnbull:
                 str(b.converged),
             ]
 
-        if self._grouped:
-            labels = [str(b.label) for b in self._blocks]
-            table = align_table(headers, [row_for(b) for b in self._blocks], labels)
-        else:
-            table = align_table(headers, [row_for(self._blocks[0])])
+        labels = [b.label for b in self._blocks]
+        table = align_table(headers, [row_for(b) for b in self._blocks], labels)
         return (
             "Turnbull (self-consistent NPMLE for interval-censored data)\n\n"
             + table
@@ -485,14 +491,12 @@ class Turnbull:
             estimator="Turnbull",
         )
         surv = bound.surv
-        by = bound.labels["by"]
+        strata, self._grouped = resolve_strata(bound, "by")
         weights = bound.labels["weights"]
-        data = bound.data
         self._n_input = bound.n_input
         self.n_dropped_ = bound.n_dropped
 
-        self._blocks = _fit_turnbull_blocks(surv, by, weights, self.tol, self.max_iter)
-        self._grouped = by is not None
+        self._blocks = _fit_turnbull_blocks(surv, strata, weights, self.tol, self.max_iter)
         return self
 
     # -- aligned-array accessors ---------------------------------------------
@@ -521,39 +525,39 @@ class Turnbull:
         return self._concat("survival")
 
     @property
-    def strata_(self) -> Array | None:
-        """Stratum labels for each row, or `None` for unstratified fits."""
-        if not self._grouped:
-            return None
+    def strata_(self) -> Array:
+        """The curve label of each row: `"all"` for one curve, `"sex=1"` and so on for groups."""
         return np.concatenate(
             [np.full(b.interval_low.shape[0], b.label, dtype=object) for b in self._blocks]
         )
 
     # -- quantiles ------------------------------------------------------------
 
-    def quantile(self, p: float) -> Any:
-        r"""Return the `p`-quantile survival time per stratum.
+    def quantile(self, p: Any, *, format: str | None = None) -> Any:
+        r"""Return survival-time quantiles, with their identifiability bounds, for each curve.
 
         Parameters
         ----------
         p
-            Quantile level between 0 and 1 (e.g. `p=0.5` for the median).
+            One or more proportions between 0 and 1 (for example, `0.5` for the median).
+        format
+            Output format: `None` (default), `"pandas"`, `"polars"`, or `"pyarrow"`. When `None`,
+            a backend is auto-detected (Polars, then Pandas, then PyArrow).
 
         Returns
         -------
-        tuple or dict
-            For a single stratum: `(estimate, lower, upper)`. `estimate` is `nan` when the
-            crossing falls inside a non-degenerate (ambiguous) interval, in which case
-            `lower`{.gd-no-link}/`upper` are that interval's bounds rather than a sampling
-            confidence bound. Otherwise `estimate == lower == upper`. For stratified fits: a `dict`
-            keyed by stratum label, with values as above.
+        pandas.DataFrame, polars.DataFrame, or pyarrow.Table
+            One row per curve and proportion, with columns `strata`, `prob`, `time`, `time_low`,
+            and `time_high`. When the crossing falls inside a non-degenerate (ambiguous) interval,
+            `time` is `nan` and `time_low`/`time_high` are that interval's bounds. They bound what
+            the data can identify and are not confidence limits. Otherwise all three are equal.
+            The layout is the same for one curve (`strata` is `"all"`) as for several.
 
         Details
         -------
         The quantile is found by inverting the step-function survival curve, exactly as for
-        `KaplanMeier`, but returning the *identifiability* bracket rather than ever guessing a
-        point inside it. This is always a 3-tuple regardless of whether the crossing is
-        ambiguous, so the return type does not depend on the data.
+        `KaplanMeier`, but reporting the identifiability bracket rather than guessing a point
+        inside it.
 
         Examples
         --------
@@ -568,24 +572,39 @@ class Turnbull:
         tb = gw.Turnbull().fit(y)
 
         # The first-quartile survival time (or its ambiguity bracket)
-        tb.quantile(p=0.25)
+        tb.quantile(p=0.25, format="polars")
         ```
         """
-        level = 1.0 - p
-        if not self._grouped:
-            return _crossing(self._blocks[0], level)
-        return {b.label: _crossing(b, level) for b in self._blocks}
+        probs = [float(v) for v in np.atleast_1d(np.asarray(p, dtype=float))]
+        if any(not 0.0 <= v <= 1.0 for v in probs):
+            raise ValueError("p must be between 0 and 1.")
+        cols: dict[str, list[Any]] = {
+            k: [] for k in ("strata", "prob", "time", "time_low", "time_high")
+        }
+        for b in self._blocks:
+            for prob in probs:
+                point, low, high = _crossing(b, 1.0 - prob)
+                cols["strata"].append(b.label)
+                cols["prob"].append(prob)
+                cols["time"].append(point)
+                cols["time_low"].append(low)
+                cols["time_high"].append(high)
+        return to_dataframe(cols, format=format)
 
-    def median(self) -> Any:
-        """Median survival time per stratum (the 0.5-quantile).
+    def median(self, *, format: str | None = None) -> Any:
+        """Median survival time, with its identifiability bounds, for each curve.
 
-        A convenience wrapper around `quantile(0.5)`. See `quantile` for the return shape.
+        Parameters
+        ----------
+        format
+            Output format: `None` (default), `"pandas"`, `"polars"`, or `"pyarrow"`. When `None`,
+            a backend is auto-detected (Polars, then Pandas, then PyArrow).
 
         Returns
         -------
-        tuple or dict
-            `(estimate, lower, upper)` for a single stratum, or a `dict` keyed by stratum label
-            for stratified fits.
+        pandas.DataFrame, polars.DataFrame, or pyarrow.Table
+            One row per curve, with columns `strata`, `time`, `time_low`, and `time_high`. See
+            `~~greenwood.Turnbull.quantile()` for what the bounds mean.
 
         Examples
         --------
@@ -598,38 +617,49 @@ class Turnbull:
             type="interval2",
         )
         tb = gw.Turnbull().fit(y)
-        tb.median()
+        tb.median(format="polars")
         ```
         """
-        return self.quantile(0.5)
+        cols: dict[str, list[Any]] = {k: [] for k in ("strata", "time", "time_low", "time_high")}
+        for b in self._blocks:
+            point, low, high = _crossing(b, 0.5)
+            cols["strata"].append(b.label)
+            cols["time"].append(point)
+            cols["time_low"].append(low)
+            cols["time_high"].append(high)
+        return to_dataframe(cols, format=format)
 
     # -- restricted mean survival / residual life ------------------------------
 
-    def rmst(self, tau: float) -> Any:
+    def rmst(self, tau: float, *, format: str | None = None) -> Any:
         r"""Restricted mean survival time up to `tau`, under the right-endpoint convention.
 
         Parameters
         ----------
         tau
-            The upper time limit for the restriction. Must be positive.
+            The end of the window. Must be positive.
+        format
+            Output format: `None` (default), `"pandas"`, `"polars"`, or `"pyarrow"`. When `None`,
+            a backend is auto-detected (Polars, then Pandas, then PyArrow).
 
         Returns
         -------
-        float or dict
-            The restricted mean survival time for a single stratum, or a `dict` keyed by stratum
-            label for stratified fits.
+        pandas.DataFrame, polars.DataFrame, or pyarrow.Table
+            One row per curve, with columns `strata`, `tau`, and `estimate`. The layout is the
+            same for one curve (`strata` is `"all"`) as for several.
 
         Details
         -------
         RMST is the area under the survival curve on $[0, \tau]$. Unlike
-        `~~greenwood.Turnbull.predict()` and `quantile()`, which report the genuine identifiability
-        gap as `nan`, RMST needs a single number, so every atom's probability mass, ambiguous or
-        not, is treated as resolving exactly at that atom's *right* endpoint (`interval_high_`).
-        This is Turnbull's own convention for reporting a plottable curve from an otherwise
-        partially-unidentified NPMLE. It is also the most conservative choice for RMST: placing mass
-        as late as possible maximizes the area under the curve, so this systematically reports the
-        *largest* RMST consistent with the data, not an unbiased point estimate. There is no
-        variance estimator for it (no confidence interval is returned).
+        `~~greenwood.Turnbull.predict()` and `quantile()`, which report the genuine
+        identifiability gap as `nan`, RMST needs a single number, so every atom's probability
+        mass, ambiguous or not, is treated as resolving exactly at that atom's *right* endpoint
+        (`interval_high_`). This is Turnbull's own convention for reporting a plottable curve
+        from an otherwise partially-unidentified NPMLE. It is also the most conservative choice
+        for RMST: placing mass as late as possible maximizes the area under the curve, so this
+        reports the *largest* RMST consistent with the data, not an unbiased point estimate.
+        There is no variance estimator for it, so no standard error or confidence limits are
+        reported.
 
         Examples
         --------
@@ -642,15 +672,17 @@ class Turnbull:
             type="interval2",
         )
         tb = gw.Turnbull().fit(y)
-        tb.rmst(tau=7)
+        tb.rmst(tau=7, format="polars")
         ```
         """
-        if not self._grouped:
-            b = self._blocks[0]
-            return _rmst_value(b.interval_high, b.survival, float(tau))
-        return {b.label: _rmst_value(b.interval_high, b.survival, float(tau)) for b in self._blocks}
+        cols: dict[str, list[Any]] = {"strata": [], "tau": [], "estimate": []}
+        for b in self._blocks:
+            cols["strata"].append(b.label)
+            cols["tau"].append(float(tau))
+            cols["estimate"].append(_rmst_value(b.interval_high, b.survival, float(tau)))
+        return to_dataframe(cols, format=format)
 
-    def rmrl(self, s: float, tau: float) -> Any:
+    def rmrl(self, s: float, tau: float, *, format: str | None = None) -> Any:
         r"""Restricted mean residual life at `s`, under the right-endpoint convention.
 
         Parameters
@@ -658,21 +690,24 @@ class Turnbull:
         s
             The landmark time. Must be non-negative.
         tau
-            The upper time limit for the restriction. Must be greater than `s`.
+            The end of the window. Must be greater than `s`.
+        format
+            Output format: `None` (default), `"pandas"`, `"polars"`, or `"pyarrow"`. When `None`,
+            a backend is auto-detected (Polars, then Pandas, then PyArrow).
 
         Returns
         -------
-        float or dict
-            The restricted mean residual life for a single stratum, or a `dict` keyed by stratum
-            label for stratified fits. `nan` if everyone has resolved (under the same right-endpoint
-            convention) by time `s`.
+        pandas.DataFrame, polars.DataFrame, or pyarrow.Table
+            One row per curve, with columns `strata`, `s`, `tau`, and `estimate`. The estimate is
+            `nan` for a curve where everyone has resolved (under the same right-endpoint
+            convention) by `s`.
 
         Details
         -------
         Generalizes `rmst` to a later landmark:
         $\mathrm{RMRL}(s; \tau) = \int_s^\tau S(u)\,du / S(s)$, under the same right-endpoint
-        convention (every atom's mass is treated as resolving at `interval_high_`); see `rmst` for
-        why, and for the resulting conservative (upper-bound) bias.
+        convention (every atom's mass is treated as resolving at `interval_high_`). See `rmst`
+        for why, and for the resulting conservative (upper-bound) bias.
 
         Examples
         --------
@@ -685,38 +720,40 @@ class Turnbull:
             type="interval2",
         )
         tb = gw.Turnbull().fit(y)
-        tb.rmrl(s=4, tau=7)
+        tb.rmrl(s=4, tau=7, format="polars")
         ```
         """
         if tau <= s:
             raise ValueError(f"tau ({tau}) must be greater than s ({s}).")
         if s < 0.0:
             raise ValueError(f"s must be non-negative, got {s}.")
-
-        if not self._grouped:
-            b = self._blocks[0]
-            return _rmrl_value(b.interval_high, b.survival, float(s), float(tau))
-        return {
-            b.label: _rmrl_value(b.interval_high, b.survival, float(s), float(tau))
-            for b in self._blocks
-        }
+        cols: dict[str, list[Any]] = {"strata": [], "s": [], "tau": [], "estimate": []}
+        for b in self._blocks:
+            cols["strata"].append(b.label)
+            cols["s"].append(float(s))
+            cols["tau"].append(float(tau))
+            cols["estimate"].append(_rmrl_value(b.interval_high, b.survival, float(s), float(tau)))
+        return to_dataframe(cols, format=format)
 
     # -- prediction -----------------------------------------------------------
 
-    def predict(self, times: Any) -> Any:
-        r"""Evaluate the survival curve at specified times.
+    def predict(self, times: Any, *, format: str | None = None) -> Any:
+        r"""Read the survival curve at given times, for each curve.
 
         Parameters
         ----------
         times
-            Query times at which to evaluate the curve. Can be a scalar or array-like of floats.
+            One or more times at which to read the curve.
+        format
+            Output format: `None` (default), `"pandas"`, `"polars"`, or `"pyarrow"`. When `None`,
+            a backend is auto-detected (Polars, then Pandas, then PyArrow).
 
         Returns
         -------
-        ndarray or dict
-            For a single stratum: an array (matching `times`' shape) of survival estimates, with
-            `nan` at any query time that falls strictly inside a non-degenerate (ambiguous)
-            interval. For stratified fits: a `dict` keyed by stratum label.
+        pandas.DataFrame, polars.DataFrame, or pyarrow.Table
+            One row per curve and time, with columns `strata`, `time`, and `estimate`. The
+            estimate is `nan` at any time strictly inside a non-degenerate (ambiguous) interval.
+            The layout is the same for one curve (`strata` is `"all"`) as for several.
 
         Details
         -------
@@ -738,37 +775,21 @@ class Turnbull:
         tb = gw.Turnbull().fit(y)
 
         # nan at t=1 (strictly inside the ambiguous (0, 2.5) region)
-        tb.predict(times=[1, 2.5, 5, 7])
+        tb.predict(times=[1, 2.5, 5, 7], format="polars")
         ```
         """
         query = np.atleast_1d(np.asarray(times, dtype=float))
-
-        def one(b: _TurnbullBlock) -> Array:
-            m = b.interval_high.shape[0]
-            if m == 0:
-                return np.ones_like(query)
-            idx = np.searchsorted(b.interval_high, query, side="right") - 1
-            out = np.where(idx >= 0, b.survival[idx.clip(min=0)], 1.0)
-
-            idx2 = np.searchsorted(b.interval_high, query, side="left")
-            valid = idx2 < m
-            in_gap = np.zeros(query.shape, dtype=bool)
-            clipped = idx2[valid].clip(max=m - 1)
-            lo = b.interval_low[clipped]
-            hi = b.interval_high[clipped]
-            in_gap[valid] = (query[valid] > lo) & (query[valid] < hi) & (lo != hi)
-            return np.where(in_gap, np.nan, out)
-
-        if not self._grouped:
-            return one(self._blocks[0])
-        return {b.label: one(b) for b in self._blocks}
+        cols: dict[str, list[Any]] = {"strata": [], "time": [], "estimate": []}
+        for b in self._blocks:
+            cols["strata"].extend([b.label] * query.shape[0])
+            cols["time"].extend(query.tolist())
+            cols["estimate"].extend(_predict_block(b, query).tolist())
+        return to_dataframe(cols, format=format)
 
     # -- interop --------------------------------------------------------------
 
     def _table_columns(self) -> dict[str, Array]:
-        cols: dict[str, Array] = {}
-        if self._grouped:
-            cols["strata"] = self.strata_  # type: ignore[assignment]
+        cols: dict[str, Array] = {"strata": self.strata_}
         cols["interval_low"] = self.interval_low_
         cols["interval_high"] = self.interval_high_
         cols["prob_mass"] = self.prob_mass_
@@ -790,8 +811,8 @@ class Turnbull:
         Returns
         -------
         pandas.DataFrame, polars.DataFrame, or pyarrow.Table
-            A tidy table with columns `interval_low`, `interval_high`, `prob_mass`, `estimate`, and
-            optionally `strata`.
+            A tidy table with columns `strata`, `interval_low`, `interval_high`, `prob_mass`, and
+            `estimate`. The layout is the same for one curve (`strata` is `"all"`) as for several.
 
         Raises
         ------
@@ -822,9 +843,7 @@ def _tidy_turnbull(tb: Turnbull, *, format: str | None = None, **_: Any) -> Any:
 
 def _glance_turnbull(tb: Turnbull, *, format: str | None = None, **_: Any) -> Any:
     """broom-style `glance`: one row per stratum with counts and EM convergence info."""
-    cols: dict[str, list[Any]] = {}
-    if tb._grouped:
-        cols["strata"] = [b.label for b in tb._blocks]
+    cols: dict[str, list[Any]] = {"strata": [b.label for b in tb._blocks]}
     cols["n"] = [float(b.n) for b in tb._blocks]
     cols["n_atoms"] = [float(b.interval_low.shape[0]) for b in tb._blocks]
     cols["n_ambiguous"] = [float(np.sum(b.interval_low != b.interval_high)) for b in tb._blocks]

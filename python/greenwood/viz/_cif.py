@@ -70,7 +70,7 @@ def _n_at_risk_aj(aj: AalenJohansen, query: npt.NDArray[Any]) -> dict[str, npt.N
     first_cause = aj._causes[0]
     out: dict[str, npt.NDArray[Any]] = {}
     for label, block in aj._blocks.items():
-        group_name = str(label) if label is not None else "Overall"
+        group_name = str(label)
         event_times = block[first_cause]["time"]
         n_risk = block[first_cause]["n_risk"]
         idx = np.searchsorted(event_times, query, side="left")
@@ -136,7 +136,7 @@ def _step_data(aj: AalenJohansen) -> dict[str, list[Any]]:
     group_col: list[str] = []
 
     for label, block in aj._blocks.items():
-        group_name = str(label) if label is not None else "Overall"
+        group_name = str(label)
         for cause_int in aj._causes:
             cause_name = str(aj.states_[cause_int - 1])
             data = block[cause_int]
@@ -266,7 +266,7 @@ def plot_cif(
     df = to_dataframe(data)
 
     grouped = aj._grouped
-    labels = [str(k) if k is not None else "Overall" for k in aj._blocks]
+    labels = [str(k) for k in aj._blocks]
 
     if grouped:
         color_scale = alt.Scale(domain=labels, range=list(_PALETTE[: len(labels)]))

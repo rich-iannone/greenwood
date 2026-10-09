@@ -22,11 +22,10 @@ __all__ = ["get_risk_table_frame"]
 
 Array = npt.NDArray[Any]
 
-_OVERALL = "Overall"
-
 
 def _strata_label(block: Any) -> str:
-    return _OVERALL if block.label is None else str(block.label)
+    """A curve's label, the same as in the fit's tables (`"all"` for a single curve)."""
+    return str(block.label)
 
 
 def _default_times(km: KaplanMeier) -> list[float]:

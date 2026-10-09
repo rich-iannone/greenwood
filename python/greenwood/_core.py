@@ -205,10 +205,10 @@ def event_table(
         An `Outcome` or a formula string such as `'Surv(time, status == 2) ~ sex'` is also accepted,
         with its columns read from `data`. The right-hand side names the `group` column(s).
     group
-        Optional grouping variable for stratification, one value per subject. Can be a
-        Pandas/Polars series, 1-D array, or Python sequence. When provided, the table is
-        split into blocks with a `strata` column, one group per block. Groups appear in
-        order of first appearance in the data.
+        Optional grouping variable for stratification, one value per subject. Can be a column
+        name, a Pandas/Polars series, a 1-D array, or a Python sequence. When provided, the table
+        is split into one block per group. Groups appear in order of first appearance in the
+        data.
     weights
         Optional case weights. Can be a 1-D array or series. If `None` (default), uses
         weights from the `surv`{.gd-no-link} response if present, otherwise treats all subjects as
@@ -229,7 +229,9 @@ def event_table(
           at each time.
         - `n_event`: Weighted number of events at each time.
         - `n_censor`: Weighted number of censored subjects at each time.
-        - `strata` (if grouped): Stratum label for each row.
+        - `strata`: The label of each row's group. It is `"all"` without `group`, and
+          `name=value` with it (`"sex=1"`), where the name is the column name, a Series name, or
+          `group` for unnamed values. The table has the same columns either way.
 
         Access columns via `.to_frame()` (optionally `format=`), or iterate directly.
 
@@ -310,10 +312,18 @@ def event_table(
         rhs_to="group",
         estimator="event_table()",
     )
-    surv = bound.surv
-    group = bound.labels["group"]
-    weights = bound.labels["weights"]
+    from ._strata import resolve_strata
 
+    labels, _ = resolve_strata(bound, "group")
+    return tabulate_groups(bound.surv, labels, bound.labels["weights"])
+
+
+def tabulate_groups(surv: Surv, group: Any, weights: Any) -> EventTable:
+    """Tabulate `surv` by the given group values, used as-is (no relabeling).
+
+    `group=None` gives one block with no `strata`. Estimators pass curve labels from
+    `resolve_strata()`, and comparisons such as RMST pass the raw group values they report.
+    """
     from ._ingest import to_1d_array as _to_1d_array
     from ._surv import CensoringType
 

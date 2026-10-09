@@ -16,8 +16,9 @@ import numpy.typing as npt
 from scipy.stats import norm
 
 from ._backends import to_dataframe
-from ._core import event_table
+from ._core import tabulate_groups
 from ._outcome import bind_fit_inputs
+from ._strata import resolve_strata
 
 if TYPE_CHECKING:
     from ._outcome import Outcome
@@ -68,7 +69,7 @@ def _km_confidence(surv: Array, sigma: Array, conf_type: str, z: float) -> tuple
 class _Block:
     """One stratum's fitted curve."""
 
-    label: object
+    label: str
     time: Array
     n_risk: Array
     n_event: Array
@@ -145,7 +146,7 @@ def _resolve_weights(surv: Surv, weights: Any) -> Array:
 
 def _fit_blocks(
     surv: Surv,
-    by: Any,
+    strata: Array,
     weights: Any,
     conf_type: str,
     z: float,
@@ -153,30 +154,24 @@ def _fit_blocks(
     robust: bool = False,
     cluster: Any = None,
 ) -> list[_Block]:
-    et = event_table(surv, group=by, weights=weights)
-    if et.strata is None:
-        labels = [None]
-        masks = [np.ones(len(et), dtype=bool)]
-    else:
-        labels = list(dict.fromkeys(et.strata.tolist()))
-        masks = [et.strata == lab for lab in labels]
+    # `strata` holds one curve label per subject ("all" for an ungrouped fit), so every fit has at
+    # least one labeled block.
+    et = tabulate_groups(surv, strata, weights)
+    assert et.strata is not None
+    labels: list[str] = list(dict.fromkeys(et.strata.tolist()))
+    masks = [et.strata == lab for lab in labels]
 
     # Per-subject arrays needed for robust variance
     subj_entry: Array = np.empty(0)
     subj_exit: Array = np.empty(0)
     subj_event: Array = np.empty(0, dtype=bool)
     subj_weight: Array = np.empty(0)
-    subj_group: Array = np.empty(0, dtype=object)
     subj_cluster: Array | None = None
     if robust:
         subj_entry = surv.entry.astype(float)
         subj_exit = surv.stop.astype(float)
         subj_event = surv.event.astype(bool)
         subj_weight = _resolve_weights(surv, weights)
-        if by is not None:
-            from ._ingest import to_1d_array as _to_1d
-
-            subj_group = _to_1d(by, dtype=object)
         if cluster is not None:
             from ._ingest import to_1d_array as _to_1d
 
@@ -194,19 +189,12 @@ def _fit_blocks(
         surv_hat = np.cumprod(factor)
 
         if robust:
-            if label is None:
-                s_entry = subj_entry
-                s_exit = subj_exit
-                s_event = subj_event
-                s_weight = subj_weight
-                s_cluster = subj_cluster
-            else:
-                smask = subj_group == label
-                s_entry = subj_entry[smask]
-                s_exit = subj_exit[smask]
-                s_event = subj_event[smask]
-                s_weight = subj_weight[smask]
-                s_cluster = subj_cluster[smask] if subj_cluster is not None else None
+            smask = strata == label
+            s_entry = subj_entry[smask]
+            s_exit = subj_exit[smask]
+            s_event = subj_event[smask]
+            s_weight = subj_weight[smask]
+            s_cluster = subj_cluster[smask] if subj_cluster is not None else None
             sigma = _robust_sigma(
                 s_entry, s_exit, s_event, s_weight, t, n, d, cluster_labels=s_cluster
             )
@@ -243,10 +231,26 @@ def _fit_blocks(
     return blocks
 
 
+def _step_values(time: Array, curve: Array, query: Array, baseline: float) -> Array:
+    """Read a right-continuous step function at `query`: the last step at a time <= t."""
+    idx = np.searchsorted(time, query, side="right") - 1
+    return np.where(idx >= 0, curve[idx.clip(min=0)], baseline)
+
+
 def _crossing_time(time: Array, curve: Array, level: float) -> float:
     """First time at which a monotone-decreasing `curve` drops to <= `level`."""
     hit = np.nonzero(curve <= level)[0]
     return float(time[hit[0]]) if hit.size else float("nan")
+
+
+def _block_quantile(block: _Block, p: float) -> tuple[float, float, float]:
+    """The `p` quantile of one curve and its confidence limits."""
+    level = 1.0 - p
+    return (
+        _crossing_time(block.time, block.surv, level),
+        _crossing_time(block.time, block.conf_low, level),
+        _crossing_time(block.time, block.conf_high, level),
+    )
 
 
 def _rmst_block(block: _Block, tau: float) -> tuple[float, float]:
@@ -427,33 +431,14 @@ class KaplanMeier:
 
         lcl, ucl = f"{self.conf_level}LCL", f"{self.conf_level}UCL"
         headers = ["n", "events", "median", lcl, ucl]
-        if self._grouped:
-            med = self.median(ci=True)
-            labels, rows = [], []
-            for b in self._blocks:
-                m, lo, hi = med[b.label]
-                labels.append(str(b.label))
-                rows.append(
-                    [
-                        whole(b.n_risk[0]),
-                        whole(b.n_event.sum()),
-                        whole(m),
-                        whole(lo),
-                        whole(hi),
-                    ]
-                )
-            table = align_table(headers, rows, labels)
-        else:
-            m, lo, hi = self.median(ci=True)
-            b = self._blocks[0]
-            row = [
-                whole(b.n_risk[0]),
-                whole(b.n_event.sum()),
-                whole(m),
-                whole(lo),
-                whole(hi),
-            ]
-            table = align_table(headers, [row])
+        labels, rows = [], []
+        for b in self._blocks:
+            m, lo, hi = _block_quantile(b, 0.5)
+            labels.append(b.label)
+            rows.append(
+                [whole(b.n_risk[0]), whole(b.n_event.sum()), whole(m), whole(lo), whole(hi)]
+            )
+        table = align_table(headers, rows, labels)
         return "KaplanMeier (Kaplan-Meier survival estimate)\n\n" + table + dropped_footer(self)
 
     def fit(
@@ -557,19 +542,17 @@ class KaplanMeier:
             estimator="KaplanMeier",
         )
         surv = bound.surv
-        by = bound.labels["by"]
+        strata, self._grouped = resolve_strata(bound, "by")
         weights = bound.labels["weights"]
         cluster = bound.labels["cluster"]
-        data = bound.data
         self._n_input = bound.n_input
         self.n_dropped_ = bound.n_dropped
 
         z = float(norm.ppf(1.0 - (1.0 - self.conf_level) / 2.0))
         use_robust = self.robust or cluster is not None
         self._blocks = _fit_blocks(
-            surv, by, weights, self.conf_type, z, robust=use_robust, cluster=cluster
+            surv, strata, weights, self.conf_type, z, robust=use_robust, cluster=cluster
         )
-        self._grouped = by is not None
         return self
 
     # -- aligned-array accessors ---------------------------------------------
@@ -608,54 +591,48 @@ class KaplanMeier:
         return self._concat("cumhaz")
 
     @property
-    def strata_(self) -> Array | None:
-        """Stratum labels for each row, or `None` for unstratified fits."""
-        if not self._grouped:
-            return None
+    def strata_(self) -> Array:
+        """The curve label of each row: `"all"` for one curve, `"sex=1"` and so on for groups."""
         return np.concatenate(
             [np.full(b.time.shape[0], b.label, dtype=object) for b in self._blocks]
         )
 
     # -- quantiles ------------------------------------------------------------
 
-    def quantile(self, p: float, *, ci: bool = False) -> Any:
-        r"""Return the `p`-quantile survival time per stratum.
+    def quantile(self, p: Any, *, format: str | None = None) -> Any:
+        r"""Return survival-time quantiles, with confidence limits, for each curve.
 
-        Computes the quantile (percentile) of the survival time distribution, i.e., the time
-        at which the survival curve first drops to (1 - p). For example, `p=0.25` returns the
-        25th percentile (first-quartile time: the time by which 25% of subjects have
-        experienced the event). Useful for reporting clinically meaningful landmarks.
+        The `p` quantile is the time by which a proportion `p` of subjects have had the event: the
+        time at which the survival curve first drops to `1 - p`. For example, `p=0.25` gives the
+        first-quartile time. Confidence limits come from inverting the pointwise confidence band,
+        as R's `quantile.survfit()` does.
 
         Parameters
         ----------
         p
-            Quantile level between 0 and 1. For example, `p=0.5` is the median, `p=0.25` is
-            the first quartile, `p=0.75` is the third quartile.
-        ci
-            If `True`, return (estimate, lower, upper) confidence limits by inverting the
-            survival confidence band (follows R's `quantile.survfit` convention). If `False`
-            (default), return only the point estimate.
+            One or more proportions between 0 and 1. For example, `0.5` is the median, and
+            `[0.25, 0.5, 0.75]` gives the three quartiles.
+        format
+            Output format: `None` (default), `"pandas"`, `"polars"`, or `"pyarrow"`. When `None`,
+            a backend is auto-detected (Polars, then Pandas, then PyArrow).
 
         Returns
         -------
-        float or tuple or dict
-            For a single stratum: a float (point estimate) or 3-tuple of floats
-            (estimate, lower, upper) if `ci=True`. For stratified fits: a dict keyed by
-            stratum label, with values as above. If the survival curve never drops to
-            (1 - p), the quantile is `nan`.
+        pandas.DataFrame, polars.DataFrame, or pyarrow.Table
+            One row per curve and proportion, with columns `strata`, `prob`, `time`, `conf_low`,
+            and `conf_high`. The layout is the same for one curve (`strata` is `"all"`) as for
+            several. A quantile is `nan` when the curve (or a confidence limit) never drops to
+            `1 - p`.
 
         Details
         -------
-        The quantile is found by inverting the step-function survival curve: the smallest time
-        $t$ such that $S(t) \le (1 - p)$. Confidence intervals are obtained by inverting the
-        pointwise confidence band, following R's convention. These are not simultaneous
-        confidence intervals.
+        The quantile is the smallest time $t$ with $S(t) \le 1 - p$. Its confidence limits are
+        the same crossing times for the lower and upper confidence curves. These are pointwise,
+        not simultaneous, intervals.
 
         Examples
         --------
-        Any quantile of the survival distribution is available. Here is the first-quartile
-        survival time (the time by which a quarter of subjects have had the event), with its
-        confidence limits:
+        The three quartiles of survival time, with their confidence limits:
 
         ```{python}
         import greenwood as gw
@@ -665,117 +642,112 @@ class KaplanMeier:
         death = gw.Outcome.surv(time="time", event="status")
         km = gw.KaplanMeier().fit(death, data=lung)
 
-        # Compute the first-quartile survival time with confidence limits
-        km.quantile(p=0.25, ci=True)
+        # Survival-time quartiles with confidence limits
+        km.quantile(p=[0.25, 0.5, 0.75], format="polars")
         ```
         """
-        level = 1.0 - p
+        probs = [float(v) for v in np.atleast_1d(np.asarray(p, dtype=float))]
+        if any(not 0.0 <= v <= 1.0 for v in probs):
+            raise ValueError("p must be between 0 and 1.")
+        cols: dict[str, list[Any]] = {
+            k: [] for k in ("strata", "prob", "time", "conf_low", "conf_high")
+        }
+        for b in self._blocks:
+            for prob in probs:
+                point, lower, upper = _block_quantile(b, prob)
+                cols["strata"].append(b.label)
+                cols["prob"].append(prob)
+                cols["time"].append(point)
+                cols["conf_low"].append(lower)
+                cols["conf_high"].append(upper)
+        return to_dataframe(cols, format=format)
 
-        def one(b: _Block) -> Any:
-            point = _crossing_time(b.time, b.surv, level)
-            if not ci:
-                return point
-            lower = _crossing_time(b.time, b.conf_low, level)
-            upper = _crossing_time(b.time, b.conf_high, level)
-            return (point, lower, upper)
+    def median(self, *, format: str | None = None) -> Any:
+        """Median survival time, with confidence limits, for each curve.
 
-        if not self._grouped:
-            return one(self._blocks[0])
-        return {b.label: one(b) for b in self._blocks}
-
-    def median(self, *, ci: bool = False) -> Any:
-        """Median survival time per stratum (the 0.5-quantile).
-
-        Computes the median survival time: the time at which the survival curve first drops
-        to 0.5, meaning 50% of subjects have experienced the event. A key clinical summary
-        statistic when comparing survival across groups or evaluating prognosis.
+        The median survival time is the time at which the survival curve first drops to 0.5,
+        when half of subjects have had the event. It is a key summary when comparing survival
+        across groups.
 
         Parameters
         ----------
-        ci
-            If `True`, return (estimate, lower, upper) confidence limits by inverting the
-            survival confidence band. If `False` (default), return only the point estimate.
+        format
+            Output format: `None` (default), `"pandas"`, `"polars"`, or `"pyarrow"`. When `None`,
+            a backend is auto-detected (Polars, then Pandas, then PyArrow).
 
         Returns
         -------
-        float or tuple or dict
-            For a single stratum: a float (point estimate) or 3-tuple of floats
-            (estimate, lower, upper) if `ci=True`. For stratified fits: a dict keyed by
-            stratum label, with values as above. If the survival curve never drops to 0.5,
-            the median is `nan`.
+        pandas.DataFrame, polars.DataFrame, or pyarrow.Table
+            One row per curve, with columns `strata`, `time`, `conf_low`, and `conf_high`. The
+            layout is the same for one curve (`strata` is `"all"`) as for several. The median is
+            `nan` when the curve never drops to 0.5.
 
         Details
         -------
-        The median is a convenience wrapper around `quantile(0.5, ci=ci)`. It is the
-        time-to-event value that divides the cohort into two equal halves (in terms of
-        probability of experiencing the event). Unlike parametric models, the non-parametric
-        median may not be uniquely defined if the curve jumps over 0.5; by convention, the
-        first time the curve reaches or falls below 0.5 is returned.
+        This is `~~greenwood.KaplanMeier.quantile()` at `p=0.5`, without the `prob` column. When
+        the curve jumps over 0.5, the first time it reaches or falls below 0.5 is used.
 
         Examples
         --------
-        The median is the time at which the survival curve first drops to 0.5. Pass
-        `ci=True` for its confidence limits:
+        The median survival time for each sex, with confidence limits:
 
         ```{python}
         import greenwood as gw
 
-        # Load data and fit the Kaplan-Meier estimator
+        # Load data and fit one curve per sex
         lung = gw.load_dataset("lung", backend="polars")
-        death = gw.Outcome.surv(time="time", event="status")
-        km = gw.KaplanMeier().fit(death, data=lung)
+        km = gw.KaplanMeier().fit("Surv(time, status) ~ sex", data=lung)
 
-        # Compute the median survival time with confidence limits
-        km.median(ci=True)
+        # Median survival time with confidence limits
+        km.median(format="polars")
         ```
         """
-        return self.quantile(0.5, ci=ci)
+        cols: dict[str, list[Any]] = {k: [] for k in ("strata", "time", "conf_low", "conf_high")}
+        for b in self._blocks:
+            point, lower, upper = _block_quantile(b, 0.5)
+            cols["strata"].append(b.label)
+            cols["time"].append(point)
+            cols["conf_low"].append(lower)
+            cols["conf_high"].append(upper)
+        return to_dataframe(cols, format=format)
 
-    def rmst(self, tau: float, *, ci: bool = False) -> Any:
-        r"""Restricted mean survival time up to `tau` (area under the survival curve).
+    def rmst(self, tau: float, *, format: str | None = None) -> Any:
+        r"""Restricted mean survival time up to `tau` (the area under the survival curve).
 
-        Computes the restricted mean survival time: the expected survival time over a fixed
-        time window [0, tau], calculated as the area under the survival curve up to tau.
-        Unlike median or quantiles, RMST uses all available follow-up information in the
-        window, making it robust and easily interpretable as the average survival time over
-        tau (e.g., 1-year mean survival, 5-year mean survival).
+        The restricted mean survival time is the expected survival time over the window
+        $[0, \tau]$: the area under the survival curve up to `tau`. Unlike the median, it uses
+        all the follow-up in the window, is defined even when the curve never reaches 0.5, and
+        reads as an average (for example, mean survival over the first year).
 
         Parameters
         ----------
         tau
-            The upper time limit for the restriction. Must be positive. Typically chosen as
-            a clinically relevant horizon (e.g., 1, 5, or 10 years).
-        ci
-            If `True`, return (estimate, lower, upper) confidence limits using a normal
-            approximation ($\text{estimate} \pm z \cdot \text{se}$, with lower bound at 0).
-            If `False` (default), return only the point estimate.
+            The end of the window. Typically a clinically relevant horizon (for example, 1, 5,
+            or 10 years).
+        format
+            Output format: `None` (default), `"pandas"`, `"polars"`, or `"pyarrow"`. When `None`,
+            a backend is auto-detected (Polars, then Pandas, then PyArrow).
 
         Returns
         -------
-        float or tuple or dict
-            For a single stratum: a float (point estimate) or 3-tuple of floats
-            (estimate, lower, upper) if `ci=True`. For stratified fits: a dict keyed by
-            stratum label, with values as above.
+        pandas.DataFrame, polars.DataFrame, or pyarrow.Table
+            One row per curve, with columns `strata`, `tau`, `estimate`, `std_error`, `conf_low`,
+            and `conf_high`. The layout is the same for one curve (`strata` is `"all"`) as for
+            several.
 
         Details
         -------
-        The restricted mean survival time is computed as the definite integral of $S(t)$
-        from 0 to $\tau$:
-
         $$
         \mathrm{RMST}(\tau) = \int_0^\tau S(t) \, dt
         $$
 
-        It is estimated numerically by integrating the step-function survival curve. Unlike
-        the median, RMST is defined even when the survival curve does not reach 0.5, and is
-        easily comparable across groups. Confidence intervals use the normal approximation
-        with Greenwood-style variance estimation.
+        is computed exactly from the step-function curve. The standard error is R's
+        `survfit` restricted-mean estimator, and the confidence limits are
+        $\text{estimate} \pm z \cdot \text{se}$, with the lower limit floored at 0.
 
         Examples
         --------
-        The restricted mean survival time is the average survival time over a fixed window,
-        computed as the area under the curve up to `tau`. Here it is over the first 365 days,
-        with its confidence limits:
+        The mean survival time over the first 365 days, with confidence limits:
 
         ```{python}
         import greenwood as gw
@@ -785,72 +757,64 @@ class KaplanMeier:
         death = gw.Outcome.surv(time="time", event="status")
         km = gw.KaplanMeier().fit(death, data=lung)
 
-        # Compute the restricted mean survival time over 365 days
-        km.rmst(tau=365, ci=True)
+        # Restricted mean survival time over 365 days
+        km.rmst(tau=365, format="polars")
         ```
         """
         z = float(norm.ppf(1.0 - (1.0 - self.conf_level) / 2.0))
-
-        def one(b: _Block) -> Any:
+        cols: dict[str, list[Any]] = {
+            k: [] for k in ("strata", "tau", "estimate", "std_error", "conf_low", "conf_high")
+        }
+        for b in self._blocks:
             value, se = _rmst_block(b, float(tau))
-            if not ci:
-                return value
-            return (value, max(0.0, value - z * se), value + z * se)
+            cols["strata"].append(b.label)
+            cols["tau"].append(float(tau))
+            cols["estimate"].append(value)
+            cols["std_error"].append(se)
+            cols["conf_low"].append(max(0.0, value - z * se))
+            cols["conf_high"].append(value + z * se)
+        return to_dataframe(cols, format=format)
 
-        if not self._grouped:
-            return one(self._blocks[0])
-        return {b.label: one(b) for b in self._blocks}
-
-    def rmrl(self, s: float, tau: float, *, ci: bool = False) -> Any:
+    def rmrl(self, s: float, tau: float, *, format: str | None = None) -> Any:
         r"""Restricted mean residual life at time `s`, over the window $(s, \tau]$.
 
-        Computes the expected additional survival time beyond a landmark time `s`, conditional
-        on having survived to `s`, restricted to an upper time limit `tau`. Mathematically:
+        The expected additional survival time beyond a landmark `s`, for subjects who have
+        survived to `s`, restricted to `tau`:
 
         $$
         \mathrm{RMRL}(s; \tau) = \frac{\int_s^\tau S(u) \, du}{S(s)}
         $$
 
-        This is a generalization of RMST to a later landmark point, useful for assessing
-        prognosis or remaining life expectancy for subjects who have already reached a
-        specific milestone.
+        It generalizes the restricted mean survival time (which is `rmrl(0, tau)`) to a later
+        landmark, for example the remaining life expectancy of patients who reached a milestone.
 
         Parameters
         ----------
         s
-            The landmark time. Must be non-negative. Represents the time at which subjects
-            are assessed (e.g., time to remission, time at clinic visit, etc.).
+            The landmark time. Must be non-negative.
         tau
-            The upper time limit for the restriction. Must be greater than $s$. Typically a
-            clinically relevant horizon beyond the landmark (e.g., $s = 180$ days landmark,
-            $\tau = 730$ days endpoint).
-        ci
-            If `True`, return (estimate, lower, upper) confidence limits using a normal
-            approximation ($\text{estimate} \pm z \cdot \text{se}$, with lower bound at 0).
-            If `False` (default), return only the point estimate.
+            The end of the window. Must be greater than `s`.
+        format
+            Output format: `None` (default), `"pandas"`, `"polars"`, or `"pyarrow"`. When `None`,
+            a backend is auto-detected (Polars, then Pandas, then PyArrow).
 
         Returns
         -------
-        float or tuple or dict
-            For a single stratum: a float (point estimate) or 3-tuple of floats
-            (estimate, lower, upper) if `ci=True`. For stratified fits: a dict keyed by
-            stratum label, with values as above. If everyone has failed by time `s`
-            (i.e., S(s) = 0), the value is `nan`.
+        pandas.DataFrame, polars.DataFrame, or pyarrow.Table
+            One row per curve, with columns `strata`, `s`, `tau`, `estimate`, `std_error`,
+            `conf_low`, and `conf_high`. The layout is the same for one curve (`strata` is
+            `"all"`) as for several. The estimate is `nan` for a curve where everyone has had the
+            event by `s`.
 
         Details
         -------
-        The restricted mean residual life at a landmark time `s` measures the expected
-        additional survival time for subjects who have survived to `s`, restricted to time
-        `tau`. It generalizes RMST (which is equivalently rmrl(0, tau)). This is useful in
-        clinical follow-up: given that a patient has survived to time `s`, what is the
-        expected additional survival time? Variance estimation accounts for the conditioning
-        on $S(s)$.
+        The variance is the restricted-mean estimator applied to the conditional curve, summed
+        over event times in $(s, \tau]$. The confidence limits are
+        $\text{estimate} \pm z \cdot \text{se}$, with the lower limit floored at 0.
 
         Examples
         --------
-        Restricted mean residual life is the expected additional survival time for subjects
-        who have already survived to a landmark. Here it is at 180 days, over the window out
-        to 730 days, with confidence limits:
+        The expected additional survival time at 180 days, over the window out to 730 days:
 
         ```{python}
         import greenwood as gw
@@ -860,8 +824,8 @@ class KaplanMeier:
         death = gw.Outcome.surv(time="time", event="status")
         km = gw.KaplanMeier().fit(death, data=lung)
 
-        # Compute the restricted mean residual life at 180 days
-        km.rmrl(s=180, tau=730, ci=True)
+        # Restricted mean residual life at 180 days
+        km.rmrl(s=180, tau=730, format="polars")
         ```
         """
         if tau <= s:
@@ -869,56 +833,54 @@ class KaplanMeier:
         if s < 0.0:
             raise ValueError(f"s must be non-negative, got {s}.")
         z = float(norm.ppf(1.0 - (1.0 - self.conf_level) / 2.0))
-
-        def one(b: _Block) -> Any:
+        cols: dict[str, list[Any]] = {
+            k: [] for k in ("strata", "s", "tau", "estimate", "std_error", "conf_low", "conf_high")
+        }
+        for b in self._blocks:
             value, se = _rmrl_block(b, float(s), float(tau))
-            if not ci:
-                return value
-            return (value, max(0.0, value - z * se), value + z * se)
-
-        if not self._grouped:
-            return one(self._blocks[0])
-        return {b.label: one(b) for b in self._blocks}
+            cols["strata"].append(b.label)
+            cols["s"].append(float(s))
+            cols["tau"].append(float(tau))
+            cols["estimate"].append(value)
+            cols["std_error"].append(se)
+            cols["conf_low"].append(max(0.0, value - z * se))
+            cols["conf_high"].append(value + z * se)
+        return to_dataframe(cols, format=format)
 
     # -- prediction -----------------------------------------------------------
 
-    def predict(self, times: Any, *, what: str = "survival") -> Any:
-        r"""Evaluate the survival or cumulative hazard curve at specified times.
+    def predict(self, times: Any, *, what: str = "survival", format: str | None = None) -> Any:
+        r"""Read the survival or cumulative hazard curve at given times, for each curve.
 
-        Reads the estimated survival function or cumulative hazard off the step-function
-        curve at any set of query times. Useful for extracting survival probabilities or
-        hazard accumulation at clinically relevant time points (e.g., 1-year, 5-year
-        survival).
+        Useful for survival probabilities at clinically relevant times (for example, 1-year and
+        5-year survival) and for the at-risk tables under survival plots.
 
         Parameters
         ----------
         times
-            Query times at which to evaluate the curve. Can be a scalar or array-like of
-            floats. Results are returned as a scalar or array matching the input shape.
+            One or more times at which to read the curve.
         what
-            Quantity to evaluate: `"survival"` (default) for survival probability $S(t)$, or
-            `"cumhaz"` for cumulative hazard $H(t)$. Raises `ValueError` if any other value.
+            `"survival"` (default) for the survival probability $S(t)$, or `"cumhaz"` for the
+            cumulative hazard $H(t)$.
+        format
+            Output format: `None` (default), `"pandas"`, `"polars"`, or `"pyarrow"`. When `None`,
+            a backend is auto-detected (Polars, then Pandas, then PyArrow).
 
         Returns
         -------
-        ndarray or dict
-            For a single stratum: an array (or scalar if `times` is scalar) of estimated values
-            at the query times. For stratified fits: a dict keyed by stratum label, with values
-            as above.
+        pandas.DataFrame, polars.DataFrame, or pyarrow.Table
+            One row per curve and time, with columns `strata`, `time`, and `estimate`. The layout
+            is the same for one curve (`strata` is `"all"`) as for several.
 
         Details
         -------
-        The survival and cumulative hazard curves are step functions defined only at observed
-        event times. Values at times between events are interpolated using the right-continuous
-        step-function convention: the value at time $t$ is the last step at time $\le t$. Times
-        before the first event (or after the last observed time with non-zero survival) may
-        return baseline values (1.0 for survival, 0.0 for cumulative hazard) or the last
-        estimated value, respectively.
+        The curves are right-continuous step functions, so the value at time $t$ is the last
+        step at a time $\le t$. Before the first step it is 1 for survival and 0 for the
+        cumulative hazard.
 
         Examples
         --------
-        Read the survival probability off the curve at any set of times. Here are the
-        estimated survival probabilities at 180, 365, and 730 days:
+        Survival probabilities at 180, 365, and 730 days:
 
         ```{python}
         import greenwood as gw
@@ -929,38 +891,32 @@ class KaplanMeier:
         km = gw.KaplanMeier().fit(death, data=lung)
 
         # Read survival probabilities at specific time points
-        km.predict(times=[180, 365, 730])
+        km.predict(times=[180, 365, 730], format="polars")
         ```
 
-        Pass `what="cumhaz"` instead to evaluate the cumulative hazard at those same times:
+        Pass `what="cumhaz"` to read the cumulative hazard at the same times:
 
         ```{python}
-        # Evaluate the cumulative hazard at the same time points
-        km.predict(times=[180, 365, 730], what="cumhaz")
+        # Read the cumulative hazard at the same time points
+        km.predict(times=[180, 365, 730], what="cumhaz", format="polars")
         ```
         """
         if what not in ("survival", "cumhaz"):
             raise ValueError(f"what must be 'survival' or 'cumhaz', got {what!r}.")
         query = np.atleast_1d(np.asarray(times, dtype=float))
-
-        def one(b: _Block) -> Array:
+        cols: dict[str, list[Any]] = {"strata": [], "time": [], "estimate": []}
+        for b in self._blocks:
             curve = b.surv if what == "survival" else b.cumhaz
             baseline = 1.0 if what == "survival" else 0.0
-            # Right-continuous step function: value at t is the last step at time <= t.
-            idx = np.searchsorted(b.time, query, side="right") - 1
-            out = np.where(idx >= 0, curve[idx.clip(min=0)], baseline)
-            return out
-
-        if not self._grouped:
-            return one(self._blocks[0])
-        return {b.label: one(b) for b in self._blocks}
+            cols["strata"].extend([b.label] * query.shape[0])
+            cols["time"].extend(query.tolist())
+            cols["estimate"].extend(_step_values(b.time, curve, query, baseline).tolist())
+        return to_dataframe(cols, format=format)
 
     # -- interop --------------------------------------------------------------
 
     def _table_columns(self) -> dict[str, Array]:
-        cols: dict[str, Array] = {}
-        if self._grouped:
-            cols["strata"] = self.strata_  # type: ignore[assignment]
+        cols: dict[str, Array] = {"strata": self.strata_}
         cols["time"] = self.time_
         cols["n_risk"] = self._concat("n_risk")
         cols["n_event"] = self._concat("n_event")
@@ -976,7 +932,7 @@ class KaplanMeier:
 
         Exports the Kaplan-Meier step function with one row per time point, including
         risk-set counts, the survival estimate, its standard error, confidence limits, and
-        optional strata labels.
+        curve labels.
 
         Parameters
         ----------
@@ -987,8 +943,9 @@ class KaplanMeier:
         Returns
         -------
         pandas.DataFrame, polars.DataFrame, or pyarrow.Table
-            A tidy table with columns `time`, `n_risk`, `n_event`, `n_censor`, `estimate`,
-            `std_error`, `conf_low`, `conf_high`, and optionally `strata`.
+            A tidy table with columns `strata`, `time`, `n_risk`, `n_event`, `n_censor`,
+            `estimate`, `std_error`, `conf_low`, and `conf_high`. The layout is the same for one
+            curve (`strata` is `"all"`) as for several (`"sex=1"`, `"sex=2"`).
 
         Raises
         ------
@@ -1030,9 +987,7 @@ def _tidy_kaplan_meier(km: KaplanMeier, *, format: str | None = None, **_: Any) 
 
 def _glance_kaplan_meier(km: KaplanMeier, *, format: str | None = None, **_: Any) -> Any:
     """broom-style `glance`: one row per stratum with counts and median survival."""
-    cols: dict[str, list[Any]] = {}
-    if km._grouped:
-        cols["strata"] = [b.label for b in km._blocks]
+    cols: dict[str, list[Any]] = {"strata": [b.label for b in km._blocks]}
     cols["n_start"] = [float(b.n_risk[0]) if b.n_risk.size else float("nan") for b in km._blocks]
     cols["events"] = [float(b.n_event.sum()) for b in km._blocks]
     cols["median"] = [_crossing_time(b.time, b.surv, 0.5) for b in km._blocks]
@@ -1124,26 +1079,11 @@ class NelsonAalen:
         from ._repr import align_table, dropped_footer, num, whole
 
         headers = ["n", "events", "max cumhaz"]
-        if self._grouped:
-            labels, rows = [], []
-            for b in self._blocks:
-                labels.append(str(b.label))
-                rows.append(
-                    [
-                        whole(b.n_risk[0]),
-                        whole(b.n_event.sum()),
-                        num(b.cumhaz[-1]),
-                    ]
-                )
-            table = align_table(headers, rows, labels)
-        else:
-            b = self._blocks[0]
-            row = [
-                whole(b.n_risk[0]),
-                whole(b.n_event.sum()),
-                num(b.cumhaz[-1]),
-            ]
-            table = align_table(headers, [row])
+        labels, rows = [], []
+        for b in self._blocks:
+            labels.append(b.label)
+            rows.append([whole(b.n_risk[0]), whole(b.n_event.sum()), num(b.cumhaz[-1])])
+        table = align_table(headers, rows, labels)
         return (
             "NelsonAalen (Nelson-Aalen cumulative hazard estimate)\n\n"
             + table
@@ -1244,15 +1184,13 @@ class NelsonAalen:
             estimator="NelsonAalen",
         )
         surv = bound.surv
-        by = bound.labels["by"]
+        strata, self._grouped = resolve_strata(bound, "by")
         weights = bound.labels["weights"]
-        data = bound.data
         self._n_input = bound.n_input
         self.n_dropped_ = bound.n_dropped
 
         z = float(norm.ppf(1.0 - (1.0 - self.conf_level) / 2.0))
-        self._blocks = _fit_blocks(surv, by, weights, "log", z)
-        self._grouped = by is not None
+        self._blocks = _fit_blocks(surv, strata, weights, "log", z)
         self._z = z
         return self
 
@@ -1275,10 +1213,8 @@ class NelsonAalen:
         return np.sqrt(self._concat("cumhaz_var"))
 
     @property
-    def strata_(self) -> Array | None:
-        """Stratum labels for each row, or `None` for unstratified fits."""
-        if not self._grouped:
-            return None
+    def strata_(self) -> Array:
+        """The curve label of each row: `"all"` for one curve, `"sex=1"` and so on for groups."""
         return np.concatenate(
             [np.full(b.time.shape[0], b.label, dtype=object) for b in self._blocks]
         )
@@ -1296,9 +1232,7 @@ class NelsonAalen:
                 upper = cumhaz * factor
         lower = np.clip(lower, 0.0, None)
 
-        cols: dict[str, Array] = {}
-        if self._grouped:
-            cols["strata"] = self.strata_  # type: ignore[assignment]
+        cols: dict[str, Array] = {"strata": self.strata_}
         cols["time"] = self.time_
         cols["n_risk"] = self._concat("n_risk")
         cols["n_event"] = self._concat("n_event")
@@ -1312,8 +1246,7 @@ class NelsonAalen:
         """Return the fitted cumulative hazard as a DataFrame.
 
         Exports the Nelson-Aalen estimate with one row per event time, including risk-set counts,
-        the cumulative hazard estimate, its standard error, confidence limits, and optional strata
-        labels.
+        the cumulative hazard estimate, its standard error, confidence limits, and curve labels.
 
         Parameters
         ----------
@@ -1324,8 +1257,9 @@ class NelsonAalen:
         Returns
         -------
         pandas.DataFrame, polars.DataFrame, or pyarrow.Table
-            A tidy table with columns `time`, `n_risk`, `n_event`, `estimate`, `std_error`,
-            `conf_low`, `conf_high`, and optionally `strata`.
+            A tidy table with columns `strata`, `time`, `n_risk`, `n_event`, `estimate`,
+            `std_error`, `conf_low`, and `conf_high`. The layout is the same for one curve
+            (`strata` is `"all"`) as for several.
 
         Raises
         ------
@@ -1366,9 +1300,7 @@ def _tidy_nelson_aalen(na: NelsonAalen, *, format: str | None = None, **_: Any) 
 
 def _glance_nelson_aalen(na: NelsonAalen, *, format: str | None = None, **_: Any) -> Any:
     """broom-style `glance`: one row per stratum with counts and max cumulative hazard."""
-    cols: dict[str, list[Any]] = {}
-    if na._grouped:
-        cols["strata"] = [b.label for b in na._blocks]
+    cols: dict[str, list[Any]] = {"strata": [b.label for b in na._blocks]}
     cols["n_start"] = [float(b.n_risk[0]) if b.n_risk.size else float("nan") for b in na._blocks]
     cols["events"] = [float(b.n_event.sum()) for b in na._blocks]
     cols["max_cumhaz"] = [

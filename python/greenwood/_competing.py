@@ -23,6 +23,7 @@ from scipy.stats import chi2, norm
 from ._backends import to_dataframe
 from ._outcome import bind_fit_inputs
 from ._repr import dropped_note
+from ._strata import resolve_strata
 from ._surv import MULTISTATE_HINT
 
 if TYPE_CHECKING:
@@ -638,8 +639,7 @@ class AalenJohansen:
             estimator="AalenJohansen",
         )
         surv = bound.surv
-        by = bound.labels["by"]
-        data = bound.data
+        strata, self._grouped = resolve_strata(bound, "by")
         self._n_input = bound.n_input
         self.n_dropped_ = bound.n_dropped
 
@@ -662,22 +662,11 @@ class AalenJohansen:
         exit_ = surv.stop
         status = surv.status
 
-        if by is None:
-            self._grouped = False
-            self._blocks = {None: _cif_block(exit_, status, causes, z, self.conf_type)}
-        else:
-            from ._ingest import to_1d_array as _to_1d_array
-
-            labels = _to_1d_array(by, dtype=object)
-            if labels.shape[0] != surv.n:
-                raise ValueError("`by` must have the same length as the response.")
-            self._grouped = True
-            self._blocks = {}
-            for level in dict.fromkeys(labels.tolist()):
-                mask = labels == level
-                self._blocks[level] = _cif_block(
-                    exit_[mask], status[mask], causes, z, self.conf_type
-                )
+        # One block per curve label ("all" for an ungrouped fit), in first-seen order.
+        self._blocks = {}
+        for label in dict.fromkeys(strata.tolist()):
+            mask = strata == label
+            self._blocks[label] = _cif_block(exit_[mask], status[mask], causes, z, self.conf_type)
         self._causes = causes
         return self
 
@@ -703,16 +692,13 @@ class AalenJohansen:
                 cols["cause"].extend([self.states_[cause - 1]] * m)
                 for key in ("time", "n_risk", "estimate", "std_error", "conf_low", "conf_high"):
                     cols[key].extend(data[key].tolist())
-        if not self._grouped:
-            cols.pop("strata")
         return cols
 
     def to_frame(self, *, format: str | None = None) -> Any:
         """Return cumulative-incidence estimates as a DataFrame.
 
         Exports the Aalen-Johansen fit with one row per cause and time point, including the risk
-        set, cumulative-incidence estimate, standard error, confidence limits, and optional strata
-        labels.
+        set, cumulative-incidence estimate, standard error, confidence limits, and curve labels.
 
         Parameters
         ----------
@@ -723,8 +709,9 @@ class AalenJohansen:
         Returns
         -------
         pandas.DataFrame, polars.DataFrame, or pyarrow.Table
-            A tidy table with columns `cause`, `time`, `n_risk`, `estimate`, `std_error`,
-            `conf_low`, `conf_high`, and optionally `strata`.
+            A tidy table with columns `strata`, `cause`, `time`, `n_risk`, `estimate`,
+            `std_error`, `conf_low`, and `conf_high`. The layout is the same for one curve
+            (`strata` is `"all"`) as for several.
 
         Raises
         ------
@@ -1902,9 +1889,7 @@ def _register_adapters() -> None:
         return model.to_frame(format=format)
 
     def _glance_aj(model: AalenJohansen, *, format: str | None = None, **_: Any) -> Any:
-        cols: dict[str, list[Any]] = {}
-        if model._grouped:
-            cols["strata"] = list(model._blocks.keys())
+        cols: dict[str, list[Any]] = {"strata": list(model._blocks.keys())}
         cols["n_causes"] = [len(model.states_)] * len(model._blocks)
         cols["causes"] = [", ".join(str(s) for s in model.states_)] * len(model._blocks)
         return to_dataframe(cols, format=format)

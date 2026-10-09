@@ -227,9 +227,9 @@ def _rmst_group_values(
 
     Returns (rmst_dict, group_labels) where rmst_dict maps group label to (rmst, se) tuple.
     """
-    from ._core import event_table
+    from ._core import tabulate_groups
 
-    et = event_table(surv, group=group, weights=None)
+    et = tabulate_groups(surv, group, None)
 
     # The event table has a 'strata' column when group is provided
     if et.strata is None:  # pragma: no cover

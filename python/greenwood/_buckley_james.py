@@ -28,6 +28,7 @@ from scipy.stats import norm
 
 from ._backends import to_dataframe
 from ._cox import _design_matrix_spec
+from ._nonparametric import _step_values
 from ._outcome import bind_fit_inputs
 from ._repr import dropped_note
 
@@ -53,7 +54,7 @@ def _bj_pseudo_response(log_time: Array, event: Array, x: Array, beta: Array) ->
     shifted to be positive first (the restricted mean residual life used here is invariant to
     that shift).
     """
-    from ._nonparametric import KaplanMeier
+    from ._nonparametric import KaplanMeier, _rmrl_block
     from ._surv import Surv
 
     resid = log_time - x @ beta
@@ -71,7 +72,7 @@ def _bj_pseudo_response(log_time: Array, event: Array, x: Array, beta: Array) ->
         s_i = float(resid_shifted[i])
         if s_i >= tau:
             continue  # the tail-corrected observation itself: no additional residual to add
-        y_star[i] = log_time[i] + km.rmrl(s_i, tau)
+        y_star[i] = log_time[i] + _rmrl_block(km._blocks[0], s_i, tau)[0]
     return y_star
 
 
@@ -414,7 +415,8 @@ class BuckleyJames:
         columns: dict[str, Array] = {"time": query}
         for i in range(x.shape[0]):
             shifted = log_query - mu[i] + self._resid_shift
-            columns[f"subject_{i + 1}"] = self._resid_km.predict(shifted)
+            block = self._resid_km._blocks[0]
+            columns[f"subject_{i + 1}"] = _step_values(block.time, block.surv, shifted, 1.0)
         return to_dataframe(columns, format=format)
 
     def _coefficient_columns(self) -> dict[str, Any]:

@@ -147,71 +147,83 @@ def _resolve_statistic(
     times: float | None,
     is_grouped: bool,
 ) -> Callable[[KaplanMeier], float]:
-    """Convert a built-in statistic name to a callable on a fitted KaplanMeier."""
+    """Convert a built-in statistic name to a callable on a fitted KaplanMeier.
+
+    The callables read each curve's fitted arrays directly (not the data-frame summaries), so
+    bootstrapping needs no DataFrame library and stays fast across thousands of refits.
+    """
+    from ._nonparametric import _block_quantile, _rmst_block, _step_values
+
+    def median(block: Any) -> float:
+        return _block_quantile(block, 0.5)[0]
+
     if name == "median":
         if is_grouped:
             raise ValueError("Use 'median_diff' for grouped bootstrap (by= is set).")
-        return lambda km: float(km.median())
+        return lambda km: _single_curve(km, median)
 
     if name == "rmst":
         if tau is None:
             raise ValueError("tau= is required for statistic='rmst'.")
         if is_grouped:
             raise ValueError("Use 'rmst_diff' for grouped bootstrap (by= is set).")
-        _tau = tau
-        return lambda km: float(km.rmst(_tau))
+        _tau = float(tau)
+        return lambda km: _single_curve(km, lambda b: _rmst_block(b, _tau)[0])
 
     if name == "quantile":
         if p is None:
             raise ValueError("p= is required for statistic='quantile'.")
         if is_grouped:
             raise ValueError("statistic='quantile' is not supported with by=.")
-        _p = p
-        return lambda km: float(km.quantile(_p))
+        _p = float(p)
+        return lambda km: _single_curve(km, lambda b: _block_quantile(b, _p)[0])
+
+    def survival_at(t: float) -> Callable[[Any], float]:
+        return lambda b: float(_step_values(b.time, b.surv, np.array([t]), 1.0)[0])
 
     if name == "survival":
         if times is None:
             raise ValueError("times= is required for statistic='survival'.")
         if is_grouped:
             raise ValueError("Use 'survival_diff' for grouped bootstrap (by= is set).")
-        _t = float(times)
-        return lambda km: float(km.predict([_t])[0])
+        return lambda km: _single_curve(km, survival_at(float(times)))
 
     if name == "median_diff":
         if not is_grouped:
             raise ValueError("by= is required for statistic='median_diff'.")
-        return lambda km: _grouped_diff(km.median())
+        return lambda km: _grouped_diff(_per_curve(km, median))
 
     if name == "rmst_diff":
         if not is_grouped:
             raise ValueError("by= is required for statistic='rmst_diff'.")
         if tau is None:
             raise ValueError("tau= is required for statistic='rmst_diff'.")
-        _tau = tau
-        return lambda km: _grouped_diff(km.rmst(_tau))
+        _tau = float(tau)
+        return lambda km: _grouped_diff(_per_curve(km, lambda b: _rmst_block(b, _tau)[0]))
 
     if name == "survival_diff":
         if not is_grouped:
             raise ValueError("by= is required for statistic='survival_diff'.")
         if times is None:
             raise ValueError("times= is required for statistic='survival_diff'.")
-        _t = float(times)
-
-        def _surv_diff(km: KaplanMeier) -> float:
-            pred_dict = km.predict([_t])
-            keys = sorted(pred_dict.keys(), key=str)
-            return float(pred_dict[keys[0]][0]) - float(pred_dict[keys[1]][0])
-
-        return _surv_diff
+        return lambda km: _grouped_diff(_per_curve(km, survival_at(float(times))))
 
     raise ValueError(f"Unknown statistic {name!r}. Choose from: {sorted(_VALID_STATISTICS)}.")
 
 
-def _grouped_diff(result: dict[Any, float] | Any) -> float:
-    """Extract the difference (group1 - group2) from a dict-keyed result."""
-    if not isinstance(result, dict):
-        raise TypeError("Expected a dict from a grouped KaplanMeier, got a scalar.")
-    keys = sorted(result.keys(), key=str)
+def _single_curve(km: KaplanMeier, value: Callable[[Any], float]) -> float:
+    """`value` of the fit's only curve."""
+    return float(value(km._blocks[0]))
+
+
+def _per_curve(km: KaplanMeier, value: Callable[[Any], float]) -> dict[str, float]:
+    """`value` of each curve, keyed by its label."""
+    return {block.label: float(value(block)) for block in km._blocks}
+
+
+def _grouped_diff(result: dict[str, float]) -> float:
+    """The difference between two curves' values (first label minus second, sorted as text)."""
+    keys = sorted(result.keys())
     if len(keys) != 2:
         raise ValueError(f"Diff statistics require exactly 2 groups, got {len(keys)}: {keys}.")
     return float(result[keys[0]]) - float(result[keys[1]])
