@@ -62,36 +62,42 @@ def test_turnbull_ambiguous_quantile_returns_bracket() -> None:
     # resolve where within it the mass belongs, so the whole window is one ambiguous atom.
     y = Surv(time=[0, 0], time2=[10, 10], type="interval2")
     tb = Turnbull().fit(y)
-    estimate, lower, upper = tb.quantile(0.5)
+    estimate, lower, upper = tb.quantile(0.5, format="polars").row(0)[2:]
 
     assert np.isnan(estimate)
     assert lower == 0.0
     assert upper == 10.0
 
 
-def test_turnbull_unambiguous_quantile_returns_equal_triple() -> None:
+def test_turnbull_unambiguous_quantile_returns_equal_bounds() -> None:
     y = Surv(time=[1, 2, 3, 4], event=[1, 1, 1, 1])
     tb = Turnbull().fit(y)
-    estimate, lower, upper = tb.median()
+    med = tb.median(format="polars")
+
+    assert med.columns == ["strata", "time", "time_low", "time_high"]
+    assert med["strata"].to_list() == ["all"]
+
+    estimate, lower, upper = med.row(0)[1:]
 
     assert estimate == lower == upper == 2.0
 
 
-def test_turnbull_quantile_always_returns_triple() -> None:
-    # Type-stable return: always a 3-tuple, never a bare float (ambiguous or not).
+def test_turnbull_quantile_always_returns_same_columns() -> None:
+    # Type-stable return: always the same frame columns, ambiguous or not.
     y = Surv(time=[0, 4, 7, 0, 3, 5], time2=[4, float("inf"), 7, 2.5, 6, 5], type="interval2")
     tb = Turnbull().fit(y)
     for p in (0.1, 0.25, 0.5, 0.75, 0.9):
-        result = tb.quantile(p)
+        result = tb.quantile(p, format="polars")
 
-        assert isinstance(result, tuple)
-        assert len(result) == 3
+        assert result.columns == ["strata", "prob", "time", "time_low", "time_high"]
+        assert result.height == 1
+        assert result["prob"][0] == p
 
 
-def test_turnbull_quantile_never_reached_is_nan_triple() -> None:
+def test_turnbull_quantile_never_reached_is_all_nan() -> None:
     y = Surv(time=[1, 2], event=[1, 0])  # survival never drops to 0
     tb = Turnbull().fit(y)
-    estimate, lower, upper = tb.quantile(0.99)
+    estimate, lower, upper = tb.quantile(0.99, format="polars").row(0)[2:]
 
     assert np.isnan(estimate)
     assert np.isnan(lower)
@@ -101,7 +107,7 @@ def test_turnbull_quantile_never_reached_is_nan_triple() -> None:
 def test_turnbull_predict_nan_inside_ambiguous_interval() -> None:
     y = Surv(time=[0, 4, 7, 0, 3, 5], time2=[4, float("inf"), 7, 2.5, 6, 5], type="interval2")
     tb = Turnbull().fit(y)
-    pred = tb.predict([1.0, 2.5, 5.0, 7.0])
+    pred = tb.predict([1.0, 2.5, 5.0, 7.0], format="polars")["estimate"].to_numpy()
 
     assert np.isnan(pred[0])  # strictly inside the ambiguous (0, 2.5) region
     assert not np.isnan(pred[1])  # exactly at the boundary: defined
@@ -113,7 +119,10 @@ def test_turnbull_predict_before_first_atom_is_one() -> None:
     y = Surv(time=[2, 3], event=[1, 1])
     tb = Turnbull().fit(y)
 
-    np.testing.assert_allclose(tb.predict([0.0]), [1.0])
+    pred = tb.predict([0.0], format="polars")
+
+    assert pred.columns == ["strata", "time", "estimate"]
+    np.testing.assert_allclose(pred["estimate"].to_numpy(), [1.0])
 
 
 def test_turnbull_rmst_reduces_to_km() -> None:
@@ -121,7 +130,9 @@ def test_turnbull_rmst_reduces_to_km() -> None:
     tb = Turnbull().fit(y)
     km = KaplanMeier().fit(y)
 
-    assert tb.rmst(4) == pytest.approx(km.rmst(4), abs=1e-8)
+    tb_rmst = tb.rmst(4, format="polars")["estimate"][0]
+
+    assert tb_rmst == pytest.approx(km.rmst(4, format="polars")["estimate"][0], abs=1e-8)
 
 
 def test_turnbull_rmrl_reduces_to_km() -> None:
@@ -129,7 +140,9 @@ def test_turnbull_rmrl_reduces_to_km() -> None:
     tb = Turnbull().fit(y)
     km = KaplanMeier().fit(y)
 
-    assert tb.rmrl(2, 4) == pytest.approx(km.rmrl(2, 4), abs=1e-8)
+    tb_rmrl = tb.rmrl(2, 4, format="polars")["estimate"][0]
+
+    assert tb_rmrl == pytest.approx(km.rmrl(2, 4, format="polars")["estimate"][0], abs=1e-8)
 
 
 def test_turnbull_rmst_right_endpoint_convention() -> None:
@@ -139,22 +152,24 @@ def test_turnbull_rmst_right_endpoint_convention() -> None:
     y = Surv(time=[0, 0], time2=[10, 10], type="interval2")
     tb = Turnbull().fit(y)
 
-    assert tb.rmst(10) == pytest.approx(10.0)
-    assert tb.rmst(5) == pytest.approx(5.0)
+    assert tb.rmst(10, format="polars")["estimate"][0] == pytest.approx(10.0)
+    assert tb.rmst(5, format="polars")["estimate"][0] == pytest.approx(5.0)
 
 
 def test_turnbull_rmrl_equals_rmst_at_zero() -> None:
     y = Surv(time=[0, 4, 7, 0, 3, 5], time2=[4, float("inf"), 7, 2.5, 6, 5], type="interval2")
     tb = Turnbull().fit(y)
 
-    assert tb.rmrl(0.0, 7.0) == pytest.approx(tb.rmst(7.0))
+    rmrl = tb.rmrl(0.0, 7.0, format="polars")["estimate"][0]
+
+    assert rmrl == pytest.approx(tb.rmst(7.0, format="polars")["estimate"][0])
 
 
 def test_turnbull_rmrl_nan_when_fully_resolved() -> None:
     y = Surv(time=[1, 2], event=[1, 1])
     tb = Turnbull().fit(y)
 
-    assert np.isnan(tb.rmrl(2.0, 5.0))
+    assert np.isnan(tb.rmrl(2.0, 5.0, format="polars")["estimate"][0])
 
 
 def test_turnbull_rmrl_invalid_tau() -> None:
@@ -171,21 +186,22 @@ def test_turnbull_rmrl_invalid_s() -> None:
         tb.rmrl(-1.0, 4.0)
 
 
-def test_turnbull_rmst_grouped_returns_dict() -> None:
+def test_turnbull_rmst_grouped_returns_one_row_per_curve() -> None:
     y = Surv(time=[1, 2, 1, 2], event=[1, 1, 1, 1])
     tb = Turnbull().fit(y, by=["a", "a", "b", "b"])
-    result = tb.rmst(2)
+    result = tb.rmst(2, format="polars")
 
-    assert set(result) == {"a", "b"}
+    assert result.columns == ["strata", "tau", "estimate"]
+    assert result["strata"].to_list() == ["by=a", "by=b"]
 
 
-def test_turnbull_grouped_returns_dict() -> None:
+def test_turnbull_grouped_returns_one_row_per_curve() -> None:
     y = Surv(time=[1, 2, 1, 2], event=[1, 1, 1, 1])
     tb = Turnbull().fit(y, by=["a", "a", "b", "b"])
-    med = tb.median()
+    med = tb.median(format="polars")
 
-    assert set(med) == {"a", "b"}
-    assert tb.strata_ is not None
+    assert med["strata"].to_list() == ["by=a", "by=b"]
+    assert set(tb.strata_) == {"by=a", "by=b"}
 
 
 def test_turnbull_weights_equivalent_to_duplication() -> None:
@@ -226,7 +242,8 @@ def test_turnbull_to_frame_columns() -> None:
     tb = Turnbull().fit(y)
     df = tb.to_frame(format="pandas")
 
-    assert list(df.columns) == ["interval_low", "interval_high", "prob_mass", "estimate"]
+    assert list(df.columns) == ["strata", "interval_low", "interval_high", "prob_mass", "estimate"]
+    assert set(df["strata"]) == {"all"}
 
 
 def test_turnbull_repr_unfit_and_fit() -> None:
@@ -283,4 +300,5 @@ def test_turnbull_glance_and_tidy() -> None:
 
     t = gw.tidy(tb, format="pandas")
 
-    assert list(t.columns) == ["interval_low", "interval_high", "prob_mass", "estimate"]
+    assert list(t.columns) == ["strata", "interval_low", "interval_high", "prob_mass", "estimate"]
+    assert g["strata"].iloc[0] == "all"

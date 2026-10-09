@@ -409,7 +409,7 @@ def test_kaplan_meier_formula_combines_several_groups(lung: Any) -> None:
     km = gw.KaplanMeier().fit("Surv(time, status == 2) ~ sex + ph.ecog", data=lung)
     labels = set(np.asarray(km.strata_).tolist())
 
-    assert "sex=1, ph.ecog=0.0" in labels
+    assert "sex=1, ph.ecog=0" in labels
 
 
 def test_kaplan_meier_formula_rejects_expressions(lung: Any) -> None:

@@ -32,29 +32,35 @@ def test_km_median() -> None:
     km = KaplanMeier().fit(Surv(time=[1, 2, 3, 4], event=[1, 1, 1, 1]))
 
     # S = 0.75, 0.5, 0.25, 0; first time S <= 0.5 is t=2.
-    assert km.median() == 2.0
+    med = km.median(format="polars")
+
+    assert med.columns == ["strata", "time", "conf_low", "conf_high"]
+    assert med["strata"].to_list() == ["all"]
+    assert med["time"][0] == 2.0
 
 
 def test_km_predict_step_function() -> None:
     km = KaplanMeier().fit(Surv(time=[1, 2, 3], event=[1, 1, 1]))
-    pred = km.predict([0.5, 1.0, 1.5, 2.0, 3.0, 5.0])
+    pred = km.predict([0.5, 1.0, 1.5, 2.0, 3.0, 5.0], format="polars")
 
-    np.testing.assert_allclose(pred, [1.0, 2 / 3, 2 / 3, 1 / 3, 0.0, 0.0])
+    assert pred.columns == ["strata", "time", "estimate"]
+    np.testing.assert_allclose(pred["time"].to_numpy(), [0.5, 1.0, 1.5, 2.0, 3.0, 5.0])
+    np.testing.assert_allclose(pred["estimate"].to_numpy(), [1.0, 2 / 3, 2 / 3, 1 / 3, 0.0, 0.0])
 
 
 def test_km_predict_cumhaz() -> None:
     km = KaplanMeier().fit(Surv(time=[1, 2, 3], event=[1, 1, 1]))
-    pred = km.predict([1.0, 2.0], what="cumhaz")
+    pred = km.predict([1.0, 2.0], what="cumhaz", format="polars")
 
-    np.testing.assert_allclose(pred, [1 / 3, 1 / 3 + 1 / 2])
+    np.testing.assert_allclose(pred["estimate"].to_numpy(), [1 / 3, 1 / 3 + 1 / 2])
 
 
-def test_km_grouped_returns_dict() -> None:
+def test_km_grouped_returns_one_row_per_curve() -> None:
     km = KaplanMeier().fit(Surv(time=[1, 2, 1, 2], event=[1, 1, 1, 1]), by=["a", "a", "b", "b"])
-    med = km.median()
+    med = km.median(format="polars")
 
-    assert set(med) == {"a", "b"}
-    assert km.strata_ is not None
+    assert med["strata"].to_list() == ["by=a", "by=b"]
+    assert set(km.strata_) == {"by=a", "by=b"}
 
 
 def test_km_confidence_bracket_estimate() -> None:
@@ -80,6 +86,7 @@ def test_km_to_pandas_columns() -> None:
     df = km.to_frame(format="pandas")
 
     assert list(df.columns) == [
+        "strata",
         "time",
         "n_risk",
         "n_event",
@@ -89,6 +96,7 @@ def test_km_to_pandas_columns() -> None:
         "conf_low",
         "conf_high",
     ]
+    assert set(df["strata"]) == {"all"}
 
 
 def test_km_to_pandas_grouped_has_strata() -> None:
@@ -115,9 +123,19 @@ class TestNelsonAalenTidy:
         y = Surv(time=lung["time"], event=(lung["status"] == 2))
         na = NelsonAalen().fit(y)
         t = gw.tidy(na, format="pandas")
-        expected = ["time", "n_risk", "n_event", "estimate", "std_error", "conf_low", "conf_high"]
+        expected = [
+            "strata",
+            "time",
+            "n_risk",
+            "n_event",
+            "estimate",
+            "std_error",
+            "conf_low",
+            "conf_high",
+        ]
 
         assert list(t.columns) == expected
+        assert set(t["strata"]) == {"all"}
 
     def test_tidy_matches_to_frame(self) -> None:
         na = NelsonAalen().fit(Surv(time=[1, 2, 3, 4], event=[1, 0, 1, 1]))
@@ -131,7 +149,7 @@ class TestNelsonAalenTidy:
         t = gw.tidy(na, format="pandas")
 
         assert "strata" in t.columns
-        assert set(t["strata"]) == {"a", "b"}
+        assert set(t["strata"]) == {"by=a", "by=b"}
 
     def test_tidy_format_polars(self) -> None:
         import polars as pl
@@ -155,8 +173,9 @@ class TestNelsonAalenGlance:
         na = NelsonAalen().fit(y)
         g = gw.glance(na, format="pandas")
 
-        assert list(g.columns) == ["n_start", "events", "max_cumhaz"]
+        assert list(g.columns) == ["strata", "n_start", "events", "max_cumhaz"]
         assert g.shape[0] == 1
+        assert g["strata"].iloc[0] == "all"
 
     def test_glance_values(self) -> None:
         na = NelsonAalen().fit(Surv(time=[1, 2, 3], event=[1, 1, 1]))
@@ -172,7 +191,7 @@ class TestNelsonAalenGlance:
 
         assert "strata" in g.columns
         assert g.shape[0] == 2
-        assert list(g["strata"]) == ["a", "b"]
+        assert list(g["strata"]) == ["by=a", "by=b"]
 
     def test_glance_format_polars(self) -> None:
         import polars as pl
@@ -192,34 +211,37 @@ class TestKaplanMeierQuantile:
     def test_quantile_median_matches_median(self) -> None:
         km = KaplanMeier().fit(Surv(time=[1, 2, 3, 4], event=[1, 1, 1, 1]))
 
-        assert km.quantile(0.5) == km.median()
+        q = km.quantile(0.5, format="polars")
+        m = km.median(format="polars")
+
+        assert q["time"][0] == m["time"][0]
 
     def test_quantile_first_quartile(self) -> None:
         km = KaplanMeier().fit(Surv(time=[1, 2, 3, 4], event=[1, 1, 1, 1]))
 
         # S = 0.75, 0.5, 0.25, 0. First time S <= 0.75 is t=1.
-        assert km.quantile(0.25) == 1.0
+        assert km.quantile(0.25, format="polars")["time"][0] == 1.0
 
     def test_quantile_third_quartile(self) -> None:
         km = KaplanMeier().fit(Surv(time=[1, 2, 3, 4], event=[1, 1, 1, 1]))
 
         # First time S <= 0.25 is t=3.
-        assert km.quantile(0.75) == 3.0
+        assert km.quantile(0.75, format="polars")["time"][0] == 3.0
 
     def test_quantile_never_reached_returns_nan(self) -> None:
         km = KaplanMeier().fit(Surv(time=[1, 2, 3], event=[1, 0, 0]))
 
         # S = 2/3, 2/3, 2/3. Never drops to 0.5, so median is nan.
-        assert np.isnan(km.quantile(0.5))
+        assert np.isnan(km.quantile(0.5, format="polars")["time"][0])
 
-    def test_quantile_with_ci(self) -> None:
+    def test_quantile_includes_confidence_limits(self) -> None:
         km = KaplanMeier().fit(Surv(time=[1, 2, 3, 4], event=[1, 1, 1, 1]))
-        result = km.quantile(0.5, ci=True)
+        result = km.quantile(0.5, format="polars")
 
-        assert isinstance(result, tuple)
-        assert len(result) == 3
+        assert result.columns == ["strata", "prob", "time", "conf_low", "conf_high"]
+        assert result.height == 1
 
-        estimate, lower, upper = result
+        estimate, lower, upper = result.row(0)[2:]
 
         assert estimate == 2.0
         assert lower <= estimate
@@ -227,8 +249,8 @@ class TestKaplanMeierQuantile:
 
     def test_quantile_ci_matches_median_ci(self) -> None:
         km = KaplanMeier().fit(Surv(time=[1, 2, 3, 4, 5, 6, 7, 8], event=[1, 1, 1, 1, 1, 0, 0, 0]))
-        q_est, q_lo, q_hi = km.quantile(0.5, ci=True)
-        m_est, m_lo, m_hi = km.median(ci=True)
+        q_est, q_lo, q_hi = km.quantile(0.5, format="polars").row(0)[2:]
+        m_est, m_lo, m_hi = km.median(format="polars").row(0)[1:]
 
         assert q_est == m_est
         assert q_lo == m_lo
@@ -239,34 +261,28 @@ class TestKaplanMeierQuantile:
             Surv(time=[1, 2, 3, 4, 1, 2, 3, 4], event=[1, 1, 1, 1, 1, 1, 1, 1]),
             by=["a", "a", "a", "a", "b", "b", "b", "b"],
         )
-        result = km.quantile(0.5)
+        result = km.quantile(0.5, format="polars")
 
-        assert isinstance(result, dict)
-        assert set(result) == {"a", "b"}
-        assert result["a"] == 2.0
-        assert result["b"] == 2.0
+        assert result["strata"].to_list() == ["by=a", "by=b"]
+        assert result["time"].to_list() == [2.0, 2.0]
 
     def test_quantile_grouped_with_ci(self) -> None:
         km = KaplanMeier().fit(
             Surv(time=[1, 2, 3, 4, 1, 2, 3, 4], event=[1, 1, 1, 1, 1, 1, 1, 1]),
             by=["a", "a", "a", "a", "b", "b", "b", "b"],
         )
-        result = km.quantile(0.25, ci=True)
+        result = km.quantile(0.25, format="polars")
 
-        assert isinstance(result, dict)
+        assert result["strata"].to_list() == ["by=a", "by=b"]
 
-        for label in ("a", "b"):
-            est, lower, upper = result[label]
-
+        for _, _, est, lower, upper in result.iter_rows():
             assert est == 1.0
             assert lower <= est
             assert upper >= est or np.isnan(upper)
 
     def test_quantile_ordering(self) -> None:
         km = KaplanMeier().fit(Surv(time=[1, 2, 3, 4, 5], event=[1, 1, 1, 1, 1]))
-        q25 = km.quantile(0.25)
-        q50 = km.quantile(0.50)
-        q75 = km.quantile(0.75)
+        q25, q50, q75 = km.quantile([0.25, 0.50, 0.75], format="polars")["time"].to_list()
 
         assert q25 <= q50 <= q75
 
@@ -274,9 +290,7 @@ class TestKaplanMeierQuantile:
         lung = gw.load_dataset("lung", backend="pandas")
         y = Surv(time=lung["time"], event=(lung["status"] == 2))
         km = KaplanMeier().fit(y)
-        q25 = km.quantile(0.25)
-        q50 = km.quantile(0.50)
-        q75 = km.quantile(0.75)
+        q25, q50, q75 = km.quantile([0.25, 0.50, 0.75], format="polars")["time"].to_list()
 
         assert q25 > 0
         assert q25 <= q50
@@ -289,23 +303,24 @@ def test_km_rmst_equals_area_under_curve() -> None:
     # 1*(1-0) + (2/3)*(2-1) + (1/3)*(3-2) = 1 + 2/3 + 1/3 = 2.
     km = KaplanMeier().fit(Surv(time=[1, 2, 3], event=[1, 1, 1]))
 
-    assert km.rmst(3.0) == pytest.approx(2.0)
+    assert km.rmst(3.0, format="polars")["estimate"][0] == pytest.approx(2.0)
 
 
 def test_km_rmst_truncates_at_tau() -> None:
     km = KaplanMeier().fit(Surv(time=[1, 2, 3], event=[1, 1, 1]))
 
     # Up to tau=1.5: 1*(1) + (2/3)*(0.5) = 1.3333...
-    assert km.rmst(1.5) == pytest.approx(1.0 + (2 / 3) * 0.5)
+    assert km.rmst(1.5, format="polars")["estimate"][0] == pytest.approx(1.0 + (2 / 3) * 0.5)
 
 
-def test_km_rmst_grouped_and_ci() -> None:
+def test_km_rmst_grouped_has_ci_per_curve() -> None:
     km = KaplanMeier().fit(Surv(time=[1, 2, 1, 2], event=[1, 1, 1, 1]), by=["a", "a", "b", "b"])
-    out = km.rmst(2.0, ci=True)
+    out = km.rmst(2.0, format="polars")
 
-    assert set(out) == {"a", "b"}
+    assert out.columns == ["strata", "tau", "estimate", "std_error", "conf_low", "conf_high"]
+    assert out["strata"].to_list() == ["by=a", "by=b"]
 
-    value, lower, upper = out["a"]
+    value, lower, upper = out["estimate"][0], out["conf_low"][0], out["conf_high"][0]
 
     assert lower <= value <= upper
 
@@ -314,8 +329,11 @@ def test_rmrl_at_zero_equals_rmst() -> None:
     # RMRL(0; tau) is exactly the restricted mean survival time (value and CI).
     km = KaplanMeier().fit(Surv(time=[5, 6, 4, 9, 3, 7, 2, 8], event=[1, 0, 1, 0, 1, 1, 1, 0]))
     for tau in (4.0, 7.0, 9.0):
-        assert km.rmrl(0.0, tau) == pytest.approx(km.rmst(tau))
-        np.testing.assert_allclose(km.rmrl(0.0, tau, ci=True), km.rmst(tau, ci=True))
+        rmrl = km.rmrl(0.0, tau, format="polars")
+        rmst = km.rmst(tau, format="polars")
+        cols = ["estimate", "std_error", "conf_low", "conf_high"]
+        assert rmrl["estimate"][0] == pytest.approx(rmst["estimate"][0])
+        np.testing.assert_allclose(rmrl.select(cols).to_numpy(), rmst.select(cols).to_numpy())
 
 
 def test_rmrl_matches_conditional_area() -> None:
@@ -325,20 +343,31 @@ def test_rmrl_matches_conditional_area() -> None:
     )
     s, tau = 3.0, 9.0
     grid = np.linspace(s, tau, 200001)
-    expected = float(np.trapezoid(km.predict(grid), grid)) / float(km.predict([s])[0])
+    surv = km.predict(grid, format="polars")["estimate"].to_numpy()
+    s_at_s = float(km.predict([s], format="polars")["estimate"][0])
+    expected = float(np.trapezoid(surv, grid)) / s_at_s
 
-    assert km.rmrl(s, tau) == pytest.approx(expected, abs=1e-3)
+    assert km.rmrl(s, tau, format="polars")["estimate"][0] == pytest.approx(expected, abs=1e-3)
 
 
-def test_rmrl_grouped_and_ci() -> None:
+def test_rmrl_grouped_has_ci_per_curve() -> None:
     km = KaplanMeier().fit(
         Surv(time=[2, 4, 6, 3, 5, 7], event=[1, 1, 1, 1, 1, 1]), by=["a", "a", "a", "b", "b", "b"]
     )
-    out = km.rmrl(1.0, 6.0, ci=True)
+    out = km.rmrl(1.0, 6.0, format="polars")
 
-    assert set(out) == {"a", "b"}
+    assert out.columns == [
+        "strata",
+        "s",
+        "tau",
+        "estimate",
+        "std_error",
+        "conf_low",
+        "conf_high",
+    ]
+    assert out["strata"].to_list() == ["by=a", "by=b"]
 
-    value, lower, upper = out["a"]
+    value, lower, upper = out["estimate"][0], out["conf_low"][0], out["conf_high"][0]
 
     assert lower <= value <= upper
     assert value <= 6.0 - 1.0  # bounded by the window width
@@ -347,7 +376,7 @@ def test_rmrl_grouped_and_ci() -> None:
 def test_rmrl_undefined_when_all_failed_before_s() -> None:
     km = KaplanMeier().fit(Surv(time=[1, 2, 3], event=[1, 1, 1]))  # S drops to 0 at t=3
 
-    assert np.isnan(km.rmrl(5.0, 10.0))
+    assert np.isnan(km.rmrl(5.0, 10.0, format="polars")["estimate"][0])
 
 
 def test_rmrl_argument_validation() -> None:
@@ -552,7 +581,7 @@ class TestNelsonAalenEdgeCases:
         df = na.to_frame(format="pandas")
 
         assert "strata" in df.columns
-        assert set(df["strata"]) == {"a", "b"}
+        assert set(df["strata"]) == {"by=a", "by=b"}
 
     def test_to_frame_format_polars(self) -> None:
         import polars as pl
@@ -569,6 +598,7 @@ class TestNelsonAalenEdgeCases:
         df = na.to_frame(format="pandas")
 
         assert list(df.columns) == [
+            "strata",
             "time",
             "n_risk",
             "n_event",

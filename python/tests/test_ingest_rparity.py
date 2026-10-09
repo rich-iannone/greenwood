@@ -103,8 +103,9 @@ def test_km_by_sex_formula_matches_r(lung: Any, backend: str) -> None:
         "Surv(time, status == 2) ~ sex", data=_backend(backend, lung)
     )
     for block in km._blocks:  # pyright: ignore[reportPrivateUsage]
-        expected = fixture[str(block.label)]
-        assert_allclose_to_r(block.surv, expected["surv"], what=f"sex={block.label} surv")
+        assert block.label.startswith("sex=")
+        expected = fixture[block.label.removeprefix("sex=")]
+        assert_allclose_to_r(block.surv, expected["surv"], what=f"{block.label} surv")
         assert_allclose_to_r(block.conf_low, expected["lower_loglog"], what="lower")
         assert_allclose_to_r(block.conf_high, expected["upper_loglog"], what="upper")
 

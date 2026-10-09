@@ -31,7 +31,7 @@ def lung_pd() -> Any:
 def reference(lung_pd: Any) -> Reference:
     """Pandas reference: KM survival at fixed times and Cox coefficients."""
     y = Surv(time=lung_pd["time"], event=(lung_pd["status"] == 2))
-    km = KaplanMeier().fit(y).predict(TIMES)
+    km = KaplanMeier().fit(y).predict(TIMES, format="polars")["estimate"].to_numpy()
     cox = CoxPH().fit(y, lung_pd[["age", "sex"]]).to_frame(format="pandas")["estimate"].to_numpy()
     return km, cox
 
@@ -39,7 +39,9 @@ def reference(lung_pd: Any) -> Reference:
 def test_pandas_columns_and_frame(lung_pd: Any, reference: Reference) -> None:
     ref_km, ref_cox = reference
     y = Surv(time=lung_pd["time"], event=(lung_pd["status"] == 2))
-    np.testing.assert_allclose(KaplanMeier().fit(y).predict(TIMES), ref_km)
+    np.testing.assert_allclose(
+        KaplanMeier().fit(y).predict(TIMES, format="polars")["estimate"].to_numpy(), ref_km
+    )
     cox = CoxPH().fit(y, lung_pd[["age", "sex"]]).to_frame(format="pandas")["estimate"].to_numpy()
     np.testing.assert_allclose(cox, ref_cox)
 
@@ -49,7 +51,9 @@ def test_polars_columns_and_frame(lung_pd: Any, reference: Reference) -> None:
     ref_km, ref_cox = reference
     lp = gw.load_dataset("lung", backend="polars")
     y = Surv(time=lp["time"], event=(lp["status"] == 2))
-    np.testing.assert_allclose(KaplanMeier().fit(y).predict(TIMES), ref_km)
+    np.testing.assert_allclose(
+        KaplanMeier().fit(y).predict(TIMES, format="polars")["estimate"].to_numpy(), ref_km
+    )
     cox = CoxPH().fit(y, lp[["age", "sex"]]).to_frame(format="pandas")["estimate"].to_numpy()
     np.testing.assert_allclose(cox, ref_cox)
 
@@ -60,7 +64,9 @@ def test_pyarrow_columns_and_frame(lung_pd: Any, reference: Reference) -> None:
     ref_km, ref_cox = reference
     tbl = pa.Table.from_pandas(lung_pd)
     y = Surv(time=tbl["time"], event=pc.equal(tbl["status"], 2))
-    np.testing.assert_allclose(KaplanMeier().fit(y).predict(TIMES), ref_km)
+    np.testing.assert_allclose(
+        KaplanMeier().fit(y).predict(TIMES, format="polars")["estimate"].to_numpy(), ref_km
+    )
     cox = (
         CoxPH().fit(y, tbl.select(["age", "sex"])).to_frame(format="pandas")["estimate"].to_numpy()
     )
@@ -80,9 +86,16 @@ def test_numpy_and_list_columns_agree(lung_pd: Any, reference: Reference) -> Non
     time = np.asarray(lung_pd["time"], dtype=float)
     event = np.asarray(lung_pd["status"] == 2)
     np.testing.assert_allclose(
-        KaplanMeier().fit(Surv(time=time, event=event)).predict(TIMES), ref_km
+        KaplanMeier()
+        .fit(Surv(time=time, event=event))
+        .predict(TIMES, format="polars")["estimate"]
+        .to_numpy(),
+        ref_km,
     )
     np.testing.assert_allclose(
-        KaplanMeier().fit(Surv(time=list(time), event=list(event))).predict(TIMES),
+        KaplanMeier()
+        .fit(Surv(time=list(time), event=list(event)))
+        .predict(TIMES, format="polars")["estimate"]
+        .to_numpy(),
         ref_km,
     )

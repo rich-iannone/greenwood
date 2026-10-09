@@ -35,6 +35,6 @@ def test_turnbull_veteran_matches_r_km_equivalence() -> None:
     # so `interval_high_` is directly comparable to R's `time`.
     # R's own EM only converges to `eps > 5e-5` on jump sizes (see survival:::survfitTurnbull),
     # so a residual of a few 1e-8 between two independent implementations is expected here.
-    predicted = tb.predict(r_time)
+    predicted = tb.predict(r_time, format="polars")["estimate"].to_numpy()
 
     assert_allclose_to_r(predicted, r_surv, atol=1e-6, what="turnbull survival (veteran)")

@@ -42,15 +42,15 @@ def test_step_data_t0_anchor() -> None:
 
 
 def test_step_data_group_labels_unstratified() -> None:
-    """Unstratified fit labels the single group 'Overall'."""
+    """Unstratified fit labels the single group 'all'."""
     data = _step_data(_make_aj())
-    assert set(data["group"]) == {"Overall"}
+    assert set(data["group"]) == {"all"}
 
 
 def test_step_data_group_labels_stratified() -> None:
-    """Stratified fit uses the by= values as group labels."""
+    """Stratified fit labels each group "by=value"."""
     data = _step_data(_make_aj(grouped=True))
-    assert set(data["group"]) == {"A", "B"}
+    assert set(data["group"]) == {"by=A", "by=B"}
 
 
 def test_step_data_cause_labels() -> None:

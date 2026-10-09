@@ -38,8 +38,8 @@ def test_event_table_grouped_strata_order_is_first_appearance() -> None:
     y = Surv(time=[5, 4, 6, 4], event=[1, 1, 1, 1])
     et = event_table(y, group=["b", "a", "b", "a"])
     assert et.strata is not None
-    # "b" appears first, so its rows come first.
-    assert list(dict.fromkeys(et.strata.tolist())) == ["b", "a"]
+    # "b" appears first, so its rows come first. Labels take the argument name.
+    assert list(dict.fromkeys(et.strata.tolist())) == ["group=b", "group=a"]
 
 
 def test_event_table_group_length_checked() -> None:
@@ -57,4 +57,5 @@ def test_event_table_interval_not_supported() -> None:
 def test_event_table_to_pandas() -> None:
     y = Surv(time=[4, 5], event=[1, 1])
     df = event_table(y).to_frame(format="pandas")
-    assert list(df.columns) == ["time", "n_risk", "n_event", "n_censor"]
+    assert list(df.columns) == ["strata", "time", "n_risk", "n_event", "n_censor"]
+    assert set(df["strata"]) == {"all"}

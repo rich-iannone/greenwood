@@ -44,7 +44,7 @@ def test_lung_km_by_sex_matches_r() -> None:
 
     assert et.strata is not None
     for level, block in fixture.items():
-        mask = et.strata.astype(int).astype(str) == str(level)
+        mask = et.strata == f"sex={level}"
         sub = gw.EventTable(
             time=et.time[mask],
             n_risk=et.n_risk[mask],
@@ -98,10 +98,11 @@ def test_km_median_matches_r() -> None:
     df = gw.load_dataset("lung", backend="pandas")
     y = Surv(time=df["time"], event=df["status"] == 2)
     expected = load_fixture("km_lung_overall")["overall"]
-    point, lower, upper = gw.KaplanMeier(conf_type="log").fit(y).median(ci=True)
-    assert point == expected["median"]
-    assert lower == expected["median_lower"]
-    assert upper == expected["median_upper"]
+    med = gw.KaplanMeier(conf_type="log").fit(y).median(format="polars")
+    assert med["strata"].to_list() == ["all"]
+    assert med["time"][0] == expected["median"]
+    assert med["conf_low"][0] == expected["median_lower"]
+    assert med["conf_high"][0] == expected["median_upper"]
 
 
 def test_km_by_sex_matches_r() -> None:
@@ -110,8 +111,9 @@ def test_km_by_sex_matches_r() -> None:
     fixture = load_fixture("km_lung_by_sex")
     km = gw.KaplanMeier(conf_type="log-log").fit(y, by=df["sex"])
     for block in km._blocks:
-        expected = fixture[str(block.label)]
-        assert_allclose_to_r(block.surv, expected["surv"], what=f"sex={block.label} surv")
+        assert block.label.startswith("sex=")
+        expected = fixture[block.label.removeprefix("sex=")]
+        assert_allclose_to_r(block.surv, expected["surv"], what=f"{block.label} surv")
         assert_allclose_to_r(block.conf_low, expected["lower_loglog"], what="lower")
         assert_allclose_to_r(block.conf_high, expected["upper_loglog"], what="upper")
 
@@ -160,16 +162,15 @@ def test_km_robust_by_sex_matches_r() -> None:
     fixture = load_fixture("km_robust_lung_by_sex")
     km = gw.KaplanMeier(robust=True).fit(y, by=df["sex"])
     for block in km._blocks:
-        expected = fixture[str(block.label)]
-        assert_allclose_to_r(block.surv, expected["surv"], what=f"robust sex={block.label} surv")
+        assert block.label.startswith("sex=")
+        expected = fixture[block.label.removeprefix("sex=")]
+        assert_allclose_to_r(block.surv, expected["surv"], what=f"robust {block.label} surv")
+        assert_allclose_to_r(block.std_error, expected["se"], what=f"robust {block.label} se(S)")
         assert_allclose_to_r(
-            block.std_error, expected["se"], what=f"robust sex={block.label} se(S)"
+            block.conf_low, expected["lower_log"], what=f"robust {block.label} lower"
         )
         assert_allclose_to_r(
-            block.conf_low, expected["lower_log"], what=f"robust sex={block.label} lower"
-        )
-        assert_allclose_to_r(
-            block.conf_high, expected["upper_log"], what=f"robust sex={block.label} upper"
+            block.conf_high, expected["upper_log"], what=f"robust {block.label} upper"
         )
 
 
@@ -208,7 +209,8 @@ def test_rmst_matches_r() -> None:
         event = (df["status"] == 2) if event_is_2 else df["status"]
         y = Surv(time=df["time"], event=event)
         expected = fixture[name]
-        value, lower, upper = gw.KaplanMeier().fit(y).rmst(expected["tau"], ci=True)
+        res = gw.KaplanMeier().fit(y).rmst(expected["tau"], format="polars")
+        value, lower = float(res["estimate"][0]), float(res["conf_low"][0])
         assert_allclose_to_r(value, expected["rmst"], what=f"{name} rmst")
         # Recover the se from the symmetric normal interval and compare.
         z = 1.959963984540054
@@ -889,7 +891,7 @@ def test_risk_table_numbers_match_r() -> None:
     km = gw.KaplanMeier().fit(y, by=df["sex"])
     rtd = gw.get_risk_table_frame(km, times=fixture["times"], format="pandas")
     for label, expected in fixture["n_risk"].items():
-        sub = rtd[rtd["strata"] == label].sort_values("time")
+        sub = rtd[rtd["strata"] == f"sex={label}"].sort_values("time")
         assert_allclose_to_r(sub["n_risk"].to_numpy(), expected, what=f"n_risk sex={label}")
 
 

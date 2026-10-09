@@ -99,6 +99,7 @@ def test_to_pandas_columns() -> None:
     table = AalenJohansen().fit(_simple_multistate()).to_frame(format="pandas")
 
     assert list(table.columns) == [
+        "strata",
         "cause",
         "time",
         "n_risk",
@@ -107,6 +108,7 @@ def test_to_pandas_columns() -> None:
         "conf_low",
         "conf_high",
     ]
+    assert set(table["strata"]) == {"all"}
 
 
 def test_grouped_has_strata_column() -> None:
@@ -119,7 +121,7 @@ def test_grouped_has_strata_column() -> None:
     table = AalenJohansen().fit(y, by=["a", "a", "b", "b"]).to_frame(format="pandas")
 
     assert "strata" in table.columns
-    assert set(table["strata"]) == {"a", "b"}
+    assert set(table["strata"]) == {"by=a", "by=b"}
 
 
 def test_group_length_checked() -> None:
@@ -289,8 +291,18 @@ class TestAalenJohansenTidy:
     def test_tidy_columns(self) -> None:
         aj = AalenJohansen().fit(_simple_multistate())
         t = gw.tidy(aj, format="pandas")
-        expected = ["cause", "time", "n_risk", "estimate", "std_error", "conf_low", "conf_high"]
+        expected = [
+            "strata",
+            "cause",
+            "time",
+            "n_risk",
+            "estimate",
+            "std_error",
+            "conf_low",
+            "conf_high",
+        ]
         assert list(t.columns) == expected
+        assert set(t["strata"]) == {"all"}
 
     def test_tidy_matches_to_frame(self) -> None:
         aj = AalenJohansen().fit(_simple_multistate())
@@ -308,7 +320,7 @@ class TestAalenJohansenTidy:
         aj = AalenJohansen().fit(y, by=["a", "a", "b", "b"])
         t = gw.tidy(aj, format="pandas")
         assert "strata" in t.columns
-        assert set(t["strata"]) == {"a", "b"}
+        assert set(t["strata"]) == {"by=a", "by=b"}
 
     def test_tidy_format_polars(self) -> None:
         import polars as pl
@@ -327,8 +339,9 @@ class TestAalenJohansenGlance:
     def test_glance_columns(self) -> None:
         aj = AalenJohansen().fit(_simple_multistate())
         g = gw.glance(aj, format="pandas")
-        assert list(g.columns) == ["n_causes", "causes"]
+        assert list(g.columns) == ["strata", "n_causes", "causes"]
         assert g.shape[0] == 1
+        assert g["strata"].iloc[0] == "all"
 
     def test_glance_values(self) -> None:
         aj = AalenJohansen().fit(_simple_multistate())
@@ -347,7 +360,7 @@ class TestAalenJohansenGlance:
         g = gw.glance(aj, format="pandas")
         assert "strata" in g.columns
         assert g.shape[0] == 2
-        assert list(g["strata"]) == ["a", "b"]
+        assert list(g["strata"]) == ["by=a", "by=b"]
 
     def test_glance_format_polars(self) -> None:
         import polars as pl

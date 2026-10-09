@@ -2,10 +2,18 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 import pytest
 
 from greenwood import BootstrapResult, KaplanMeier, Surv, bootstrap
+
+
+def _value(frame: Any, column: str, strata: str = "all") -> float:
+    """The `column` value of the row for the curve labeled `strata` in a Polars summary frame."""
+    return float(frame.filter(frame["strata"] == strata)[column][0])
+
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -50,7 +58,7 @@ class TestBootstrapMedian:
     def test_estimate_matches_km_median(self, simple_surv: Surv) -> None:
         result = bootstrap(simple_surv, "median", n_boot=50, seed=1)
         km = KaplanMeier().fit(simple_surv)
-        assert result.estimate == km.median()
+        assert result.estimate == _value(km.median(format="polars"), "time")
 
     def test_ci_brackets_estimate(self, simple_surv: Surv) -> None:
         result = bootstrap(simple_surv, "median", n_boot=200, seed=1)
@@ -79,7 +87,7 @@ class TestBootstrapRMST:
     def test_estimate_matches_km_rmst(self, simple_surv: Surv) -> None:
         result = bootstrap(simple_surv, "rmst", tau=8.0, n_boot=50, seed=1)
         km = KaplanMeier().fit(simple_surv)
-        assert result.estimate == pytest.approx(km.rmst(8.0))
+        assert result.estimate == pytest.approx(_value(km.rmst(8.0, format="polars"), "estimate"))
 
     def test_requires_tau(self, simple_surv: Surv) -> None:
         with pytest.raises(ValueError, match="tau="):
@@ -94,7 +102,7 @@ class TestBootstrapQuantile:
     def test_estimate_matches_km_quantile(self, simple_surv: Surv) -> None:
         result = bootstrap(simple_surv, "quantile", p=0.25, n_boot=50, seed=1)
         km = KaplanMeier().fit(simple_surv)
-        assert result.estimate == km.quantile(0.25)
+        assert result.estimate == _value(km.quantile(0.25, format="polars"), "time")
 
     def test_requires_p(self, simple_surv: Surv) -> None:
         with pytest.raises(ValueError, match="p="):
@@ -105,7 +113,9 @@ class TestBootstrapSurvival:
     def test_estimate_matches_km_predict(self, simple_surv: Surv) -> None:
         result = bootstrap(simple_surv, "survival", times=5.0, n_boot=50, seed=1)
         km = KaplanMeier().fit(simple_surv)
-        assert result.estimate == pytest.approx(float(km.predict([5.0])[0]))
+        assert result.estimate == pytest.approx(
+            _value(km.predict([5.0], format="polars"), "estimate")
+        )
 
     def test_requires_times(self, simple_surv: Surv) -> None:
         with pytest.raises(ValueError, match="times="):
@@ -125,8 +135,8 @@ class TestBootstrapMedianDiff:
         group = ["A"] * 6 + ["B"] * 6
         result = bootstrap(y, "median_diff", by=group, n_boot=50, seed=1)
         km = KaplanMeier().fit(y, by=group)
-        medians = km.median()
-        expected = medians["A"] - medians["B"]
+        medians = km.median(format="polars")
+        expected = _value(medians, "time", "by=A") - _value(medians, "time", "by=B")
         assert result.estimate == pytest.approx(expected)
 
     def test_requires_by(self, simple_surv: Surv) -> None:
@@ -148,8 +158,8 @@ class TestBootstrapRMSTDiff:
         group = ["A"] * 6 + ["B"] * 6
         result = bootstrap(y, "rmst_diff", by=group, tau=10.0, n_boot=50, seed=1)
         km = KaplanMeier().fit(y, by=group)
-        rmsts = km.rmst(10.0)
-        expected = rmsts["A"] - rmsts["B"]
+        rmsts = km.rmst(10.0, format="polars")
+        expected = _value(rmsts, "estimate", "by=A") - _value(rmsts, "estimate", "by=B")
         assert result.estimate == pytest.approx(expected)
 
 
@@ -161,8 +171,8 @@ class TestBootstrapSurvivalDiff:
         group = ["A"] * 6 + ["B"] * 6
         result = bootstrap(y, "survival_diff", by=group, times=5.0, n_boot=50, seed=1)
         km = KaplanMeier().fit(y, by=group)
-        preds = km.predict([5.0])
-        expected = float(preds["A"][0]) - float(preds["B"][0])
+        preds = km.predict([5.0], format="polars")
+        expected = _value(preds, "estimate", "by=A") - _value(preds, "estimate", "by=B")
         assert result.estimate == pytest.approx(expected)
 
 
@@ -202,9 +212,12 @@ class TestCITypes:
 
 class TestCustomStatistic:
     def test_callable_receives_fitted_km(self, simple_surv: Surv) -> None:
-        result = bootstrap(simple_surv, lambda km: km.rmst(8.0), n_boot=50, seed=1)
+        def rmst_fn(km: KaplanMeier) -> float:
+            return _value(km.rmst(8.0, format="polars"), "estimate")
+
+        result = bootstrap(simple_surv, rmst_fn, n_boot=50, seed=1)
         km = KaplanMeier().fit(simple_surv)
-        assert result.estimate == pytest.approx(km.rmst(8.0))
+        assert result.estimate == pytest.approx(rmst_fn(km))
 
     def test_callable_rmst_difference(self) -> None:
         y = Surv(
@@ -213,8 +226,8 @@ class TestCustomStatistic:
         group = ["A"] * 6 + ["B"] * 6
 
         def rmst_diff_fn(km: KaplanMeier) -> float:
-            r = km.rmst(10.0)
-            return r["A"] - r["B"]
+            r = km.rmst(10.0, format="polars")
+            return _value(r, "estimate", "by=A") - _value(r, "estimate", "by=B")
 
         result = bootstrap(y, rmst_diff_fn, by=group, n_boot=100, seed=1)
         assert np.isfinite(result.estimate)
@@ -288,7 +301,7 @@ class TestLungDataset:
     def test_bootstrap_median_close_to_analytical(self, lung_surv: Surv) -> None:
         result = bootstrap(lung_surv, "median", n_boot=500, seed=23)
         km = KaplanMeier().fit(lung_surv)
-        analytical_median = km.median()
+        analytical_median = _value(km.median(format="polars"), "time")
         assert result.estimate == analytical_median
         assert result.conf_low < analytical_median < result.conf_high
 
@@ -304,9 +317,8 @@ class TestLungDataset:
     def test_bootstrap_median_diff(self, lung_surv: Surv, lung_sex: np.ndarray) -> None:
         result = bootstrap(lung_surv, "median_diff", by=lung_sex, n_boot=500, seed=23)
         km = KaplanMeier().fit(lung_surv, by=lung_sex)
-        medians = km.median()
-        keys = sorted(medians.keys(), key=str)
-        expected_diff = medians[keys[0]] - medians[keys[1]]
+        medians = km.median(format="polars")
+        expected_diff = _value(medians, "time", "by=1") - _value(medians, "time", "by=2")
         assert result.estimate == pytest.approx(expected_diff)
         assert result.se > 0
 

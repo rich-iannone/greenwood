@@ -114,7 +114,7 @@ def test_calibration_single_bin_is_overall_km() -> None:
 
     assert len(cal) == 1
 
-    km_at = float(gw.KaplanMeier().fit(y).predict([365.0])[0])
+    km_at = float(gw.KaplanMeier().fit(y).predict([365.0], format="polars")["estimate"][0])
 
     np.testing.assert_allclose(cal["observed"].iloc[0], km_at)
 

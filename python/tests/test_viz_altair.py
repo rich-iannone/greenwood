@@ -158,11 +158,11 @@ class TestRiskTableContent:
 
     def test_unstratified_strata_label(self, km_overall: gw.KaplanMeier) -> None:
         table = gw.risk_table(km_overall, times=[0, 250, 500])
-        assert table._tbl_data["strata"][0] == "Overall"
+        assert table._tbl_data["strata"][0] == "all"
 
     def test_grouped_strata_labels(self, km_grouped: gw.KaplanMeier) -> None:
         table = gw.risk_table(km_grouped, times=[0, 250, 500])
-        assert set(table._tbl_data["strata"].to_list()) == {"1", "2"}
+        assert set(table._tbl_data["strata"].to_list()) == {"sex=1", "sex=2"}
 
     def test_risk_values_match_frame(self, km_grouped: gw.KaplanMeier) -> None:
         import polars as pl

@@ -58,10 +58,10 @@ def test_resolve_backend_fallback_and_error(monkeypatch) -> None:  # type: ignor
 
 def test_event_table_weights_grouped_and_backends(y, lung) -> None:
     et = event_table(y, weights=np.ones(y.n))
-    assert et.to_frame(format="polars").shape[1] == 4
-    assert et.to_frame(format="pyarrow").num_columns == 4
+    assert et.to_frame(format="polars").shape[1] == 5
+    assert et.to_frame(format="pyarrow").num_columns == 5
     grouped = event_table(y, group=lung["sex"]).to_frame(format="pandas")
-    assert "strata" in grouped.columns
+    assert set(grouped["strata"]) == {"sex=1", "sex=2"}
     with pytest.raises(NotImplementedError, match="event_table"):
         event_table(Surv(time=[1, 2], time2=[2, 3], type="interval2"))
 
@@ -71,15 +71,16 @@ def test_event_table_weights_grouped_and_backends(y, lung) -> None:
 
 def test_km_strata_predict_and_backends(y, lung) -> None:
     km = KaplanMeier().fit(y)
-    assert km.strata_ is None  # ungrouped
+    assert set(km.strata_) == {"all"}  # ungrouped
     assert km.to_frame(format="polars").shape[0] > 0
     assert km.to_frame(format="pyarrow").num_rows > 0
     with pytest.raises(ValueError, match="survival' or 'cumhaz"):
         km.predict([100], what="nonsense")
     grouped = KaplanMeier().fit(y, by=lung["sex"])
-    assert grouped.strata_ is not None
+    assert set(grouped.strata_) == {"sex=1", "sex=2"}
     assert "strata" in grouped.to_frame(format="pandas").columns
-    assert set(grouped.predict([100, 200])) == {1, 2}  # dict keyed by stratum
+    pred = grouped.predict([100, 200], format="pandas")
+    assert list(pred["strata"]) == ["sex=1", "sex=1", "sex=2", "sex=2"]  # one row per curve x time
 
 
 def test_nelson_aalen_variants(y, lung) -> None:
@@ -90,11 +91,11 @@ def test_nelson_aalen_variants(y, lung) -> None:
     na_plain = NelsonAalen(conf_type="plain").fit(y).to_frame(format="pandas")
     assert {"conf_low", "conf_high"} <= set(na_plain.columns)
     na = NelsonAalen().fit(y)
-    assert na.strata_ is None
+    assert set(na.strata_) == {"all"}
     assert na.to_frame(format="polars").shape[0] > 0
     assert na.to_frame(format="pyarrow").num_rows > 0
     grouped = NelsonAalen().fit(y, by=lung["sex"])
-    assert grouped.strata_ is not None
+    assert set(grouped.strata_) == {"sex=1", "sex=2"}
     assert "strata" in grouped.to_frame(format="pandas").columns
 
 

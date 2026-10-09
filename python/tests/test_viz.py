@@ -132,5 +132,5 @@ class TestThemeSurvival:
 def test_risk_table_data_shape(km_grouped: gw.KaplanMeier) -> None:
     rtd = gw.get_risk_table_frame(km_grouped, times=[0, 250, 500])
     assert list(rtd.columns) == ["strata", "time", "n_risk"]
-    assert set(rtd["strata"]) == {"1", "2"}
+    assert set(rtd["strata"]) == {"sex=1", "sex=2"}
     assert len(rtd) == 6
