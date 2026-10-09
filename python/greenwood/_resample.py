@@ -215,7 +215,8 @@ def cross_validate(
     metrics
         A list of metrics to evaluate in a single CV run. The model is fit once per fold and scored
         on all requested metrics. Cannot be used together with `metric`. Supported options are:
-        `"concordance"`, `"brier"`, and `"auc"`.
+        `"concordance"`, `"brier"`, and `"auc"`. Repeated names are evaluated once, in the order
+        of their first appearance.
     times
         Evaluation time points for `"brier"` and `"auc"` metrics (1-D array-like, length $\ge 2$).
         Required when using those metrics. Example: `times=[365, 730, 1095]` for 1-, 2-, and 3-year
@@ -368,7 +369,7 @@ def cross_validate(
 
     multi_mode = metrics is not None
     if metrics is not None:
-        metric_list = list(metrics)
+        metric_list = list(dict.fromkeys(metrics))
     elif metric is not None:
         metric_list = [metric]
     else:
