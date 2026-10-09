@@ -189,7 +189,7 @@ study = pl.DataFrame({
     "exit":    ["2022-01-10", "2021-09-22", "2023-01-01",
                 "2021-12-05", "2022-08-14", "2022-03-30"],
     "outcome": ["died", "censored", "censored", "died", "withdrew", "died"],
-}).with_columns(pl.col("enroll", "exit").cast(pl.Date))
+}).with_columns(pl.col("enroll", "exit").str.to_date())
 
 # The time is the gap between the two dates in days, and only "died" is an event
 visit = gw.Outcome.surv(time="duration(enroll, exit)", event="outcome == 'died'")

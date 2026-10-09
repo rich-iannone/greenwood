@@ -681,9 +681,9 @@ gw.event_table(death, data=lung).to_frame(format="polars")
 ```
 
 Each row is a distinct time. The `n_risk` column counts the subjects under observation just before
-that time, `n_event` the events at it, and `n_censor` the censorings. Name a grouping column on the
-right-hand side of a formula (or pass `group=`) to tabulate within strata, which adds a `strata`
-column.
+that time, `n_event` the events at it, and `n_censor` the censorings. The `strata` column is `"all"`
+for an ungrouped table. Name a grouping column on the right-hand side of a formula (or pass
+`group=`) to tabulate within strata, and `strata` labels each block (`"sex=1"`, `"sex=2"`).
 
 ```{python}
 # Tabulate separately within each level of the `sex` column

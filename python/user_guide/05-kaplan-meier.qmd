@@ -315,12 +315,13 @@ events and censorings that occurred at it, `estimate` is the Kaplan-Meier surviv
 Censorings reduce the risk set but do not move the curve.
 
 The survival probability at any set of times is available through `predict`, which evaluates the
-step function. It returns a plain array with one probability per requested time, in the same order
-you asked for them.
+step function. It returns a table with one row per requested time. The `strata` column is `"all"`
+here because there is a single curve. A grouped fit gives the same columns, one block of rows per
+curve.
 
 ```{python}
 # Evaluate the step-function survival curve at specific time points (days)
-km.predict(times=[180, 365, 730])
+km.predict(times=[180, 365, 730], format="polars")
 ```
 
 ::: {.callout-note}
@@ -452,15 +453,16 @@ death = gw.Outcome.surv(time="time", event="status")
 km = gw.KaplanMeier().fit(death, data=lung)
 
 # Return the median survival time with its confidence interval
-km.median(ci=True)
+km.median(format="polars")
 ```
 
 The result is the median together with its confidence limits, obtained by inverting the confidence
-band. Other quantiles work the same way through `quantile()`.
+band. Other quantiles work the same way through `quantile()`, which takes one or several
+proportions.
 
 ```{python}
-# Return the 25th-percentile survival time
-km.quantile(p=0.25)
+# Return the three quartiles of survival time
+km.quantile(p=[0.25, 0.5, 0.75], format="polars")
 ```
 
 ::: {.callout-tip}
@@ -486,7 +488,7 @@ death = gw.Outcome.surv(time="time", event="status")
 km = gw.KaplanMeier().fit(death, data=lung)
 
 # Average event-free days in the first year, with a 95% confidence interval
-km.rmst(tau=365, ci=True)
+km.rmst(tau=365, format="polars")
 ```
 
 This reports the average number of event-free days during the first year, with a confidence
@@ -509,7 +511,7 @@ km = gw.KaplanMeier().fit(death, data=lung)
 
 # Expected additional event-free days between day 180 and 730 (s and tau values), for
 # survivors at day 180
-km.rmrl(s=180, tau=730, ci=True)
+km.rmrl(s=180, tau=730, format="polars")
 ```
 
 Here the value is the expected number of additional event-free days between 180 and 730 days, for a
@@ -520,7 +522,8 @@ follow-up, and it complements the conditional survival curves shown in
 ## Comparing subgroups
 
 Passing a grouping variable to `by` fits a separate curve within each stratum, which is the starting
-point for any subgroup comparison. The tidy output gains a `strata` column.
+point for any subgroup comparison. The results keep the same layout as a single curve, with the
+`strata` column now telling the curves apart.
 
 ```{python}
 # Load data and name the response columns
@@ -534,21 +537,24 @@ km_sex = gw.KaplanMeier().fit(death, by="sex", data=lung)
 km_sex
 ```
 
-The grouped fit `km_sex` holds one curve per level of `sex`. Its tidy output gains a `strata` column
-identifying which curve each row belongs to. We show the first couple of rows within each stratum so
-you can see both curves side by side without printing every time point.
+The grouped fit `km_sex` holds one curve per level of `sex`. The `strata` column labels each row's
+curve as `name=value` (`"sex=1"` and `"sex=2"`), the same labels the printed summary and the plots
+use. With several grouping variables the labels combine, as in `"sex=1, ph.ecog=0"`. We show the
+first couple of rows within each stratum so you can see both curves side by side without printing
+every time point.
 
 ```{python}
 # Show the first two rows from each stratum to see both curves side by side
 km_sex.to_frame(format="polars").group_by("strata").head(2)
 ```
 
-Per-stratum summaries follow naturally. `median` and `rmst` return a dictionary keyed by stratum
-when the fit is grouped.
+Per-stratum summaries follow naturally. `median()`, `quantile()`, `rmst()`, `rmrl()`, and
+`predict()` return one row per curve, with the same columns as for a single curve, so the code that
+reads them doesn't change when you add a grouping variable.
 
 ```{python}
-# Per-stratum median survival times as a dictionary keyed by stratum label
-km_sex.median()
+# Median survival time for each sex
+km_sex.median(format="polars")
 ```
 
 To test whether the difference between groups is statistically significant, rather than just
@@ -691,7 +697,10 @@ For custom statistics, pass a callable that takes a fitted `KaplanMeier` and ret
 # Bootstrap CI for a custom statistic: area under the curve from 180 to 365 days
 gw.bootstrap(
     death,
-    statistic=lambda km: km.rmst(tau=365) - km.rmst(tau=180),
+    statistic=lambda km: (
+        km.rmst(tau=365, format="polars")["estimate"][0]
+        - km.rmst(tau=180, format="polars")["estimate"][0]
+    ),
     n_boot=500,
     seed=23,
     data=lung,
@@ -822,17 +831,17 @@ falls strictly inside the ambiguous window between 0 and 2.5, so it comes back `
 
 ```{python}
 # Evaluate the survival curve at specific times
-tb.predict(times=[1, 2.5, 5, 7])
+tb.predict(times=[1, 2.5, 5, 7], format="polars")
 ```
 
-The `quantile()` method follows the same rule, but always returns a 3-tuple
-`(estimate, lower, upper)` regardless of whether the crossing is ambiguous: `estimate` is `nan`
-exactly when it falls inside an unresolved interval, in which case `lower` and `upper` bracket it
-rather than a confidence bound.
+The `quantile()` method follows the same rule. It always reports `time`, `time_low`, and
+`time_high`, whether or not the crossing is ambiguous: `time` is `nan` exactly when it falls inside
+an unresolved interval, and `time_low` and `time_high` then bracket it. They mark what the data can
+identify, not a confidence interval. Elsewhere all three are equal.
 
 ```{python}
 # First-quartile survival time, or its ambiguity bracket
-tb.quantile(p=0.25)
+tb.quantile(p=0.25, format="polars")
 ```
 
 When there is no genuine interval ambiguity in the data (only exact events and right censoring),
@@ -849,7 +858,8 @@ km_check = gw.KaplanMeier().fit(death, data=lung)
 import numpy as np
 
 # Compare survival at KM's own event times
-np.allclose(tb_right.predict(times=km_check.time_), km_check.survival_, atol=1e-8)
+tb_at_km = tb_right.predict(times=km_check.time_, format="polars")["estimate"].to_numpy()
+np.allclose(tb_at_km, km_check.survival_, atol=1e-8)
 ```
 
 That equivalence is a useful check on your own data: if `predict()` and `quantile()` never return
@@ -870,7 +880,7 @@ estimator for either, so no confidence interval is available.
 
 ```{python}
 # Restricted mean survival time up to t=7
-tb.rmst(tau=7)
+tb.rmst(tau=7, format="polars")
 ```
 
 Use `rmst()`/`rmrl()` when you need one reportable number, but check `to_frame()` first to see how
@@ -884,7 +894,7 @@ Pass `by=` to fit separate curves per group, just as with `KaplanMeier` and `Nel
 ```{python}
 # Fit separate curves for two groups
 tb_strat = gw.Turnbull().fit(y_interval, by=[0, 1, 0, 1, 0, 1])
-tb_strat.median()
+tb_strat.median(format="polars")
 ```
 
 Turnbull's algorithm is a specialized tool: use it only when your data are genuinely
