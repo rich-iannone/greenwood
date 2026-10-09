@@ -11,7 +11,9 @@ kaplan_meier(
   subset,
   na.action = stats::na.omit,
   conf_type = c("log", "log-log", "plain"),
-  conf_level = 0.95
+  conf_level = 0.95,
+  robust = FALSE,
+  cluster
 )
 }
 \arguments{
@@ -30,12 +32,24 @@ one or more grouping variables on the right, such as \code{Surv(time, status) ~ 
 \code{"plain"}.}
 
 \item{conf_level}{The confidence level, between 0 and 1. The default is \code{0.95}.}
+
+\item{robust}{Use the robust (infinitesimal jackknife) variance instead of Greenwood's formula.
+The default is \code{FALSE}, or \code{TRUE} when \code{cluster} is given.}
+
+\item{cluster}{Optional cluster identifiers, a column of \code{data} or a vector, for observations
+that are correlated within clusters (such as repeated events per subject or patients within a
+center). Implies \code{robust = TRUE}.}
 }
 \value{
 A \code{kaplan_meier} object. Use \code{\link[=as.data.frame]{as.data.frame()}} for the estimate at every time, and
 \code{\link[=median]{median()}} or \code{\link[=quantile]{quantile()}} for survival times. Printing it shows the number of subjects,
 the number of events, and the median survival time with its confidence interval for each
 group.
+
+Every table from a fit has the same layout whether it holds one curve or several. The first
+column, \code{strata}, labels the curve: \code{"all"} for a single curve, or \code{name=value} pairs such as
+\code{"sex=1"} or \code{"sex=1, ph.ecog=0"}. The grouping variables follow as their own columns, so
+results can be filtered on them directly.
 }
 \description{
 \code{kaplan_meier()} estimates the survival function from censored event times with the
@@ -45,8 +59,10 @@ right-hand side of the formula names grouping variables.
 \details{
 The estimate at time \eqn{t} is the product of \eqn{(1 - d_i / n_i)} over the event times
 \eqn{t_i \le t}, where \eqn{n_i} is the number at risk and \eqn{d_i} the number of events.
-Standard errors use Greenwood's formula. Confidence intervals are built on the log scale by
-default, or on the log-log or plain (identity) scale.
+Standard errors use Greenwood's formula by default. With \code{robust = TRUE} or a \code{cluster}, they use
+the infinitesimal jackknife (a sandwich estimator) instead, which stays valid for non-integer
+weights and, with \code{cluster}, for observations that are correlated within clusters. Confidence
+intervals are built on the log scale by default, or on the log-log or plain (identity) scale.
 
 Right-censored data and counting-process data are supported. With counting-process data,
 \code{Surv(start, stop, event)}, a subject is at risk only after its start time, which handles

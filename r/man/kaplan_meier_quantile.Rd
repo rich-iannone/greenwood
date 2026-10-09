@@ -20,8 +20,9 @@
 \item{na.rm}{Unused. Present for compatibility with the generic.}
 }
 \value{
-A data frame with one row per group and probability: the grouping variables, \code{prob},
-\code{time}, \code{conf_low}, and \code{conf_high}. \code{median()} omits \code{prob}.
+A data frame with one row per group and probability: \code{strata}, the grouping variables,
+\code{prob}, \code{time}, \code{conf_low}, and \code{conf_high}. \code{median()} omits \code{prob}. The layout is the same
+for one curve as for several.
 }
 \description{
 \code{quantile()} gives the time by which a given proportion of subjects have had the event, with
