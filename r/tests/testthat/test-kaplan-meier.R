@@ -109,6 +109,90 @@ test_that("delayed entry uses the start times in the risk set", {
   expect_equal(curve$n_censor, r_numbers(expected$n_censor))
 })
 
+# The robust fixtures (km_robust_one() and km_cluster_one() in the generator) record the standard
+# error of S and the limits on all three scales.
+expect_robust_matches <- function(fit_for, expected, label) {
+  for (suffix in c("log", "plain", "loglog")) {
+    conf_type <- c(log = "log", plain = "plain", loglog = "log-log")[[suffix]]
+    curve <- as.data.frame(fit_for(conf_type))
+    expect_km_matches(curve, expected, paste(label, suffix))
+    expect_equal(
+      curve$conf_low,
+      r_numbers(expected[[paste0("lower_", suffix)]]),
+      tolerance = TOL,
+      label = paste(label, "lower", suffix)
+    )
+    expect_equal(
+      curve$conf_high,
+      r_numbers(expected[[paste0("upper_", suffix)]]),
+      tolerance = TOL,
+      label = paste(label, "upper", suffix)
+    )
+  }
+}
+
+test_that("robust variance on lung matches the fixture", {
+  skip_if_no_shared_cases()
+  skip_if_not_installed("survival")
+  lung <- survival::lung
+  expect_robust_matches(
+    function(conf_type) {
+      kaplan_meier(Surv(time, status) ~ 1, data = lung, robust = TRUE, conf_type = conf_type)
+    },
+    read_fixture("km_robust_lung_overall")$overall,
+    "robust"
+  )
+})
+
+test_that("robust variance with non-integer weights matches the fixture", {
+  skip_if_no_shared_cases()
+  skip_if_not_installed("survival")
+  fixture <- read_fixture("km_robust_lung_weighted")
+  lung <- survival::lung
+  lung$w <- r_numbers(fixture$weights)
+  expect_robust_matches(
+    function(conf_type) {
+      kaplan_meier(
+        Surv(time, status) ~ 1,
+        data = lung, weights = w, robust = TRUE, conf_type = conf_type
+      )
+    },
+    fixture$overall,
+    "robust weighted"
+  )
+})
+
+test_that("robust variance by sex matches the fixture", {
+  skip_if_no_shared_cases()
+  skip_if_not_installed("survival")
+  expected <- read_fixture("km_robust_lung_by_sex")
+  curves <- as.data.frame(
+    kaplan_meier(Surv(time, status) ~ sex, data = survival::lung, robust = TRUE)
+  )
+  for (sex in names(expected)) {
+    rows <- curves[curves$sex == as.numeric(sex), ]
+    expect_km_matches(rows, expected[[sex]], paste("robust sex", sex))
+    expect_equal(rows$conf_low, r_numbers(expected[[sex]]$lower_log), tolerance = TOL)
+    expect_equal(rows$conf_high, r_numbers(expected[[sex]]$upper_log), tolerance = TOL)
+  }
+})
+
+test_that("cluster variance matches the fixture, dropping rows with no cluster", {
+  skip_if_no_shared_cases()
+  skip_if_not_installed("survival")
+  lung <- survival::lung
+  expect_robust_matches(
+    function(conf_type) {
+      kaplan_meier(Surv(time, status) ~ 1, data = lung, cluster = inst, conf_type = conf_type)
+    },
+    read_fixture("km_cluster_lung_inst")$overall,
+    "cluster"
+  )
+  fit <- kaplan_meier(Surv(time, status) ~ 1, data = lung, cluster = inst)
+  expect_true(fit$robust)
+  expect_identical(fit$n_dropped, 1L)
+})
+
 # -- behaviour ------------------------------------------------------------------------------------
 
 small <- data.frame(
@@ -117,6 +201,55 @@ small <- data.frame(
   sex = c(1, 1, 1, 1, 1, 2, 2, 2, 2, 2),
   ecog = c(0, 1, 0, 1, 0, 1, 0, 1, 0, 1)
 )
+
+# The direct definition of the infinitesimal-jackknife standard error, building the full
+# subjects-by-times influence matrix. kaplan_meier() uses an equivalent O(n log n) form.
+robust_sigma_reference <- function(start, stop, event, w, cluster = NULL) {
+  time <- sort(unique(stop))
+  at_risk <- outer(start, time, `<`) & outer(stop, time, `>=`)
+  event_here <- outer(stop, time, `==`) & (event == 1)
+  n_risk <- colSums(w * at_risk)
+  n_event <- colSums(w * event_here)
+  hazard <- n_event / n_risk
+  scale <- ifelse(n_risk - n_event > 0, 1 / (n_risk - n_event), 0)
+  increments <- w * (event_here - sweep(at_risk, 2L, hazard, `*`))
+  influence <- -t(apply(sweep(increments, 2L, scale, `*`), 1L, cumsum))
+  if (!is.null(cluster)) {
+    influence <- rowsum(influence, cluster)
+  }
+  sqrt(colSums(influence^2))
+}
+
+test_that("robust variance agrees with its direct definition", {
+  set.seed(42)
+  for (trial in 1:20) {
+    n <- sample(5:60, 1)
+    # Rounded times give ties, and some subjects enter late.
+    start <- round(runif(n, 0, 3))
+    stop <- start + round(rexp(n, 0.3)) + 1
+    event <- rbinom(n, 1, 0.6)
+    w <- if (trial %% 2 == 0) runif(n, 0.2, 3) else rep(1, n)
+    cluster <- if (trial %% 3 == 0) sample(1:6, n, replace = TRUE) else NULL
+    d <- data.frame(start, stop, event, w, cluster = if (is.null(cluster)) seq_len(n) else cluster)
+
+    fit <- if (is.null(cluster)) {
+      kaplan_meier(Surv(start, stop, event) ~ 1, data = d, weights = w, robust = TRUE)
+    } else {
+      kaplan_meier(Surv(start, stop, event) ~ 1, data = d, weights = w, cluster = cluster)
+    }
+    curve <- as.data.frame(fit)
+    sigma <- robust_sigma_reference(start, stop, event, w, cluster)
+    expect_equal(curve$std_error, curve$estimate * sigma, tolerance = 1e-10, label = paste("trial", trial))
+  }
+})
+
+test_that("robust variance handles a single time and counting-process data", {
+  one <- kaplan_meier(Surv(time, status) ~ 1, data = small[1, ], robust = TRUE)
+  expect_identical(nrow(as.data.frame(one)), 1L)
+  trunc <- data.frame(start = c(0, 2, 1, 3), stop = c(5, 6, 4, 8), event = c(1, 0, 1, 1))
+  fit <- kaplan_meier(Surv(start, stop, event) ~ 1, data = trunc, robust = TRUE)
+  expect_true(all(is.finite(as.data.frame(fit)$std_error[1:2])))
+})
 
 test_that("integer weights match replicated rows", {
   w <- c(2, 1, 3, 1, 1, 2, 1, 1, 2, 1)
@@ -144,10 +277,28 @@ test_that("several grouping variables give one curve per combination", {
   fit <- kaplan_meier(Surv(time, status) ~ sex + ecog, data = small)
   expect_identical(nrow(fit$groups), 4L)
   expect_named(as.data.frame(fit), c(
-    "sex", "ecog", "time", "n_risk", "n_event", "n_censor",
+    "strata", "sex", "ecog", "time", "n_risk", "n_event", "n_censor",
     "estimate", "std_error", "conf_low", "conf_high"
   ))
-  expect_named(median(fit), c("sex", "ecog", "time", "conf_low", "conf_high"))
+  expect_named(median(fit), c("strata", "sex", "ecog", "time", "conf_low", "conf_high"))
+  expect_identical(median(fit)$strata, c("sex=1, ecog=0", "sex=1, ecog=1", "sex=2, ecog=0", "sex=2, ecog=1"))
+})
+
+test_that("one curve and several curves give the same layout", {
+  one <- kaplan_meier(Surv(time, status) ~ 1, data = small)
+  two <- kaplan_meier(Surv(time, status) ~ sex, data = small)
+
+  # Only the formula's grouping variables differ, never the presence or type of anything else.
+  without_groups <- function(df) df[setdiff(names(df), "sex")]
+  for (extract in list(as.data.frame, median, function(fit) quantile(fit, probs = c(0.25, 0.5)))) {
+    a <- extract(one)
+    b <- extract(two)
+    expect_identical(names(a), names(without_groups(b)))
+    expect_identical(lapply(a, class), lapply(without_groups(b), class))
+    expect_identical(names(a)[1], "strata")
+  }
+  expect_identical(unique(as.data.frame(one)$strata), "all")
+  expect_identical(unique(as.data.frame(two)$strata), c("sex=1", "sex=2"))
 })
 
 test_that("quantile() returns one row per group and probability", {
@@ -167,6 +318,7 @@ test_that("invalid input is rejected", {
   expect_error(kaplan_meier(Surv(time, status) ~ 1, data = small, conf_level = 1), "between 0 and 1")
   expect_error(kaplan_meier(Surv(time, status) ~ 1, data = small, conf_type = "logit"))
   expect_error(kaplan_meier(Surv(time, status) ~ 1, data = small, weights = -time), "non-negative")
+  expect_error(kaplan_meier(Surv(time, status) ~ 1, data = small, robust = NA), "`TRUE` or `FALSE`")
 })
 
 test_that("a fit prints a summary per group", {

@@ -5,8 +5,8 @@
     Output
       <kaplan_meier> Surv(time, status) ~ 1
       
-        n events median 0.95 LCL 0.95 UCL
-       10      8    310      218       NA
+           n events median 0.95 LCL 0.95 UCL
+      all 10      8    310      218       NA
     Code
       kaplan_meier(Surv(time, status) ~ sex, data = small)
     Output
