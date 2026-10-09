@@ -120,9 +120,9 @@ death = gw.Outcome.surv(time="time", event="status")
 # Kaplan-Meier with stratification and detailed summaries
 km = gw.KaplanMeier(conf_type="log-log").fit(death, by="sex", data=df)
 km.to_frame(format="polars")  # tidy: strata, time, n_risk, n_event, estimate, conf_low, conf_high
-km.median(ci=True)         # median survival with confidence limits, per stratum
-km.rmst(tau=365, ci=True)      # restricted mean survival time up to 365 days
-km.predict(times=[180, 365])     # survival probability at specific times
+km.median(format="polars")         # median survival with confidence limits, per curve
+km.rmst(tau=365, format="polars")  # restricted mean survival time up to 365 days
+km.predict(times=[180, 365], format="polars")  # survival probability at specific times
 
 # Statistical tests
 gw.logrank_test("Surv(time, status) ~ sex", data=df)          # standard log-rank test
