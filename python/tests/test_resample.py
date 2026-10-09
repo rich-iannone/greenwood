@@ -91,6 +91,66 @@ def test_stratified_kfold_balances_events(lung, y) -> None:
     )
 
 
+@pytest.mark.parametrize(
+    ("n_censored", "n_events", "k"),
+    [(3, 3, 5), (3, 3, 6), (4, 4, 3), (9, 1, 5), (0, 6, 5), (6, 0, 5)],
+)
+def test_stratified_folds_partition_small_samples(n_censored: int, n_events: int, k: int) -> None:
+    from greenwood._resample import _stratified_kfold_indices
+
+    n = n_censored + n_events
+    response = Surv(time=np.arange(1, n + 1), event=np.repeat([0, 1], [n_censored, n_events]))
+    folds = _stratified_kfold_indices(response, k=k, seed=1)
+    repeated = _stratified_kfold_indices(response, k=k, seed=1)
+
+    assert len(folds) == k
+    assert all(np.issubdtype(f.dtype, np.integer) for f in folds)
+    np.testing.assert_array_equal(np.sort(np.concatenate(folds)), np.arange(n))
+    sizes = [len(f) for f in folds]
+    assert min(sizes) > 0
+    assert max(sizes) - min(sizes) <= 1
+    for status in np.unique(response.event):
+        counts = [np.count_nonzero(response.event[f] == status) for f in folds]
+        assert max(counts) - min(counts) <= 1
+    for first, second in zip(folds, repeated, strict=True):
+        np.testing.assert_array_equal(first, second)
+
+
+def test_small_stratified_cross_validation_completes() -> None:
+    response = Surv(time=[2, 4, 6, 8, 10, 12], event=[0, 0, 0, 1, 1, 1])
+    covariates = np.random.default_rng(0).normal(size=(6, 1))
+
+    with pytest.warns(UserWarning, match="fewer than 2"):
+        result = cross_validate(
+            gw.AFT("exponential"), response, covariates, metric="brier", times=[1, 3], k=5, seed=1
+        )
+
+    assert len(result["scores"]) == 5
+    assert np.isfinite(result["scores"]).all()
+
+
+@pytest.mark.parametrize("stratified", [True, False])
+@pytest.mark.parametrize("missing", [True, False])
+def test_fold_count_cannot_exceed_complete_cases(stratified: bool, missing: bool) -> None:
+    response = Surv(time=[2, 4, 6, 8, 10, 12], event=[0, 0, 0, 1, 1, 1])
+    covariates = np.random.default_rng(0).normal(size=(6, 1))
+    if missing:
+        covariates[-2:] = np.nan
+    k = 5 if missing else 7
+
+    with pytest.raises(ValueError, match="k must not exceed.*complete-case rows"):
+        cross_validate(
+            gw.AFT("exponential"),
+            response,
+            covariates,
+            metric="brier",
+            times=[1, 3],
+            k=k,
+            stratified=stratified,
+            seed=1,
+        )
+
+
 def test_stratified_vs_random_kfold(lung, y) -> None:
     """Stratified k-fold should produce different (more balanced) folds than random."""
     from greenwood._resample import _stratified_kfold_indices

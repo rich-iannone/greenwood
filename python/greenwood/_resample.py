@@ -78,17 +78,20 @@ def _stratified_kfold_indices(surv: Surv, k: int, seed: int | None = None) -> li
     unique_strata = np.unique(stratify_by)
     stratum_indices = {s: np.where(stratify_by == s)[0] for s in unique_strata}
 
-    # For each stratum, shuffle and split into k folds
+    # Rotate the starting fold so each stratum's remainder continues after the previous one.
+    # Starting every stratum at zero can make the last folds empty even when k <= n.
     fold_lists = [[] for _ in range(k)]
+    fold_start = 0
     for stratum_idx in unique_strata:
         indices = stratum_indices[stratum_idx]
         shuffled = rng.permutation(indices)
         stratum_folds = np.array_split(shuffled, k)
         for fold_idx, fold_indices in enumerate(stratum_folds):
-            fold_lists[fold_idx].extend(fold_indices)
+            fold_lists[(fold_start + fold_idx) % k].extend(fold_indices)
+        fold_start = (fold_start + len(indices)) % k
 
     # Shuffle within each fold to break any remaining structure
-    folds = [rng.permutation(np.array(f)) for f in fold_lists]
+    folds = [rng.permutation(np.asarray(f, dtype=np.intp)) for f in fold_lists]
     return folds
 
 
@@ -207,7 +210,8 @@ def cross_validate(
         of any arrays passed alongside.
     k
         Number of folds (default 5). Each fold serves as test data once; subjects are split randomly
-        and evenly across folds. Typical choices: 5 or 10.
+        and evenly across folds. Must be between 2 and the number of complete-case rows retained
+        for fitting. Typical choices: 5 or 10.
     metric
         A single performance metric (backward-compatible). Use `metrics` instead to evaluate
         multiple metrics in a single CV run. If neither is provided, defaults to
@@ -389,6 +393,9 @@ def cross_validate(
     if not keep.all():
         design = design[keep]
         surv = _subset_surv(surv, np.nonzero(keep)[0])
+
+    if k > surv.n:
+        raise ValueError(f"k must not exceed the number of complete-case rows ({surv.n}).")
 
     times_list: list[float] = []
     needs_times = {"brier", "auc"}

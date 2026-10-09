@@ -656,9 +656,15 @@ subjects to folds, it groups subjects by event status first, then draws from eac
 proportionally. This ensures that each fold contains roughly the same fraction of events as the
 overall dataset.
 
+Fold sizes differ by at most one row, including when a group is smaller than `k`. Choose `k`
+between 2 and the number of complete-case rows retained for fitting. If the number of observed
+events is smaller than `k`, some test folds necessarily have no events; stratification cannot
+create additional events.
+
 This matters whenever events are rare. In a dataset where only 10% of subjects have the event, pure
 random splitting could easily put all events in one fold and none in another, leaving training sets
-without enough events to fit the model at all. Stratification prevents that. You can opt out with
+without enough events to fit the model at all. Stratification reduces this risk by spreading the
+available events across folds. You can opt out with
 `stratified=False`, but there is rarely a good reason to.
 
 ::: {.callout-warning}
