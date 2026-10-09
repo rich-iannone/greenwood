@@ -188,6 +188,29 @@ def test_multi_metric_returns_keyed_dict(lung, y) -> None:
         assert len(sub["scores"]) == 3
 
 
+@pytest.mark.parametrize(
+    ("metrics", "unique_metrics"),
+    [
+        (["concordance", "concordance"], ["concordance"]),
+        (["brier", "concordance", "brier", "concordance"], ["brier", "concordance"]),
+    ],
+)
+def test_duplicate_metrics_preserve_fold_scores(lung, y, metrics, unique_metrics) -> None:
+    original_metrics = metrics.copy()
+    kwargs = {"k": 3, "times": [180, 365, 540], "seed": 1}
+    expected = cross_validate(gw.CoxPH(), y, lung[["age", "sex"]], metrics=unique_metrics, **kwargs)
+    actual = cross_validate(gw.CoxPH(), y, lung[["age", "sex"]], metrics=metrics, **kwargs)
+
+    assert metrics == original_metrics
+    assert list(actual["results"]) == unique_metrics
+    for name in unique_metrics:
+        result = actual["results"][name]
+        assert len(result["scores"]) == 3
+        np.testing.assert_allclose(result["scores"], expected["results"][name]["scores"])
+        assert result["mean"] == pytest.approx(expected["results"][name]["mean"])
+        assert result["std"] == pytest.approx(expected["results"][name]["std"])
+
+
 def test_multi_metric_concordance_reasonable(lung, y) -> None:
     result = cross_validate(
         gw.CoxPH(),

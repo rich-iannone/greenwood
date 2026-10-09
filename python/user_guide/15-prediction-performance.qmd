@@ -624,7 +624,8 @@ gw.cross_validate(
 
 When you want concordance, Brier, and AUC together, pass `metrics=` (plural) instead of `metric=`.
 The model is fit once per fold and scored on every requested metric, so you get consistent fold
-assignments and avoid redundant refitting.
+assignments and avoid redundant refitting. Repeated metric names are evaluated once, preserving
+the order of their first appearance; each metric returns exactly one score per fold.
 
 ```{python}
 # Multi-metric cross-validation: concordance, Brier, and AUC in one pass
