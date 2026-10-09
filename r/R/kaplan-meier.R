@@ -10,8 +10,10 @@
 #'
 #' The estimate at time \eqn{t} is the product of \eqn{(1 - d_i / n_i)} over the event times
 #' \eqn{t_i \le t}, where \eqn{n_i} is the number at risk and \eqn{d_i} the number of events.
-#' Standard errors use Greenwood's formula. Confidence intervals are built on the log scale by
-#' default, or on the log-log or plain (identity) scale.
+#' Standard errors use Greenwood's formula by default. With `robust = TRUE` or a `cluster`, they use
+#' the infinitesimal jackknife (a sandwich estimator) instead, which stays valid for non-integer
+#' weights and, with `cluster`, for observations that are correlated within clusters. Confidence
+#' intervals are built on the log scale by default, or on the log-log or plain (identity) scale.
 #'
 #' Right-censored data and counting-process data are supported. With counting-process data,
 #' `Surv(start, stop, event)`, a subject is at risk only after its start time, which handles
@@ -26,11 +28,21 @@
 #' @param conf_type The scale for confidence intervals: `"log"` (the default), `"log-log"`, or
 #'   `"plain"`.
 #' @param conf_level The confidence level, between 0 and 1. The default is `0.95`.
+#' @param robust Use the robust (infinitesimal jackknife) variance instead of Greenwood's formula.
+#'   The default is `FALSE`, or `TRUE` when `cluster` is given.
+#' @param cluster Optional cluster identifiers, a column of `data` or a vector, for observations
+#'   that are correlated within clusters (such as repeated events per subject or patients within a
+#'   center). Implies `robust = TRUE`.
 #'
 #' @return A `kaplan_meier` object. Use [as.data.frame()] for the estimate at every time, and
 #'   [median()] or [quantile()] for survival times. Printing it shows the number of subjects,
 #'   the number of events, and the median survival time with its confidence interval for each
 #'   group.
+#'
+#'   Every table from a fit has the same layout whether it holds one curve or several. The first
+#'   column, `strata`, labels the curve: `"all"` for a single curve, or `name=value` pairs such as
+#'   `"sex=1"` or `"sex=1, ph.ecog=0"`. The grouping variables follow as their own columns, so
+#'   results can be filtered on them directly.
 #'
 #' @examples
 #' lung <- data.frame(
@@ -54,16 +66,23 @@ kaplan_meier <- function(formula,
                          subset,
                          na.action = stats::na.omit,
                          conf_type = c("log", "log-log", "plain"),
-                         conf_level = 0.95) {
+                         conf_level = 0.95,
+                         robust = FALSE,
+                         cluster) {
   conf_type <- match.arg(conf_type)
   if (!is.numeric(conf_level) || length(conf_level) != 1 || !(conf_level > 0 && conf_level < 1)) {
     stop("`conf_level` must be a single number between 0 and 1.", call. = FALSE)
   }
 
-  # Build the model frame the way lm() does, so `weights` and `subset` are evaluated in `data`.
+  if (!isTRUE(robust) && !isFALSE(robust)) {
+    stop("`robust` must be `TRUE` or `FALSE`.", call. = FALSE)
+  }
+
+  # Build the model frame the way lm() does, so `weights`, `cluster`, and `subset` are evaluated in
+  # `data`, and rows missing any of them are dropped together.
   call <- match.call()
   mf <- match.call(expand.dots = FALSE)
-  keep <- match(c("formula", "data", "weights", "subset", "na.action"), names(mf), 0L)
+  keep <- match(c("formula", "data", "weights", "subset", "na.action", "cluster"), names(mf), 0L)
   mf <- mf[c(1L, keep)]
   mf[[1L]] <- quote(stats::model.frame)
   mf <- eval(mf, parent.frame())
@@ -91,6 +110,9 @@ kaplan_meier <- function(formula,
     stop("`weights` must be non-negative numbers.", call. = FALSE)
   }
 
+  clusters <- mf[["(cluster)"]]
+  robust <- robust || !is.null(clusters)
+
   y <- unclass(response)
   if (type == "right") {
     start <- rep(-Inf, n)
@@ -101,14 +123,18 @@ kaplan_meier <- function(formula,
   }
   event <- y[, "status"]
 
-  # Grouping variables are every model-frame column except the response and the weights.
-  group_vars <- setdiff(names(mf), c(names(mf)[1L], "(weights)"))
+  # Grouping variables are every model-frame column except the response, weights, and clusters.
+  group_vars <- setdiff(names(mf), c(names(mf)[1L], "(weights)", "(cluster)"))
   groups <- km_groups(mf[group_vars])
 
   z <- stats::qnorm(1 - (1 - conf_level) / 2)
   curves <- lapply(seq_len(nrow(groups$keys)), function(g) {
     rows <- groups$index == g
-    km_curve(start[rows], stop[rows], event[rows], w[rows], conf_type, z)
+    km_curve(
+      start[rows], stop[rows], event[rows], w[rows], conf_type, z,
+      robust = robust,
+      cluster = if (is.null(clusters)) NULL else clusters[rows]
+    )
   })
 
   structure(
@@ -117,6 +143,7 @@ kaplan_meier <- function(formula,
       groups = groups$keys,
       conf_type = conf_type,
       conf_level = conf_level,
+      robust = robust,
       n_dropped = length(attr(mf, "na.action")),
       formula = stats::formula(stats::terms(mf)),
       call = call
@@ -125,33 +152,59 @@ kaplan_meier <- function(formula,
   )
 }
 
-# One row per group (sorted by the grouping variables), and each subject's group number.
+# One row per group (sorted by the grouping variables), and each subject's group number. The keys
+# start with the `strata` label, followed by the grouping variables.
 km_groups <- function(vars) {
   if (length(vars) == 0) {
-    return(list(keys = data.frame(row.names = 1L), index = rep(1L, nrow(vars))))
+    keys <- data.frame(strata = "all", stringsAsFactors = FALSE)
+    return(list(keys = keys, index = rep(1L, nrow(vars))))
   }
   key <- interaction(lapply(vars, factor), drop = TRUE, lex.order = TRUE)
   first <- match(levels(key), key)
-  keys <- vars[first, , drop = FALSE]
-  rownames(keys) <- NULL
+  values <- vars[first, , drop = FALSE]
+  rownames(values) <- NULL
+  keys <- cbind(data.frame(strata = strata_labels(values), stringsAsFactors = FALSE), values)
   list(keys = keys, index = as.integer(key))
+}
+
+# Curve labels: `name=value` pairs joined with ", ", the same in every table, printout, and plot.
+strata_labels <- function(values) {
+  pairs <- Map(function(name, value) paste0(name, "=", as.character(value)), names(values), values)
+  do.call(paste, c(unname(pairs), sep = ", "))
+}
+
+# The key columns (strata and grouping variables) of group `g`, repeated `n` times.
+km_keys <- function(x, g, n) {
+  keys <- x$groups[rep(g, n), , drop = FALSE]
+  rownames(keys) <- NULL
+  keys
 }
 
 # The estimate for one group. A subject is at risk at time t when start < t <= stop, which for
 # right-censored data (start = -Inf) is stop >= t.
-km_curve <- function(start, stop, event, w, conf_type, z) {
+km_curve <- function(start, stop, event, w, conf_type, z, robust = FALSE, cluster = NULL) {
   time <- sort(unique(stop))
   n_risk <- weight_at_or_above(stop, w, time) - weight_at_or_above(start, w, time)
   at <- factor(stop, levels = time)
   n_event <- as.vector(tapply(w * (event == 1), at, sum, default = 0))
   n_censor <- as.vector(tapply(w * (event == 0), at, sum, default = 0))
 
+  # With non-integer weights, the number at risk and the number of events are summed differently,
+  # so a time where everyone at risk has the event can leave a survivor weight of about 1e-16
+  # instead of 0. Treat that rounding residue as no survivors, so the estimate drops to exactly 0.
+  everyone <- abs(n_risk - n_event) <= 1e-10 * n_risk
+  n_risk[everyone] <- n_event[everyone]
+
   estimate <- cumprod(ifelse(n_risk > 0, 1 - n_event / n_risk, 1))
 
-  # Greenwood's variance of log S. A time where everyone at risk has the event drives S to zero,
-  # and its variance is undefined.
-  denom <- n_risk * (n_risk - n_event)
-  sigma <- sqrt(cumsum(ifelse(denom > 0, n_event / denom, Inf)))
+  if (robust) {
+    sigma <- km_robust_sigma(start, stop, event, w, time, n_risk, n_event, cluster)
+  } else {
+    # Greenwood's variance of log S. A time where everyone at risk has the event drives S to zero,
+    # and its variance is undefined.
+    denom <- n_risk * (n_risk - n_event)
+    sigma <- sqrt(cumsum(ifelse(denom > 0, n_event / denom, Inf)))
+  }
   std_error <- estimate * sigma
   std_error[is.nan(std_error)] <- NA_real_
 
@@ -166,6 +219,65 @@ km_curve <- function(start, stop, event, w, conf_type, z) {
     conf_low = limits$low,
     conf_high = limits$high
   )
+}
+
+# Infinitesimal-jackknife standard error of log S at each time. Subject i's influence on log S(t)
+# is U_i(t) = -sum over t_j <= t of dM_i(t_j) / (n_j - d_j), where the martingale increment is
+# dM_i(t_j) = w_i * (1[event of i at t_j] - 1[i at risk at t_j] * d_j / n_j). The variance is the
+# sum of squared influences, after summing influences within each cluster when there are clusters.
+#
+# With C_k the running sum of h_j / (n_j - d_j) (h_j = d_j / n_j) and b_i its value just before
+# subject i enters, U_i is 0 before entry, w_i * (C_k - b_i) while at risk before its exit time,
+# and a constant a_i from its exit time on. So every cluster's influence has the form A + C_k * B,
+# with A and B changing only when a member enters or exits. The sums of A^2, A * B, and B^2 over
+# clusters are therefore step functions, accumulated with difference arrays in O(n log n) time and
+# O(n) memory instead of building an n-by-K matrix.
+km_robust_sigma <- function(start, stop, event, w, time, n_risk, n_event, cluster) {
+  n_times <- length(time)
+  hazard <- ifelse(n_risk > 0, n_event / n_risk, 0)
+  survivors <- n_risk - n_event
+  scale <- ifelse(survivors > 0, 1 / survivors, 0)
+  cumulative <- cumsum(hazard * scale)
+
+  # First time index after entry, and the index of the exit time (always one of the times).
+  k_enter <- findInterval(start, time) + 1L
+  k_exit <- match(stop, time)
+  before_entry <- c(0, cumulative)[k_enter]
+  after_exit <- -w * ((event == 1) * scale[k_exit] - (cumulative[k_exit] - before_entry))
+
+  # Each subject changes its cluster's (A, B) at entry by (-w * b, w) and at exit to (a, 0).
+  if (is.null(cluster)) {
+    cluster <- seq_along(start)
+  }
+  id <- match(cluster, unique(cluster))
+  changes <- data.frame(
+    id = c(id, id),
+    k = c(k_enter, k_exit),
+    d_a = c(-w * before_entry, after_exit + w * before_entry),
+    d_b = c(w, -w)
+  )
+  changes <- changes[changes$k <= n_times, , drop = FALSE]
+  changes <- changes[order(changes$id, changes$k), , drop = FALSE]
+
+  a <- stats::ave(changes$d_a, changes$id, FUN = cumsum)
+  b <- stats::ave(changes$d_b, changes$id, FUN = cumsum)
+  last <- c(changes$id[-1L] != changes$id[-nrow(changes)], TRUE)
+  until <- ifelse(last, n_times + 1L, c(changes$k[-1L], n_times + 1L))
+
+  step_sum <- function(value) {
+    diffs <- tabulate_sum(changes$k, value, n_times + 1L) - tabulate_sum(until, value, n_times + 1L)
+    cumsum(diffs)[seq_len(n_times)]
+  }
+  variance <- step_sum(a^2) + 2 * cumulative * step_sum(a * b) + cumulative^2 * step_sum(b^2)
+  sqrt(pmax(variance, 0))
+}
+
+# Sum of `value` at each index 1..n.
+tabulate_sum <- function(index, value, n) {
+  out <- numeric(n)
+  sums <- rowsum(value, index, reorder = TRUE)
+  out[as.integer(rownames(sums))] <- sums[, 1L]
+  out
 }
 
 # Total weight of the subjects with x >= t, for each t.
@@ -211,23 +323,11 @@ km_crossing <- function(time, curve, level) {
   if (length(hit) == 0) NA_real_ else time[hit[1L]]
 }
 
-km_with_groups <- function(x, rows) {
-  if (ncol(x$groups) == 0) {
-    return(rows)
-  }
-  cbind(x$groups, rows)
-}
-
 #' @export
 as.data.frame.kaplan_meier <- function(x, ...) {
   tables <- lapply(seq_along(x$curves), function(g) {
     curve <- x$curves[[g]]
-    if (ncol(x$groups) == 0) {
-      return(curve)
-    }
-    keys <- x$groups[rep(g, nrow(curve)), , drop = FALSE]
-    rownames(keys) <- NULL
-    cbind(keys, curve)
+    cbind(km_keys(x, g, nrow(curve)), curve)
   })
   out <- do.call(rbind, tables)
   rownames(out) <- NULL
@@ -245,8 +345,9 @@ as.data.frame.kaplan_meier <- function(x, ...) {
 #' @param na.rm Unused. Present for compatibility with the generic.
 #' @param ... Unused.
 #'
-#' @return A data frame with one row per group and probability: the grouping variables, `prob`,
-#'   `time`, `conf_low`, and `conf_high`. `median()` omits `prob`.
+#' @return A data frame with one row per group and probability: `strata`, the grouping variables,
+#'   `prob`, `time`, `conf_low`, and `conf_high`. `median()` omits `prob`. The layout is the same
+#'   for one curve as for several.
 #'
 #' @examples
 #' lung <- data.frame(
@@ -271,12 +372,7 @@ quantile.kaplan_meier <- function(x, probs = 0.5, ...) {
       conf_low = vapply(level, function(l) km_crossing(curve$time, curve$conf_low, l), numeric(1)),
       conf_high = vapply(level, function(l) km_crossing(curve$time, curve$conf_high, l), numeric(1))
     )
-    if (ncol(x$groups) == 0) {
-      return(out)
-    }
-    keys <- x$groups[rep(g, length(probs)), , drop = FALSE]
-    rownames(keys) <- NULL
-    cbind(keys, out)
+    cbind(km_keys(x, g, length(probs)), out)
   })
   out <- do.call(rbind, rows)
   rownames(out) <- NULL
@@ -304,14 +400,7 @@ print.kaplan_meier <- function(x, digits = getOption("digits"), ...) {
     conf_high = med$conf_high
   )
   names(table)[4:5] <- paste0(level, c(" LCL", " UCL"))
-  if (ncol(x$groups) > 0) {
-    rownames(table) <- do.call(
-      paste,
-      c(Map(function(name, value) paste0(name, "=", value), names(x$groups), x$groups), sep = ", ")
-    )
-  } else {
-    rownames(table) <- ""
-  }
+  rownames(table) <- x$groups$strata
   print(table, digits = digits)
   if (x$n_dropped > 0) {
     cat(sprintf(
