@@ -51,7 +51,7 @@ death.bind(lung)
 km = gw.KaplanMeier(conf_type="log-log").fit(death, by="sex", data=lung)
 
 # Get median survival per group with 95% confidence intervals
-km.median(ci=True)
+km.median(format="polars")
 ```
 
 **Step 3: Compare survival between groups with a log-rank test**
