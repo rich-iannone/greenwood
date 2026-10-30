@@ -74,13 +74,29 @@ py-check: py-lint py-type-check py-test ## Run all Python checks: ruff, pyright,
 # Jupyter kernel (which has greenwood and its dependencies installed).
 JUPYTER_PATH := $(CURDIR)/.venv/share/jupyter
 
+# Number of Quarto processes that render pages at once (a number, or `auto` for one per CPU).
+# Override with `make py-docs DOCS_JOBS=1` to render one page at a time.
+DOCS_JOBS ?= auto
+
+# CI builds with Great Docs from GitHub main, so install the same version locally. An older copy
+# in .venv renders the pages differently and rewrites the committed _freeze/ output.
+.PHONY: py-docs-install
+py-docs-install: ## Reinstall Great Docs from GitHub main into .venv (matches CI)
+	@if command -v uv >/dev/null 2>&1; then \
+		uv pip install --python "$(PYTHON)" --reinstall "git+https://github.com/posit-dev/great-docs.git@main"; \
+	else \
+		"$(PYTHON)" -m pip install --force-reinstall "git+https://github.com/posit-dev/great-docs.git@main"; \
+	fi
+
 .PHONY: py-docs
 py-docs: ## Build the Python documentation site
-	@cd $(PY_DIR) && JUPYTER_PATH="$(JUPYTER_PATH)" $(CURDIR)/.venv/bin/great-docs build
+	@cd $(PY_DIR) && JUPYTER_PATH="$(JUPYTER_PATH)" $(CURDIR)/.venv/bin/great-docs build --jobs $(DOCS_JOBS)
 
+# `preview` builds the site first when it hasn't been built, and reads the job count from the
+# environment for that build.
 .PHONY: py-docs-preview
 py-docs-preview: ## Preview the Python documentation site locally
-	@cd $(PY_DIR) && JUPYTER_PATH="$(JUPYTER_PATH)" $(CURDIR)/.venv/bin/great-docs preview
+	@cd $(PY_DIR) && JUPYTER_PATH="$(JUPYTER_PATH)" GREAT_DOCS_RENDER_JOBS=$(DOCS_JOBS) $(CURDIR)/.venv/bin/great-docs preview
 
 .PHONY: py-build
 py-build: clean ## Build the Python source and wheel distribution
