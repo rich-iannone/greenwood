@@ -32,6 +32,7 @@ from scipy.stats import chi2, norm
 from ._backends import to_dataframe
 from ._outcome import bind_fit_inputs
 from ._repr import dropped_note
+from ._strata import resolve_strata
 
 if TYPE_CHECKING:
     from ._outcome import Outcome
@@ -1206,6 +1207,9 @@ class CoxPH:
         weight = bound.labels["weights"] if bound.labels["weights"] is not None else np.ones(surv.n)
 
         strata_labels = None if strata is None else _to_labels(strata, surv.n, "strata")
+        # `name=value` labels for the baseline table (spec/results.md). The raw values in
+        # `strata_labels` stay the keys that `predict(strata=)` matches against.
+        strata_display = resolve_strata(bound, "strata")[0]
         cluster_labels = None if cluster is None else _to_labels(cluster, surv.n, "cluster")
         frailty_labels = (
             None
@@ -1234,6 +1238,7 @@ class CoxPH:
         # scale-invariance: uniform weight scaling should not change coefficients.
         weight = weight / weight.mean()
 
+        strata_display = strata_display[keep]
         if strata_labels is not None:
             strata_labels = strata_labels[keep]
         if cluster_labels is not None:
@@ -1448,6 +1453,7 @@ class CoxPH:
         self._risk_multiplier = risk_multiplier
         self._strata_groups = strata_groups
         self._strata_labels = strata_labels
+        self._strata_display = strata_display
         self._xbar = (weight[:, None] * x).sum(axis=0) / weight.sum()
 
         self.term_names_ = names
@@ -1627,13 +1633,14 @@ class CoxPH:
         pandas.DataFrame, polars.DataFrame, or pyarrow.Table
             A DataFrame with one row per event time containing:
 
+            - `strata`: The curve label, `"all"` for an unstratified model, or `name=value` pairs
+            such as `"sex=1"` for a stratified one. Each stratum has its own baseline hazard.
             - `time`: Event times at which the baseline hazard is evaluated.
             - `cumhaz`: Cumulative baseline hazard $H_0(t)$ at each time.
             - `survival`{.gd-no-link}: Baseline survival probability $S_0(t) = \exp(-H_0(t))$.
             - `cumhaz_lower`, `cumhaz_upper` (if `ci=True`): Confidence bounds for cumulative
             hazard.
             - `survival_lower`, `survival_upper` (if `ci=True`): Confidence bounds for survival.
-            - `strata` (if stratified): Stratum label, one baseline hazard per stratum.
 
         Details
         -------
@@ -1691,20 +1698,22 @@ class CoxPH:
         cumhaz_list = []
         survival_list = []
         cumhaz_se_list = []
-        strata_list = []
+        strata_list: list[str] = []
 
-        for label, times, cumhaz in self._baseline():
+        for (members, _), (_, times, cumhaz) in zip(
+            self._strata_groups, self._baseline(), strict=True
+        ):
             times_list.extend(times)
             cumhaz_list.extend(cumhaz)
             survival_list.extend(np.exp(-cumhaz))
             if ci:
                 cumhaz_se = self._baseline_cumhaz_se(times)
                 cumhaz_se_list.extend(cumhaz_se)
-            if self._strata_labels is not None:
-                strata_list.extend([label] * len(times))
+            strata_list.extend([str(self._strata_display[members[0]])] * len(times))
 
         # Build data dict
-        data = {
+        data: dict[str, Any] = {
+            "strata": strata_list,
             "time": times_list,
             "cumhaz": cumhaz_list,
             "survival": survival_list,
@@ -1766,21 +1775,11 @@ class CoxPH:
                 cumhaz_lower = np.maximum(cumhaz_lower, 0.0)
                 cumhaz_upper = np.maximum(cumhaz_upper, cumhaz_arr)
 
-                # Enforce monotonicity: bounds must not decrease
-                # But respect stratum boundaries: only enforce within each stratum
-                if self._strata_labels is None:
-                    # Non-stratified: enforce globally
-                    for i in range(1, len(cumhaz_lower)):
+                # Enforce monotonicity: bounds must not decrease within a stratum
+                for i in range(1, len(cumhaz_lower)):
+                    if strata_list[i] == strata_list[i - 1]:
                         cumhaz_lower[i] = np.maximum(cumhaz_lower[i], cumhaz_lower[i - 1])
                         cumhaz_upper[i] = np.maximum(cumhaz_upper[i], cumhaz_upper[i - 1])
-                else:
-                    # Stratified: only enforce within strata
-                    strata_arr = np.asarray(strata_list)
-                    for i in range(1, len(cumhaz_lower)):
-                        # Only compare within same stratum
-                        if strata_arr[i] == strata_arr[i - 1]:
-                            cumhaz_lower[i] = np.maximum(cumhaz_lower[i], cumhaz_lower[i - 1])
-                            cumhaz_upper[i] = np.maximum(cumhaz_upper[i], cumhaz_upper[i - 1])
 
                 survival_lower = np.maximum(survival_lower, 1e-15)
                 survival_upper = np.minimum(survival_upper, 1.0 - 1e-15)
@@ -1795,9 +1794,6 @@ class CoxPH:
             data["cumhaz_upper"] = cumhaz_upper.tolist()
             data["survival_lower"] = survival_lower.tolist()
             data["survival_upper"] = survival_upper.tolist()
-
-        if self._strata_labels is not None:
-            data["strata"] = strata_list
 
         return to_dataframe(data, format=format)
 
