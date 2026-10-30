@@ -19,7 +19,7 @@ def test_baseline_hazard_ci_default_false(lung_surv) -> None:  # type: ignore[no
     df, y = lung_surv
     cox = CoxPH().fit(y, df[["age", "sex"]])
     bh = cox.baseline_hazard(format="pandas")
-    expected_cols = {"time", "cumhaz", "survival"}
+    expected_cols = {"strata", "time", "cumhaz", "survival"}
     assert set(bh.columns) == expected_cols
 
 
@@ -29,6 +29,7 @@ def test_baseline_hazard_ci_logl_columns(lung_surv) -> None:  # type: ignore[no-
     cox = CoxPH().fit(y, df[["age", "sex"]])
     bh = cox.baseline_hazard(ci=True, conf_type="log-log", format="pandas")
     expected_cols = {
+        "strata",
         "time",
         "cumhaz",
         "cumhaz_lower",
@@ -46,6 +47,7 @@ def test_baseline_hazard_ci_plain_columns(lung_surv) -> None:  # type: ignore[no
     cox = CoxPH().fit(y, df[["age", "sex"]])
     bh = cox.baseline_hazard(ci=True, conf_type="plain", format="pandas")
     expected_cols = {
+        "strata",
         "time",
         "cumhaz",
         "cumhaz_lower",
@@ -140,7 +142,7 @@ def test_baseline_hazard_ci_stratified(lung_surv) -> None:  # type: ignore[no-un
 
     # Should have 'strata' column
     assert "strata" in bh.columns
-    assert set(bh["strata"].unique()) == {1.0, 2.0}
+    assert set(bh["strata"].unique()) == {"sex=1", "sex=2"}
 
     # Each stratum should have its own CI
     for strata_val in bh["strata"].unique():
