@@ -1369,16 +1369,21 @@ def bind_fit_inputs(
     else:
         bound = _bind_outcome(outcome, data, designs, labels)
     bound.options = options
-    bound.label_names = {
-        key: (value,)
-        if isinstance(value, str)
-        else (value.names if isinstance(value, _GroupTerms) else None)
-        for key, value in labels.items()
-    }
+    bound.label_names = {key: _label_names(value) for key, value in labels.items()}
     _drop_missing_response(bound)
     if "weights" in labels:
         bound.labels["weights"] = _case_weights(bound.labels["weights"], bound.surv)
     return bound
+
+
+def _label_names(value: Any) -> tuple[str, ...] | None:
+    """The column names behind a label argument, read before binding turns Series into arrays."""
+    if isinstance(value, str):
+        return (value,)
+    if isinstance(value, _GroupTerms):
+        return value.names
+    name = getattr(value, "name", None)
+    return (name,) if isinstance(name, str) and name else None
 
 
 def _drop_missing_response(bound: BoundInputs) -> None:
