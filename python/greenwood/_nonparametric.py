@@ -184,6 +184,13 @@ def _fit_blocks(
         c = et.n_censor[mask].astype(float)
         t = et.time[mask].astype(float)
 
+        # With non-integer weights, the number at risk and the number of events are summed
+        # differently, so a time where everyone at risk has the event can leave a survivor weight
+        # of about 1e-16 instead of 0. Treat that rounding residue as no survivors, so the estimate
+        # drops to exactly 0.
+        everyone = np.abs(n - d) <= 1e-10 * n
+        n = np.where(everyone, d, n)
+
         with np.errstate(divide="ignore", invalid="ignore"):
             factor = np.where(n > 0, 1.0 - d / n, 1.0)
         surv_hat = np.cumprod(factor)

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 import pytest
 
@@ -404,6 +406,28 @@ def test_km_weights_scale_risk_set() -> None:
 
     # Weighted n at t=1 is 4, one weighted event of 2 -> S = 1 - 2/4 = 0.5.
     np.testing.assert_allclose(km.survival_[0], 0.5)
+
+
+@pytest.mark.parametrize("robust", [False, True])
+def test_km_non_integer_weights_reach_exactly_zero(robust: bool) -> None:
+    # Summing these weights for the risk set and for the events rounds differently, which used to
+    # leave a survivor weight of about -1e-16 at the last time: a negative estimate, an infinite
+    # standard error, and an overflow warning.
+    y = Surv(time=[1, 2, 3, 4], event=[1, 1, 1, 1])
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        km = KaplanMeier(robust=robust).fit(y, weights=[0.3, 0.6, 0.1, 0.7])
+
+    assert km.survival_[-1] == 0.0
+    assert np.all(km.survival_ >= 0.0)
+    # Greenwood's variance is undefined once S = 0. The robust standard error is 0 there, as in R.
+    if robust:
+        assert km.std_error_[-1] == 0.0
+    else:
+        assert np.isnan(km.std_error_[-1])
+    assert np.isnan(km.conf_low_[-1])
+    assert np.isnan(km.conf_high_[-1])
+    np.testing.assert_allclose(km.to_frame(format="pandas")["n_risk"].iloc[-1], 0.7)
 
 
 def test_km_robust_se_differs_from_greenwood() -> None:
