@@ -48,8 +48,9 @@ jobs:
           python -m pip install git+https://github.com/posit-dev/great-docs.git@main
       - name: Set up Quarto
         uses: quarto-dev/quarto-actions/setup@v2
+      # `--jobs auto` renders pages in several Quarto processes at once, one per CPU.
       - name: Build docs
-        run: great-docs build
+        run: great-docs build --jobs auto
       - name: Save docs artifact
         uses: actions/upload-artifact@v4
         with:
