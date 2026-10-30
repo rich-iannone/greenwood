@@ -249,7 +249,7 @@ def test_to_dataframe_columns(lung_surv) -> None:  # type: ignore[no-untyped-def
 def test_baseline_hazard_is_monotone(lung_surv) -> None:  # type: ignore[no-untyped-def]
     df, y = lung_surv
     bh = CoxPH().fit(y, df[["age", "sex"]]).baseline_hazard()
-    assert list(bh.columns) == ["time", "cumhaz", "survival"]
+    assert list(bh.columns) == ["strata", "time", "cumhaz", "survival"]
     assert np.all(np.diff(bh["cumhaz"]) >= 0)  # cumulative hazard is non-decreasing
     assert np.all(np.diff(bh["survival"]) <= 1e-12)  # survival is non-increasing
 
@@ -587,7 +587,7 @@ def test_stratified_has_robust_flag_false(lung_surv) -> None:  # type: ignore[no
     # Stratified baseline hazard carries a strata column, one baseline per stratum.
     bh = cox.baseline_hazard()
     assert "strata" in bh.columns
-    assert set(bh["strata"]) == {1, 2}
+    assert set(bh["strata"]) == {"sex=1", "sex=2"}
 
 
 def test_robust_sets_flag_and_naive_available(lung_surv) -> None:  # type: ignore[no-untyped-def]
