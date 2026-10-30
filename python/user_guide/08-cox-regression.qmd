@@ -1022,6 +1022,8 @@ baseline
 
 The returned DataFrame includes:
 
+- `strata`: the curve label, `"all"` here, or `name=value` pairs such as `"sex=1"` for a
+stratified model
 - `time`: event times at which the baseline hazard is evaluated
 - `cumhaz`: cumulative baseline hazard $H_0(t)$
 - `cumhaz_lower`, `cumhaz_upper`: confidence interval bounds for cumulative hazard
@@ -1037,7 +1039,8 @@ bounds (negative cumulative hazard or survival > 1).
 
 The baseline hazard can be combined with individual predictions to compute personalized survival
 curves with uncertainty bands. For stratified models, each stratum has its own baseline hazard and
-corresponding confidence intervals.
+corresponding confidence intervals, labeled `"sex=1"` and `"sex=2"` in the `strata` column. The
+columns are the same as for the unstratified model.
 
 ```{python}
 # For stratified models, each stratum gets its own baseline hazard and CI
