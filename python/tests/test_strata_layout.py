@@ -157,6 +157,10 @@ def test_km_named_series_uses_series_name(lung: pl.DataFrame) -> None:
     pandas_km = KaplanMeier().fit(y, by=pandas_sex)
     assert pandas_km.median(format="polars")["strata"].to_list() == ["sex=1", "sex=2"]
 
+    # The name survives binding against `data=` too.
+    formula_km = KaplanMeier().fit(DEATH, data=lung, by=lung["sex"].alias("gender"))
+    assert formula_km.median(format="polars")["strata"].to_list() == ["gender=1", "gender=2"]
+
 
 def test_km_bool_group_prints_r_style() -> None:
     y = Surv(time=[1, 2, 3, 4], event=[1, 1, 1, 1])
@@ -285,3 +289,38 @@ def test_event_table_one_and_two_groups_share_layout() -> None:
 
     _assert_same_layout(one, many)
     assert list(dict.fromkeys(many["strata"].to_list())) == ["group=1", "group=2"]
+
+
+# -- Cox baseline hazard -----------------------------------------------------------------
+
+
+@pytest.mark.parametrize("ci", [False, True])
+def test_cox_baseline_one_and_many_strata_share_layout(lung: pl.DataFrame, ci: bool) -> None:
+    one = gw.CoxPH().fit("Surv(time, status) ~ age", data=lung)
+    many = gw.CoxPH().fit("Surv(time, status) ~ age + strata(sex)", data=lung)
+
+    _assert_same_layout(
+        one.baseline_hazard(ci=ci, format="polars"), many.baseline_hazard(ci=ci, format="polars")
+    )
+    labels = many.baseline_hazard(ci=ci, format="polars")["strata"].to_list()
+    assert list(dict.fromkeys(labels)) == ["sex=1", "sex=2"]
+
+
+def test_cox_baseline_labels_name_the_strata(lung: pl.DataFrame) -> None:
+    def labels(model: gw.CoxPH) -> list[str]:
+        return list(dict.fromkeys(model.baseline_hazard(format="polars")["strata"].to_list()))
+
+    by_name = gw.CoxPH().fit("Surv(time, status) ~ age", data=lung, strata="sex")
+    by_array = gw.CoxPH().fit("Surv(time, status) ~ age", data=lung, strata=lung["sex"].to_numpy())
+    two = gw.CoxPH().fit("Surv(time, status) ~ age + strata(sex, ph.ecog)", data=lung)
+
+    assert labels(by_name) == ["sex=1", "sex=2"]
+    assert labels(by_array) == ["strata=1", "strata=2"]
+    assert "sex=1, ph.ecog=0" in labels(two)
+
+
+def test_cox_predict_still_takes_raw_strata_values(lung: pl.DataFrame) -> None:
+    cox = gw.CoxPH().fit("Surv(time, status) ~ age + strata(sex)", data=lung)
+    pred = cox.predict(lung.head(2), type="survival", times=[100.0], strata=[1, 2], format="polars")
+
+    assert pred.height == 1
