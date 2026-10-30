@@ -39,9 +39,11 @@ name (`by=1`, `group=1`). Values are written as R prints them (`1`, not `1.0`, a
 | Turnbull | not implemented | follows these rules |
 | Aalen-Johansen | not implemented | follows these rules |
 | Event table | not implemented | follows these rules (`event_table()`) |
+| Cox baseline hazard | not implemented | follows these rules (`baseline_hazard()`) |
 
-Group comparisons (log-rank tests, RMST comparisons) and Cox stratification report the groups they
-compare rather than one curve per group, so this layout doesn't apply to them.
+Group comparisons (log-rank tests, RMST comparisons) report the groups they compare rather than one
+curve per group, so this layout doesn't apply to them. A stratified Cox model's coefficients are
+shared across strata, but its baseline hazard is one curve per stratum and follows these rules.
 
 ## Known differences
 
