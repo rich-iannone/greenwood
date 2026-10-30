@@ -49,12 +49,6 @@ def strata_labels(values: Any, name: str) -> Array:
     return np.array([f"{name}={format_value(v)}" for v in raw.tolist()], dtype=object)
 
 
-def _series_name(value: Any) -> str | None:
-    """The name of a pandas or Polars Series (or similar), if it has one."""
-    name = getattr(value, "name", None)
-    return name if isinstance(name, str) and name else None
-
-
 def resolve_strata(bound: BoundInputs, key: str) -> tuple[Array, bool]:
     """Curve labels for one row each, and whether the fit is grouped.
 
@@ -71,7 +65,7 @@ def resolve_strata(bound: BoundInputs, key: str) -> tuple[Array, bool]:
 
         labels = to_1d_array(values, dtype=object)
     else:
-        name = names[0] if names else (_series_name(values) or key)
+        name = names[0] if names else key
         labels = strata_labels(values, name)
     if labels.shape[0] != bound.surv.n:
         raise ValueError(f"`{key}` must have the same length as the response.")
