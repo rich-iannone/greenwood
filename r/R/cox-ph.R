@@ -132,7 +132,7 @@ cox_ph <- function(formula,
     score_test = NULL,
     concordance = NA_real_,
     concordance_se = NA_real_,
-    linear_predictors = drop(xc %*% beta),
+    linear_predictors = linear_predictor(xc, beta),
     means = means,
     n = n,
     n_event = sum(parts$event),
@@ -830,7 +830,7 @@ predict.cox_ph <- function(object,
     x <- sweep(cox_new_design(object, newdata), 2L, object$means)
     stratum <- if (type %in% c("lp", "risk")) NULL else cox_new_strata(object, newdata)
   }
-  lp <- drop(x %*% object$coefficients)
+  lp <- linear_predictor(x, object$coefficients)
   if (type == "lp") {
     return(lp)
   }
