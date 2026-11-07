@@ -103,8 +103,6 @@ def _poisson_fit(
         mu = np.exp(eta)
         wmu = weights * mu
 
-        ll = float(np.sum(weights * (y * eta - mu)))
-
         grad = X.T @ (weights * (y - mu))
         info = (X * wmu[:, None]).T @ X
 
@@ -121,7 +119,9 @@ def _poisson_fit(
 
     eta = X @ beta + log_offset
     mu = np.exp(eta)
-    ll = float(np.sum(weights * (y * eta - mu)))
+    # The survival log-likelihood, sum(d * log(hazard) - cumulative hazard). The Poisson one also
+    # has sum(d * log(exposure)), which depends on the breaks and so would bias knot selection.
+    ll = float(np.sum(weights * (y * (eta - log_offset) - mu)))
     wmu_final = weights * mu
     info = (X * wmu_final[:, None]).T @ X
     vcov = np.linalg.inv(info)
@@ -171,8 +171,8 @@ def _select_knots(
         if strategy == "aic":
             ic = -2.0 * ll + 2.0 * n_params
         else:
-            n_obs = float(np.sum(weights))
-            ic = -2.0 * ll + np.log(n_obs) * n_params
+            # The number of subjects, as in the fitted model's `bic_`.
+            ic = -2.0 * ll + np.log(float(len(exit_))) * n_params
 
         if ic < best_ic:
             best_ic = ic
