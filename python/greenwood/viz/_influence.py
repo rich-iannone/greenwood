@@ -23,8 +23,8 @@ _HIGHLIGHT_COLOR = "#E45756"
 def _prepare_data(cox: CoxPH, highlight: int) -> dict[str, Any]:
     """Build a dict of numpy arrays with influence diagnostics and highlight flags."""
     scores = cox._score_residuals(cox.coef_)
-    dfb = scores @ cox.naive_vcov_
-    leverage = np.sum(dfb * scores, axis=1)
+    dfb = cox._dfbeta()
+    leverage = np.sum((scores @ cox.naive_vcov_) * scores, axis=1)
     mart = cox._martingale_residuals()
     event = cox._event.astype(float)
     with np.errstate(divide="ignore", invalid="ignore"):
