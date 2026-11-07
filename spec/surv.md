@@ -102,4 +102,6 @@ fixtures are regenerated on a current survival.
 
 `gw.first_event(endpoints, censor_at=None, start=None)` builds a multi-state response from one
 `(time, event)` pair per endpoint, with the earliest observed event winning. R's `survival` has no
-direct equivalent, so this helper is Greenwood's own. The R package will ship the same one.
+direct equivalent, so this helper is Greenwood's own. The R package ships the same one as
+`first_event(endpoints, censor_at = NULL, start = NULL)`, with `endpoints` a named list of
+`list(time, event)` pairs. It gives the same response, and works on the left of a model formula.
