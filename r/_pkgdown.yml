@@ -1,0 +1,164 @@
+template:
+  bootstrap: 5
+
+navbar:
+  structure:
+    left: [intro, reference, news]
+    right: [search, github]
+
+reference:
+  - title: Survival responses
+    desc: >
+      The response objects that the estimators and models take, and helpers that build them from
+      dates, several endpoints, or time-varying covariates.
+    contents:
+      - Surv
+      - as_surv
+      - event_time
+      - new_event_time
+      - extract_time
+      - first_event
+      - duration
+      - split_episodes
+      - event_table
+
+  - title: Survival curves
+    desc: Nonparametric estimates of survival and the cumulative hazard.
+    contents:
+      - kaplan_meier
+      - kaplan_meier_predict
+      - kaplan_meier_quantile
+      - nelson_aalen
+      - nelson_aalen_predict
+      - turnbull
+      - turnbull_predict
+      - turnbull_quantile
+      - rmst
+      - bootstrap
+
+  - title: Comparing groups
+    contents:
+      - logrank_test
+      - pairwise_logrank_test
+      - trend_test
+      - maxcombo_test
+      - rmst_test
+      - pairwise_rmst_test
+      - logrank_n_events
+
+  - title: Cox models
+    contents:
+      - cox_ph
+      - cox_ph_predict
+      - cox_ph_residuals
+      - cox_ph_table
+      - baseline_hazard
+      - cox_zph
+      - frailty_test
+      - influence_diagnostics
+      - smooth_hr
+
+  - title: Penalized regression
+    contents:
+      - cox_net
+      - cox_net_predict
+      - cv_coxnet
+      - ipc_ridge
+      - ipc_ridge_predict
+
+  - title: Parametric and flexible models
+    contents:
+      - aft
+      - aft_predict
+      - aft_residuals
+      - aft_table
+      - parametric
+      - parametric_predict
+      - compare_distributions
+      - piecewise_exponential
+      - piecewise_exponential_predict
+      - royston_parmar
+      - royston_parmar_predict
+      - royston_parmar_table
+      - buckley_james
+      - buckley_james_predict
+      - mixture_cure
+      - mixture_cure_predict
+
+  - title: Additive hazards
+    contents:
+      - aalen_additive
+      - aalen_additive_predict
+      - aalen_additive_table
+      - cumulative_coefficients
+
+  - title: Competing risks and multi-state models
+    contents:
+      - aalen_johansen
+      - aalen_johansen_predict
+      - grays_test
+      - fine_gray
+      - fine_gray_predict
+      - penalized_fine_gray
+      - penalized_fine_gray_predict
+      - cause_specific_cox
+      - multi_state
+      - multi_state_predict
+      - simulate_competing_risks
+
+  - title: Trees, forests, and boosting
+    contents:
+      - survival_tree
+      - survival_tree_predict
+      - random_survival_forest
+      - competing_risk_forest
+      - predict.competing_risk_forest
+      - gradient_boosting_survival_analysis
+      - predict.gradient_boosting_survival_analysis
+      - survival_boost
+      - predict.survival_boost
+      - variable_importance
+
+  - title: Model performance
+    contents:
+      - concordance_index
+      - concordance_index_ci
+      - brier_score
+      - time_dependent_auc
+      - calibration
+      - censoring_distribution
+      - score_cr
+      - incidence_metrics
+      - cross_validate
+
+  - title: Tidying results
+    desc: Methods for the `tidy()`, `glance()`, and `augment()` generics.
+    contents:
+      - tidy_greenwood
+      - glance_greenwood
+      - augment.cox_ph
+      - reexports
+
+  - title: Plots
+    contents:
+      - plot_survival
+      - plot_cif
+      - get_risk_table_frame
+      - plot_predicted_survival
+      - plot_forest
+      - plot_influence
+      - plot_schoenfeld
+      - plot_smooth_hr
+      - plot_weibull
+      - theme_survival
+
+  - title: Datasets
+    contents:
+      - colon
+      - e1684
+      - lung
+      - mgus2
+      - ovarian
+      - pbc
+      - pbcseq
+      - veteran
