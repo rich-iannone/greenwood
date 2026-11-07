@@ -24,9 +24,26 @@
 #' cluster. That variance is used for the standard errors, the confidence limits, and the Wald
 #' test. The likelihood ratio and score tests are unaffected.
 #'
+#' A `frailty()` term, as in `Surv(time, status) ~ age + frailty(inst)`, adds a shared frailty: a
+#' random effect for each cluster that multiplies the hazard of all its subjects, for clusters
+#' whose subjects are more alike than the covariates explain. `frailty(inst)` is a gamma frailty,
+#' with mean 1 and variance \eqn{\theta}. `frailty(inst, distribution = "gaussian")` (or
+#' `frailty.gaussian(inst)`) is a lognormal frailty, whose logarithm is normal with mean 0 and
+#' variance \eqn{\sigma^2}. The `frailty` and `frailty_cluster` arguments do the same as the term.
+#' The gamma fit alternates between fitting the coefficients with the clusters' current frailties,
+#' setting each frailty to its posterior mean, and choosing \eqn{\theta} on a grid of 80 values
+#' from 1e-8 to 1e3 to maximize the marginal likelihood of the clusters' event counts. The
+#' lognormal fit maximizes the partial likelihood over the coefficients and the log frailties
+#' together, penalized by their normal density, and updates \eqn{\sigma^2} from the log frailties
+#' and their variance. [frailty_test()] tests whether the variance is 0. A shared frailty needs
+#' right-censored data and `ties = "breslow"`, and can't be combined with strata or a robust
+#' variance. Predictions are for a subject with a frailty of 1, and the residuals and the baseline
+#' hazard include the fitted frailties.
+#'
 #' @param formula A formula with a [Surv()] response on the left and the covariates on the right,
 #'   such as `Surv(time, status) ~ age + sex`. Factors are coded with treatment contrasts. A
-#'   `strata()` term stratifies the baseline hazard and a `cluster()` term gives the clusters.
+#'   `strata()` term stratifies the baseline hazard, a `cluster()` term gives the clusters, and a
+#'   `frailty()` term adds a shared frailty.
 #' @param data A data frame holding the variables in `formula`.
 #' @param weights Optional case weights, a column of `data` or a numeric vector.
 #' @param subset An optional expression selecting the rows of `data` to use.
@@ -36,6 +53,12 @@
 #'   are clusters.
 #' @param cluster Optional cluster identifiers, a column of `data` or a vector, for observations
 #'   that are correlated within clusters. Implies `robust = TRUE`.
+#' @param frailty The distribution of a shared frailty: `"gamma"` or `"lognormal"`. The default,
+#'   `NULL`, gives none, unless the formula has a `frailty()` term.
+#' @param frailty_cluster The clusters of a shared frailty, a column of `data` or a vector, when
+#'   they're not given by a `frailty()` term.
+#' @param frailty_theta The starting value of the frailty variance, above 0. The default is `0.5`.
+#' @param frailty_max_iter The largest number of rounds of the frailty fit. The default is `30`.
 #' @param conf_level The confidence level, between 0 and 1. The default is `0.95`.
 #' @param max_iter The largest number of Newton-Raphson iterations. The default is `30`.
 #' @param tol The convergence tolerance: iterations stop once the log partial likelihood changes
@@ -50,7 +73,10 @@
 #'   The object also holds `loglik` (the log partial likelihood at \eqn{\beta = 0} and at the
 #'   estimate), the global tests `lr_test`, `wald_test`, and `score_test` (each with `statistic`,
 #'   `df`, and `p_value`), `concordance` and its standard error `concordance_se`, `n`, `n_event`,
-#'   `iterations`, and `converged`.
+#'   `iterations`, and `converged`. With a shared frailty, `frailty` holds the `distribution`, the
+#'   `cluster` variable, `theta` (the variance), `effects` (each cluster's frailty for a gamma
+#'   frailty, or its log frailty for a lognormal one, named by cluster), the variance `test`, and
+#'   the number of `iterations` of the frailty fit and whether it `converged`.
 #'
 #' @examples
 #' lung <- data.frame(
@@ -78,6 +104,10 @@ cox_ph <- function(formula,
                    ties = c("efron", "breslow"),
                    robust = FALSE,
                    cluster,
+                   frailty = NULL,
+                   frailty_cluster,
+                   frailty_theta = 0.5,
+                   frailty_max_iter = 30,
                    conf_level = 0.95,
                    max_iter = 30,
                    tol = 1e-9) {
@@ -88,7 +118,8 @@ cox_ph <- function(formula,
   check_number(tol, "tol", min = 0)
 
   frame <- gw_model_frame(
-    match.call(expand.dots = FALSE), parent.frame(), formula, if (missing(data)) NULL else data
+    match.call(expand.dots = FALSE), parent.frame(), formula, if (missing(data)) NULL else data,
+    frailty = TRUE
   )
   if (!is.null(split_formula(formula, if (missing(data)) NULL else data)$offset)) {
     stop("`cox_ph()` doesn't support `offset()` terms.", call. = FALSE)
@@ -102,11 +133,42 @@ cox_ph <- function(formula,
     stop("`cox_ph()` needs at least one event.", call. = FALSE)
   }
 
+  frailty <- cox_frailty_kind(frailty, frame, parts, ties, robust, frailty_theta, frailty_max_iter)
+
   strata <- group_keys(frame$strata, n)
   means <- colSums(x * w) / sum(w)
   xc <- sweep(x, 2L, means)
   setup <- cox_setup(xc, parts$start, parts$stop, parts$event, w, strata$index, ties == "efron")
-  fit <- cox_newton(setup, max_iter, tol)
+  frailty_fit <- NULL
+  if (is.null(frailty)) {
+    fit <- cox_newton(setup, max_iter, tol)
+  } else {
+    groups <- frame$frailty_cluster
+    levels <- unique(groups)
+    index <- match(groups, levels)
+    frailty_fit <- if (frailty == "gamma") {
+      cox_gamma_frailty(setup, index, length(levels), frailty_theta, frailty_max_iter, max_iter, tol)
+    } else {
+      cox_lognormal_frailty(
+        setup, index, length(levels), frailty_theta, frailty_max_iter, max_iter, tol
+      )
+    }
+    fit <- frailty_fit$fit
+    setup$offset <- frailty_fit$offset
+    frailty_fit <- list(
+      distribution = frailty,
+      cluster = if (is.null(frame$frailty_name)) {
+        deparse1(match.call()$frailty_cluster)
+      } else {
+        frame$frailty_name
+      },
+      theta = frailty_fit$theta,
+      effects = stats::setNames(frailty_fit$effects, as.character(levels)),
+      test = frailty_fit$test,
+      iterations = frailty_fit$iterations,
+      converged = frailty_fit$converged
+    )
+  }
   if (!fit$converged) {
     warning(
       sprintf("`cox_ph()` didn't converge in %d iterations.", as.integer(max_iter)),
@@ -120,8 +182,7 @@ cox_ph <- function(formula,
   naive_var <- cox_solve(fit$info, diag(p))
   dimnames(naive_var) <- list(colnames(x), colnames(x))
 
-  clusters <- frame$cluster
-  robust <- robust || !is.null(clusters)
+  robust <- robust || !is.null(frame$cluster)
   object <- list(
     coefficients = beta,
     var = naive_var,
@@ -151,13 +212,15 @@ cox_ph <- function(formula,
     stratum = strata$index,
     weights = w,
     has_weights = frame$has_weights,
-    cluster = clusters,
+    cluster = frame$cluster,
+    frailty = frailty_fit,
     n_dropped = frame$n_dropped,
     formula = formula,
     call = match.call()
   )
   class(object) <- "cox_ph"
 
+  clusters <- frame$cluster
   if (robust) {
     influence <- cox_score_residuals(object) * w
     if (!is.null(clusters)) {
@@ -266,7 +329,7 @@ cox_new_strata <- function(object, newdata) {
 
 # The parts of the partial likelihood that don't change with beta: the products of covariate
 # pairs, and per stratum the rows, the distinct event times, and the rows with an event at each.
-cox_setup <- function(x, start, stop, event, w, stratum, efron) {
+cox_setup <- function(x, start, stop, event, w, stratum, efron, offset = numeric(nrow(x))) {
   p <- ncol(x)
   layers <- lapply(sort(unique(stratum)), function(s) {
     rows <- which(stratum == s)
@@ -291,7 +354,8 @@ cox_setup <- function(x, start, stop, event, w, stratum, efron) {
     w = w,
     layers = layers,
     efron = efron,
-    counting = any(is.finite(start))
+    counting = any(is.finite(start)),
+    offset = offset
   )
 }
 
@@ -317,12 +381,13 @@ sums_at_risk <- function(start, stop, values, times, counting) {
 #
 # At an event time with m tied events, Efron's approximation sums over j = 0, ..., m - 1 with the
 # risk-set sums reduced by the fraction j / m of the tied events' sums, each term weighted by the
-# mean event weight. Breslow's is the same with a single term (m = 1).
+# mean event weight. Breslow's is the same with a single term (m = 1). The setup's `offset` (the
+# log frailty of each row) multiplies the risk scores but isn't part of the events' own terms.
 cox_terms <- function(beta, setup, detail = FALSE) {
   x <- setup$x
   p <- ncol(x)
   eta <- drop(x %*% beta)
-  risk <- setup$w * exp(eta)
+  risk <- setup$w * exp(eta + setup$offset)
   values <- cbind(risk, risk * x, risk * setup$xx)
   i1 <- 1L + seq_len(p)
   i2 <- 1L + p + seq_len(p * p)
@@ -513,7 +578,7 @@ cox_detail <- function(object) {
 cox_score_residuals <- function(object, detail = cox_detail(object)) {
   sums <- cox_row_sums(object, detail)
   x <- object$setup$x
-  r <- exp(object$linear_predictors)
+  r <- exp(object$linear_predictors + object$setup$offset)
   out <- object$setup$event * (x - sums$x_mean) - r * (x * sums$a - sums$b)
   colnames(out) <- names(object$coefficients)
   out
@@ -521,7 +586,7 @@ cox_score_residuals <- function(object, detail = cox_detail(object)) {
 
 cox_martingale <- function(object, detail = cox_detail(object)) {
   sums <- cox_row_sums(object, detail)
-  object$setup$event - exp(object$linear_predictors) * sums$a
+  object$setup$event - exp(object$linear_predictors + object$setup$offset) * sums$a
 }
 
 # Schoenfeld residuals, one row per event, ordered by stratum and time.
@@ -682,7 +747,10 @@ as.data.frame.cox_ph <- function(x,
 
 #' @export
 print.cox_ph <- function(x, digits = getOption("digits"), ...) {
-  cat("<cox_ph> ", deparse_formula(x$formula), "\n", sep = "")
+  cat("<", class(x)[1L], "> ", deparse_formula(x$formula), "\n", sep = "")
+  if (!is.null(x$cause)) {
+    cat(sprintf("Cause \"%s\", with the other causes taken as censoring.\n", x$cause))
+  }
   cat(sprintf(
     "%s ties. n = %d, events = %s%s\n\n",
     if (x$ties == "efron") "Efron" else "Breslow",
@@ -717,6 +785,17 @@ print.cox_ph <- function(x, digits = getOption("digits"), ...) {
   test_line("Likelihood ratio test:", x$lr_test)
   test_line(if (x$robust) "Robust Wald test:" else "Wald test:", x$wald_test)
   test_line("Score test:", x$score_test)
+  if (!is.null(x$frailty)) {
+    name <- if (x$frailty$distribution == "gamma") "theta" else "sigma2"
+    cat(sprintf(
+      "\nShared %s frailty by %s: %s = %s\n",
+      x$frailty$distribution, x$frailty$cluster, name, format(x$frailty$theta, digits = short)
+    ))
+    cat(sprintf(
+      "Frailty variance test (%s = 0): LR = %s, p = %s\n",
+      name, format(x$frailty$test$statistic, digits = short), format_p(x$frailty$test$p_value)
+    ))
+  }
   cat(sprintf(
     "Concordance: %s (std. error %s)\n",
     format(x$concordance, digits = short),
@@ -937,10 +1016,12 @@ cox_curve <- function(object, detail, s, xc, times, conditional_after = NULL) {
   list(cumhaz = cumhaz0 * risk, std_error = sqrt(pmax(variance, 0)))
 }
 
-#' Baseline cumulative hazard of a model
+#' Baseline hazard of a model
 #'
-#' `baseline_hazard()` gives the baseline cumulative hazard \eqn{H_0(t)} of a fitted model at
-#' every distinct time in each stratum, with its standard error and confidence limits.
+#' `baseline_hazard()` gives the baseline hazard of a fitted model, with its standard error and
+#' confidence limits. For a [cox_ph()] fit, it's the cumulative hazard \eqn{H_0(t)} at every
+#' distinct time in each stratum. For a [piecewise_exponential()] fit, it's the hazard in each
+#' interval.
 #'
 #' @param object A fitted model.
 #' @param ... Passed on to methods.
