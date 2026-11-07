@@ -915,7 +915,8 @@ import numpy as np
 penalizers = np.logspace(-4, 0, 40)
 paths = {name: [] for name in cols}
 for lam in penalizers:
-    m = gw.CoxNet(penalizer=lam, l1_ratio=1.0).fit(formula, data=lung)
+    # Some penalties near where a covariate enters need more than the default 1000 iterations
+    m = gw.CoxNet(penalizer=lam, l1_ratio=1.0, max_iter=5000).fit(formula, data=lung)
     for j, name in enumerate(cols):
         paths[name].append(m.coef_[j])
 ```
