@@ -330,3 +330,25 @@ def test_counting_process(lung_data) -> None:  # type: ignore[no-untyped-def]
     pem = PiecewiseExponential(breaks=[180, 365]).fit(y_cp, df[["age", "sex"]])
 
     assert pem.n_ == 228
+
+
+def test_loglik_is_the_survival_likelihood(lung_data) -> None:  # type: ignore[no-untyped-def]
+    """The log-likelihood is sum(d * log h(t) - H(t)), with no term for the Poisson exposure."""
+    df, y = lung_data
+    pem = PiecewiseExponential(breaks=[180, 365]).fit(y, df[["age", "sex"]])
+    time = df["time"].to_numpy(dtype=float)
+    event = (df["status"] == 2).to_numpy()
+    lp = pem.predict(type="lp")
+    hazard = np.exp(pem._baseline_log_hazard)
+    interval = np.searchsorted([180.0, 365.0], time, side="left")
+    cumhaz = np.array(
+        pem.predict(type="cumhaz", times=time.tolist(), format="pandas").iloc[:, 1:]
+    ).diagonal()
+    expected = float(np.sum(event * (np.log(hazard[interval]) + lp) - cumhaz))
+    assert pem.loglik_ == pytest.approx(expected, rel=1e-10)
+
+    # With no breaks, it's the exponential model.
+    single = PiecewiseExponential(breaks=[]).fit(y, df[["age", "sex"]])
+    aft = gw.AFT("exponential").fit(y, df[["age", "sex"]])
+    assert single.loglik_ == pytest.approx(aft.loglik_, rel=1e-8)
+    np.testing.assert_allclose(single.coef_, -aft.coef_[1:], atol=1e-5)
