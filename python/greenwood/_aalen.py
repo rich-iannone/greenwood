@@ -318,7 +318,9 @@ class AalenAdditive:
         test_statistic = tx.sum(axis=0)
         test_var: Array = tx.T @ tx
 
-        scale = tw.sum(axis=0)
+        # The summary coefficient is a weighted average of the increments for the Aalen weights,
+        # and the average weighted increment for the number-at-risk weights.
+        scale = tw.sum(axis=0) if self.test != "nrisk" else np.full(pp1, float(n_events_used))
 
         ctx = np.cumsum(tx, axis=0)
         times_col = self.event_times_
