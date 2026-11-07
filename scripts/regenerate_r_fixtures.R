@@ -304,6 +304,35 @@ pairwise_logrank_fixture <- function() {
 }
 write_json_fixture(pairwise_logrank_fixture(), "pairwise_logrank_veteran")
 
+# Log-rank test for trend across the ECOG grades of lung: U = s'(O - E), V = s' V s, with the
+# full survdiff variance matrix V. Default scores (0, 1, 2, 3), quadratic scores, Peto-Peto
+# weights (rho = 1), and stratified by sex. Without tied times this is coxph()'s score test for
+# the score as a numeric covariate.
+trend_fixture <- function() {
+  l <- lung[!is.na(lung$ph.ecog), ]
+  trend <- function(sd, scores) {
+    # With strata(), survdiff gives the observed and expected counts per stratum.
+    o <- if (is.matrix(sd$obs)) rowSums(sd$obs) else sd$obs
+    e <- if (is.matrix(sd$exp)) rowSums(sd$exp) else sd$exp
+    u <- sum(scores * (o - e))
+    v <- drop(crossprod(scores, sd$var %*% scores))
+    stat <- u^2 / v
+    list(
+      scores = scores, observed = as.numeric(o), expected = as.numeric(e),
+      u = u, v = v, statistic = stat, p = pchisq(stat, 1, lower.tail = FALSE)
+    )
+  }
+  linear <- c(0, 1, 2, 3)
+  list(
+    groups = sub("^[^=]*=", "", names(survdiff(Surv(time, status) ~ ph.ecog, data = l)$n)),
+    linear = trend(survdiff(Surv(time, status) ~ ph.ecog, data = l), linear),
+    quadratic = trend(survdiff(Surv(time, status) ~ ph.ecog, data = l), linear^2),
+    peto = trend(survdiff(Surv(time, status) ~ ph.ecog, data = l, rho = 1), linear),
+    stratified = trend(survdiff(Surv(time, status) ~ ph.ecog + strata(sex), data = l), linear)
+  )
+}
+write_json_fixture(trend_fixture(), "trend_lung_ecog")
+
 # -- MaxCombo test: Z-statistics and correlation under multiple FH weights ----------
 #
 # Computes the Z-statistics and correlation matrix for the MaxCombo test using the
@@ -482,10 +511,13 @@ cox_survci_fixture <- function() {
 }
 write_json_fixture(cox_survci_fixture(), "cox_survci_breslow")
 
-# Baseline hazard CIs from survfit.coxph (no newdata = baseline survival).
+# Baseline hazard CIs from survfit.coxph at covariates 0 (the uncentered baseline, as
+# CoxPH.baseline_hazard() reports it), with log-log and plain survival limits.
 cox_basehaz_ci_fixture <- function() {
   cm <- coxph(Surv(time, status) ~ age + sex, data = lung, ties = "breslow")
-  sf <- survfit(cm) # baseline survival at mean covariates
+  at_zero <- data.frame(age = 0, sex = 0)
+  sf <- survfit(cm, newdata = at_zero, conf.type = "log-log")
+  sf_plain <- survfit(cm, newdata = at_zero, conf.type = "plain")
   times <- c(100, 200, 365, 500, 800)
   i <- findInterval(times, sf$time)
   list(
@@ -493,9 +525,11 @@ cox_basehaz_ci_fixture <- function() {
     cumhaz = sf$cumhaz[i],
     survival = sf$surv[i],
     se_cumhaz = sf$std.chaz[i],
-    lower = sf$lower[i],
-    upper = sf$upper[i],
-    conf_type = sf$conf.type
+    lower_loglog = sf$lower[i],
+    upper_loglog = sf$upper[i],
+    conf_type = sf$conf.type,
+    lower_plain = sf_plain$lower[i],
+    upper_plain = sf_plain$upper[i]
   )
 }
 write_json_fixture(cox_basehaz_ci_fixture(), "cox_basehaz_ci")
@@ -518,6 +552,57 @@ cox_timevarying_fixture <- function() {
   )
 }
 write_json_fixture(cox_timevarying_fixture(), "cox_timevarying")
+
+# Case weights, strata, and counting-process data, for both ties methods, with the residuals
+# (martingale, score, dfbeta) and the robust variance. Efron's correction for tied deaths enters
+# all of these. `weights` has one value per row of lung, and the lung fits use the rows with
+# time, status, age, sex, and ph.ecog all present. The heart data are stored in the fixture.
+cox_weighted_fixture <- function() {
+  set.seed(29)
+  weights <- runif(nrow(lung), 0.5, 2.0)
+  l <- lung
+  l$w <- weights
+  l <- l[complete.cases(l[c("time", "status", "age", "sex", "ph.ecog")]), ]
+  h <- heart
+  one <- function(f) {
+    list(
+      coef = unname(coef(f)),
+      se = unname(sqrt(diag(f$var))),
+      naive_se = unname(sqrt(diag(if (is.null(f$naive.var)) f$var else f$naive.var))),
+      loglik = f$loglik,
+      score_test = unname(f$score),
+      martingale = unname(residuals(f, "martingale")),
+      score = unname(residuals(f, "score")),
+      dfbeta = unname(residuals(f, "dfbeta"))
+    )
+  }
+  out <- list(
+    weights = weights,
+    heart = list(
+      id = h$id, start = h$start, stop = h$stop, event = h$event, age = h$age,
+      surgery = h$surgery, transplant = as.integer(as.character(h$transplant))
+    )
+  )
+  for (ties in c("efron", "breslow")) {
+    out[[ties]] <- list(
+      plain = one(coxph(Surv(time, status) ~ age + sex, data = l, ties = ties)),
+      weighted = one(coxph(
+        Surv(time, status) ~ age + sex,
+        data = l, weights = w, ties = ties, robust = TRUE
+      )),
+      strata = one(coxph(
+        Surv(time, status) ~ age + ph.ecog + strata(sex),
+        data = l, weights = w, ties = ties, robust = TRUE
+      )),
+      counting = one(coxph(
+        Surv(start, stop, event) ~ age + surgery + transplant,
+        data = h, ties = ties, cluster = id
+      ))
+    )
+  }
+  out
+}
+write_json_fixture(cox_weighted_fixture(), "cox_weighted_residuals")
 
 # -- Stratified Cox and robust (sandwich) variance ----------------------------------
 
@@ -576,6 +661,11 @@ aft_fixture <- function(dist) {
   # Predicted survival-time quantiles: rows = subjects, cols = probabilities.
   pred_q <- as.matrix(predict(m, aft_pred_newdata, type = "quantile", p = aft_pred_p))
   dimnames(pred_q) <- NULL
+  # Their standard errors on the time scale, from the full variance (coefficients and log scale).
+  pred_q_se <- as.matrix(
+    predict(m, aft_pred_newdata, type = "quantile", p = aft_pred_p, se.fit = TRUE)$se.fit
+  )
+  dimnames(pred_q_se) <- NULL
   list(
     dist = dist,
     terms = names(m$coef),
@@ -587,13 +677,104 @@ aft_fixture <- function(dist) {
     n = length(m$linear.predictors),
     pred_p = aft_pred_p,
     pred_newdata = list(age = aft_pred_newdata$age, sex = aft_pred_newdata$sex),
-    pred_quantile = pred_q
+    pred_quantile = pred_q,
+    pred_quantile_se = pred_q_se
   )
 }
 
 for (d in c("weibull", "exponential", "lognormal", "loglogistic")) {
   write_json_fixture(aft_fixture(d), paste0("aft_", d))
 }
+
+# -- Predicted quantiles, medians, and restricted means (Cox and AFT) ---------------
+#
+# Three subjects from age + sex fits on lung. Cox values come from survfit on the Breslow fit
+# (log limits for the quantiles, rmean for the restricted means). AFT quantile limits are
+# q * exp(+/- z * se(q) / q), with se(q) from survreg's delta method over the coefficients and
+# the log scale. AFT restricted means integrate the fitted survival curve.
+predict_newdata <- data.frame(age = c(50, 70, 60), sex = c(1, 2, 1))
+predict_p <- c(0.25, 0.5, 0.75)
+predict_tau <- c(365, 730)
+
+predict_cox <- coxph(Surv(time, status) ~ age + sex, data = lung, ties = "breslow")
+predict_cox_sf <- survfit(predict_cox, newdata = predict_newdata)
+predict_cox_q <- quantile(predict_cox_sf, probs = predict_p)
+
+aft_quantile_limits <- function(m, p) {
+  z <- qnorm(0.975)
+  pq <- predict(m, predict_newdata, type = "quantile", p = p, se.fit = TRUE)
+  q <- matrix(pq$fit, nrow = nrow(predict_newdata))
+  se <- matrix(pq$se.fit, nrow = nrow(predict_newdata))
+  # Rows are the probabilities, columns the subjects.
+  list(
+    quantiles = t(q),
+    lower = t(q * exp(-z * se / q)),
+    upper = t(q * exp(z * se / q))
+  )
+}
+
+predict_aft <- lapply(
+  c(weibull = "weibull", lognormal = "lognormal", loglogistic = "loglogistic"),
+  function(d) survreg(Surv(time, status) ~ age + sex, data = lung, dist = d)
+)
+
+aft_rmst <- function(m, tau) {
+  lp <- predict(m, predict_newdata, type = "lp")
+  vapply(lp, function(eta) {
+    surv <- function(t) {
+      1 - psurvreg(t, mean = eta, scale = m$scale, distribution = m$dist)
+    }
+    integrate(surv, 0, tau, rel.tol = 1e-12)$value
+  }, numeric(1))
+}
+
+predict_median_out <- list(
+  newdata = as.list(predict_newdata),
+  cox_breslow = list(
+    median = c(predict_cox_q$quantile[, 2]),
+    lower = c(predict_cox_q$lower[, 2]),
+    upper = c(predict_cox_q$upper[, 2])
+  )
+)
+for (d in names(predict_aft)) {
+  lim <- aft_quantile_limits(predict_aft[[d]], 0.5)
+  predict_median_out[[paste0("aft_", d)]] <- list(
+    median = c(lim$quantiles), lower = c(lim$lower), upper = c(lim$upper)
+  )
+}
+write_json_fixture(predict_median_out, "predict_median")
+
+weibull_q <- aft_quantile_limits(predict_aft$weibull, predict_p)
+write_json_fixture(
+  list(
+    newdata = as.list(predict_newdata),
+    p = predict_p,
+    cox_breslow = list(quantiles = unname(t(predict_cox_q$quantile))),
+    aft_weibull = weibull_q
+  ),
+  "predict_quantile"
+)
+
+predict_cox_rmst <- lapply(predict_tau, function(tau) {
+  summary(predict_cox_sf, rmean = tau)$table
+})
+write_json_fixture(
+  list(
+    newdata = as.list(predict_newdata),
+    tau = predict_tau,
+    cox_breslow = list(
+      rmst_365 = unname(predict_cox_rmst[[1]][, "rmean"]),
+      rmst_365_se = unname(predict_cox_rmst[[1]][, "se(rmean)"]),
+      rmst_730 = unname(predict_cox_rmst[[2]][, "rmean"]),
+      rmst_730_se = unname(predict_cox_rmst[[2]][, "se(rmean)"])
+    ),
+    aft_weibull = list(
+      rmst_365 = aft_rmst(predict_aft$weibull, 365),
+      rmst_730 = aft_rmst(predict_aft$weibull, 730)
+    )
+  ),
+  "predict_expectation"
+)
 
 # -- AFT residual diagnostics via survreg -----------------------------------------
 
@@ -732,18 +913,38 @@ cif_fixture <- c(
 )
 write_json_fixture(cif_fixture, "cif_mgus2")
 
+# The pcm curve read at times on and between the event times, as calibration_incidence()'s
+# reference. summary() reads the curve as a right-continuous step function.
+calibration_times <- c(0.5, 12, 30.5, 60, 100.5, 250.5, 400)
+write_json_fixture(
+  list(
+    times = calibration_times,
+    cif_pcm = summary(sf, times = calibration_times, extend = TRUE)$pstate[, 2]
+  ),
+  "calibration_incidence_mgus2"
+)
+
 fg <- finegray(Surv(etime, event_f) ~ age + sex + id, data = mg, etype = "pcm")
 fgmod <- coxph(
   Surv(fgstart, fgstop, fgstatus) ~ age + sex + cluster(id),
   weights = fgwt, data = fg, ties = "breslow"
 )
 sfg <- summary(fgmod)$coefficients
+# Predicted cumulative incidence of pcm, 1 - S(t | x) from the weighted Cox fit, for two
+# subjects at a few times.
+fg_newdata <- data.frame(age = c(60, 75), sex = c("F", "M"))
+fg_times <- c(30, 60, 120, 240, 400)
+fg_curves <- summary(survfit(fgmod, newdata = fg_newdata), times = fg_times)
 write_json_fixture(
   list(
     terms = rownames(sfg),
     coef = unname(sfg[, "coef"]),
     naive_se = unname(sfg[, "se(coef)"]),
-    robust_se = unname(sfg[, "robust se"])
+    robust_se = unname(sfg[, "robust se"]),
+    newdata_age = fg_newdata$age,
+    newdata_sex = fg_newdata$sex,
+    times = fg_times,
+    cif = list(subj1 = 1 - fg_curves$surv[, 1], subj2 = 1 - fg_curves$surv[, 2])
   ),
   "finegray_mgus2_pcm"
 )
@@ -959,6 +1160,81 @@ write_json_fixture(
     tau_default = ipcw_tau_default
   ),
   "concordance_ipcw_lung"
+)
+
+# -- IPCW concordance standard errors: the infinitesimal jackknife -------------------
+#
+# Each subject gets a case weight v_k, so a comparable pair (i, j) weighs v_i * v_j times its
+# censoring weight, and C(v) is the weighted share of concordant pairs. The standard error is
+# sqrt(sum_k (dC / dv_k)^2) at v = 1, with the censoring curve held fixed. The derivatives come
+# from central differences, independently of any closed form. With `cause`, the comparable pairs
+# also include case i against a subject j with a competing event by T_i, weighted by
+# 1 / (G(T_i-) G(T_j-)). G is the censoring curve from any event, as in uno_ipcw_concordance().
+ipcw_concordance_weighted <- function(T, status, marker, tau, cause = NULL) {
+  any_event <- as.integer(status > 0)
+  censor_times <- sort(unique(T[any_event == 0L]))
+  g_val <- 1.0
+  g_surv_vec <- numeric(length(censor_times))
+  for (k in seq_along(censor_times)) {
+    c_t <- censor_times[k]
+    n_risk <- sum(T > c_t) + sum(any_event == 0L & T == c_t)
+    g_val <- g_val * (1.0 - sum(any_event == 0L & T == c_t) / n_risk)
+    g_surv_vec[k] <- g_val
+  }
+  g_left <- function(t_vec) {
+    vapply(t_vec, function(t) {
+      idx <- which(censor_times < t)
+      if (length(idx) == 0L) 1.0 else g_surv_vec[max(idx)]
+    }, numeric(1))
+  }
+  g_all <- g_left(T)
+  target <- if (is.null(cause)) 1L else cause
+  cases <- which(status == target & T <= tau & g_all > 0)
+  competing <- if (is.null(cause)) integer(0) else which(status > 0 & status != cause)
+  function(v) {
+    num <- 0
+    den <- 0
+    for (i in cases) {
+      score <- function(j) (marker[i] > marker[j]) + 0.5 * (marker[i] == marker[j])
+      later <- which(T > T[i])
+      w_a <- v[i] * v[later] / g_all[i]^2
+      num <- num + sum(w_a * score(later))
+      den <- den + sum(w_a)
+      b <- competing[T[competing] <= T[i] & g_all[competing] > 0]
+      w_b <- v[i] * v[b] / (g_all[i] * g_all[b])
+      num <- num + sum(w_b * score(b))
+      den <- den + sum(w_b)
+    }
+    num / den
+  }
+}
+
+ipcw_concordance_ij <- function(T, status, marker, tau, cause = NULL, h = 1e-6) {
+  c_of <- ipcw_concordance_weighted(T, status, marker, tau, cause)
+  n <- length(T)
+  ones <- rep(1, n)
+  infl <- vapply(seq_len(n), function(k) {
+    up <- ones
+    down <- ones
+    up[k] <- 1 + h
+    down[k] <- 1 - h
+    (c_of(up) - c_of(down)) / (2 * h)
+  }, numeric(1))
+  list(estimate = c_of(ones), se = sqrt(sum(infl^2)))
+}
+
+conc_ci_lung_default <- ipcw_concordance_ij(lung$time, ipcw_delta, auc_lp, ipcw_tau_default)
+conc_ci_lung_365 <- ipcw_concordance_ij(lung$time, ipcw_delta, auc_lp, 365)
+conc_ci_mgus2 <- ipcw_concordance_ij(mg$etime, mg$event, mg$age, max(mg$etime[mg$event == 1]),
+  cause = 1L
+)
+write_json_fixture(
+  list(
+    lung_default = conc_ci_lung_default,
+    lung_tau365 = conc_ci_lung_365,
+    mgus2_pcm_age = conc_ci_mgus2
+  ),
+  "concordance_ci_ij"
 )
 
 # -- Cox residual diagnostics (Breslow ties) --------------------------------------
