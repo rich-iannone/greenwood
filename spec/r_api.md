@@ -34,9 +34,9 @@ and the places where the R package differs from the Python one on purpose.
 | `FineGray` | `fine_gray()` | `finegray_mgus2_pcm` |
 | `CauseSpecificCox` | `cause_specific_cox()` | `cox_ph()` and `coxph()` on the recoded response, and the Python values |
 | `MultiState` | `multi_state()` | `multistate_mgus2` |
-| `CoxNet` | `cox_net()` | checked against the Python values, the optimality (KKT) conditions, and `cox_ph()` without a penalty |
+| `CoxNet` | `cox_net()` | checked against the Python values (lasso fits to about `1e-9`, ridge and elastic-net fits to about `1e-5`, with the same stopping rule), the optimality (KKT) conditions, and `cox_ph()` without a penalty |
 | `cv_coxnet()`, `CoxNetCVResult` | `cv_coxnet()`, a `cv_coxnet` object | each fold's score rebuilt from the recorded folds, and the Python penalizer path |
-| `PenalizedFineGray` | `penalized_fine_gray()` | checked against the Python values, the optimality (KKT) conditions, and `fine_gray()` without a penalty |
+| `PenalizedFineGray` | `penalized_fine_gray()` | checked against the Python values (to about `1e-5`), the optimality (KKT) conditions, and `fine_gray()` without a penalty |
 | `SurvivalTree` | `survival_tree()` | checked against the Python values, `survdiff()`'s log-rank statistic at every split, and `kaplan_meier()` and `nelson_aalen()` in every leaf |
 | `RandomSurvivalForest`, `ExtraSurvivalTrees`, `variable_importance()` | `random_survival_forest()`, `extra_survival_trees()`, `variable_importance()` | the bagging, ensemble curves, out-of-bag concordance, and permutation importance rebuilt by hand |
 | `GradientBoostingSurvivalAnalysis` | `gradient_boosting_survival_analysis()` | checked against the Python values, `coxph()`'s martingale residuals and Breslow baseline, and a brute-force search for each split |
@@ -59,7 +59,7 @@ and the places where the R package differs from the Python one on purpose.
 | `duration()` | `duration(start, end, unit)` | the elapsed times checked by hand in each unit |
 | `load_dataset()` | lazy data: `colon`, `e1684`, `lung`, `mgus2`, `ovarian`, `pbc`, `pbcseq`, `veteran` | the same values as the Python copies in `python/greenwood/data/` |
 | `tidy()`, `glance()`, `augment()` | methods for the generics package's `tidy()`, `glance()`, and `augment()`, re-exported | each model's own tables and fields, and the `glance()` values on lung against the Python values |
-| `CoxPH.influence_diagnostics()`, `CoxPH.smooth_hr()` | `influence_diagnostics(fit)`, `smooth_hr(fit, term)` | checked against the Python values |
+| `CoxPH.influence_diagnostics()`, `CoxPH.smooth_hr()` | `influence_diagnostics(fit)`, `smooth_hr(fit, term)` | checked against the Python values (the `smooth_hr()` curves and limits to about `1e-14`, with strata and clusters) |
 | `greenwood.viz`: `plot_survival()`, `plot_cif()`, `plot_predicted_survival()`, `plot_forest()`, `plot_influence()`, `plot_schoenfeld()`, `plot_smooth_hr()`, `plot_weibull()`, `risk_table()`, `get_risk_table_frame()`, `theme_survival()`, `theme_forest()` | same names, drawn with ggplot2 | each plot's layers and the data it draws, and the numbers at risk against the risk sets |
 
 ## Not yet in R
@@ -129,16 +129,15 @@ The `Outcome` layer, which R's formulas cover (see the adaptations below).
 | `CauseSpecificCox` wraps a `CoxPH` in `cox_`, and delegates attributes to it | the result is also a `cox_ph` object, so every `cox_ph()` method works on it, with `cause` and `states` added | S3 inheritance. `cross_validate()` rejects it, as it does the Python one. |
 | `CauseSpecificCox.__repr__` header | `print()` starts `<cause_specific_cox>` and names the cause modeled | As the other R models. |
 | `CoxNet` objective divides the log partial likelihood by `n`, and centers and scales the covariates without the weights | divides by the total weight, with weighted means and standard deviations, so whole-number weights act as copies | As the other R models. Without weights the fits are the same. |
-| `CoxNet` stops at `max_iter` without a word | a warning, and `fit$converged` | As `mixture_cure()`. The stopping rule (a small relative change in the coefficients) is the Python one, so lasso fits agree to about `1e-9` and ridge and elastic-net fits to about `1e-5`. |
 | `CoxNet.predict(type="survival")` wide, defaulting to the event times | long: `subject`, `time`, `estimate`, defaulting to every distinct time (`fit$times`) | As the other models. |
 | `CoxNet.to_frame()`, `effective_df()`, `aic()`, `bic()` | `as.data.frame()` (`term`, `estimate`, `hazard_ratio`), `fit$effective_df`, and `logLik()`, `AIC()`, `BIC()` with the effective degrees of freedom and `nobs()` the number of events | R's generics. |
 | `CoxNet` has no strata, clusters, or offsets | `strata()`, `cluster()`, and `offset()` terms are errors | They aren't taken as covariates by mistake. |
 | `cv_coxnet(seed=)`, with the fold fits ignoring the weights | `set.seed()` for the folds, and the weights passed to every fold fit | R's convention for random numbers, and the weights mean the same in every fit. |
 | `cv_coxnet()` takes counting-process data | right-censored data only | The concordance and the Brier score need right-censored data. |
-| `CoxNetCVResult.penalizers_`, `mean_scores_`, `std_scores_`, `n_nonzero_`, `to_frame()` | `cv$path` (`penalizer`, `mean_score`, `std_score`, `n_nonzero`), `as.data.frame()`, and the per-fold `cv$scores` (`penalizer`, `fold`, `score`, `n_nonzero`) with the `folds` | As `cross_validate()`. A fit that doesn't converge is reported in one warning. |
+| `CoxNetCVResult.penalizers_`, `mean_scores_`, `std_scores_`, `n_nonzero_`, `to_frame()` | `cv$path` (`penalizer`, `mean_score`, `std_score`, `n_nonzero`), `as.data.frame()`, and the per-fold `cv$scores` (`penalizer`, `fold`, `score`, `n_nonzero`) with the `folds` | As `cross_validate()`. |
 | `PenalizedFineGray(cause=...)`, with `cause` required | `penalized_fine_gray(formula, data, cause = 1, ...)` | As `fine_gray()`. |
 | `PenalizedFineGray.predict()` and `predict_cumulative_incidence()` (wide) | `predict(fit, newdata, type = c("lp", "risk", "cif"), times)`, the cumulative incidence long (`subject`, `time`, `estimate`) | As `fine_gray()`. |
-| `PenalizedFineGray` stops at `max_iter` without a word, and keeps no likelihood | a warning, `fit$converged`, and `fit$loglik` (the log pseudo partial likelihood) | As `cox_net()`. The fits agree with Python's to about `1e-5`. |
+| `PenalizedFineGray` keeps no likelihood | `fit$loglik` (the log pseudo partial likelihood) | As `cox_net()`. |
 | `PenalizedFineGray.to_frame()` | `as.data.frame()`: `term`, `estimate`, `hazard_ratio` | R's generics. |
 | `random_state=` on the trees, forests, and boosting models, and `variable_importance(random_state=)` | no `random_state`. Call `set.seed()` first | R's convention for random numbers. The fits that draw none (a `"best"` tree trying every feature, and the Cox gradient boosting without `subsample` or `max_features`) agree with Python's. |
 | `engine="numpy"` or `"numba"` for the split search | no `engine` argument | One implementation in base R. |
@@ -147,13 +146,10 @@ The `Outcome` layer, which R's formulas cover (see the adaptations below).
 | Covariates that are NaN go right at every split | rows with a missing covariate get `NA` predictions | No prediction is made up for them. |
 | `RandomSurvivalForest.oob_score_`, `variable_importance()` | `fit$oob_score` (`NA` unless `oob_score = TRUE`), and `variable_importance(fit, n_repeats = 5)`, a data frame (`term`, `importance`) sorted by importance | R's names. The Cox gradient boosting's `variable_importance()` is its normalized reduction in squared error, as in Python. |
 | `survival_tree()` and the forests have no table of their splits | `as.data.frame()` of a tree: `node`, `depth`, `term`, `threshold`, `left`, `right`, `n`, `n_event` | So a tree can be read. |
-| `SurvivalBoost` scores each subject's training rows with every round's trees over all of its horizons, not at the sampled horizons | each sampled (horizon, covariates) row is scored by the current ensemble | The gradient is then that of the model being fit. The fits differ from Python's. |
-| `SurvivalBoost(hard_zero_fraction=0)` still sets one horizon to 0, and its time grid can repeat a quantile | `floor(hard_zero_fraction * n)` horizons set to 0, and the grid's repeated quantiles dropped | `0` means none, and every grid time is distinct. |
 | `SurvivalBoost.predict_cumulative_incidence()` (a 3-D array or wide frame), `predict_survival_function()`, and `predict_proba(time_horizon=)`, with `newdata` required | `predict(fit, newdata, type = c("cif", "survival"), times)`, long (`subject`, `cause`, `time`, `estimate` for the causes, ordered by subject, cause, then time), defaulting to the rows the model was fit to and the time grid | As the other R competing-risks models. |
 | `CompetingRiskForest.predict(cause=)` (wide, with `cause` required when there are several) and `predict_risk(cause=)`, with `newdata` required | `predict(fit, newdata, type = c("cif", "risk"), cause = 1, times)`, the curves long (`subject`, `time`, `estimate`), defaulting to the first cause, the rows the forest was grown on, and the event times | As `fine_gray()` and the other R forests. |
 | `CompetingRiskForest.oob_score_` and `variable_importance()` for the first cause | `fit$oob_score` for the first cause (`NA` unless `oob_score = TRUE`), and `variable_importance(fit, cause = 1, n_repeats = 5)` | Any cause's importance can be had. |
 | `split_episodes(..., format=)` | no `format`, and a data frame back | R has one data frame type. |
-| `split_episodes()` with `covariates=None` takes every other column of `visits` as time-varying, the follow-up time and event included | the default leaves out `time`, `event`, and the `baseline_covariates` | With a long table as its own baseline, Python's default carries the follow-up columns as covariates and overwrites the event, so every interval gets the event. |
 | `split_episodes()` with missing visit or follow-up times | an error | An interval can't be built from a missing time. |
 | `first_event(endpoints={name: (time, event)})` | `first_event(list(name = list(time, event)))` | R has no tuples, and a named list keeps the endpoint order. A row with a missing endpoint time gives a missing response, so `na.action` drops it. |
 | `Outcome.first_event()` for a formula | `first_event()` on the left of the formula, its columns found in `data` | R formulas evaluate the response in `data`. |
@@ -167,7 +163,6 @@ The `Outcome` layer, which R's formulas cover (see the adaptations below).
 | curve `glance()` (Kaplan-Meier, Nelson-Aalen, Aalen-Johansen) has a `strata` column | `strata`, then the grouping variables | As the curves' own tables. |
 | no `tidy()` or `glance()` for a single survival tree, or `tidy()` for the tests | `tidy()` and `glance()` for `survival_tree()`, and `tidy()` for the log-rank, MaxCombo, and RMST tests | Every R result can be tidied. |
 | `CoxPH.smooth_hr()` table columns `log_hr`, `log_hr_lower`, `log_hr_upper` (or `hr_*`) | `as.data.frame(curve, scale = "log_hr" or "hr")`: the covariate, `log_hr` (or `hr`), `conf_low`, `conf_high`. The object keeps the `log_hr_lower`, `hr_lower`, ... fields | One set of names across every R table. |
-| `CoxPH.smooth_hr()` refits with the full B-spline basis, whose columns sum to one, and inverts its singular information matrix. The refit leaves out the strata and clusters | the first basis column dropped, and the refit keeps the strata, weights, entry times, ties, and clusters | The model is the same, so the curves agree to about `1e-14`. Python's limits are off by up to about 0.3% from the singular inverse. |
 | `plot_survival()` and `plot_predicted_survival()` in Altair or plotnine, `plot_cif()`, `plot_weibull()` in Altair | ggplot2 for every plot | R's usual plotting system. The plots can be extended with `+`. |
 | `risk_table()` gives a great_tables table | a ggplot of the numbers at risk, which `plot_survival(risk_table = TRUE)` and `plot_cif(risk_table = TRUE)` stack under the curves with patchwork | patchwork is suggested, not imported. |
 | `get_risk_table_frame(km)` for a Kaplan-Meier fit | `get_risk_table_frame(fit)` for `kaplan_meier()` or `aalen_johansen()` fits | Every cause shares one risk set. |
