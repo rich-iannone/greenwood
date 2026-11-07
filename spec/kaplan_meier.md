@@ -19,7 +19,8 @@ replay the same numeric fixtures.
 | `by=` or the formula's right-hand side | the formula's right-hand side |
 | `km.to_frame()` | `as.data.frame(fit)` |
 | `km.median()`, `km.quantile(p)` | `median(fit)`, `quantile(fit, probs)` |
-| `km.rmst(tau)`, `km.rmrl(s, tau)`, `km.predict(times)` | not yet |
+| `km.rmst(tau)`, `km.rmrl(s, tau)` | `rmst(fit, tau)`, `rmrl(fit, s, tau)` |
+| `km.predict(times)` | `predict(fit, times)` |
 
 Python estimators are classes and R estimators are functions returning S3 objects. Argument names
 match where both have them (`conf_type`, `conf_level`, `weights`, `robust`, `cluster`).
@@ -64,5 +65,4 @@ first times `conf_low` and `conf_high` do. A quantile is missing when the curve 
 
 ## Not yet in R
 
-`predict()` at arbitrary times, restricted mean survival time, and tidy/glance methods. Python has
-all of these.
+Tidy, glance, and augment methods, and plots. Python has both.
