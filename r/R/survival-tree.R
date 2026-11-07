@@ -299,6 +299,28 @@ tree_inputs <- function(call, env, formula, data, fn) {
   list(frame = frame, design = design, x = design$x, time = unname(parts$stop), event = event)
 }
 
+# The covariates and the competing-risks response of a tree or boosting model's formula, with
+# `status` the cause of each row (0 for censored).
+cr_tree_inputs <- function(call, env, formula, data, fn) {
+  frame <- gw_model_frame(call, env, formula, data)
+  cr_no_specials(frame, fn)
+  if (!is.null(split_formula(formula, data)$offset)) {
+    stop(sprintf("`%s` doesn't support `offset()` terms.", fn), call. = FALSE)
+  }
+  cr <- cr_response(frame, fn)
+  design <- covariate_design(frame, check_rank = FALSE)
+  if (ncol(design$x) == 0L) {
+    stop(sprintf("`%s` needs at least one covariate.", fn), call. = FALSE)
+  }
+  if (!any(cr$status > 0L)) {
+    stop(sprintf("`%s` needs at least one event.", fn), call. = FALSE)
+  }
+  list(
+    frame = frame, design = design, x = design$x, time = cr$time, status = cr$status,
+    states = cr$states
+  )
+}
+
 tree_fit_fields <- function(inputs, settings, formula, call) {
   list(
     max_depth = if (is.finite(settings$max_depth)) settings$max_depth else NULL,
@@ -309,7 +331,7 @@ tree_fit_fields <- function(inputs, settings, formula, call) {
     time = inputs$time,
     event = inputs$event,
     n = length(inputs$time),
-    n_event = sum(inputs$event),
+    n_event = sum(inputs$event > 0),
     terms = inputs$design$terms,
     xlevels = inputs$design$xlevels,
     contrasts = inputs$design$contrasts,
@@ -320,7 +342,8 @@ tree_fit_fields <- function(inputs, settings, formula, call) {
 }
 
 forest_inputs <- function(call, env, formula, data, fn, n_estimators, max_depth,
-                          min_samples_split, min_samples_leaf, bootstrap, oob_score) {
+                          min_samples_split, min_samples_leaf, bootstrap, oob_score,
+                          read_inputs = tree_inputs) {
   check_count(n_estimators, "n_estimators", min = 1)
   check_tree_args(max_depth, min_samples_split, min_samples_leaf)
   check_flag(bootstrap, "bootstrap")
@@ -328,7 +351,7 @@ forest_inputs <- function(call, env, formula, data, fn, n_estimators, max_depth,
   if (oob_score && !bootstrap) {
     stop("`oob_score = TRUE` needs `bootstrap = TRUE`.", call. = FALSE)
   }
-  tree_inputs(call, env, formula, data, fn)
+  read_inputs(call, env, formula, data, fn)
 }
 
 grow_forest <- function(inputs, n_estimators, max_depth, min_samples_split, min_samples_leaf,
@@ -378,7 +401,8 @@ grow_forest <- function(inputs, n_estimators, max_depth, min_samples_split, min_
 # Grow one log-rank tree on the rows given. The nodes are numbered in the order they're made
 # (each node, then all of its left branch, then its right branch). Each node records its split
 # covariate and cut-point (0 and NA for a leaf), its children, its depth, and its numbers of
-# subjects and events. `node_of` gives the leaf of each row.
+# subjects and events. `node_of` gives the leaf of each row. `event` is logical, or for
+# competing_risk_forest() the cause of each row (0 for censored).
 grow_logrank_tree <- function(x, time, event, settings) {
   n <- length(time)
   p <- ncol(x)
@@ -406,12 +430,16 @@ grow_logrank_tree <- function(x, time, event, settings) {
     rows <- item$rows
     depth[id] <- item$depth
     n_node[id] <- length(rows)
-    n_event[id] <- sum(event[rows])
+    n_event[id] <- sum(event[rows] > 0)
     split <- NULL
     if (length(rows) >= settings$min_split && n_event[id] > 0L &&
       item$depth < settings$max_depth) {
       features <- if (settings$mtry < p) sample.int(p, settings$mtry) else seq_len(p)
-      split_fn <- if (settings$splitter == "random") logrank_random_split else logrank_best_split
+      split_fn <- switch(settings$splitter,
+        random = logrank_random_split,
+        competing = logrank_cr_best_split,
+        logrank_best_split
+      )
       split <- split_fn(
         x[rows, , drop = FALSE], time[rows], event[rows], features, settings$min_leaf
       )
@@ -463,6 +491,13 @@ logrank_node <- function(time, event) {
   )
 }
 
+# The running sums down each column of a matrix.
+col_cumsum <- function(x) {
+  n <- nrow(x)
+  sums <- matrix(cumsum(x), n)
+  sums - rep(c(0, sums[n, -ncol(x)]), each = n)
+}
+
 # The split of a node with the largest log-rank statistic over `features`: every cut-point between
 # two distinct values that leaves `min_leaf` rows on each side. NULL when there is no such split.
 # A tie goes to the first covariate tried and the smallest cut-point.
@@ -480,7 +515,7 @@ logrank_best_split <- function(x, time, event, features, min_leaf) {
       next
     }
     # The numbers at risk on the left, with the first p rows (in covariate order) on the left.
-    n_left <- apply(outer(node$k[o], seq_len(node$m), ">="), 2L, cumsum)
+    n_left <- col_cumsum(outer(node$k[o], seq_len(node$m), ">="))
     frac <- n_left / rep(node$n_risk, each = n)
     u <- cumsum(event[o]) - drop(frac %*% node$d)
     v <- drop((frac * (1 - frac)) %*% node$var_factor)
@@ -784,9 +819,9 @@ print.survival_forest <- function(x, digits = getOption("digits"), ...) {
 # -- out of bag ------------------------------------------------------------------------------
 
 # Each training subject's average risk score over the trees it was left out of, for the rows of
-# x (the training covariates, possibly with a column shuffled). `scored` marks the subjects left
-# out of at least one tree.
-forest_oob_risk <- function(object, x) {
+# x (the training covariates, possibly with a column shuffled). `score` gives a tree's risk score
+# for each of its leaves. `scored` marks the subjects left out of at least one tree.
+forest_oob_risk <- function(object, x, score = function(tree) tree$mortality) {
   risk <- numeric(object$n)
   count <- numeric(object$n)
   for (b in seq_along(object$trees)) {
@@ -796,20 +831,46 @@ forest_oob_risk <- function(object, x) {
     }
     tree <- object$trees[[b]]
     node <- tree_route(tree, x[out, , drop = FALSE])
-    risk[out] <- risk[out] + tree$mortality[match(node, tree$leaves)]
+    risk[out] <- risk[out] + score(tree)[match(node, tree$leaves)]
     count[out] <- count[out] + 1
   }
   scored <- count > 0
   list(risk = risk[scored] / count[scored], scored = scored)
 }
 
-forest_oob_concordance <- function(object, x) {
-  oob <- forest_oob_risk(object, x)
+# The out-of-bag concordance of the risk scores with the events `event` (logical).
+forest_oob_concordance <- function(object, x, event = object$event,
+                                   score = function(tree) tree$mortality) {
+  oob <- forest_oob_risk(object, x, score)
   if (sum(oob$scored) < 2L) {
     return(NA_real_)
   }
-  response <- Surv(object$time[oob$scored], as.numeric(object$event[oob$scored]))
+  response <- Surv(object$time[oob$scored], as.numeric(event[oob$scored]))
   concordance_index(response, risk = oob$risk)
+}
+
+# The permutation importance of each covariate: the mean increase in the out-of-bag error over
+# `n_repeats` shuffles of its column.
+forest_permutation_importance <- function(object, n_repeats, event = object$event,
+                                          score = function(tree) tree$mortality) {
+  check_count(n_repeats, "n_repeats", min = 1)
+  if (!object$bootstrap) {
+    stop("`variable_importance()` needs a forest grown with `bootstrap = TRUE`.", call. = FALSE)
+  }
+  x <- object$x
+  n <- object$n
+  oob_error <- function(design) 1 - forest_oob_concordance(object, design, event, score)
+  base <- oob_error(x)
+  importance <- vapply(seq_len(ncol(x)), function(j) {
+    increase <- 0
+    for (r in seq_len(n_repeats)) {
+      shuffled <- x
+      shuffled[, j] <- x[sample.int(n), j]
+      increase <- increase + oob_error(shuffled) - base
+    }
+    increase / n_repeats
+  }, numeric(1))
+  importance_table(colnames(x), importance)
 }
 
 #' Variable importance
@@ -817,20 +878,21 @@ forest_oob_concordance <- function(object, x) {
 #' `variable_importance()` measures how much each covariate contributes to a tree model's
 #' predictions.
 #'
-#' For [random_survival_forest()] and [extra_survival_trees()] fits, it's the permutation
-#' importance: the values of one covariate are shuffled among the subjects, the out-of-bag error
-#' (one minus the out-of-bag concordance) is computed again, and the importance is how much it
-#' went up, averaged over `n_repeats` shuffles. Shuffling a covariate the forest doesn't use
-#' changes nothing, so its importance is about 0, and it can come out a little below. The forest
-#' must be grown on bootstrap samples. The shuffles use R's random number generator, so call
-#' [set.seed()] first for results that can be repeated.
+#' For [random_survival_forest()], [extra_survival_trees()], and [competing_risk_forest()] fits,
+#' it's the permutation importance: the values of one covariate are shuffled among the subjects,
+#' the out-of-bag error (one minus the out-of-bag concordance) is computed again, and the
+#' importance is how much it went up, averaged over `n_repeats` shuffles. Shuffling a covariate
+#' the forest doesn't use changes nothing, so its importance is about 0, and it can come out a
+#' little below. The forest must be grown on bootstrap samples. For a competing-risks forest, the
+#' concordance is that of one cause's risk score, with the other causes as censoring. The shuffles
+#' use R's random number generator, so call [set.seed()] first for results that can be repeated.
 #'
 #' For [gradient_boosting_survival_analysis()] fits, it's the impurity importance: the total
 #' reduction in squared error of the splits on each covariate, over all of the trees, as a share
 #' of the total over all covariates.
 #'
-#' @param object A [random_survival_forest()], [extra_survival_trees()], or
-#'   [gradient_boosting_survival_analysis()] fit.
+#' @param object A [random_survival_forest()], [extra_survival_trees()],
+#'   [competing_risk_forest()], or [gradient_boosting_survival_analysis()] fit.
 #' @param n_repeats For forests, the number of shuffles of each covariate. The default is `5`.
 #' @param ... Unused.
 #'
@@ -867,28 +929,7 @@ variable_importance <- function(object, ...) {
 #' @rdname variable_importance
 #' @export
 variable_importance.survival_forest <- function(object, n_repeats = 5, ...) {
-  check_count(n_repeats, "n_repeats", min = 1)
-  if (!object$bootstrap) {
-    stop("`variable_importance()` needs a forest grown with `bootstrap = TRUE`.", call. = FALSE)
-  }
-  x <- object$x
-  n <- object$n
-  oob_error <- function(design) {
-    oob <- forest_oob_risk(object, design)
-    response <- Surv(object$time[oob$scored], as.numeric(object$event[oob$scored]))
-    1 - concordance_index(response, risk = oob$risk)
-  }
-  base <- oob_error(x)
-  importance <- vapply(seq_len(ncol(x)), function(j) {
-    increase <- 0
-    for (r in seq_len(n_repeats)) {
-      shuffled <- x
-      shuffled[, j] <- x[sample.int(n), j]
-      increase <- increase + oob_error(shuffled) - base
-    }
-    increase / n_repeats
-  }, numeric(1))
-  importance_table(colnames(x), importance)
+  forest_permutation_importance(object, n_repeats)
 }
 
 importance_table <- function(terms, importance) {
