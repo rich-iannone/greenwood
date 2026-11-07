@@ -461,27 +461,15 @@ survival_boost <- function(formula,
   if (epsilon_censoring == 0) {
     stop("`epsilon_censoring` must be greater than 0.", call. = FALSE)
   }
-  fn <- "survival_boost()"
-  frame <- gw_model_frame(
-    match.call(expand.dots = FALSE), parent.frame(), formula, if (missing(data)) NULL else data
+  inputs <- cr_tree_inputs(
+    match.call(expand.dots = FALSE), parent.frame(), formula,
+    if (missing(data)) NULL else data, "survival_boost()"
   )
-  cr_no_specials(frame, fn)
-  if (!is.null(split_formula(formula, if (missing(data)) NULL else data)$offset)) {
-    stop(sprintf("`%s` doesn't support `offset()` terms.", fn), call. = FALSE)
-  }
-  cr <- cr_response(frame, fn)
-  design <- covariate_design(frame, check_rank = FALSE)
-  if (ncol(design$x) == 0L) {
-    stop(sprintf("`%s` needs at least one covariate.", fn), call. = FALSE)
-  }
-  if (!any(cr$status > 0L)) {
-    stop(sprintf("`%s` needs at least one event.", fn), call. = FALSE)
-  }
-  x <- design$x
-  time <- cr$time
-  status <- cr$status
+  x <- inputs$x
+  time <- inputs$time
+  status <- inputs$status
   n <- length(time)
-  n_classes <- length(cr$states) + 1L
+  n_classes <- length(inputs$states) + 1L
 
   event_times <- sort(time[status > 0L])
   grid <- if (length(event_times) > n_time_grid_steps) {
@@ -543,14 +531,14 @@ survival_boost <- function(formula,
       min_samples_leaf = min_samples_leaf,
       n_features_split = mtry,
       times = grid,
-      states = cr$states,
+      states = inputs$states,
       x = x,
       n = n,
       n_event = sum(status > 0L),
-      terms = design$terms,
-      xlevels = design$xlevels,
-      contrasts = design$contrasts,
-      n_dropped = frame$n_dropped,
+      terms = inputs$design$terms,
+      xlevels = inputs$design$xlevels,
+      contrasts = inputs$design$contrasts,
+      n_dropped = inputs$frame$n_dropped,
       formula = formula,
       call = match.call()
     ),
