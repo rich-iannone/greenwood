@@ -268,9 +268,8 @@ def logrank_power(
     gw.logrank_power(hazard_ratio=0.5, n_events=60)
     ```
 
-    This power (~0.9) is typical for a well-designed trial. Lower power suggests more events
-    are needed, or the effect size is smaller than assumed. Compute power for different
-    effect sizes to understand study sensitivity:
+    This power (about 0.77) falls short of the conventional 0.8, so a few more events are
+    needed. Compute power for different effect sizes to understand study sensitivity:
 
     ```{python}
     # Show how power decreases as the effect size shrinks
@@ -409,8 +408,8 @@ def logrank_sample_size(
     gw.logrank_sample_size(hazard_ratio=0.5, prob_event=0.4, power=0.9)
     ```
 
-    This sample size (~350) is much larger than the event count from `logrank_n_events`
-    (~140) because most subjects will be censored before the event occurs.
+    This sample size (219) is much larger than the event count from `logrank_n_events` (88)
+    because most subjects will be censored before the event occurs.
 
     Perform sensitivity analysis for uncertain event probability. How does sample size change
     if only 30% or 50% of subjects have events?
