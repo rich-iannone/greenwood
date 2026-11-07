@@ -11,6 +11,7 @@
   type = c("lp", "risk", "survival", "cumhaz", "quantile", "expectation"),
   times,
   conditional_after = NULL,
+  trajectory = NULL,
   p = 0.5,
   tau,
   conf_level = object$conf_level,
@@ -32,6 +33,12 @@ every distinct time in the fitted data.}
 \item{conditional_after}{For \code{"survival"} and \code{"cumhaz"}, an optional time to condition on
 surviving to.}
 
+\item{trajectory}{A data frame with the path of covariates of one subject, in place of
+\code{newdata}: one row per interval, in time order and not overlapping, with its start \code{tstart},
+its end \code{tstop}, and the covariates (and any stratifying variables) over it. Only for
+\code{"survival"} (the default with \code{trajectory}) and \code{"cumhaz"}, and not with
+\code{conditional_after}.}
+
 \item{p}{For \code{"quantile"}, the proportions of subjects who have had the event, between 0 and 1.
 The default, \code{0.5}, gives the median.}
 
@@ -45,9 +52,10 @@ The default, \code{0.5}, gives the median.}
 For \code{"lp"} and \code{"risk"}, a numeric vector with one value per row of \code{newdata}. For
 \code{"survival"} and \code{"cumhaz"}, a data frame with one row per subject and time: \code{subject} (the
 row of \code{newdata}), \code{strata}, \code{time}, \code{estimate}, \code{std_error}, \code{conf_low}, and \code{conf_high}.
-For \code{"quantile"}, a data frame with one row per subject and proportion: \code{subject}, \code{strata},
-\code{p}, \code{estimate}, \code{conf_low}, and \code{conf_high}. For \code{"expectation"}, one row per subject:
-\code{subject}, \code{strata}, \code{tau}, \code{estimate}, \code{conf_low}, and \code{conf_high}.
+With \code{trajectory}, \code{subject} is 1 and \code{strata} is the stratum of the interval in effect at
+each time. For \code{"quantile"}, a data frame with one row per subject and proportion:
+\code{subject}, \code{strata}, \code{p}, \code{estimate}, \code{conf_low}, and \code{conf_high}. For \code{"expectation"}, one
+row per subject: \code{subject}, \code{strata}, \code{tau}, \code{estimate}, \code{conf_low}, and \code{conf_high}.
 }
 \description{
 \code{predict()} gives the linear predictor, the risk score, or the survival curve or cumulative
@@ -65,6 +73,17 @@ scale of the cumulative hazard and of survival, with the upper survival limit ca
 With \code{conditional_after}, the curve is conditional on surviving to that time: the cumulative
 hazard counts only the event times at or after it, so survival is
 \eqn{S(t) / S(c^-)} for \eqn{t \ge c}, and 1 before.
+
+With \code{trajectory}, the prediction is for one subject whose covariates change over time, such as
+the measurements of a model fit to the episodes from \code{\link[=split_episodes]{split_episodes()}}. Each row of
+\code{trajectory} gives the covariates over an interval \eqn{(a_k, b_k]}, and the cumulative hazard
+adds up the baseline hazard over each interval times the risk score of its covariates,
+\eqn{H(t) = \sum_k \exp(x_k^\top \beta) (H_0(\min(t, b_k)) - H_0(a_k))} over the intervals
+that started before \eqn{t}. No hazard builds up before the first interval or in a gap between
+two, and the last interval holds on past its end, with a warning when \code{times} go beyond it. The
+standard error accounts for the uncertainty in the baseline hazard and in \eqn{\beta} across
+all the intervals. A stratified model takes the stratifying variables from \code{trajectory}, and
+they can change from one interval to the next.
 
 The \code{"quantile"} of a subject's survival curve for a proportion \eqn{p} is the first time at
 which survival drops to \eqn{1 - p} or below, and its confidence limits are the same times for
@@ -97,4 +116,8 @@ predict(
 # Median survival time, and the mean survival time over two years
 predict(fit, newdata = newdata, type = "quantile")
 predict(fit, newdata = newdata, type = "expectation", tau = 730)
+
+# Survival for a subject whose age is updated at day 300
+path <- data.frame(tstart = c(0, 300), tstop = c(300, 800), age = c(60, 61), sex = 1)
+predict(fit, trajectory = path, times = c(200, 400, 800))
 }
