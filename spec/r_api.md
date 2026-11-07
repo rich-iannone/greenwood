@@ -42,6 +42,9 @@ and the places where the R package differs from the Python one on purpose.
 | `GradientBoostingSurvivalAnalysis` | `gradient_boosting_survival_analysis()` | checked against the Python values, `coxph()`'s martingale residuals and Breslow baseline, and a brute-force search for each split |
 | `SurvivalBoost` | `survival_boost()` | the sampled horizons, class targets, censoring weights, and trees of each round rebuilt by hand |
 | `CompetingRiskForest` | `competing_risk_forest()` | checked against the Python values, the composite log-rank statistic computed from its definition for the best split, and `aalen_johansen()` in every leaf. The bagging, ensemble curves, out-of-bag concordance, and permutation importance rebuilt by hand |
+| `split_episodes()` | same name | the time-varying `cox_ph()` fit of pbcseq in `tvc_pbcseq`, and the interval rules checked on small cases |
+| `first_event()` | same name | the mgus2 response built by hand, and `fine_gray()` on it in `finegray_mgus2_pcm` |
+| `CoxPH.predict(trajectory=)` | `predict(fit, trajectory = )` | `tvc_trajectory_subj1`, `survfit()` with `id` for the estimates, and the delta method with a numerical derivative for the standard errors |
 | `concordance_index()`, `concordance_index_ipcw()` | same names | `cox_diag_efron`, `concordance_ipcw_lung` |
 | `brier_score()`, `integrated_brier_score()` | same names | `brier_lung` |
 | `time_dependent_auc()`, `integrated_auc()`, `calibration()` | same names | `td_auc_lung` |
@@ -55,7 +58,8 @@ and the places where the R package differs from the Python one on purpose.
 
 ## Not yet in R
 
-The tidy/glance/augment layer, plots, and the `EventTime` and `Outcome` layers.
+The tidy/glance/augment layer, plots, risk tables, the bundled datasets, `duration()`,
+`extract_time()`, `extract_status()`, `as_surv()`, and the `EventTime` and `Outcome` layers.
 
 ## Adaptations
 
@@ -143,3 +147,9 @@ The tidy/glance/augment layer, plots, and the `EventTime` and `Outcome` layers.
 | `SurvivalBoost.predict_cumulative_incidence()` (a 3-D array or wide frame), `predict_survival_function()`, and `predict_proba(time_horizon=)`, with `newdata` required | `predict(fit, newdata, type = c("cif", "survival"), times)`, long (`subject`, `cause`, `time`, `estimate` for the causes, ordered by subject, cause, then time), defaulting to the rows the model was fit to and the time grid | As the other R competing-risks models. |
 | `CompetingRiskForest.predict(cause=)` (wide, with `cause` required when there are several) and `predict_risk(cause=)`, with `newdata` required | `predict(fit, newdata, type = c("cif", "risk"), cause = 1, times)`, the curves long (`subject`, `time`, `estimate`), defaulting to the first cause, the rows the forest was grown on, and the event times | As `fine_gray()` and the other R forests. |
 | `CompetingRiskForest.oob_score_` and `variable_importance()` for the first cause | `fit$oob_score` for the first cause (`NA` unless `oob_score = TRUE`), and `variable_importance(fit, cause = 1, n_repeats = 5)` | Any cause's importance can be had. |
+| `split_episodes(..., format=)` | no `format`, and a data frame back | R has one data frame type. |
+| `split_episodes()` with `covariates=None` takes every other column of `visits` as time-varying, the follow-up time and event included | the default leaves out `time`, `event`, and the `baseline_covariates` | With a long table as its own baseline, Python's default carries the follow-up columns as covariates and overwrites the event, so every interval gets the event. |
+| `split_episodes()` with missing visit or follow-up times | an error | An interval can't be built from a missing time. |
+| `first_event(endpoints={name: (time, event)})` | `first_event(list(name = list(time, event)))` | R has no tuples, and a named list keeps the endpoint order. A row with a missing endpoint time gives a missing response, so `na.action` drops it. |
+| `Outcome.first_event()` for a formula | `first_event()` on the left of the formula, its columns found in `data` | R formulas evaluate the response in `data`. |
+| `CoxPH.predict(trajectory=, strata=, ci=)` gives `time` and survival columns, with `type="survival"` only | `predict(fit, trajectory = , type = c("survival", "cumhaz"), times)`, long (`subject` 1, `strata`, `time`, `estimate`, `std_error`, `conf_low`, `conf_high`), the upper survival limit capped at 1 | As the other Cox predictions. The strata come from `trajectory` and can change between intervals, and overlapping intervals are an error. |
