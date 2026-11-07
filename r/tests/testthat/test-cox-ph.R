@@ -89,6 +89,51 @@ test_that("robust and clustered variances match the fixtures", {
   }
 })
 
+test_that("weighted, stratified, and clustered fits and residuals match the fixture", {
+  skip_if_no_shared_cases()
+  skip_if_not_installed("survival")
+  expected <- read_fixture("cox_weighted_residuals")
+  lung <- survival::lung
+  lung$w <- r_numbers(expected$weights)
+  lung <- lung[stats::complete.cases(lung[c("time", "status", "age", "sex", "ph.ecog")]), ]
+  heart <- as.data.frame(lapply(expected$heart, r_numbers))
+  # jsonlite writes a matrix as a list of rows.
+  by_row <- function(rows) unlist(lapply(rows, r_numbers))
+  for (ties in c("efron", "breslow")) {
+    fits <- list(
+      plain = cox_ph(Surv(time, status) ~ age + sex, data = lung, ties = ties),
+      weighted = cox_ph(Surv(time, status) ~ age + sex, data = lung, weights = w, ties = ties,
+        robust = TRUE
+      ),
+      strata = cox_ph(Surv(time, status) ~ age + ph.ecog + strata(sex), data = lung, weights = w,
+        ties = ties, robust = TRUE
+      ),
+      counting = cox_ph(Surv(start, stop, event) ~ age + surgery + transplant, data = heart,
+        ties = ties, cluster = id
+      )
+    )
+    for (case in names(fits)) {
+      fit <- fits[[case]]
+      want <- expected[[ties]][[case]]
+      naive <- if (is.null(fit$naive_var)) vcov(fit) else fit$naive_var
+      expect_equal(unname(coef(fit)), r_numbers(want$coef), tolerance = TOL)
+      expect_equal(unname(sqrt(diag(vcov(fit)))), r_numbers(want$se), tolerance = TOL)
+      expect_equal(unname(sqrt(diag(naive))), r_numbers(want$naive_se), tolerance = TOL)
+      expect_equal(fit$loglik, r_numbers(want$loglik), tolerance = TOL)
+      expect_equal(fit$score_test$statistic, want$score_test, tolerance = TOL)
+      expect_equal(unname(residuals(fit, type = "martingale")), r_numbers(want$martingale),
+        tolerance = TOL
+      )
+      expect_equal(c(t(unname(residuals(fit, type = "score")))), by_row(want$score),
+        tolerance = TOL
+      )
+      expect_equal(c(t(unname(residuals(fit, type = "dfbeta")))), by_row(want$dfbeta),
+        tolerance = TOL
+      )
+    }
+  }
+})
+
 test_that("the counting-process fit matches the fixture", {
   skip_if_no_shared_cases()
   expected <- read_fixture("cox_timevarying")

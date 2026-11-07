@@ -98,9 +98,7 @@ test_that("predicted medians and quantiles match the fixtures", {
   skip_if_no_shared_cases()
   skip_if_not_installed("survival")
   medians <- read_fixture("predict_median")
-  # The fixture's limits use the variance of the linear predictor alone. That's the full delta
-  # method only at the median of a symmetric error distribution, where the scale drops out.
-  for (dist in c("lognormal", "loglogistic")) {
+  for (dist in c("weibull", "lognormal", "loglogistic")) {
     expected <- medians[[paste0("aft_", dist)]]
     m <- predict(lung_aft(dist), newdata = new_subjects, type = "quantile")
     tol <- if (dist == "lognormal") 1e-7 else TOL
@@ -108,17 +106,17 @@ test_that("predicted medians and quantiles match the fixtures", {
     expect_equal(m$conf_low, r_numbers(expected$lower), tolerance = tol)
     expect_equal(m$conf_high, r_numbers(expected$upper), tolerance = tol)
   }
-  m <- predict(lung_aft("weibull"), newdata = new_subjects, type = "quantile")
-  expect_equal(m$estimate, r_numbers(medians$aft_weibull$median), tolerance = TOL)
 
   quantiles <- read_fixture("predict_quantile")
   p <- r_numbers(quantiles$p)
   q <- predict(lung_aft("weibull"), newdata = new_subjects, type = "quantile", p = p)
   # The fixture's rows are the probabilities and its columns the subjects.
-  by_p <- matrix(unlist(lapply(quantiles$aft_weibull$quantiles, r_numbers)), nrow = length(p),
-    byrow = TRUE
-  )
-  expect_equal(q$estimate, c(by_p), tolerance = TOL)
+  by_p <- function(rows) {
+    matrix(unlist(lapply(rows, r_numbers)), nrow = length(p), byrow = TRUE)
+  }
+  expect_equal(q$estimate, c(by_p(quantiles$aft_weibull$quantiles)), tolerance = TOL)
+  expect_equal(q$conf_low, c(by_p(quantiles$aft_weibull$lower)), tolerance = TOL)
+  expect_equal(q$conf_high, c(by_p(quantiles$aft_weibull$upper)), tolerance = TOL)
 })
 
 test_that("standard errors of quantiles match survreg()", {
@@ -147,9 +145,8 @@ test_that("restricted means match the fixture", {
   for (tau in r_numbers(expected$tau)) {
     e <- predict(fit, newdata = new_subjects, type = "expectation", tau = tau)
     expect_identical(names(e), c("subject", "tau", "estimate", "std_error", "conf_low", "conf_high"))
-    # The fixture's numerical integration is accurate to only about 1e-8.
     expect_equal(e$estimate, r_numbers(expected$aft_weibull[[paste0("rmst_", tau)]]),
-      tolerance = 1e-6
+      tolerance = TOL
     )
     # The Weibull area through the incomplete gamma function.
     shape <- 1 / fit$scale

@@ -183,6 +183,21 @@ test_that("with one cause, the incidence metrics are the survival ones", {
   )
 })
 
+test_that("calibration_incidence() reads the reference curve as steps", {
+  skip_if_no_shared_cases()
+  skip_if_not_installed("survival")
+  mg <- mgus2_competing()
+  expected <- read_fixture("calibration_incidence_mgus2")
+  times <- r_numbers(expected$times)
+  # With every prediction 0, the error is the reference itself.
+  zeros <- matrix(0, nrow(mg), length(times))
+  outcome <- Surv(mg$etime, mg$event_f)
+  expect_equal(calibration_incidence(outcome, incidence_prob = zeros, times = times, cause = 1),
+    r_numbers(expected$cif_pcm),
+    tolerance = TOL
+  )
+})
+
 test_that("accuracy in time compares the most likely outcome", {
   outcome <- Surv(small_cr$time[1:6], small_cr$event[1:6])
   # Subjects: pcm at 30, death at 45, censored at 60, death at 72, pcm at 80, death at 95.

@@ -127,6 +127,28 @@ test_that("the multivariate normal probability is accurate", {
   expect_equal(pmvnorm_box(1.96, matrix(1, 2, 2)), 2 * pnorm(1.96) - 1, tolerance = 1e-5)
 })
 
+test_that("the trend test on lung matches the fixture", {
+  skip_if_no_shared_cases()
+  skip_if_not_installed("survival")
+  expected <- read_fixture("trend_lung_ecog")
+  fits <- list(
+    linear = trend_test(Surv(time, status) ~ ph.ecog, data = survival::lung),
+    quadratic = trend_test(Surv(time, status) ~ ph.ecog, data = survival::lung,
+      scores = c(0, 1, 4, 9)
+    ),
+    peto = trend_test(Surv(time, status) ~ ph.ecog, data = survival::lung, rho = 1),
+    stratified = trend_test(Surv(time, status) ~ ph.ecog + strata(sex), data = survival::lung)
+  )
+  for (case in names(fits)) {
+    fit <- fits[[case]]
+    want <- expected[[case]]
+    expect_equal(fit$groups$score, r_numbers(want$scores))
+    expect_equal(fit$groups$expected, r_numbers(want$expected), tolerance = TOL)
+    expect_equal(fit$statistic, want$statistic, tolerance = TOL)
+    expect_equal(fit$p_value, want$p, tolerance = 1e-8)
+  }
+})
+
 test_that("the trend test is the Cox score test without ties", {
   skip_if_not_installed("survival")
   set.seed(1)
