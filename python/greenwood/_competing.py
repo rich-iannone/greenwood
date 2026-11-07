@@ -1062,8 +1062,10 @@ class FineGray:
         self._x = x
         self._center = x.mean(axis=0)
         self._target_times = target_times
+        # The baseline is for a subject at the covariate means, matching the centered linear
+        # predictor that predict() and predict_cumulative_incidence() use.
         self._baseline_cumhaz = self._breslow_baseline(
-            beta, x, time, cause, target, target_times, _weights
+            beta, x - self._center, time, cause, target, target_times, _weights
         )
         return self
 
