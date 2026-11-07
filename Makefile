@@ -125,6 +125,10 @@ r-test: ## Run the R package's testthat suite
 r-check: ## Run R CMD check on the R package
 	@$(RSCRIPT) -e 'devtools::check("$(R_DIR)", document = FALSE, manual = FALSE, error_on = "warning", check_dir = "$(R_DIR)/check")'
 
+.PHONY: r-site
+r-site: ## Build the R package's pkgdown site into r/docs/
+	@$(RSCRIPT) -e 'pkgdown::build_site("$(R_DIR)", install = TRUE, new_process = TRUE)'
+
 # -- Cleanup ------------------------------------------------------------------------------------
 
 .PHONY: clean
