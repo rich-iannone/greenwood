@@ -63,6 +63,3 @@ first times `conf_low` and `conf_high` do. A quantile is missing when the curve 
 | curves in order of first appearance | curves sorted by the grouping variables | Python's long-standing order. Labels and layout match. |
 | `n_dropped_` | `fit$n_dropped`, from `na.action` | R's model-frame conventions. |
 
-## Not yet in R
-
-Tidy, glance, and augment methods, and plots. Python has both.
