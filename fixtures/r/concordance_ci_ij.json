@@ -10,5 +10,13 @@
   "mgus2_pcm_age": {
     "estimate": 0.2963295352579,
     "se": 0.04958109210474
+  },
+  "compare_lung_lp_age": {
+    "difference": 0.04673049125971,
+    "se": 0.02008750473974
+  },
+  "compare_mgus2_age_sex": {
+    "difference": -0.1098970360606,
+    "se": 0.03431663973491
   }
 }
