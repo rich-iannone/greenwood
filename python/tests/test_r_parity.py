@@ -300,6 +300,30 @@ def test_stratified_logrank_matches_r() -> None:
     assert result.df == fixture["df"]
 
 
+def test_trend_lung_ecog_matches_r() -> None:
+    df = gw.load_dataset("lung", backend="pandas")
+    df = df[df["ph.ecog"].notna()]
+    y = Surv(time=df["time"], event=df["status"] == 2)
+    fixture = load_fixture("trend_lung_ecog")
+    cases: dict[str, dict[str, Any]] = {
+        "linear": {},
+        "quadratic": {"scores": [0, 1, 4, 9]},
+        "peto": {"rho": 1},
+        "stratified": {"strata": df["sex"]},
+    }
+    for name, options in cases.items():
+        result = gw.trend_test(y, group=df["ph.ecog"], **options)
+        expected = fixture[name]
+        assert_allclose_to_r(
+            list(result.expected.values()), expected["expected"], what=f"trend {name} E"
+        )
+        assert_allclose_to_r(result.statistic, expected["statistic"], what=f"trend {name} chisq")
+        assert_allclose_to_r(result.p_value, expected["p"], what=f"trend {name} p")
+    # Shifting the scores changes nothing.
+    shifted = gw.trend_test(y, group=df["ph.ecog"], scores=[5, 6, 7, 8])
+    assert_allclose_to_r(shifted.statistic, fixture["linear"]["statistic"], what="shifted scores")
+
+
 def test_pairwise_logrank_matches_r() -> None:
     df = gw.load_dataset("veteran", backend="pandas")
     y = Surv(time=df["time"], event=df["status"])
@@ -520,6 +544,49 @@ def test_cox_time_varying_matches_r() -> None:
     assert_allclose_to_r(cox.loglik_, fixture["loglik"], what="time-varying loglik")
 
 
+@pytest.mark.parametrize("ties", ["efron", "breslow"])
+def test_cox_weights_and_residuals_match_r(ties: str) -> None:
+    # Case weights, strata, and counting-process data with the robust variance and the
+    # martingale, score, and dfbeta residuals. Efron's tie correction enters every one of them.
+    import pandas as pd
+
+    fixture = load_fixture("cox_weighted_residuals")
+    lung = gw.load_dataset("lung", backend="pandas")
+    lung["w"] = fixture["weights"]
+    lung = lung.dropna(subset=["time", "status", "age", "sex", "ph.ecog"])
+    heart = pd.DataFrame(fixture["heart"])
+    fits = {
+        "plain": gw.CoxPH(ties=ties).fit("Surv(time, status) ~ age + sex", data=lung),
+        "weighted": gw.CoxPH(ties=ties).fit(
+            "Surv(time, status) ~ age + sex", data=lung, weights="w", robust=True
+        ),
+        "strata": gw.CoxPH(ties=ties).fit(
+            "Surv(time, status) ~ age + ph.ecog + strata(sex)", data=lung, weights="w", robust=True
+        ),
+        "counting": gw.CoxPH(ties=ties).fit(
+            "Surv(start, stop, event) ~ age + surgery + transplant", data=heart, cluster="id"
+        ),
+    }
+    for name, cox in fits.items():
+        expected = fixture[ties][name]
+        what = f"{ties} {name}"
+        assert_allclose_to_r(cox.coef_, expected["coef"], what=f"{what} coef")
+        assert_allclose_to_r(cox.std_error_, expected["se"], what=f"{what} se")
+        assert_allclose_to_r(cox.naive_std_error_, expected["naive_se"], what=f"{what} naive se")
+        assert_allclose_to_r(
+            [cox.loglik_null_, cox.loglik_], expected["loglik"], what=f"{what} loglik"
+        )
+        assert_allclose_to_r(cox.score_stat_, expected["score_test"], what=f"{what} score test")
+        assert_allclose_to_r(
+            np.asarray(cox.residuals("martingale")), expected["martingale"], what=f"{what} mart"
+        )
+        for kind in ("score", "dfbeta"):
+            values = cox.residuals(kind, format="pandas").to_numpy()
+            # jsonlite writes a matrix as a list of rows.
+            rows = np.array(expected[kind], dtype=float)
+            assert_allclose_to_r(values.ravel(), rows.ravel(), what=f"{what} {kind}")
+
+
 def test_cox_survival_ci_matches_r() -> None:
     import pandas as pd
 
@@ -630,6 +697,23 @@ def test_aft_matches_r_survreg(dist: str) -> None:
         what=f"{dist} quantiles",
     )
 
+    # The limits come from the delta method with the full variance, scale included:
+    # q * exp(+/- z * se(q) / q), with se(q) from survreg's predict(se.fit = TRUE).
+    q_r = np.array(fixture["pred_quantile"])
+    se_r = np.array(fixture["pred_quantile_se"])
+    z = 1.959963984540054
+    with_ci = model.predict_quantile(newdata, p=fixture["pred_p"], ci=True, format="pandas")
+    n_subj = q_r.shape[0]
+    for bound, sign in (("lower", -1.0), ("upper", 1.0)):
+        ours_ci = np.array([with_ci[f"subject_{i + 1}_{bound}"] for i in range(n_subj)])
+        assert_allclose_to_r(
+            ours_ci.ravel(),
+            (q_r * np.exp(sign * z * se_r / q_r)).ravel(),
+            rtol=1e-3,
+            atol=1e-2,
+            what=f"{dist} quantile {bound} limits",
+        )
+
 
 @pytest.mark.parametrize("dist", ["weibull", "exponential", "lognormal", "loglogistic"])
 def test_aft_residuals_match_r(dist: str) -> None:
@@ -739,6 +823,23 @@ def test_aalen_johansen_cif_ci_matches_r() -> None:
         )
 
 
+def test_calibration_incidence_reads_aj_steps() -> None:
+    df = gw.load_dataset("mgus2", backend="pandas")
+    etime = np.where(df["pstat"] == 1, df["ptime"], df["futime"])
+    cause = np.where(df["pstat"] == 1, 1, 2 * df["death"])
+    y = Surv(
+        time=etime,
+        event=pd.Categorical.from_codes(cause, categories=["censor", "pcm", "death"]),
+    )
+    fixture = load_fixture("calibration_incidence_mgus2")
+    times = np.array(fixture["times"])
+    # With every prediction 0, the error is the Aalen-Johansen reference itself, read as a
+    # right-continuous step function between the event times.
+    zeros = np.zeros((y.n, times.shape[0]))
+    err = gw.calibration_incidence(y, zeros, times, cause=1)
+    assert_allclose_to_r(err, fixture["cif_pcm"], what="calibration_incidence reference")
+
+
 def test_finegray_matches_r() -> None:
     df = gw.load_dataset("mgus2", backend="pandas")
     etime = np.where(df["pstat"] == 1, df["ptime"], df["futime"])
@@ -753,6 +854,12 @@ def test_finegray_matches_r() -> None:
     assert_allclose_to_r(fg.coef_, fixture["coef"], what="fine-gray coef")
     assert_allclose_to_r(fg.naive_std_error_, fixture["naive_se"], what="fine-gray naive se")
     assert_allclose_to_r(fg.std_error_, fixture["robust_se"], what="fine-gray robust se")
+
+    # The predicted CIF is 1 - S(t | x) from the same weighted Cox fit.
+    newdata = pd.DataFrame({"age": fixture["newdata_age"], "sex": fixture["newdata_sex"]})
+    cif = fg.predict_cumulative_incidence(newdata, times=fixture["times"], format="pandas")
+    assert_allclose_to_r(cif["subject_1"], fixture["cif"]["subj1"], what="fine-gray cif 1")
+    assert_allclose_to_r(cif["subject_2"], fixture["cif"]["subj2"], what="fine-gray cif 2")
 
 
 def _mgus2_illness_death():  # type: ignore[no-untyped-def]
@@ -881,6 +988,32 @@ def test_concordance_index_ipcw_matches_r() -> None:
     assert_allclose_to_r(c_default, fixture["c_ipcw_default"], what="ipcw_c_default")
     c_tau365 = gw.concordance_index_ipcw(y, marker, tau=365.0)
     assert_allclose_to_r(c_tau365, fixture["c_ipcw_tau365"], what="ipcw_c_tau365")
+
+
+@pytest.mark.rparity
+def test_concordance_index_ci_se_matches_r_jackknife() -> None:
+    fixture = load_fixture("concordance_ci_ij")
+    # The R standard errors are infinitesimal-jackknife values from central differences, so they
+    # agree to about 1e-9.
+    df = gw.load_dataset("lung", backend="pandas")
+    y = Surv(time=df["time"], event=df["status"] == 2)
+    marker = np.asarray(load_fixture("td_auc_lung")["marker"], dtype=float)
+    for key, tau in (("lung_default", None), ("lung_tau365", 365.0)):
+        res = gw.concordance_index_ci(y, marker, tau=tau)
+        assert_allclose_to_r(res.estimate, fixture[key]["estimate"], what=f"{key} C")
+        assert_allclose_to_r(res.se, fixture[key]["se"], rtol=1e-7, what=f"{key} se")
+
+    mg = gw.load_dataset("mgus2", backend="pandas")
+    etime = np.where(mg["pstat"] == 1, mg["ptime"], mg["futime"])
+    cause = np.where(mg["pstat"] == 1, 1, 2 * mg["death"])
+    y_cr = Surv(
+        time=etime,
+        event=pd.Categorical.from_codes(cause, categories=["censor", "pcm", "death"]),
+    )
+    res = gw.concordance_index_ci(y_cr, mg["age"].to_numpy(dtype=float), cause=1)
+    expected = fixture["mgus2_pcm_age"]
+    assert_allclose_to_r(res.estimate, expected["estimate"], what="mgus2 pcm C")
+    assert_allclose_to_r(res.se, expected["se"], rtol=1e-7, what="mgus2 pcm se")
 
 
 def test_risk_table_numbers_match_r() -> None:
