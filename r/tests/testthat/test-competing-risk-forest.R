@@ -278,13 +278,19 @@ test_that("the out-of-bag concordance and importance are rebuilt from the trees"
   set.seed(21)
   fit <- competing_risk_forest(crf_formula, data = mg, n_estimators = 6, oob_score = TRUE)
 
-  # The out-of-bag risk of one cause, and one minus its concordance.
+  # The out-of-bag risk of one cause, and one minus its concordance. The trees are added one at a
+  # time, as in the forest: rowSums() adds in extended precision on some platforms, and the
+  # different rounding can break a near-tie between two subjects' risks.
   oob_error <- function(data, cause) {
-    risk <- vapply(seq_len(6), function(b) {
-      predict(one_tree(fit, b), newdata = data, type = "risk", cause = cause)
-    }, numeric(n))
-    scored <- rowSums(fit$oob) > 0
-    oob_risk <- rowSums(risk * fit$oob)[scored] / rowSums(fit$oob)[scored]
+    total <- numeric(n)
+    count <- numeric(n)
+    for (b in seq_len(6)) {
+      risk <- predict(one_tree(fit, b), newdata = data, type = "risk", cause = cause)
+      total <- total + ifelse(fit$oob[, b], risk, 0)
+      count <- count + fit$oob[, b]
+    }
+    scored <- count > 0
+    oob_risk <- total[scored] / count[scored]
     response <- Surv(mg$etime[scored], mg$event[scored] == cause)
     1 - concordance_index(response, risk = oob_risk)
   }

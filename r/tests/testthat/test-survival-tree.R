@@ -352,13 +352,18 @@ test_that("the out-of-bag concordance and variable importance can be rebuilt", {
     data = lung, n_estimators = 30, oob_score = TRUE
   )
   x <- as.matrix(lung[3:7])
+  # The trees are added one at a time, as in the forest: rowMeans() adds in extended precision on
+  # some platforms, and the different rounding can break a near-tie between two subjects' risks.
   oob_risk <- function(design) {
-    risk <- vapply(seq_along(forest$trees), function(b) {
+    total <- numeric(nrow(lung))
+    count <- numeric(nrow(lung))
+    for (b in seq_along(forest$trees)) {
       tree <- forest$trees[[b]]
       out <- tree$mortality[match(tree_route(tree, design), tree$leaves)]
-      ifelse(forest$oob[, b], out, NA)
-    }, numeric(nrow(lung)))
-    rowMeans(risk, na.rm = TRUE)
+      total <- total + ifelse(forest$oob[, b], out, 0)
+      count <- count + forest$oob[, b]
+    }
+    ifelse(count > 0, total / count, NA)
   }
   risk <- oob_risk(x)
   scored <- !is.na(risk)
