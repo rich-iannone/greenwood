@@ -56,3 +56,13 @@ test_that("Surv objects format and print compactly", {
     Surv(numeric(), numeric())
   })
 })
+
+test_that("a response stays unnamed in a model frame, whether or not survival is loaded", {
+  skip_if_not_installed("survival")
+  loadNamespace("survival")
+  data <- data.frame(time = c(5, 6, 4), status = c(1, 0, 1), row.names = c("a", "b", "c"))
+  response <- stats::model.response(stats::model.frame(Surv(time, status) ~ 1, data = data))
+  expect_null(dimnames(response)[[1]])
+  fit <- cox_ph(Surv(time, status) ~ age, data = lung)
+  expect_null(names(residuals(fit)))
+})
