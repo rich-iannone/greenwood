@@ -236,6 +236,27 @@ step_at <- function(time, value, query, baseline) {
   out
 }
 
+# -- linear predictors -------------------------------------------------------------------------
+
+# The linear predictor x %*% beta, summed one row at a time in a fixed order. An optimized BLAS
+# can sum some rows with fused multiply-adds and others without, so two subjects with the same
+# covariates can get linear predictors that differ in the last bit. Here they always match, which
+# keeps the tied pairs in the concordance tied.
+linear_predictor <- function(x, beta) {
+  if (ncol(x) == 0L) {
+    return(numeric(nrow(x)))
+  }
+  out <- as.vector(x[, 1L]) * beta[[1L]]
+  for (j in seq_len(ncol(x))[-1L]) {
+    out <- out + as.vector(x[, j]) * beta[[j]]
+  }
+  # Named by row, as drop(x %*% beta) is.
+  if (nrow(x) > 1L) {
+    names(out) <- rownames(x)
+  }
+  out
+}
+
 # -- arguments -------------------------------------------------------------------------------
 
 check_conf_level <- function(conf_level) {
