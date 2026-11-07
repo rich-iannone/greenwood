@@ -1097,11 +1097,15 @@ def trend_test(
     The test uses a linear contrast with assigned scores:
 
     - $U = \sum_i \text{score}[i] \cdot (O[i] - E[i])$
-    - $V = \sum_i \text{score}[i]^2 \cdot \text{Var}[i]$
+    - $V = \sum_i \sum_j \text{score}[i] \cdot \text{score}[j] \cdot \text{Cov}[i, j]$
     - $\chi^2 = U^2 / V \sim \chi^2(1)$
 
-    This is equivalent to fitting a Cox model with group encoded as the numeric score and
-    testing whether the coefficient is zero using a score test.
+    Here Cov is the covariance matrix of the observed-minus-expected counts. The counts of the
+    groups are correlated, so the off-diagonal terms matter whenever there are more than two
+    groups. Shifting or rescaling the scores leaves the statistic unchanged.
+
+    Without tied event times, this is the score test from a Cox model with the group's score as
+    a numeric covariate.
 
     Examples
     --------
@@ -1207,10 +1211,6 @@ def trend_test(
             group_scores = {g: scores_arr[i] for i, g in enumerate(groups)}
 
     # Compute observed, expected, and variance for each group (like logrank_test)
-    observed_dict = {}
-    expected_dict = {}
-    var_diag = {}
-
     # Get full statistics across all groups
     observed_all, expected_all, var_all = _logrank_uv(
         entry, exit_, event, weight, labels_all, groups, rho, gamma
@@ -1220,7 +1220,7 @@ def trend_test(
         # No stratification: use results directly
         observed_dict = dict(zip(groups, observed_all.tolist(), strict=True))
         expected_dict = dict(zip(groups, expected_all.tolist(), strict=True))
-        var_diag = {g: var_all[i, i] for i, g in enumerate(groups)}
+        var_matrix = var_all
     else:
         # Stratified: sum across strata
         observed_all_strat = np.zeros(len(groups))
@@ -1238,13 +1238,14 @@ def trend_test(
 
         observed_dict = dict(zip(groups, observed_all_strat.tolist(), strict=True))
         expected_dict = dict(zip(groups, expected_all_strat.tolist(), strict=True))
-        var_diag = {g: var_all_strat[i, i] for i, g in enumerate(groups)}
+        var_matrix = var_all_strat
 
     # Compute trend statistic using contrast scores
-    # U = Σ score[g] * (O[g] - E[g])
-    # V = Σ score[g]^2 * Var[g,g]
+    # U = s'(O - E) and V = s' Var s, with the full covariance matrix of O - E. The group
+    # counts are correlated, so the off-diagonal terms are needed.
+    s = np.array([group_scores[g] for g in groups], dtype=float)
     u = sum(group_scores[g] * (observed_dict[g] - expected_dict[g]) for g in groups)
-    v = sum(group_scores[g] ** 2 * var_diag[g] for g in groups)
+    v = float(s @ var_matrix @ s)
 
     if v <= 0:  # pragma: no cover
         raise ValueError(  # pragma: no cover
