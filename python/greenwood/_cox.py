@@ -748,14 +748,17 @@ def _cox_terms(
                 d1 = dx.T @ (dr * dw)
                 d2 = (dx * (dr * dw)[:, None]).T @ dx
                 m = len(d_idx)
+                # Each of the m tied deaths carries the mean of their weights, so the terms add
+                # up to the total death weight, as in the Breslow branch.
+                mean_w = float(dw.sum()) / m
                 for tie in range(m):
                     f = tie / m
                     denom = s0 - f * d0
                     z1 = (s1 - f * d1) / denom
                     z2 = (s2 - f * d2) / denom
-                    loglik -= float(max_eta + np.log(denom))
-                    grad -= z1
-                    info += z2 - np.outer(z1, z1)
+                    loglik -= mean_w * float(max_eta + np.log(denom))
+                    grad -= mean_w * z1
+                    info += mean_w * (z2 - np.outer(z1, z1))
 
     return loglik, grad, info
 
@@ -1234,10 +1237,6 @@ class CoxPH:
             weight[keep],
         )
 
-        # Normalize weights by their mean to improve numerical stability and ensure
-        # scale-invariance: uniform weight scaling should not change coefficients.
-        weight = weight / weight.mean()
-
         strata_display = strata_display[keep]
         if strata_labels is not None:
             strata_labels = strata_labels[keep]
@@ -1463,7 +1462,7 @@ class CoxPH:
         self.robust = robust or cluster is not None
 
         if self.robust:
-            scores = self._score_residuals(beta)
+            scores = self._score_residuals(beta) * weight[:, None]
             if cluster_labels is not None:
                 levels = list(dict.fromkeys(cluster_labels.tolist()))
                 scores = np.array([scores[cluster_labels == lev].sum(axis=0) for lev in levels])
@@ -2828,14 +2827,11 @@ class CoxPH:
             data = {name: scores[:, j] for j, name in enumerate(self.term_names_)}
             return to_dataframe(data, format=format)
         if type == "dfbeta":
-            scores = self._score_residuals(self.coef_)
-            dfb = scores @ self.naive_vcov_
+            dfb = self._dfbeta()
             data = {name: dfb[:, j] for j, name in enumerate(self.term_names_)}
             return to_dataframe(data, format=format)
         if type == "dfbetas":
-            scores = self._score_residuals(self.coef_)
-            dfb = scores @ self.naive_vcov_
-            dfbs = dfb / self.naive_std_error_[None, :]
+            dfbs = self._dfbeta() / self.naive_std_error_[None, :]
             data = {name: dfbs[:, j] for j, name in enumerate(self.term_names_)}
             return to_dataframe(data, format=format)
         if type == "leverage":
@@ -2891,9 +2887,9 @@ class CoxPH:
         ```
         """
         scores = self._score_residuals(self.coef_)
-        dfb = scores @ self.naive_vcov_
+        dfb = self._dfbeta()
         dfbs = dfb / self.naive_std_error_[None, :]
-        leverage = np.sum(dfb * scores, axis=1)
+        leverage = np.sum((scores @ self.naive_vcov_) * scores, axis=1)
         mart = self._martingale_residuals()
         event = self._event.astype(float)
         with np.errstate(divide="ignore", invalid="ignore"):
@@ -2916,16 +2912,9 @@ class CoxPH:
         return to_dataframe(data, format=format)
 
     def _martingale_residuals(self) -> Array:
-        """Martingale residuals: event_i - cumhaz_i."""
-        risk = np.exp(self._x @ self.coef_)
-        cumhaz_i = np.zeros(self._x.shape[0])
-        for (members, _), (_, times, cumhaz) in zip(
-            self._strata_groups, self._baseline(), strict=True
-        ):
-            idx = np.searchsorted(times, self._exit[members], side="right") - 1
-            h0 = np.where(idx >= 0, cumhaz[idx.clip(min=0)], 0.0)
-            cumhaz_i[members] = h0 * risk[members]
-        return self._event.astype(float) - cumhaz_i
+        """Martingale residuals: each row's events minus its expected events over (entry, exit]."""
+        risk, a, _, _ = self._row_sums(self.coef_)
+        return self._event.astype(float) - risk * a
 
     def _event_contributions(self) -> tuple[list[Array], list[float], list[Array]]:
         """Per-event Schoenfeld residual, event time, and risk-set covariance share.
@@ -3359,24 +3348,35 @@ class CoxPH:
             adjustment=adjustment,
         )
 
-    def _score_residuals(self, beta: Array) -> Array:
-        """Breslow-form score (dfbeta-precursor) residuals, one per observation.
+    def _row_sums(self, beta: Array) -> tuple[Array, Array, Array, Array]:
+        """Each row's compensator sums and event-time covariate mean, at `beta`.
 
-        Confined to strata. Summed over the event times at which each subject is at risk. Used to
-        form the robust (Lin-Wei) sandwich variance.
+        Returns `(risk, a, b, x_mean)`. `risk` is the row's relative risk (with any frailty
+        multiplier), scaled within its stratum. `a` sums the hazard increments `dLambda(t)` over
+        the event times in the row's (entry, exit] window, and `b` sums `xbar(t) dLambda(t)`, both
+        on the same scale as `risk`. So `risk * a` is the row's expected number of events. A row
+        with an event uses Efron's reduced risk sets at its own event time: of its m tied deaths,
+        the j-th term counts the row's share as `1 - j/m`. `x_mean` is the risk-set mean at a
+        row's event time (the average of the m Efron means), or zero for a censored row.
 
-        Uses reverse cumulative sums for risk-set aggregates and vectorized cumulative sums over
-        event times to compute each subject's compensator without a per-subject Python loop.
+        Uses reverse cumulative sums for the risk-set aggregates and cumulative sums over the
+        event times, so each row reads its window in O(1).
         """
         n, p = self._x.shape
-        scores = np.zeros((n, p))
+        risk = np.zeros(n)
+        a = np.zeros(n)
+        b = np.zeros((n, p))
+        x_mean = np.zeros((n, p))
+        efron = self.ties == "efron"
         for members, event_times in self._strata_groups:
             xs = self._x[members]
             es = self._entry[members]
             xx = self._exit[members]
             ev = self._event[members]
             ws = self._weight[members]
-            ri = np.exp(xs @ beta) * self._risk_multiplier[members]
+            eta = xs @ beta
+            ri = np.exp(eta - (float(eta.max()) if len(eta) > 0 else 0.0))
+            ri = ri * self._risk_multiplier[members]
             rw = ri * ws
 
             has_late_entry = bool(np.any(es > 0))
@@ -3384,7 +3384,6 @@ class CoxPH:
             etimes = np.sort(event_times)
             K = len(etimes)
 
-            # Compute s0, xbar, dlambda at each event time via reverse cumsums
             order = np.argsort(xx, kind="mergesort")
             xx_sorted = xx[order]
             rw_sorted = rw[order]
@@ -3407,7 +3406,6 @@ class CoxPH:
                 ecs0 = np.cumsum(e_rw)
                 ecs1 = np.cumsum(e_rwx, axis=0)
 
-            # Precompute dying-subject groups
             ev_mask = ev.astype(bool)
             die_exits = xx[ev_mask]
             die_local = np.nonzero(ev_mask)[0]
@@ -3417,59 +3415,79 @@ class CoxPH:
             die_left = np.searchsorted(die_exits_sorted, etimes, side="left")
             die_right = np.searchsorted(die_exits_sorted, etimes, side="right")
 
-            s0_arr = np.empty(K)
-            xbar = np.zeros((K, p))
-            dlambda = np.zeros(K)
+            # Per event time: the hazard increment and its covariate-weighted version, the same
+            # pair for the rows that die there (Efron's reduced shares), and the event-time mean.
+            d_lambda = np.zeros(K)
+            d_x_lambda = np.zeros((K, p))
+            d_lambda_dead = np.zeros(K)
+            d_x_lambda_dead = np.zeros((K, p))
+            mean_at = np.zeros((K, p))
 
             for k in range(K):
                 j = exit_idx[k]
-                s0_k = float(rcs0[j]) if j < n_s else 0.0
-                s1_k = rcs1[j].copy() if j < n_s else np.zeros(p)
+                s0 = float(rcs0[j]) if j < n_s else 0.0
+                s1 = rcs1[j].copy() if j < n_s else np.zeros(p)
 
                 if has_late_entry:
                     cut = np.searchsorted(entry_vals, etimes[k], side="left")
                     if cut < len(entry_vals):
-                        s0_k -= float(ecs0[-1]) - (float(ecs0[cut - 1]) if cut > 0 else 0.0)
-                        s1_k -= ecs1[-1] - (ecs1[cut - 1] if cut > 0 else 0.0)
-
-                s0_arr[k] = s0_k
-                xbar[k] = s1_k / s0_k
+                        s0 -= float(ecs0[-1]) - (float(ecs0[cut - 1]) if cut > 0 else 0.0)
+                        s1 -= ecs1[-1] - (ecs1[cut - 1] if cut > 0 else 0.0)
 
                 d_idx = die_local_sorted[die_left[k] : die_right[k]]
-                dlambda[k] = float(ws[d_idx].sum()) / s0_k
+                m = len(d_idx) if efron else 1
+                mean_w = float(ws[d_idx].sum()) / m
+                d0 = float(rw[d_idx].sum())
+                d1 = (xs[d_idx] * rw[d_idx][:, None]).sum(axis=0)
+                for tie in range(m):
+                    f = tie / m
+                    denom = s0 - f * d0
+                    z1 = (s1 - f * d1) / denom
+                    d_lambda[k] += mean_w / denom
+                    d_x_lambda[k] += mean_w * z1 / denom
+                    d_lambda_dead[k] += (1.0 - f) * mean_w / denom
+                    d_x_lambda_dead[k] += (1.0 - f) * mean_w * z1 / denom
+                    mean_at[k] += z1 / m
 
-            # Vectorized compensator: for each subject i, sum over event times where i is at risk.
-            # at_risk: es[i] < etimes[k] and etimes[k] <= xx[i]
-            # compensator_i = ri[i] * (x_i * sum(dlambda[at]) - sum(xbar[at] * dlambda[at]))
-            #
-            # Use cumulative sums of dlambda and xbar*dlambda over event times, then for each
-            # subject look up the range [first_k, last_k] via searchsorted.
-            xbar_dl = xbar * dlambda[:, None]
-            cs_dl = np.cumsum(dlambda)
-            cs_xbar_dl = np.cumsum(xbar_dl, axis=0)
+            cs_dl = np.concatenate([[0.0], np.cumsum(d_lambda)])
+            cs_xdl = np.vstack([np.zeros((1, p)), np.cumsum(d_x_lambda, axis=0)])
 
+            # Event times in (entry, exit]: indices first_k .. last_k (exclusive end).
             first_k = np.searchsorted(etimes, es, side="right")
-            last_k = np.searchsorted(etimes, xx, side="right") - 1
+            last_k = np.searchsorted(etimes, xx, side="right")
+            last_k = np.maximum(last_k, first_k)
+            a_s = cs_dl[last_k] - cs_dl[first_k]
+            b_s = cs_xdl[last_k] - cs_xdl[first_k]
+            xm_s = np.zeros((len(members), p))
 
-            index = np.searchsorted(etimes, xx)
+            dead = np.nonzero(ev_mask)[0]
+            if len(dead) > 0:
+                ek = np.searchsorted(etimes, xx[dead])
+                a_s[dead] += d_lambda_dead[ek] - d_lambda[ek]
+                b_s[dead] += d_x_lambda_dead[ek] - d_x_lambda[ek]
+                xm_s[dead] = mean_at[ek]
 
-            for local, gi in enumerate(members):
-                fk = first_k[local]
-                lk = last_k[local]
-                if fk <= lk and lk >= 0 and fk < K:
-                    sum_dl = cs_dl[lk] - (cs_dl[fk - 1] if fk > 0 else 0.0)
-                    sum_xbar_dl = cs_xbar_dl[lk] - (cs_xbar_dl[fk - 1] if fk > 0 else np.zeros(p))
-                    compensator = ri[local] * (xs[local] * sum_dl - sum_xbar_dl)
-                else:
-                    compensator = np.zeros(p)
+            risk[members] = ri
+            a[members] = a_s
+            b[members] = b_s
+            x_mean[members] = xm_s
+        return risk, a, b, x_mean
 
-                score = -compensator
-                if ev[local]:
-                    ek = index[local]
-                    if ek < K:
-                        score = score + (xs[local] - xbar[ek])
-                scores[gi] = ws[local] * score
-        return scores
+    def _score_residuals(self, beta: Array) -> Array:
+        """Score residuals, one row per observation, without the case weights.
+
+        Row i's residual is `event_i (x_i - x_mean_i) - risk_i (x_i a_i - b_i)`, from
+        `_row_sums()`, so tied deaths use Efron's terms in an Efron fit. The case weights enter
+        the robust variance and the dfbeta residuals (`_dfbeta()`), as in R.
+        """
+        risk, a, b, x_mean = self._row_sums(beta)
+        event = self._event.astype(float)[:, None]
+        return event * (self._x - x_mean) - risk[:, None] * (self._x * a[:, None] - b)
+
+    def _dfbeta(self) -> Array:
+        """Approximate change in the coefficients from dropping each row (weighted scores)."""
+        scores = self._score_residuals(self.coef_) * self._weight[:, None]
+        return scores @ self.naive_vcov_
 
     def concordance(self) -> float:
         """Harrell's concordance index (C-statistic) of the fitted risk scores.
