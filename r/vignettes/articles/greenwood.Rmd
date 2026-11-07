@@ -1,0 +1,162 @@
+---
+title: "Get started with greenwood"
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 7,
+  fig.height = 4.5,
+  dpi = 96
+)
+```
+
+Greenwood is a toolkit for survival analysis: the study of how long it takes for an event to
+happen, when some of the times are still unknown. This article walks through a typical analysis
+of the `lung` data, a trial of patients with advanced lung cancer that comes with the package.
+
+```{r}
+library(greenwood)
+head(lung)
+```
+
+## The survival response
+
+`time` is the follow-up in days and `status` is 1 for a censored patient (alive at last contact)
+and 2 for a death. `Surv()` combines them into a survival response, with a `+` marking each
+censored time.
+
+```{r}
+Surv(lung$time[1:8], lung$status[1:8])
+```
+
+The estimators and models take the response on the left of a formula.
+
+## Survival curves
+
+`kaplan_meier()` estimates the probability of surviving past each time. With a grouping
+variable on the right of the formula, it estimates one curve per group.
+
+```{r}
+fit <- kaplan_meier(Surv(time, status) ~ sex, data = lung)
+fit
+```
+
+Every table of estimates starts with a `strata` column, which is `"all"` for a fit without
+groups, so the layout doesn't depend on the number of curves.
+
+```{r}
+head(as.data.frame(fit))
+predict(fit, times = c(180, 365))
+```
+
+`plot_survival()` draws the curves with their confidence bands and censoring marks, and can
+stack the numbers at risk underneath.
+
+```{r, fig.height = 5.5}
+plot_survival(fit, risk_table = TRUE, times = c(0, 250, 500, 750, 1000))
+```
+
+## Comparing groups
+
+The log-rank test asks whether the groups' survival differs. The restricted mean survival time
+compares the average survival up to a horizon, which is easier to interpret.
+
+```{r}
+logrank_test(Surv(time, status) ~ sex, data = lung)
+rmst_test(Surv(time, status) ~ sex, data = lung, tau = 365)
+```
+
+## Cox regression
+
+`cox_ph()` models the hazard as a baseline hazard multiplied by the exponential of a linear
+combination of covariates. `tidy()` gives the coefficients as a data frame, and `glance()` gives
+the model's summary statistics in one row.
+
+```{r}
+cox <- cox_ph(Surv(time, status) ~ age + sex + ph.ecog, data = lung)
+cox
+tidy(cox, exponentiate = TRUE)
+glance(cox)
+```
+
+`plot_forest()` plots the hazard ratios.
+
+```{r, fig.height = 2.5}
+plot_forest(cox, term_labels = c(age = "Age", sex = "Female", ph.ecog = "ECOG score"))
+```
+
+The model assumes that each hazard ratio is constant over time. `cox_zph()` tests the assumption,
+and `plot_schoenfeld()` shows the scaled Schoenfeld residuals: a flat smooth supports it.
+
+```{r}
+cox_zph(cox)
+```
+
+```{r, fig.height = 3.5}
+plot_schoenfeld(cox)
+```
+
+`smooth_hr()` checks whether a continuous covariate's effect is linear, by refitting the model
+with a spline in its place.
+
+```{r, fig.height = 3.5}
+plot_smooth_hr(smooth_hr(cox, term = "age"), scale = "hr")
+```
+
+`plot_predicted_survival()` shows the model's survival curves for new patients.
+
+```{r, fig.height = 3.5}
+patients <- data.frame(age = c(60, 60), sex = c(1, 2), ph.ecog = c(1, 1))
+plot_predicted_survival(cox, patients, labels = c("Male, 60", "Female, 60"))
+```
+
+## Competing risks
+
+When one kind of event prevents another, the Kaplan-Meier estimate of each overstates its
+probability. In the `mgus2` data, patients can progress to a plasma cell malignancy or die first.
+A factor response with the censoring level first gives a competing-risks response, and
+`aalen_johansen()` estimates each cause's cumulative incidence.
+
+```{r}
+mgus <- data.frame(
+  time = with(mgus2, ifelse(pstat == 1, ptime, futime)),
+  event = factor(
+    with(mgus2, ifelse(pstat == 1, 1, 2 * death)),
+    levels = 0:2,
+    labels = c("censor", "progression", "death")
+  ),
+  sex = mgus2$sex
+)
+cif <- aalen_johansen(Surv(time, event) ~ sex, data = mgus)
+grays_test(Surv(time, event) ~ sex, data = mgus)
+```
+
+```{r, fig.height = 3.5}
+plot_cif(cif)
+```
+
+`fine_gray()` models the covariates' effects on one cause's cumulative incidence.
+
+```{r}
+tidy(fine_gray(Surv(time, event) ~ sex, data = mgus, cause = "progression"))
+```
+
+## Checking predictions
+
+`concordance_index()` measures how well a risk score ranks the patients: 0.5 is no better than
+chance, and 1 orders every comparable pair correctly. On the data the model was fit to, it's
+optimistic. `cross_validate()` measures it on folds that the model didn't see.
+
+```{r}
+complete <- na.omit(lung[c("time", "status", "age", "sex", "ph.ecog")])
+cox <- cox_ph(Surv(time, status) ~ age + sex + ph.ecog, data = complete)
+concordance_index(Surv(complete$time, complete$status), risk = predict(cox))
+
+set.seed(1)
+cross_validate(cox_ph, Surv(time, status) ~ age + sex + ph.ecog, data = complete, k = 5)
+```
+
+`brier_score()`, `time_dependent_auc()`, and `calibration()` assess predicted survival
+probabilities at chosen times.
