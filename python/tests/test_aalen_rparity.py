@@ -165,3 +165,21 @@ class TestAalenVeteranRParity:
             veteran_fixture["test_statistic"],
             what="veteran test statistic",
         )
+
+
+@pytest.mark.rparity
+def test_nrisk_summary_matches_aareg() -> None:
+    # survival::aareg(Surv(time, status) ~ age + sex, data = lung, test = "nrisk") scales the
+    # statistics by the number of events used.
+    lung = gw.load_dataset("lung", backend="pandas")
+    fit = AalenAdditive(test="nrisk").fit("Surv(time, status) ~ age + sex", data=lung)
+    assert_allclose_to_r(
+        fit.summary_coef_,
+        [0.677722713234851, 0.0163499802574819, -0.488115251675718],
+        what="nrisk summary coef",
+    )
+    assert_allclose_to_r(
+        fit.summary_se_,
+        [0.583705686602189, 0.008710174827045, 0.150034376889392],
+        what="nrisk summary se(coef)",
+    )
