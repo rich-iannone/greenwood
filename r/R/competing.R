@@ -525,7 +525,7 @@ fine_gray <- function(formula,
       loglik = c(fit$loglik_null, final$loglik),
       wald_test = cox_chisq(drop(beta %*% cox_solve(var, beta)), length(beta)),
       baseline = data.frame(time = setup$times, cumhaz = cumsum(setup$d / final$s0)),
-      linear_predictors = drop(xc %*% beta),
+      linear_predictors = linear_predictor(xc, beta),
       means = means,
       n = nrow(x),
       n_event = sum(setup$d),
@@ -759,7 +759,9 @@ predict.fine_gray <- function(object, newdata, type = c("lp", "risk", "cif"), ti
     if (!is.data.frame(newdata)) {
       stop("`newdata` must be a data frame.", call. = FALSE)
     }
-    drop(sweep(cox_new_design(object, newdata), 2L, object$means) %*% object$coefficients)
+    linear_predictor(
+      sweep(cox_new_design(object, newdata), 2L, object$means), object$coefficients
+    )
   }
   if (type == "lp") {
     return(lp)
