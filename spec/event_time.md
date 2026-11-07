@@ -14,6 +14,7 @@ contract in a language-neutral form, and where Python must adapt. The companion 
 | Fixtures | [`conformance/event_time/`](conformance/event_time/) |
 | Generator | [`scripts/generate_event_time_conformance.R`](../scripts/generate_event_time_conformance.R) |
 | Python harness | [`python/tests/test_event_time_conformance.py`](../python/tests/test_event_time_conformance.py) |
+| R harness | [`r/tests/testthat/test-event-time-conformance.R`](../r/tests/testthat/test-event-time-conformance.R) |
 
 To regenerate after etd moves, update the pinned commit in all three places (the generator, the
 Python harness, and this table), then run from the repo root:
@@ -28,16 +29,16 @@ outcome is a change in the contract.
 
 ## API surface
 
-| etd (R) | Greenwood (Python) |
-|---|---|
-| `event_time(time, status, time_max = NULL)` | `gw.event_time(time, status, time_max=None)` |
-| `new_event_time(time = list(), status = character())` | `gw.new_event_time(time=(), status=())` |
-| `extract_time(x)` | `gw.extract_time(x)` |
-| `extract_status(x)` | `gw.extract_status(x)` |
-| `as_surv(x)` | `gw.as_surv(x)` |
-| `as_tibble(x)` | `x.to_frame(format=None)` |
-| class `event_time` | class `EventTime` |
-| `length(x)`, `x[i]`, `print(x)`, `format(x)`, `is.na(x)` | `len(x)`, `x[i]`, `repr(x)`, `x.format()`, `x.is_na()` |
+| etd (R) | Greenwood (Python) | Greenwood (R) |
+|---|---|---|
+| `event_time(time, status, time_max = NULL)` | `gw.event_time(time, status, time_max=None)` | `event_time(time, status, time_max = NULL)` |
+| `new_event_time(time = list(), status = character())` | `gw.new_event_time(time=(), status=())` | `new_event_time(time = list(), status = character())` |
+| `extract_time(x)` | `gw.extract_time(x)` | `extract_time(x)` |
+| `extract_status(x)` | `gw.extract_status(x)` | `extract_status(x)` |
+| `as_surv(x)` | `gw.as_surv(x)` | `as_surv(x)` |
+| `as_tibble(x)` | `x.to_frame(format=None)` | `tibble::as_tibble(x)` |
+| class `event_time` | class `EventTime` | class `c("greenwood_event_time", "event_time")` |
+| `length(x)`, `x[i]`, `print(x)`, `format(x)`, `is.na(x)` | `len(x)`, `x[i]`, `repr(x)`, `x.format()`, `x.is_na()` | the same base generics |
 
 The rule: names from etd's own exports stay identical, and R base generics map to the Python
 protocol or method that plays the same role.
@@ -122,10 +123,32 @@ Where Python cannot match R literally, it matches the meaning:
 
 The conformance harness skips the cases that exercise the R-only distinctions, naming the reason.
 
+## R adaptations
+
+The R package reimplements etd in base R, with no vctrs, rlang, or cli dependency. The vector is
+a list of the two fields (`time`, `status`) with base S3 methods. Methods dispatch on the
+`greenwood_event_time` subclass, so loading etd alongside Greenwood replaces neither package's
+methods. Where it departs from etd:
+
+| R / etd | Greenwood (R) | Why |
+|---|---|---|
+| cli messages with `x` and `i` bullets | the same sentences on one line, without bullets | No cli dependency. The harness strips the bullets before comparing. |
+| unclassed errors | the class `greenwood_event_time_error`, with `check` (the id above) and `locations` (1-based) fields | Upstream issue 5. |
+| `format()` of an empty vector is an error | `character(0)` | Upstream issue 1. |
+| `x[NA_integer_]` gives a broken element | a missing element, as for any other vector | Upstream issue 2. |
+| `sort()` and `order()` keep the input order | an error that points to `extract_time()` | Upstream issue 3. |
+| `vctrs::vec_c(x, y)` | not available. `c(x, y)` works | The class is not a vctrs class. |
+| `as_surv()` returns a survival `Surv` | Greenwood's own `Surv()`. `as_surv()` of a `Surv` returns it unchanged | No runtime dependency on survival. |
+| `as_tibble()` | an S3 method for `tibble::as_tibble()`, registered when tibble is installed | tibble is suggested, not imported. |
+
+An `event_time()` call on the left-hand side of a model formula is converted with `as_surv()`, so
+every estimator takes it where it takes the matching `Surv()` response.
+
 ## Vector behaviour
 
 `conformance/event_time/vector_ops.json` records what base R and vctrs do with an `event_time`
-vector at the pinned commit. Python mirrors the operations that have a natural Python spelling and
+vector at the pinned commit. The R harness replays every operation except the four the R
+adaptations above change (`vec_c`, `x[NA_integer_]`, `sort`, `order`). Python mirrors the operations that have a natural Python spelling and
 leaves the rest out, rather than inventing APIs etd doesn't have:
 
 | Operation | etd behaviour | Python |
