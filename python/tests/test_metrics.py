@@ -659,12 +659,8 @@ class TestCalibrationIncidence:
         c1_cif = cif_df.filter(cif_df["cause"] == "cause1")
 
         times = np.array([3.0, 6.0, 10.0])
-        marginal = np.array(
-            [
-                float(np.interp(t, c1_cif["time"].to_numpy(), c1_cif["estimate"].to_numpy()))
-                for t in times
-            ]
-        )
+        step = np.searchsorted(c1_cif["time"].to_numpy(), times, side="right") - 1
+        marginal = np.where(step >= 0, c1_cif["estimate"].to_numpy()[step.clip(min=0)], 0.0)
         probs = np.tile(marginal, (y.n, 1))
 
         cal_err = gw.calibration_incidence(y, probs, times, cause=1)
