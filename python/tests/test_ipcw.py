@@ -170,6 +170,19 @@ class TestIPCRidge:
         m1 = IPCRidge(alpha=10.0).fit(y, lung[cols])
         assert np.linalg.norm(m0.coef_) > np.linalg.norm(m1.coef_)
 
+    def test_alpha_zero_is_weighted_least_squares(self, lung_data) -> None:
+        # Without a penalty, the fit is the IPC-weighted least squares fit of the log event times,
+        # with an intercept.
+        y, lung = lung_data
+        cols = ["age", "sex"]
+        model = IPCRidge(alpha=0.0).fit(y, lung[cols])
+        event = y.event.astype(bool)
+        w = CensoringDistribution(y).weights()[event]
+        x = np.column_stack([np.ones(event.sum()), lung[cols].to_numpy(dtype=float)[event]])
+        target = np.log(y.stop[event])
+        expected = np.linalg.solve(x.T @ (w[:, None] * x), x.T @ (w * target))
+        assert np.allclose(np.concatenate([[model.intercept_], model.coef_]), expected, rtol=1e-10)
+
     def test_higher_alpha_shrinks_coefficients(self, lung_data) -> None:
         y, lung = lung_data
         cols = ["age", "sex"]
