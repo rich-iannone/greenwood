@@ -345,8 +345,22 @@ expect_same_fit <- function(pair) {
   expect_equal(fit$loglik, reference$loglik, tolerance = TOL)
   expect_equal(fit$score_test$statistic, unname(reference$score), tolerance = TOL)
   expect_equal(fit$wald_test$statistic, unname(reference$wald.test), tolerance = TOL)
-  expect_equal(fit$concordance, unname(reference$concordance["concordance"]), tolerance = TOL)
-  expect_equal(fit$concordance_se, unname(reference$concordance["std"]), tolerance = TOL)
+  # Subjects with the same covariates tie in the concordance only if their linear predictors are
+  # bit-identical. coxph() computes them with `x %*% coef`, and an optimized BLAS (as on Linux) can
+  # leave tied subjects a last bit apart, which moves the concordance. So the reference
+  # concordance is survival's, computed from cox_ph()'s linear predictors, whose ties are exact.
+  # The coefficients agree above, so these are coxph()'s linear predictors up to rounding.
+  concordance <- survival::concordancefit(
+    reference$y,
+    fit$linear_predictors,
+    fit$stratum,
+    reference$weights,
+    cluster = fit$cluster,
+    reverse = TRUE,
+    timefix = FALSE
+  )
+  expect_equal(fit$concordance, concordance$concordance, tolerance = TOL)
+  expect_equal(fit$concordance_se, sqrt(concordance$var[[1L]]), tolerance = TOL)
   expect_equal(unname(residuals(fit)), unname(residuals(reference)), tolerance = TOL)
   for (type in c("score", "dfbeta", "dfbetas")) {
     expect_equal(
@@ -503,6 +517,26 @@ test_that("stratified predictions use each subject's stratum", {
     predict(fit, newdata = data.frame(age = 60, sex = 3), type = "survival", times = 300),
     "strata that the model wasn't fit to: sex=3"
   )
+})
+
+test_that("subjects with the same covariates get identical linear predictors", {
+  skip_if_not_installed("survival")
+  # The concordance tests these for exact equality, so a last-bit difference would break a tie.
+  lung <- survival::lung
+  lung$ecog <- factor(lung$ph.ecog)
+  fits <- list(
+    list(cox_ph(Surv(time, status) ~ age + sex, data = small_cox), small_cox[c("age", "sex")]),
+    list(
+      cox_ph(Surv(time, status) ~ age + ecog + sex, data = lung),
+      stats::na.omit(lung[c("time", "status", "age", "ecog", "sex")])[c("age", "ecog", "sex")]
+    )
+  )
+  for (pair in fits) {
+    lp <- pair[[1L]]$linear_predictors
+    covariates <- do.call(paste, pair[[2L]])
+    expect_identical(length(unique(lp)), length(unique(covariates)))
+    expect_identical(unname(lp), unname(predict(pair[[1L]], newdata = pair[[2L]])))
+  }
 })
 
 test_that("Efron and Breslow agree without ties", {
