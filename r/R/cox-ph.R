@@ -824,6 +824,17 @@ print.cox_ph <- function(x, digits = getOption("digits"), ...) {
 #' hazard counts only the event times at or after it, so survival is
 #' \eqn{S(t) / S(c^-)} for \eqn{t \ge c}, and 1 before.
 #'
+#' With `trajectory`, the prediction is for one subject whose covariates change over time, such as
+#' the measurements of a model fit to the episodes from [split_episodes()]. Each row of
+#' `trajectory` gives the covariates over an interval \eqn{(a_k, b_k]}, and the cumulative hazard
+#' adds up the baseline hazard over each interval times the risk score of its covariates,
+#' \eqn{H(t) = \sum_k \exp(x_k^\top \beta) (H_0(\min(t, b_k)) - H_0(a_k))} over the intervals
+#' that started before \eqn{t}. No hazard builds up before the first interval or in a gap between
+#' two, and the last interval holds on past its end, with a warning when `times` go beyond it. The
+#' standard error accounts for the uncertainty in the baseline hazard and in \eqn{\beta} across
+#' all the intervals. A stratified model takes the stratifying variables from `trajectory`, and
+#' they can change from one interval to the next.
+#'
 #' The `"quantile"` of a subject's survival curve for a proportion \eqn{p} is the first time at
 #' which survival drops to \eqn{1 - p} or below, and its confidence limits are the same times for
 #' the lower and upper confidence curves. It's `NA` when the curve never drops that far. The
@@ -839,6 +850,11 @@ print.cox_ph <- function(x, digits = getOption("digits"), ...) {
 #'   every distinct time in the fitted data.
 #' @param conditional_after For `"survival"` and `"cumhaz"`, an optional time to condition on
 #'   surviving to.
+#' @param trajectory A data frame with the path of covariates of one subject, in place of
+#'   `newdata`: one row per interval, in time order and not overlapping, with its start `tstart`,
+#'   its end `tstop`, and the covariates (and any stratifying variables) over it. Only for
+#'   `"survival"` (the default with `trajectory`) and `"cumhaz"`, and not with
+#'   `conditional_after`.
 #' @param p For `"quantile"`, the proportions of subjects who have had the event, between 0 and 1.
 #'   The default, `0.5`, gives the median.
 #' @param tau For `"expectation"`, the end of the window for the restricted mean.
@@ -848,9 +864,10 @@ print.cox_ph <- function(x, digits = getOption("digits"), ...) {
 #' @return For `"lp"` and `"risk"`, a numeric vector with one value per row of `newdata`. For
 #'   `"survival"` and `"cumhaz"`, a data frame with one row per subject and time: `subject` (the
 #'   row of `newdata`), `strata`, `time`, `estimate`, `std_error`, `conf_low`, and `conf_high`.
-#'   For `"quantile"`, a data frame with one row per subject and proportion: `subject`, `strata`,
-#'   `p`, `estimate`, `conf_low`, and `conf_high`. For `"expectation"`, one row per subject:
-#'   `subject`, `strata`, `tau`, `estimate`, `conf_low`, and `conf_high`.
+#'   With `trajectory`, `subject` is 1 and `strata` is the stratum of the interval in effect at
+#'   each time. For `"quantile"`, a data frame with one row per subject and proportion:
+#'   `subject`, `strata`, `p`, `estimate`, `conf_low`, and `conf_high`. For `"expectation"`, one
+#'   row per subject: `subject`, `strata`, `tau`, `estimate`, `conf_low`, and `conf_high`.
 #'
 #' @examples
 #' lung <- data.frame(
@@ -877,6 +894,10 @@ print.cox_ph <- function(x, digits = getOption("digits"), ...) {
 #' # Median survival time, and the mean survival time over two years
 #' predict(fit, newdata = newdata, type = "quantile")
 #' predict(fit, newdata = newdata, type = "expectation", tau = 730)
+#'
+#' # Survival for a subject whose age is updated at day 300
+#' path <- data.frame(tstart = c(0, 300), tstop = c(300, 800), age = c(60, 61), sex = 1)
+#' predict(fit, trajectory = path, times = c(200, 400, 800))
 #' @name cox_ph_predict
 #' @export
 predict.cox_ph <- function(object,
@@ -884,10 +905,25 @@ predict.cox_ph <- function(object,
                            type = c("lp", "risk", "survival", "cumhaz", "quantile", "expectation"),
                            times,
                            conditional_after = NULL,
+                           trajectory = NULL,
                            p = 0.5,
                            tau,
                            conf_level = object$conf_level,
                            ...) {
+  if (!is.null(trajectory)) {
+    type <- if (missing(type)) "survival" else match.arg(type)
+    if (!type %in% c("survival", "cumhaz")) {
+      stop("With `trajectory`, `type` must be \"survival\" or \"cumhaz\".", call. = FALSE)
+    }
+    if (!missing(newdata)) {
+      stop("Give one of `newdata` and `trajectory`, not both.", call. = FALSE)
+    }
+    if (!is.null(conditional_after)) {
+      stop("`conditional_after` can't be used with `trajectory`.", call. = FALSE)
+    }
+    check_conf_level(conf_level)
+    return(cox_trajectory(object, trajectory, type, times, z_value(conf_level)))
+  }
   type <- match.arg(type)
   check_conf_level(conf_level)
   if (type == "quantile" && (!is.numeric(p) || anyNA(p) || any(p < 0 | p > 1))) {
@@ -931,29 +967,130 @@ predict.cox_ph <- function(object,
   }
   tables <- lapply(seq_len(nrow(x)), function(i) {
     curve <- cox_curve(object, detail, stratum[i], x[i, ], times, conditional_after)
-    if (type == "cumhaz") {
-      factor <- ifelse(curve$cumhaz > 0, exp(z * curve$std_error / curve$cumhaz), 1)
-      out <- data.frame(
-        estimate = curve$cumhaz,
-        std_error = curve$std_error,
-        conf_low = curve$cumhaz / factor,
-        conf_high = curve$cumhaz * factor
-      )
-    } else {
-      survival <- exp(-curve$cumhaz)
-      out <- data.frame(
-        estimate = survival,
-        std_error = survival * curve$std_error,
-        conf_low = survival * exp(-z * curve$std_error),
-        conf_high = pmin(survival * exp(z * curve$std_error), 1)
-      )
-    }
     cbind(
       data.frame(subject = i, strata = object$strata$strata[stratum[i]], time = times),
-      out
+      cox_curve_frame(curve, type, z)
     )
   })
   out <- do.call(rbind, tables)
+  rownames(out) <- NULL
+  out
+}
+
+# The estimate, standard error, and confidence limits of a cumulative hazard curve from
+# cox_curve(), or of the survival curve it gives.
+cox_curve_frame <- function(curve, type, z) {
+  if (type == "cumhaz") {
+    factor <- ifelse(curve$cumhaz > 0, exp(z * curve$std_error / curve$cumhaz), 1)
+    return(data.frame(
+      estimate = curve$cumhaz,
+      std_error = curve$std_error,
+      conf_low = curve$cumhaz / factor,
+      conf_high = curve$cumhaz * factor
+    ))
+  }
+  survival <- exp(-curve$cumhaz)
+  data.frame(
+    estimate = survival,
+    std_error = survival * curve$std_error,
+    conf_low = survival * exp(-z * curve$std_error),
+    conf_high = pmin(survival * exp(z * curve$std_error), 1)
+  )
+}
+
+# The survival or cumulative hazard of one subject whose covariates follow `trajectory`, a data
+# frame with one row per interval (tstart, tstop] and the covariates over it. The cumulative
+# hazard adds each interval's share of the baseline hazard of its stratum times its risk score,
+# and the last interval holds on past its end.
+cox_trajectory <- function(object, trajectory, type, times, z) {
+  if (!is.data.frame(trajectory)) {
+    stop("`trajectory` must be a data frame.", call. = FALSE)
+  }
+  absent <- setdiff(c("tstart", "tstop"), names(trajectory))
+  if (length(absent) > 0L) {
+    stop(
+      sprintf(
+        "`trajectory` needs the columns `tstart` and `tstop`, and doesn't have %s.",
+        paste0("`", absent, "`", collapse = " or ")
+      ),
+      call. = FALSE
+    )
+  }
+  tstart <- trajectory$tstart
+  tstop <- trajectory$tstop
+  if (nrow(trajectory) == 0L || !is.numeric(tstart) || !is.numeric(tstop) || anyNA(tstart) ||
+    anyNA(tstop)) {
+    stop("`tstart` and `tstop` in `trajectory` must be numbers with no missing values.",
+      call. = FALSE
+    )
+  }
+  if (any(tstart < 0) || any(tstart >= tstop)) {
+    stop("Every interval of `trajectory` must have 0 <= tstart < tstop.", call. = FALSE)
+  }
+  k <- length(tstart)
+  if (k > 1L && any(tstart[-1L] < tstop[-k])) {
+    stop("The intervals of `trajectory` must be in time order and must not overlap.",
+      call. = FALSE
+    )
+  }
+  x <- sweep(cox_new_design(object, trajectory), 2L, object$means)
+  if (anyNA(x)) {
+    stop("`trajectory` has missing covariate values.", call. = FALSE)
+  }
+  stratum <- cox_new_strata(object, trajectory)
+  if (missing(times)) {
+    times <- sort(unique(object$setup$stop))
+  }
+  times <- check_times(times)
+  beyond <- sum(times > tstop[k])
+  if (beyond > 0L) {
+    warning(
+      sprintf(
+        paste(
+          "`trajectory` ends at %s, so %d of `times` %s carried past it with the covariates of",
+          "its last interval."
+        ),
+        format(tstop[k]), beyond, if (beyond == 1L) "is" else "are"
+      ),
+      call. = FALSE
+    )
+  }
+  tstop[k] <- Inf
+
+  detail <- cox_detail(object)
+  p <- ncol(x)
+  n_times <- length(times)
+  cumhaz <- numeric(n_times)
+  var0 <- numeric(n_times)
+  q <- matrix(0, n_times, p)
+  for (i in seq_len(k)) {
+    piece <- detail[[stratum[i]]]
+    if (is.null(piece)) {
+      next
+    }
+    # Each sum over the event times of the stratum in (tstart, min(t, tstop)].
+    upper <- findInterval(pmin(pmax(times, tstart[i]), tstop[i]), piece$times)
+    lower <- findInterval(tstart[i], piece$times)
+    over <- function(value) {
+      total <- c(0, cumsum(value))
+      total[upper + 1L] - total[lower + 1L]
+    }
+    risk <- exp(sum(x[i, ] * object$coefficients))
+    hazard <- over(piece$hazard)
+    x_hazard <- vapply(seq_len(p), function(j) over(piece$x_hazard[, j]), numeric(n_times))
+    cumhaz <- cumhaz + risk * hazard
+    var0 <- var0 + risk^2 * over(piece$hazard2)
+    q <- q + risk * (outer(hazard, x[i, ]) - matrix(x_hazard, nrow = n_times))
+  }
+  v <- if (is.null(object$naive_var)) object$var else object$naive_var
+  variance <- var0 + rowSums((q %*% v) * q)
+  curve <- list(cumhaz = cumhaz, std_error = sqrt(pmax(variance, 0)))
+  # The stratum at each time is the one of the interval in effect then.
+  current <- pmax(findInterval(times, trajectory$tstart, left.open = TRUE), 1L)
+  out <- cbind(
+    data.frame(subject = 1L, strata = object$strata$strata[stratum[current]], time = times),
+    cox_curve_frame(curve, type, z)
+  )
   rownames(out) <- NULL
   out
 }
