@@ -13,6 +13,10 @@ cox_ph(
   ties = c("efron", "breslow"),
   robust = FALSE,
   cluster,
+  frailty = NULL,
+  frailty_cluster,
+  frailty_theta = 0.5,
+  frailty_max_iter = 30,
   conf_level = 0.95,
   max_iter = 30,
   tol = 1e-09
@@ -21,7 +25,8 @@ cox_ph(
 \arguments{
 \item{formula}{A formula with a \code{\link[=Surv]{Surv()}} response on the left and the covariates on the right,
 such as \code{Surv(time, status) ~ age + sex}. Factors are coded with treatment contrasts. A
-\code{strata()} term stratifies the baseline hazard and a \code{cluster()} term gives the clusters.}
+\code{strata()} term stratifies the baseline hazard, a \code{cluster()} term gives the clusters, and a
+\code{frailty()} term adds a shared frailty.}
 
 \item{data}{A data frame holding the variables in \code{formula}.}
 
@@ -38,6 +43,16 @@ are clusters.}
 
 \item{cluster}{Optional cluster identifiers, a column of \code{data} or a vector, for observations
 that are correlated within clusters. Implies \code{robust = TRUE}.}
+
+\item{frailty}{The distribution of a shared frailty: \code{"gamma"} or \code{"lognormal"}. The default,
+\code{NULL}, gives none, unless the formula has a \code{frailty()} term.}
+
+\item{frailty_cluster}{The clusters of a shared frailty, a column of \code{data} or a vector, when
+they're not given by a \code{frailty()} term.}
+
+\item{frailty_theta}{The starting value of the frailty variance, above 0. The default is \code{0.5}.}
+
+\item{frailty_max_iter}{The largest number of rounds of the frailty fit. The default is \code{30}.}
 
 \item{conf_level}{The confidence level, between 0 and 1. The default is \code{0.95}.}
 
@@ -56,7 +71,10 @@ cumulative hazard, and \code{\link[=cox_zph]{cox_zph()}} to check proportional h
 The object also holds \code{loglik} (the log partial likelihood at \eqn{\beta = 0} and at the
 estimate), the global tests \code{lr_test}, \code{wald_test}, and \code{score_test} (each with \code{statistic},
 \code{df}, and \code{p_value}), \code{concordance} and its standard error \code{concordance_se}, \code{n}, \code{n_event},
-\code{iterations}, and \code{converged}.
+\code{iterations}, and \code{converged}. With a shared frailty, \code{frailty} holds the \code{distribution}, the
+\code{cluster} variable, \code{theta} (the variance), \code{effects} (each cluster's frailty for a gamma
+frailty, or its log frailty for a lognormal one, named by cluster), the variance \code{test}, and
+the number of \code{iterations} of the frailty fit and whether it \code{converged}.
 }
 \description{
 \code{cox_ph()} fits the Cox proportional hazards model, in which the hazard of a subject with
@@ -80,6 +98,22 @@ With \code{robust = TRUE}, or a \code{cluster} (given as an argument or as a \co
 variance is the robust sandwich estimate built from the score residuals, summed within each
 cluster. That variance is used for the standard errors, the confidence limits, and the Wald
 test. The likelihood ratio and score tests are unaffected.
+
+A \code{frailty()} term, as in \code{Surv(time, status) ~ age + frailty(inst)}, adds a shared frailty: a
+random effect for each cluster that multiplies the hazard of all its subjects, for clusters
+whose subjects are more alike than the covariates explain. \code{frailty(inst)} is a gamma frailty,
+with mean 1 and variance \eqn{\theta}. \code{frailty(inst, distribution = "gaussian")} (or
+\code{frailty.gaussian(inst)}) is a lognormal frailty, whose logarithm is normal with mean 0 and
+variance \eqn{\sigma^2}. The \code{frailty} and \code{frailty_cluster} arguments do the same as the term.
+The gamma fit alternates between fitting the coefficients with the clusters' current frailties,
+setting each frailty to its posterior mean, and choosing \eqn{\theta} on a grid of 80 values
+from 1e-8 to 1e3 to maximize the marginal likelihood of the clusters' event counts. The
+lognormal fit maximizes the partial likelihood over the coefficients and the log frailties
+together, penalized by their normal density, and updates \eqn{\sigma^2} from the log frailties
+and their variance. \code{\link[=frailty_test]{frailty_test()}} tests whether the variance is 0. A shared frailty needs
+right-censored data and \code{ties = "breslow"}, and can't be combined with strata or a robust
+variance. Predictions are for a subject with a frailty of 1, and the residuals and the baseline
+hazard include the fitted frailties.
 }
 \examples{
 lung <- data.frame(
