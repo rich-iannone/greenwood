@@ -393,21 +393,24 @@ class IPCRidge:
         w_fit = ipc_w[mask]
 
         _, p = x_fit.shape
-        center = x_fit.mean(axis=0)
+        # The intercept is unpenalized, so the covariates and the log times are centered at their
+        # weighted means. The scale only sets how strongly each coefficient is penalized.
+        center = np.average(x_fit, axis=0, weights=w_fit)
+        y_center = float(np.average(y_fit, weights=w_fit))
         scale = x_fit.std(axis=0, ddof=1) if self.standardize else np.ones(p)
         scale = np.where(scale > 0, scale, 1.0)
         xs = (x_fit - center) / scale
 
         sw = np.sqrt(w_fit)
         xw = xs * sw[:, np.newaxis]
-        yw = y_fit * sw
+        yw = (y_fit - y_center) * sw
 
         gram = xw.T @ xw + self.alpha * np.eye(p)
         rhs = xw.T @ yw
         beta_s = np.linalg.solve(gram, rhs)
 
         self.coef_ = beta_s / scale
-        self.intercept_ = float(np.mean(y_fit * w_fit) / np.mean(w_fit) - center @ self.coef_)
+        self.intercept_ = float(y_center - center @ self.coef_)
         self.term_names_ = names
         self.n_ = int(keep.sum())
         self.n_dropped_ = max(getattr(self, "_n_input", self.n_) - self.n_, 0)
