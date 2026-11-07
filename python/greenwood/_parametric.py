@@ -826,6 +826,40 @@ class AFT:
         se_s = np.abs(ds_dmu) * se_mu[None, :]  # (n_times, n_subjects)
         return se_s
 
+    def _quantile_se(self, x: Array, p: Array) -> Array:
+        r"""Standard error of the time quantiles $\gamma + \exp(\mu + \sigma w_p)$.
+
+        The delta method uses the full parameter variance. The quantile's gradient is $q x$ in
+        the coefficients, $q \sigma w_p$ in $\log \sigma$, $q \sigma \partial w_p / \partial Q$ in
+        the generalized gamma's $Q$, and 1 in the threshold, where $q = \exp(\mu + \sigma w_p)$.
+
+        Returns
+        -------
+        Array
+            Standard errors, shape (n_subjects, n_p).
+        """
+        n_coef = x.shape[1]
+        n_params = self.vcov_.shape[0]
+        sigma = self.scale_
+        w = _error_quantile(self.dist, p, Q=self._q)
+        q = np.exp((x @ self.coef_)[:, None] + sigma * w[None, :])  # (n_subjects, n_p)
+
+        grad = np.zeros((*q.shape, n_params))
+        grad[:, :, :n_coef] = q[:, :, None] * x[:, None, :]
+        if self.dist != "exponential":
+            grad[:, :, n_coef] = q * sigma * w[None, :]
+        if self.Q_ is not None:
+            h = 1e-6 * max(1.0, abs(self.Q_))
+            dw = (
+                _error_quantile(self.dist, p, Q=self.Q_ + h)
+                - _error_quantile(self.dist, p, Q=self.Q_ - h)
+            ) / (2.0 * h)
+            grad[:, :, n_coef + 1] = q * sigma * dw[None, :]
+        if self.threshold:
+            grad[:, :, -1] = 1.0
+        var = np.einsum("spi,ij,spj->sp", grad, self.vcov_, grad)
+        return np.sqrt(np.clip(var, 0.0, None))
+
     # -- residuals & diagnostics ---------------------------------------------
 
     _RESIDUAL_TYPES = frozenset(
@@ -1272,9 +1306,11 @@ class AFT:
         standardized error distribution and $\hat{\mu} = x^\top \hat{\beta}$ is the fitted linear
         predictor. This is a closed-form computation.
 
-        When `ci=True`, confidence intervals are computed on the log scale (where the variance
-        depends only on coefficient uncertainty) and exponentiated:
-        $\exp(\hat{\mu} + \hat{\sigma} w_p \pm z_{\alpha/2} \cdot \text{SE}(\hat{\mu}))$.
+        When `ci=True`, the standard error of $\hat{t}_p$ comes from the delta method with the full
+        parameter variance, so the uncertainty in the scale (and in $Q$ and the threshold, when
+        fitted) counts as well as the coefficients'. The limits are
+        $\hat{t}_p \exp(\pm z_{\alpha/2} \, \text{SE}(\hat{t}_p) / \hat{t}_p)$, which keeps them
+        positive.
 
         Parameters
         ----------
@@ -1334,16 +1370,13 @@ class AFT:
 
         if ci:
             z_val = float(norm.ppf(1.0 - (1.0 - self.conf_level) / 2.0))
-            n_coef = x.shape[1]
-            vcov_coef = self.vcov_[:n_coef, :n_coef]
-            se_mu = np.sqrt(np.clip(np.diag(x @ vcov_coef @ x.T), 0.0, None))
+            se_q = self._quantile_se(x, p_arr)  # (n_subjects, n_p)
+            se_log = se_q / quantiles
 
             for i in range(quantiles.shape[0]):
-                lo = gamma + np.exp(log_q[i] - z_val * se_mu[i])
-                hi = gamma + np.exp(log_q[i] + z_val * se_mu[i])
                 columns[f"subject_{i + 1}"] = quantiles[i]
-                columns[f"subject_{i + 1}_lower"] = lo
-                columns[f"subject_{i + 1}_upper"] = hi
+                columns[f"subject_{i + 1}_lower"] = quantiles[i] * np.exp(-z_val * se_log[i])
+                columns[f"subject_{i + 1}_upper"] = quantiles[i] * np.exp(z_val * se_log[i])
         else:
             for i in range(quantiles.shape[0]):
                 columns[f"subject_{i + 1}"] = quantiles[i]
