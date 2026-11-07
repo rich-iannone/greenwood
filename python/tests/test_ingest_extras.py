@@ -506,6 +506,51 @@ def test_split_episodes_baseline_covariates_and_lazy_input(pbcseq: Any) -> None:
     assert long.columns == ["id", "tstart", "tstop", "status", "trt", "age", "bili"]
 
 
+def test_split_episodes_default_covariates_leave_out_follow_up(pbcseq: Any) -> None:
+    long = gw.split_episodes(
+        baseline=pbcseq,
+        visits=pbcseq,
+        id="id",
+        time="futime",
+        event="status",
+        visit_time="day",
+        baseline_covariates=["trt", "age"],
+        format="pandas",
+    )
+    assert "futime" not in long.columns
+    assert list(long.columns[:6]) == ["id", "tstart", "tstop", "status", "trt", "age"]
+    # Only each subject's last interval can carry the event.
+    last = long.groupby("id")["tstop"].transform("max") == long["tstop"]
+    assert (long.loc[~last, "status"] == 0).all()
+    base = pbcseq.drop_duplicates("id").set_index("id")["status"]
+    np.testing.assert_array_equal(
+        long.loc[last, "status"].to_numpy(), base.loc[long.loc[last, "id"]].to_numpy()
+    )
+
+
+def test_split_episodes_default_covariates_leave_out_baseline_columns() -> None:
+    baseline = pd.DataFrame({"id": [1, 2], "time": [10.0, 8.0], "event": [1, 0], "sex": ["f", "m"]})
+    visits = pd.DataFrame(
+        {
+            "id": [1, 1, 2],
+            "day": [0.0, 5.0, 0.0],
+            "bili": [1.2, 2.4, 0.8],
+            "sex": ["f", "f", "m"],
+        }
+    )
+    out = gw.split_episodes(
+        baseline=baseline,
+        visits=visits,
+        id="id",
+        time="time",
+        event="event",
+        visit_time="day",
+        format="pandas",
+    )
+    assert list(out.columns) == ["id", "tstart", "tstop", "event", "sex", "bili"]
+    assert out["event"].tolist() == [0, 1, 0]
+
+
 def test_split_episodes_errors(pbcseq: Any) -> None:
     common: dict[str, Any] = {"id": "id", "time": "futime", "event": "status", "visit_time": "day"}
     with pytest.raises(ValueError, match="more than one value of 'chol'"):

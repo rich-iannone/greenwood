@@ -805,6 +805,19 @@ class TestPenalizedFineGray:
         assert "PenalizedFineGray" in r
         assert "nonzero" in r
 
+    def test_converged(self, pfg) -> None:  # type: ignore[no-untyped-def]
+        assert pfg.converged_ is True
+        assert 1 < pfg.n_iter_ < pfg.max_iter
+
+    def test_max_iter_warns(self, df_y) -> None:  # type: ignore[no-untyped-def]
+        df, y = df_y
+        with pytest.warns(UserWarning, match="PenalizedFineGray did not converge"):
+            fit = gw.PenalizedFineGray("pcm", penalizer=0.01, l1_ratio=1.0, max_iter=2).fit(
+                y, df[["age", "sex"]]
+            )
+        assert fit.converged_ is False
+        assert fit.n_iter_ == 2
+
     def test_repr_unfitted(self) -> None:
         r = repr(gw.PenalizedFineGray("pcm"))
         assert "unfitted" in r

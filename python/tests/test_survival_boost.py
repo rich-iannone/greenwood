@@ -268,3 +268,92 @@ class TestSurvivalBoostIntegration:
         p2 = sb2.predict_survival_function(competing_data.covariates, times=np.array([5.0]))
 
         np.testing.assert_array_equal(p1, p2)
+
+
+class TestSurvivalBoostRounds:
+    """Each round's trees are rebuilt from the rows and gradients they were grown on."""
+
+    @staticmethod
+    def _capture(monkeypatch: pytest.MonkeyPatch) -> list[tuple[np.ndarray, np.ndarray]]:
+        from greenwood import _survival_boost
+
+        calls: list[tuple[np.ndarray, np.ndarray]] = []
+        original = _survival_boost._RegressionTree.fit
+
+        def fit(
+            self: _survival_boost._RegressionTree, x: np.ndarray, y: np.ndarray, imp: np.ndarray
+        ) -> _survival_boost._RegressionTree:
+            calls.append((x.copy(), y.copy()))
+            return original(self, x, y, imp)
+
+        monkeypatch.setattr(_survival_boost._RegressionTree, "fit", fit)
+        return calls
+
+    def test_gradient_is_the_current_model_at_each_sampled_row(
+        self, monkeypatch: pytest.MonkeyPatch, competing_data: gw.SimulatedCompetingRisks
+    ) -> None:
+        from greenwood._competing import _censoring_km
+        from greenwood._survival_boost import _ensemble_scores, _ipcw_targets, _softmax
+
+        calls = self._capture(monkeypatch)
+        sb = gw.SurvivalBoost(
+            n_estimators=4, learning_rate=0.3, max_depth=2, min_samples_leaf=5, random_state=1
+        ).fit(competing_data.surv, competing_data.covariates)
+        x = np.asarray(competing_data.covariates, dtype=float)
+        time = np.asarray(competing_data.surv.stop, dtype=float)
+        status = np.asarray(competing_data.surv.status, dtype=int)
+        g_times, g_surv = _censoring_km(time, status)
+        n_classes = sb.n_classes_
+        assert len(calls) == 4 * n_classes
+
+        for r in range(4):
+            xa, _ = calls[r * n_classes]
+            # Every row is a subject at one horizon. The covariates identify the subject.
+            subject = np.array(
+                [int(np.flatnonzero((x == row).all(axis=1))[0]) for row in xa[:, 1:]]
+            )
+            targets, weights = _ipcw_targets(
+                status[subject], time[subject], xa[:, 0], g_times, g_surv, n_classes, 0.05
+            )
+            probs = _softmax(_ensemble_scores(sb.trees_[:r], xa, sb.learning_rate, n_classes))
+            for k in range(n_classes):
+                xk, yk = calls[r * n_classes + k]
+                np.testing.assert_array_equal(xk, xa)
+                expected = weights * ((targets == k).astype(float) - probs[:, k])
+                np.testing.assert_allclose(yk, expected, rtol=1e-12, atol=1e-12)
+
+    @pytest.mark.parametrize(("fraction", "n_zero"), [(0.0, 0), (0.1, 30), (0.05, 15)])
+    def test_hard_zero_fraction_rounds_down(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        competing_data: gw.SimulatedCompetingRisks,
+        fraction: float,
+        n_zero: int,
+    ) -> None:
+        calls = self._capture(monkeypatch)
+        gw.SurvivalBoost(
+            n_estimators=2,
+            n_horizons_per_observation=2,
+            hard_zero_fraction=fraction,
+            random_state=0,
+        ).fit(competing_data.surv, competing_data.covariates)
+        # A horizon of 0 is before every follow-up time, so its row is never left out.
+        for xa, _ in calls:
+            assert int((xa[:, 0] == 0.0).sum()) == 2 * n_zero
+
+    def test_time_grid_has_distinct_times(self) -> None:
+        rng = np.random.default_rng(3)
+        n = 200
+        time = rng.integers(1, 6, size=n).astype(float)
+        cause = rng.choice(["censor", "a", "b"], size=n)
+        y = Surv(time=time, event=pd.Categorical(cause, categories=["censor", "a", "b"]))
+        x = rng.standard_normal((n, 2))
+
+        quantiles = gw.SurvivalBoost(n_estimators=1, n_time_grid_steps=50, random_state=0)
+        quantiles.fit(y, x)
+        assert np.all(np.diff(quantiles.time_grid_) > 0)
+        assert quantiles.time_grid_[0] == time[cause != "censor"].min()
+
+        event_times = gw.SurvivalBoost(n_estimators=1, n_time_grid_steps=1000, random_state=0)
+        event_times.fit(y, x)
+        np.testing.assert_array_equal(event_times.time_grid_, np.unique(time[cause != "censor"]))

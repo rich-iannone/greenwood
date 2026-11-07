@@ -467,6 +467,109 @@ def test_smooth_hr_adjustment(lung_surv) -> None:  # type: ignore[no-untyped-def
     assert "age" not in shr.adjustment
 
 
+# The R package's smooth_hr() values for the same fits. Its spline basis matches splines::bs().
+SMOOTH_HR_R = {
+    "plain_lower": [
+        -3.0923787757044532,
+        -0.4608238175241319,
+        -0.0473812269979644,
+        -0.1815950163650272,
+        -0.3281246426047284,
+    ],
+    "plain_upper": [
+        0.5910549057554233,
+        0.6022884220971914,
+        0.0855630497846269,
+        0.5904886522541540,
+        2.4563549784042533,
+    ],
+    "strata_log_hr": [
+        -1.190343223951767504,
+        0.045718444206906197,
+        0.032027554347681980,
+        0.064893554324260930,
+        1.086437551421713499,
+    ],
+    "strata_upper": [
+        0.68358814220320419,
+        0.56959190258819092,
+        0.10289256134923885,
+        0.46155573702920083,
+        2.47180278442244905,
+    ],
+    "cluster_upper": [
+        1.281447690437729658,
+        0.618277408414334095,
+        0.083784446450329092,
+        0.725109524535767602,
+        2.467986123133812271,
+    ],
+}
+
+
+def test_smooth_hr_limits_match_r() -> None:
+    import greenwood as gw
+
+    lung = gw.load_dataset("lung", backend="pandas")
+    cox = CoxPH().fit("Surv(time, status) ~ age + sex", data=lung)
+    shr = cox.smooth_hr("age")
+    at = [0, 50, 100, 150, 199]
+    np.testing.assert_allclose(shr.log_hr_lower[at], SMOOTH_HR_R["plain_lower"], rtol=1e-9)
+    np.testing.assert_allclose(shr.log_hr_upper[at], SMOOTH_HR_R["plain_upper"], rtol=1e-9)
+
+
+def test_smooth_hr_limits_do_not_depend_on_the_dropped_basis_column() -> None:
+    from scipy.interpolate import BSpline
+
+    import greenwood as gw
+
+    lung = gw.load_dataset("lung", backend="pandas")
+    cox = CoxPH().fit("Surv(time, status) ~ age + sex", data=lung)
+    shr = cox.smooth_hr("age", n_grid=25)
+    age = lung["age"].to_numpy(dtype=float)
+    knots = np.concatenate([np.repeat(age.min(), 4), shr.knots, np.repeat(age.max(), 4)])
+    basis = BSpline.design_matrix(age, knots, 3).toarray()
+    np.testing.assert_allclose(basis.sum(axis=1), 1.0)
+    # The same model without the last basis column instead of the first.
+    kept = basis[:, :-1]
+    refit = CoxPH().fit(
+        gw.Surv(time=lung["time"], event=lung["status"]),
+        np.column_stack([kept, lung["sex"].to_numpy(dtype=float)]),
+    )
+    grid_basis = BSpline.design_matrix(shr.grid, knots, 3).toarray()[:, :-1]
+    ref_basis = BSpline.design_matrix(np.array([shr.reference]), knots, 3).toarray()[:, :-1]
+    diff = grid_basis - ref_basis
+    k = kept.shape[1]
+    se = np.sqrt(np.sum(diff @ refit.vcov_[:k, :k] * diff, axis=1))
+    np.testing.assert_allclose(shr.log_hr, diff @ refit.coef_[:k], atol=1e-8)
+    np.testing.assert_allclose(shr.log_hr_upper - shr.log_hr, 1.959963984540054 * se, atol=1e-8)
+
+
+def test_smooth_hr_keeps_strata_and_clusters() -> None:
+    import greenwood as gw
+
+    lung = gw.load_dataset("lung", backend="pandas")
+    stratified = CoxPH().fit("Surv(time, status) ~ age + ph.karno", data=lung, strata="sex")
+    shr = stratified.smooth_hr("age", n_grid=5)
+    np.testing.assert_allclose(shr.log_hr, SMOOTH_HR_R["strata_log_hr"], rtol=1e-9)
+    np.testing.assert_allclose(shr.log_hr_upper, SMOOTH_HR_R["strata_upper"], rtol=1e-9)
+
+    clustered = CoxPH().fit("Surv(time, status) ~ age + sex", data=lung, cluster="inst")
+    shr = clustered.smooth_hr("age", n_grid=5)
+    np.testing.assert_allclose(shr.log_hr_upper, SMOOTH_HR_R["cluster_upper"], rtol=1e-9)
+
+
+def test_smooth_hr_rejects_frailty() -> None:
+    import greenwood as gw
+
+    lung = gw.load_dataset("lung", backend="pandas")
+    frail = CoxPH(ties="breslow").fit(
+        "Surv(time, status) ~ age", data=lung, frailty="gamma", frailty_cluster="inst"
+    )
+    with pytest.raises(ValueError, match="frailty"):
+        frail.smooth_hr("age")
+
+
 # ---------------------------------------------------------------------------
 # ZPHWindowResult / SmoothHRResult expanded tests
 # ---------------------------------------------------------------------------

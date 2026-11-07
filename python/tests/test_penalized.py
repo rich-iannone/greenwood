@@ -357,6 +357,37 @@ def test_cv_coxnet_repr(data) -> None:  # type: ignore[no-untyped-def]
     assert "object at 0x" not in text
 
 
+def test_converged_fit_records_iterations(data) -> None:  # type: ignore[no-untyped-def]
+    y, x = data
+    model = CoxNet(penalizer=0.05, l1_ratio=1.0).fit(y, x)
+    assert model.converged_ is True
+    assert 1 < model.n_iter_ < model.max_iter
+
+
+def test_fit_that_reaches_max_iter_warns(data) -> None:  # type: ignore[no-untyped-def]
+    y, x = data
+    with pytest.warns(UserWarning, match="CoxNet did not converge within max_iter=3"):
+        model = CoxNet(penalizer=0.05, l1_ratio=1.0, max_iter=3).fit(y, x)
+    assert model.converged_ is False
+    assert model.n_iter_ == 3
+    # The last iterate isn't yet the converged solution.
+    assert not np.allclose(model.coef_, CoxNet(penalizer=0.05, l1_ratio=1.0).fit(y, x).coef_)
+
+
+def test_cv_coxnet_reports_unconverged_folds_once(data) -> None:  # type: ignore[no-untyped-def]
+    import warnings
+
+    y, x = data
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        cv_coxnet(y, x, l1_ratio=1.0, penalizers=[0.05, 0.1], k=3, seed=0, max_iter=2)
+    messages = [str(w.message) for w in caught if "converge" in str(w.message)]
+    assert messages == [
+        "6 of the fold fits did not converge within max_iter=2 iterations. "
+        "Increase max_iter or loosen tol."
+    ]
+
+
 def test_cv_coxnet_invalid_args(data) -> None:  # type: ignore[no-untyped-def]
     y, x = data
     with pytest.raises(ValueError, match="l1_ratio"):
