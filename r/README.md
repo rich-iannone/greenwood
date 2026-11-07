@@ -5,17 +5,19 @@ happen. It's built for data where some outcomes are still unknown (censored), an
 the whole workflow: describing survival, comparing groups, modeling, and checking how well models
 predict.
 
-Greenwood is in early development. It currently provides `Surv()`, the survival response that
-everything else builds on. Planned areas include:
+Greenwood is in early development. It currently provides:
 
-- Kaplan-Meier and Nelson-Aalen estimation
-- group comparisons with log-rank and related tests
-- Cox, parametric, and flexible regression models
-- competing risks and multi-state models
-- prediction performance: concordance, Brier scores, and calibration
+- `Surv()`, the survival response that everything else builds on
+- Kaplan-Meier, Nelson-Aalen, and Turnbull (interval-censored) estimation, with predictions,
+  quantiles, and restricted mean survival time
+- group comparisons: log-rank, Fleming-Harrington, trend, MaxCombo, and restricted mean tests
+- Cox, accelerated failure time, and parametric models
+- competing risks and multi-state models: Aalen-Johansen, Gray's test, and Fine-Gray regression
+- prediction performance: concordance, Brier scores, time-dependent AUC, and calibration
 
 Functions are idiomatic R: lower snake case names that return S3 objects, designed to work well in
-formulas and pipelines.
+formulas and pipelines. Every table starts with a `strata` column, so results have the same layout
+whether a fit holds one curve or several.
 
 ## Example
 
@@ -25,6 +27,14 @@ library(greenwood)
 Surv(time = c(5, 6, 4, 9), event = c(1, 0, 1, 0))
 #> <Surv[4]: right>
 #> [1] 5  6+ 4  9+
+
+lung <- survival::lung
+fit <- kaplan_meier(Surv(time, status) ~ sex, data = lung)
+median(fit)
+logrank_test(Surv(time, status) ~ sex, data = lung)
+
+cox <- cox_ph(Surv(time, status) ~ age + sex, data = lung)
+concordance_index(Surv(lung$time, lung$status), risk = predict(cox))
 ```
 
 ## Installation

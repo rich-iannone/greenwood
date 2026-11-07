@@ -195,13 +195,6 @@ test_that("cluster variance matches the fixture, dropping rows with no cluster",
 
 # -- behaviour ------------------------------------------------------------------------------------
 
-small <- data.frame(
-  time = c(306, 455, 1010, 210, 883, 1022, 310, 361, 218, 166),
-  status = c(2, 2, 1, 2, 2, 1, 2, 2, 2, 2),
-  sex = c(1, 1, 1, 1, 1, 2, 2, 2, 2, 2),
-  ecog = c(0, 1, 0, 1, 0, 1, 0, 1, 0, 1)
-)
-
 # The direct definition of the infinitesimal-jackknife standard error, building the full
 # subjects-by-times influence matrix. kaplan_meier() uses an equivalent O(n log n) form.
 robust_sigma_reference <- function(start, stop, event, w, cluster = NULL) {
@@ -326,4 +319,92 @@ test_that("a fit prints a summary per group", {
     kaplan_meier(Surv(time, status) ~ 1, data = small)
     kaplan_meier(Surv(time, status) ~ sex, data = small)
   })
+})
+
+test_that("summary() at given times matches the risk-table fixture", {
+  skip_if_no_shared_cases()
+  skip_if_not_installed("survival")
+  fixture <- read_fixture("risk_table_lung_sex")
+  fit <- kaplan_meier(Surv(time, status) ~ sex, data = survival::lung)
+  table <- summary(fit, times = r_numbers(fixture$times))
+  for (sex in names(fixture$n_risk)) {
+    rows <- table[table$sex == as.numeric(sex), ]
+    expect_equal(rows$n_risk, r_numbers(fixture$n_risk[[sex]]), label = paste("sex", sex))
+  }
+})
+
+test_that("summary() counts the events between times and reads the curve", {
+  fit <- kaplan_meier(Surv(time, status) ~ 1, data = small)
+  curve <- as.data.frame(fit)
+  times <- c(500, 0, 300, 2000)
+  table <- summary(fit, times = times)
+  expect_identical(table$time, sort(times))
+  expect_identical(table$n_event, c(0, 3, 4, 1))
+  expect_identical(table$n_censor, c(0, 0, 0, 2))
+  expect_identical(table$n_risk, c(10, 7, 3, 0))
+  expect_identical(sum(table$n_event), sum(curve$n_event))
+  expect_identical(table$estimate[1], 1)
+  expect_equal(table$estimate[3], curve$estimate[curve$time == 455])
+  expect_equal(table$std_error[3], curve$std_error[curve$time == 455])
+})
+
+test_that("predict() reads the survival and cumulative hazard step functions", {
+  fit <- kaplan_meier(Surv(time, status) ~ sex, data = small)
+  curve <- as.data.frame(fit)
+  pred <- predict(fit, times = c(100, 306, 400))
+  expect_named(pred, c("strata", "sex", "time", "estimate"))
+  first <- curve[curve$sex == 1, ]
+  expect_identical(pred$estimate[pred$sex == 1], c(1, first$estimate[first$time == 306], first$estimate[first$time == 306]))
+
+  cumhaz <- predict(fit, times = c(0, 1e4), what = "cumhaz")
+  na <- as.data.frame(nelson_aalen(Surv(time, status) ~ sex, data = small))
+  expect_identical(cumhaz$estimate[c(1, 3)], c(0, 0))
+  expect_equal(cumhaz$estimate[2], max(na$estimate[na$sex == 1]))
+  expect_error(predict(fit, times = "a"), "one or more numbers")
+})
+
+test_that("rmst() matches the fixture on lung and veteran", {
+  skip_if_no_shared_cases()
+  skip_if_not_installed("survival")
+  fixture <- read_fixture("rmst")
+  lung <- rmst(kaplan_meier(Surv(time, status) ~ 1, data = survival::lung), tau = fixture$lung$tau)
+  expect_equal(lung$estimate, fixture$lung$rmst, tolerance = TOL)
+  expect_equal(lung$std_error, fixture$lung$se, tolerance = TOL)
+  veteran <- rmst(
+    kaplan_meier(Surv(time, status) ~ 1, data = survival::veteran),
+    tau = fixture$veteran$tau
+  )
+  expect_equal(veteran$estimate, fixture$veteran$rmst, tolerance = TOL)
+  expect_equal(veteran$std_error, fixture$veteran$se, tolerance = TOL)
+  expect_equal(veteran$conf_high - veteran$estimate, qnorm(0.975) * veteran$std_error)
+})
+
+test_that("rmst() is the area under the step function", {
+  fit <- kaplan_meier(Surv(time, status) ~ 1, data = small)
+  curve <- as.data.frame(fit)
+  grid <- seq(0, 400, by = 0.01)
+  area <- sum(predict(fit, times = grid[-length(grid)])$estimate) * 0.01
+  expect_equal(rmst(fit, tau = 400)$estimate, area, tolerance = 1e-6)
+  # Past the last time the curve stays at its last value.
+  expect_equal(
+    rmst(fit, tau = 1100)$estimate - rmst(fit, tau = 1050)$estimate,
+    50 * curve$estimate[nrow(curve)]
+  )
+})
+
+test_that("rmrl() is the conditional restricted mean", {
+  fit <- kaplan_meier(Surv(time, status) ~ sex, data = small)
+  at_zero <- rmrl(fit, s = 0, tau = 600)
+  expect_equal(at_zero[c("estimate", "std_error")], rmst(fit, tau = 600)[c("estimate", "std_error")])
+
+  s <- 250
+  result <- rmrl(fit, s = s, tau = 600)
+  expect_named(result, c("strata", "sex", "s", "tau", "estimate", "std_error", "conf_low", "conf_high"))
+  survival_at_s <- predict(fit, times = s)$estimate
+  expected <- (rmst(fit, tau = 600)$estimate - rmst(fit, tau = s)$estimate) / survival_at_s
+  expect_equal(result$estimate, expected)
+
+  expect_error(rmrl(fit, s = 600, tau = 600), "greater than `s`")
+  expect_error(rmrl(fit, s = -1, tau = 600), "no less than 0")
+  expect_true(is.na(rmrl(kaplan_meier(Surv(time, status) ~ 1, data = small[-c(3, 6), ]), s = 900, tau = 1000)$estimate))
 })

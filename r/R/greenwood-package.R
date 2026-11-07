@@ -5,5 +5,5 @@
 #' as their outcome.
 #'
 #' @keywords internal
-#' @importFrom stats median quantile
+#' @importFrom stats coef logLik median nobs predict quantile residuals vcov
 "_PACKAGE"

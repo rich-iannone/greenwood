@@ -70,68 +70,23 @@ kaplan_meier <- function(formula,
                          robust = FALSE,
                          cluster) {
   conf_type <- match.arg(conf_type)
-  if (!is.numeric(conf_level) || length(conf_level) != 1 || !(conf_level > 0 && conf_level < 1)) {
-    stop("`conf_level` must be a single number between 0 and 1.", call. = FALSE)
-  }
+  check_conf_level(conf_level)
+  check_flag(robust, "robust")
 
-  if (!isTRUE(robust) && !isFALSE(robust)) {
-    stop("`robust` must be `TRUE` or `FALSE`.", call. = FALSE)
-  }
-
-  # Build the model frame the way lm() does, so `weights`, `cluster`, and `subset` are evaluated in
-  # `data`, and rows missing any of them are dropped together.
-  call <- match.call()
-  mf <- match.call(expand.dots = FALSE)
-  keep <- match(c("formula", "data", "weights", "subset", "na.action", "cluster"), names(mf), 0L)
-  mf <- mf[c(1L, keep)]
-  mf[[1L]] <- quote(stats::model.frame)
-  mf <- eval(mf, parent.frame())
-
-  response <- stats::model.response(mf)
-  if (!inherits(response, "Surv")) {
-    stop("The left-hand side of `formula` must be a `Surv()` response.", call. = FALSE)
-  }
-  type <- attr(response, "type")
-  if (!type %in% c("right", "counting")) {
-    stop(
-      sprintf(
-        "`kaplan_meier()` needs right-censored or counting-process data, not \"%s\".",
-        type
-      ),
-      call. = FALSE
-    )
-  }
-
-  n <- nrow(mf)
-  w <- stats::model.weights(mf)
-  if (is.null(w)) {
-    w <- rep(1, n)
-  } else if (!is.numeric(w) || any(w < 0)) {
-    stop("`weights` must be non-negative numbers.", call. = FALSE)
-  }
-
-  clusters <- mf[["(cluster)"]]
+  frame <- gw_model_frame(
+    match.call(expand.dots = FALSE), parent.frame(), formula, if (missing(data)) NULL else data
+  )
+  parts <- surv_parts(frame$response, "kaplan_meier()")
+  w <- frame$weights
+  clusters <- frame$cluster
   robust <- robust || !is.null(clusters)
 
-  y <- unclass(response)
-  if (type == "right") {
-    start <- rep(-Inf, n)
-    stop <- y[, "time"]
-  } else {
-    start <- y[, "start"]
-    stop <- y[, "stop"]
-  }
-  event <- y[, "status"]
-
-  # Grouping variables are every model-frame column except the response, weights, and clusters.
-  group_vars <- setdiff(names(mf), c(names(mf)[1L], "(weights)", "(cluster)"))
-  groups <- km_groups(mf[group_vars])
-
-  z <- stats::qnorm(1 - (1 - conf_level) / 2)
+  groups <- group_keys(frame$vars, nrow(frame$mf))
+  z <- z_value(conf_level)
   curves <- lapply(seq_len(nrow(groups$keys)), function(g) {
     rows <- groups$index == g
     km_curve(
-      start[rows], stop[rows], event[rows], w[rows], conf_type, z,
+      parts$start[rows], parts$stop[rows], parts$event[rows], w[rows], conf_type, z,
       robust = robust,
       cluster = if (is.null(clusters)) NULL else clusters[rows]
     )
@@ -144,56 +99,27 @@ kaplan_meier <- function(formula,
       conf_type = conf_type,
       conf_level = conf_level,
       robust = robust,
-      n_dropped = length(attr(mf, "na.action")),
-      formula = stats::formula(stats::terms(mf)),
-      call = call
+      n_dropped = frame$n_dropped,
+      formula = formula,
+      call = match.call()
     ),
     class = "kaplan_meier"
   )
 }
 
-# One row per group (sorted by the grouping variables), and each subject's group number. The keys
-# start with the `strata` label, followed by the grouping variables.
-km_groups <- function(vars) {
-  if (length(vars) == 0) {
-    keys <- data.frame(strata = "all", stringsAsFactors = FALSE)
-    return(list(keys = keys, index = rep(1L, nrow(vars))))
-  }
-  key <- interaction(lapply(vars, factor), drop = TRUE, lex.order = TRUE)
-  first <- match(levels(key), key)
-  values <- vars[first, , drop = FALSE]
-  rownames(values) <- NULL
-  keys <- cbind(data.frame(strata = strata_labels(values), stringsAsFactors = FALSE), values)
-  list(keys = keys, index = as.integer(key))
-}
-
-# Curve labels: `name=value` pairs joined with ", ", the same in every table, printout, and plot.
-strata_labels <- function(values) {
-  pairs <- Map(function(name, value) paste0(name, "=", as.character(value)), names(values), values)
-  do.call(paste, c(unname(pairs), sep = ", "))
-}
-
 # The key columns (strata and grouping variables) of group `g`, repeated `n` times.
 km_keys <- function(x, g, n) {
-  keys <- x$groups[rep(g, n), , drop = FALSE]
-  rownames(keys) <- NULL
-  keys
+  repeat_keys(x$groups, g, n)
 }
 
 # The estimate for one group. A subject is at risk at time t when start < t <= stop, which for
 # right-censored data (start = -Inf) is stop >= t.
 km_curve <- function(start, stop, event, w, conf_type, z, robust = FALSE, cluster = NULL) {
-  time <- sort(unique(stop))
-  n_risk <- weight_at_or_above(stop, w, time) - weight_at_or_above(start, w, time)
-  at <- factor(stop, levels = time)
-  n_event <- as.vector(tapply(w * (event == 1), at, sum, default = 0))
-  n_censor <- as.vector(tapply(w * (event == 0), at, sum, default = 0))
-
-  # With non-integer weights, the number at risk and the number of events are summed differently,
-  # so a time where everyone at risk has the event can leave a survivor weight of about 1e-16
-  # instead of 0. Treat that rounding residue as no survivors, so the estimate drops to exactly 0.
-  everyone <- abs(n_risk - n_event) <= 1e-10 * n_risk
-  n_risk[everyone] <- n_event[everyone]
+  counts <- count_events(start, stop, event, w)
+  time <- counts$time
+  n_risk <- counts$n_risk
+  n_event <- counts$n_event
+  n_censor <- counts$n_censor
 
   estimate <- cumprod(ifelse(n_risk > 0, 1 - n_event / n_risk, 1))
 
@@ -270,22 +196,6 @@ km_robust_sigma <- function(start, stop, event, w, time, n_risk, n_event, cluste
   }
   variance <- step_sum(a^2) + 2 * cumulative * step_sum(a * b) + cumulative^2 * step_sum(b^2)
   sqrt(pmax(variance, 0))
-}
-
-# Sum of `value` at each index 1..n.
-tabulate_sum <- function(index, value, n) {
-  out <- numeric(n)
-  sums <- rowsum(value, index, reorder = TRUE)
-  out[as.integer(rownames(sums))] <- sums[, 1L]
-  out
-}
-
-# Total weight of the subjects with x >= t, for each t.
-weight_at_or_above <- function(x, w, t) {
-  o <- order(x)
-  cumulative <- c(0, cumsum(w[o]))
-  below <- findInterval(t, x[o], left.open = TRUE)
-  sum(w) - cumulative[below + 1L]
 }
 
 km_limits <- function(estimate, sigma, conf_type, z) {
@@ -402,11 +312,199 @@ print.kaplan_meier <- function(x, digits = getOption("digits"), ...) {
   names(table)[4:5] <- paste0(level, c(" LCL", " UCL"))
   rownames(table) <- x$groups$strata
   print(table, digits = digits)
-  if (x$n_dropped > 0) {
-    cat(sprintf(
-      "\n%d %s dropped for missing values.\n",
-      x$n_dropped, if (x$n_dropped == 1) "row was" else "rows were"
-    ))
-  }
+  cat_dropped(x$n_dropped)
   invisible(x)
+}
+
+#' Kaplan-Meier estimates at given times
+#'
+#' `predict()` reads the survival curve (or the cumulative hazard) of each group at the given
+#' times. `summary()` gives the fuller table at those times that sits under a survival plot: the
+#' number at risk, the events and censorings since the previous time, and the estimate with its
+#' standard error and confidence limits.
+#'
+#' The curves are right-continuous step functions, so the value at time \eqn{t} is the last step
+#' at a time \eqn{\le t}. Before the first step the survival is 1 and the cumulative hazard 0. The
+#' cumulative hazard is the Nelson-Aalen estimate, \eqn{\sum_{t_i \le t} d_i / n_i}.
+#'
+#' @param object A [kaplan_meier()] fit.
+#' @param times One or more times.
+#' @param what `"survival"` (the default) for the survival probability, or `"cumhaz"` for the
+#'   cumulative hazard.
+#' @param ... Unused.
+#'
+#' @return `predict()` gives a data frame with one row per group and time: `strata`, the grouping
+#'   variables, `time`, and `estimate`. `summary()` gives `strata`, the grouping variables, `time`,
+#'   `n_risk`, `n_event`, `n_censor`, `estimate`, `std_error`, `conf_low`, and `conf_high`. Times
+#'   are sorted in `summary()`, and the events and censorings are those after the previous time
+#'   (from the start for the first time) up to and including this one. The number at risk is 0
+#'   after the last observed time.
+#'
+#' @examples
+#' lung <- data.frame(
+#'   time = c(306, 455, 1010, 210, 883, 1022, 310, 361, 218, 166),
+#'   status = c(2, 2, 1, 2, 2, 1, 2, 2, 2, 2),
+#'   sex = c(1, 1, 1, 1, 1, 2, 2, 2, 2, 2)
+#' )
+#' fit <- kaplan_meier(Surv(time, status) ~ sex, data = lung)
+#' predict(fit, times = c(200, 400))
+#' summary(fit, times = c(0, 250, 500))
+#' @name kaplan_meier_predict
+#' @export
+predict.kaplan_meier <- function(object, times, what = c("survival", "cumhaz"), ...) {
+  what <- match.arg(what)
+  times <- check_times(times)
+  tables <- lapply(object$curves, function(curve) {
+    value <- if (what == "survival") {
+      step_at(curve$time, curve$estimate, times, 1)
+    } else {
+      step_at(curve$time, km_cumhaz(curve), times, 0)
+    }
+    data.frame(time = times, estimate = value)
+  })
+  bind_groups(object$groups, tables)
+}
+
+#' @rdname kaplan_meier_predict
+#' @export
+summary.kaplan_meier <- function(object, times, ...) {
+  times <- sort(check_times(times))
+  tables <- lapply(object$curves, function(curve) km_summary_at(curve, times))
+  bind_groups(object$groups, tables)
+}
+
+km_cumhaz <- function(curve) {
+  cumsum(ifelse(curve$n_risk > 0, curve$n_event / curve$n_risk, 0))
+}
+
+# The curve at sorted `times`, with the counts in the intervals between them.
+km_summary_at <- function(curve, times) {
+  # The number at risk at t is the number at risk at the first observed time at or after t.
+  after <- findInterval(times, curve$time, left.open = TRUE) + 1L
+  n_risk <- ifelse(after <= nrow(curve), curve$n_risk[pmin(after, nrow(curve))], 0)
+  upto <- findInterval(times, curve$time)
+  counts <- function(x) diff(c(0, c(0, cumsum(x))[upto + 1L]))
+  data.frame(
+    time = times,
+    n_risk = n_risk,
+    n_event = counts(curve$n_event),
+    n_censor = counts(curve$n_censor),
+    estimate = step_at(curve$time, curve$estimate, times, 1),
+    std_error = step_at(curve$time, curve$std_error, times, 0),
+    conf_low = step_at(curve$time, curve$conf_low, times, 1),
+    conf_high = step_at(curve$time, curve$conf_high, times, 1)
+  )
+}
+
+#' Restricted mean survival time
+#'
+#' `rmst()` gives the restricted mean survival time up to `tau`: the area under the survival curve
+#' on \eqn{[0, \tau]}, which is the expected survival time over that window. Unlike the median, it
+#' uses all the follow-up in the window and is defined even when the curve never reaches 0.5.
+#' `rmrl()` gives the restricted mean residual life at a landmark `s`: the expected additional
+#' survival time in \eqn{(s, \tau]} for subjects who survive to `s`,
+#' \eqn{\int_s^\tau S(u)\,du / S(s)}. `rmrl(fit, 0, tau)` equals `rmst(fit, tau)`.
+#'
+#' The standard error is the usual restricted-mean estimator,
+#' \eqn{\sqrt{\sum A_i^2 d_i / (n_i (n_i - d_i))}} over the event times \eqn{t_i \le \tau}, where
+#' \eqn{A_i} is the area under the curve from \eqn{t_i} to \eqn{\tau}. For `rmrl()` the sum runs
+#' over \eqn{(s, \tau]} and is divided by \eqn{S(s)}. Confidence limits are the estimate plus or
+#' minus \eqn{z} standard errors, with the lower limit floored at 0.
+#'
+#' @param object A fit with a survival curve, such as a [kaplan_meier()] fit.
+#' @param tau The end of the window.
+#' @param s The landmark time, at least 0 and less than `tau`.
+#' @param ... Passed to methods.
+#'
+#' @return A data frame with one row per group: `strata`, the grouping variables, `tau` (and `s`
+#'   for `rmrl()`), `estimate`, `std_error`, `conf_low`, and `conf_high`. The estimate of `rmrl()`
+#'   is `NA` for a group in which everyone has had the event by `s`.
+#'
+#' @examples
+#' lung <- data.frame(
+#'   time = c(306, 455, 1010, 210, 883, 1022, 310, 361, 218, 166),
+#'   status = c(2, 2, 1, 2, 2, 1, 2, 2, 2, 2),
+#'   sex = c(1, 1, 1, 1, 1, 2, 2, 2, 2, 2)
+#' )
+#' fit <- kaplan_meier(Surv(time, status) ~ sex, data = lung)
+#' rmst(fit, tau = 365)
+#' rmrl(fit, s = 200, tau = 730)
+#' @export
+rmst <- function(object, tau, ...) {
+  UseMethod("rmst")
+}
+
+#' @rdname rmst
+#' @export
+rmrl <- function(object, s, tau, ...) {
+  UseMethod("rmrl")
+}
+
+#' @rdname rmst
+#' @export
+rmst.kaplan_meier <- function(object, tau, ...) {
+  check_number(tau, "tau")
+  z <- z_value(object$conf_level)
+  tables <- lapply(object$curves, function(curve) {
+    value <- km_rmst(curve, tau)
+    data.frame(
+      tau = tau,
+      estimate = value[["estimate"]],
+      std_error = value[["std_error"]],
+      conf_low = max(0, value[["estimate"]] - z * value[["std_error"]]),
+      conf_high = value[["estimate"]] + z * value[["std_error"]]
+    )
+  })
+  bind_groups(object$groups, tables)
+}
+
+#' @rdname rmst
+#' @export
+rmrl.kaplan_meier <- function(object, s, tau, ...) {
+  check_number(s, "s", min = 0)
+  check_number(tau, "tau")
+  if (tau <= s) {
+    stop("`tau` must be greater than `s`.", call. = FALSE)
+  }
+  z <- z_value(object$conf_level)
+  tables <- lapply(object$curves, function(curve) {
+    value <- km_rmst(curve, tau, s)
+    data.frame(
+      s = s,
+      tau = tau,
+      estimate = value[["estimate"]],
+      std_error = value[["std_error"]],
+      conf_low = max(0, value[["estimate"]] - z * value[["std_error"]]),
+      conf_high = value[["estimate"]] + z * value[["std_error"]]
+    )
+  })
+  bind_groups(object$groups, tables)
+}
+
+# The area under one curve over [s, tau] divided by S(s), and its standard error. The curve is 1
+# on [0, t_1) and S(t_i) on [t_i, t_{i+1}), and the last piece runs to tau.
+km_rmst <- function(curve, tau, s = 0) {
+  t <- curve$time
+  n <- curve$n_risk
+  d <- curve$n_event
+  starts <- c(0, t)
+  heights <- c(1, curve$estimate)
+  ends <- c(t, tau)
+
+  s_at <- step_at(t, curve$estimate, s, 1)
+  if (s_at <= 0) {
+    return(c(estimate = NA_real_, std_error = NA_real_))
+  }
+  window <- pmax(pmin(ends, tau) - pmax(pmin(starts, tau), s), 0)
+  estimate <- sum(heights * window) / s_at
+
+  # A_i, the area from each time to tau under the whole curve.
+  area <- heights * pmax(pmin(ends, tau) - pmin(starts, tau), 0)
+  area_from <- rev(cumsum(rev(area)))[-1L]
+  use <- t > s & t <= tau & n - d > 0
+  if (s == 0) {
+    use <- t <= tau & n - d > 0
+  }
+  variance <- sum((area_from^2 * d / (n * (n - d)))[use])
+  c(estimate = estimate, std_error = sqrt(variance) / s_at)
 }
