@@ -782,8 +782,10 @@ class RoystonParmar:
         $S(t \mid x_i) = \exp(-\exp(s(\log t) + x_i^\top \beta))$ is the smooth spline-based
         survival function. The integral is computed by numerical quadrature.
 
-        When `ci=True`, confidence intervals are computed via the delta method on the log cumulative
-        hazard, integrated over $[0, \tau]$.
+        When `ci=True`, confidence intervals are computed via the delta method. The gradient of the
+        RMST in the parameters is the integral of $\partial S(t \mid x_i) / \partial \theta$ over
+        $[0, \tau]$, and the limits are the estimate plus or minus the normal quantile times the
+        standard error.
 
         Parameters
         ----------
@@ -867,27 +869,26 @@ class RoystonParmar:
             for i in range(n_subj):
                 lp = float(x[i] @ beta) if beta.size else 0.0
 
-                grad_lp = np.zeros(len(self.coef_))
-                if beta.size:
-                    grad_lp[self._n_spline :] = x[i]
-
-                n_grid = 100
-                t_grid = np.linspace(1e-6, tau_val, n_grid)
-                var_sum = 0.0
-                dt = tau_val / n_grid
-                for t_pt in t_grid:
-                    u = np.log(t_pt)
-                    basis, _ = _rcs_basis(np.array([u]), knots)
-                    grad = np.zeros(len(self.coef_))
-                    grad[: self._n_spline] = basis.ravel()
-                    if beta.size:
-                        grad[self._n_spline :] = x[i]
-                    eta_arr = np.array([float((basis @ gamma)[0]) + lp])
+                # The gradient of the RMST in the parameters is the integral over [0, tau] of
+                # dS/dtheta = (dS/deta) * deta/dtheta, so the delta method keeps the covariance of
+                # S at different times.
+                def _ds_dtheta(t: float, j: int, _lp: float = lp, _xi: Array = x[i]) -> float:
+                    if t <= 0.0:
+                        return 0.0
+                    basis, _ = _rcs_basis(np.array([np.log(t)]), knots)
+                    eta_arr = np.array([float((basis @ gamma)[0]) + _lp])
                     s_val = float(np.exp(_link_log_survival(self.scale, eta_arr)[0]))
                     neg_dlogs = float(np.exp(_link_log_neg_dlogS(self.scale, eta_arr)[0]))
-                    ds_deta = -s_val * neg_dlogs
-                    var_eta = float(grad @ self.vcov_ @ grad)
-                    var_sum += (ds_deta**2 * var_eta) * dt**2
+                    d_eta = basis[0, j] if j < self._n_spline else _xi[j - self._n_spline]
+                    return -s_val * neg_dlogs * float(d_eta)
+
+                grad = np.array(
+                    [
+                        quad(_ds_dtheta, 0.0, tau_val, args=(j,), limit=200)[0]
+                        for j in range(len(self.coef_))
+                    ]
+                )
+                var_sum = float(grad @ self.vcov_ @ grad)
 
                 se_rmst = np.sqrt(max(var_sum, 0.0))
                 lower[i] = rmst[i] - z_val * se_rmst
