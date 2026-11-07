@@ -1453,6 +1453,7 @@ class CoxPH:
         self._strata_groups = strata_groups
         self._strata_labels = strata_labels
         self._strata_display = strata_display
+        self._cluster_labels = cluster_labels
         self._xbar = (weight[:, None] * x).sum(axis=0) / weight.sum()
 
         self.term_names_ = names
@@ -3212,7 +3213,9 @@ class CoxPH:
         Refits the Cox model replacing the linear term for `term=` with a B-spline basis expansion,
         then computes the log-hazard ratio (and confidence band) across the covariate's range
         relative to a reference value. The result reveals non-linear covariate effects that a single
-        coefficient cannot capture.
+        coefficient cannot capture. The refit keeps the model's other covariates, strata, weights,
+        delayed entry, ties method, and variance type (model-based, robust, or clustered). Models
+        with a shared frailty aren't supported.
 
         Parameters
         ----------
@@ -3253,6 +3256,8 @@ class CoxPH:
             raise ValueError(
                 f"term {term!r} not found in model. Available terms: {self.term_names_!r}"
             )
+        if self.frailty_ is not None:
+            raise ValueError("smooth_hr() doesn't support a model with a shared frailty.")
 
         term_idx = self.term_names_.index(term)
         x_term = self._x[:, term_idx]
@@ -3278,15 +3283,18 @@ class CoxPH:
             ]
         )
 
-        basis_train = np.array(BSpline.design_matrix(x_term, knots_full, degree).toarray())
+        # The full basis sums to one at every value, so it's collinear with the baseline hazard.
+        # Dropping its first column leaves the same model with a nonsingular information matrix.
+        # The curve and its limits are the same whichever column is dropped.
+        basis_train = np.array(BSpline.design_matrix(x_term, knots_full, degree).toarray())[:, 1:]
         basis_grid = np.array(
             BSpline.design_matrix(np.clip(grid, x_min, x_max), knots_full, degree).toarray()
-        )
+        )[:, 1:]
         basis_ref = np.array(
             BSpline.design_matrix(
                 np.array([np.clip(reference, x_min, x_max)]), knots_full, degree
             ).toarray()
-        )
+        )[:, 1:]
 
         other_idx = [i for i in range(len(self.term_names_)) if i != term_idx]
         other_x = self._x[:, other_idx]
@@ -3312,6 +3320,8 @@ class CoxPH:
                 x_spline,
                 robust=self.robust,
                 weights=w,
+                strata=self._strata_labels,
+                cluster=self._cluster_labels,
             )
         refit.term_names_ = spline_names
 

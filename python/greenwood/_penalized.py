@@ -19,6 +19,7 @@ reduces to the ordinary `CoxPH` (Breslow) fit.
 from __future__ import annotations
 
 import warnings
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -41,6 +42,52 @@ Array = npt.NDArray[Any]
 def _soft_threshold(v: Array, thr: float) -> Array:
     """Elementwise soft-thresholding, the proximal operator of the L1 norm."""
     return np.sign(v) * np.maximum(np.abs(v) - thr, 0.0)
+
+
+def _fista(
+    smooth: Callable[[Array], tuple[float, Array]],
+    p: int,
+    lasso: float,
+    max_iter: int,
+    tol: float,
+) -> tuple[Array, int, bool]:
+    """Accelerated proximal gradient descent (FISTA) for the elastic net, from zero.
+
+    `smooth(b)` gives the smooth part of the objective and its gradient, and the lasso part is
+    `lasso * |b|_1`. The step is halved until the quadratic bound at the momentum point holds.
+    The iterations stop once the relative change in the coefficients is below `tol`. Returns the
+    coefficients, the number of iterations, and whether they converged.
+    """
+    beta = np.zeros(p)
+    momentum = beta.copy()
+    t_acc = 1.0
+    step = 1.0
+    for iteration in range(1, max_iter + 1):
+        h_z, grad_z = smooth(momentum)
+        # Backtracking line search for the proximal-gradient step size.
+        while True:
+            candidate = _soft_threshold(momentum - step * grad_z, step * lasso)
+            diff = candidate - momentum
+            h_c, _ = smooth(candidate)
+            if h_c <= h_z + float(grad_z @ diff) + float(diff @ diff) / (2.0 * step):
+                break
+            step *= 0.5
+            if step < 1e-12:
+                break
+        t_next = (1.0 + np.sqrt(1.0 + 4.0 * t_acc**2)) / 2.0
+        momentum = candidate + ((t_acc - 1.0) / t_next) * (candidate - beta)
+        change = np.linalg.norm(candidate - beta) / (np.linalg.norm(beta) + tol)
+        beta, t_acc = candidate, t_next
+        if change < tol:
+            return beta, iteration, True
+    return beta, max_iter, False
+
+
+def _convergence_message(estimator: str, max_iter: int) -> str:
+    return (
+        f"{estimator} did not converge within max_iter={max_iter} iterations. coef_ is the last "
+        "iterate. Increase max_iter or loosen tol."
+    )
 
 
 class CoxNet:
@@ -76,14 +123,15 @@ class CoxNet:
         Standardize covariates to unit variance before penalizing (default `True`, as in
         glmnet). Coefficients are returned on the original scale.
     max_iter, tol
-        Maximum FISTA iterations and the relative-change convergence tolerance.
+        Maximum FISTA iterations and the relative-change convergence tolerance. A fit that reaches
+        `max_iter` warns, and records it in `converged_`.
 
     Returns
     -------
     Fitted estimator
         Call `~~greenwood.CoxNet.fit()` to produce a fitted estimator with cached results (`coef_`,
-        `std_error_`{.gd-no-link}, `n_features_in_`, `feature_names_in_`), accessible as arrays or
-        exported to DataFrames.
+        `std_error_`{.gd-no-link}, `n_features_in_`, `feature_names_in_`, `n_iter_`,
+        `converged_`), accessible as arrays or exported to DataFrames.
 
     Details
     -------
@@ -283,28 +331,11 @@ class CoxNet:
             grad_h = -grad / n + lam * (1.0 - alpha) * b
             return h, grad_h
 
-        beta = np.zeros(p)
-        momentum = beta.copy()
-        t_acc = 1.0
-        step = 1.0
-        for _ in range(self.max_iter):
-            h_z, grad_z = smooth(momentum)
-            # Backtracking line search for the proximal-gradient step size.
-            while True:
-                candidate = _soft_threshold(momentum - step * grad_z, step * lam * alpha)
-                diff = candidate - momentum
-                h_c, _ = smooth(candidate)
-                if h_c <= h_z + float(grad_z @ diff) + float(diff @ diff) / (2.0 * step):
-                    break
-                step *= 0.5
-                if step < 1e-12:
-                    break
-            t_next = (1.0 + np.sqrt(1.0 + 4.0 * t_acc**2)) / 2.0
-            momentum = candidate + ((t_acc - 1.0) / t_next) * (candidate - beta)
-            change = np.linalg.norm(candidate - beta) / (np.linalg.norm(beta) + self.tol)
-            beta, t_acc = candidate, t_next
-            if change < self.tol:
-                break
+        beta, self.n_iter_, self.converged_ = _fista(
+            smooth, p, lam * alpha, self.max_iter, self.tol
+        )
+        if not self.converged_:
+            warnings.warn(_convergence_message("CoxNet", self.max_iter), UserWarning, stacklevel=2)
 
         self._x = x
         self._xs = xs
@@ -915,7 +946,8 @@ def cv_coxnet(
         Standardize covariates before penalising (default is `True`). Must match the `standardize=`
         argument used for the final `CoxNet` fit.
     max_iter, tol
-        FISTA iteration limit and convergence tolerance for each inner fit.
+        FISTA iteration limit and convergence tolerance for each inner fit. The fits that reach
+        `max_iter` are counted in one warning.
     stratified
         Use stratified k-fold to preserve the event rate in every fold (the default is `True`).
     seed
@@ -1088,6 +1120,7 @@ def cv_coxnet(
     std_scores = np.empty(n_lam)
     n_nonzero_arr = np.empty(n_lam)
 
+    n_not_converged = 0
     for lam_idx, lam in enumerate(lam_path):
         fold_scores: list[float] = []
         fold_nonzero: list[int] = []
@@ -1106,13 +1139,17 @@ def cv_coxnet(
             if not surv_test.event.astype(bool).any():  # pragma: no cover
                 continue  # pragma: no cover
 
-            fold_model = CoxNet(
-                penalizer=float(lam),
-                l1_ratio=l1_ratio,
-                standardize=standardize,
-                max_iter=max_iter,
-                tol=tol,
-            ).fit(surv_train, x_train)
+            # The fits that don't converge are reported together, in one warning.
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", message="CoxNet did not converge")
+                fold_model = CoxNet(
+                    penalizer=float(lam),
+                    l1_ratio=l1_ratio,
+                    standardize=standardize,
+                    max_iter=max_iter,
+                    tol=tol,
+                ).fit(surv_train, x_train)
+            n_not_converged += not fold_model.converged_
 
             fold_nonzero.append(int(np.count_nonzero(fold_model.coef_)))
 
@@ -1142,6 +1179,14 @@ def cv_coxnet(
             std_scores[lam_idx] = 0.0  # pragma: no cover
         n_nonzero_arr[lam_idx] = (  # pragma: no cover
             float(np.mean(fold_nonzero)) if fold_nonzero else 0.0
+        )
+
+    if n_not_converged:
+        warnings.warn(
+            f"{n_not_converged} of the fold fits did not converge within max_iter={max_iter} "
+            "iterations. Increase max_iter or loosen tol.",
+            UserWarning,
+            stacklevel=2,
         )
 
     return CoxNetCVResult(

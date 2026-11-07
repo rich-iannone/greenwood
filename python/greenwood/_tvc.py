@@ -62,7 +62,8 @@ def split_episodes(
         Column in `visits` giving the measurement time for each row.
     covariates
         The columns of `visits` to carry as time-varying covariates. The default (`None`) uses
-        every column other than `id` and `visit_time`.
+        every column other than `id`, `visit_time`, `time`, `event`{.gd-no-link}, and the
+        `baseline_covariates`.
     baseline_covariates
         The columns of `baseline` to carry as time-fixed covariates. The default (`None`) uses
         every column other than `id`, `time`, and `event`{.gd-no-link} when `baseline` has one row
@@ -135,12 +136,6 @@ def split_episodes(
         if col not in vis_nw.columns:
             raise ValueError(f"Column {col!r} not found in visits (columns: {vis_nw.columns}).")
 
-    tvc_cols = (
-        list(covariates)
-        if covariates is not None
-        else [c for c in vis_nw.columns if c not in (id, visit_time)]
-    )
-
     base_ids_all: list[Any] = base_nw[id].to_list()
     repeated = len(set(base_ids_all)) < len(base_ids_all)
     if baseline_covariates is not None:
@@ -149,6 +144,13 @@ def split_episodes(
         static_cols = []
     else:
         static_cols = [c for c in base_nw.columns if c not in (id, time, event)]
+    # The follow-up time and event stay out of the default, so a long table can be its own
+    # baseline without its event being carried onto every interval.
+    tvc_cols = (
+        list(covariates)
+        if covariates is not None
+        else [c for c in vis_nw.columns if c not in (id, visit_time, time, event, *static_cols)]
+    )
     clash = sorted(set(static_cols) & set(tvc_cols))
     if clash:
         raise ValueError(

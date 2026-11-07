@@ -94,6 +94,17 @@ def _ipcw_targets(
     return targets, weights
 
 
+def _ensemble_scores(
+    trees: list[list[_RegressionTree]], x_aug: Array, learning_rate: float, n_classes: int
+) -> Array:
+    """Class scores of the rows of *x_aug* (the horizon, then the covariates) from the rounds."""
+    scores = np.zeros((x_aug.shape[0], n_classes))
+    for round_trees in trees:
+        for k in range(n_classes):
+            scores[:, k] += learning_rate * round_trees[k].predict(x_aug)
+    return scores
+
+
 def _interp_censoring(t: float, g_times: Array, g_surv: Array, epsilon: float) -> float:
     """Evaluate the censoring survival function G(t) by left-continuous step interpolation."""
     if t <= 0 or len(g_times) == 0:
@@ -128,11 +139,11 @@ class SurvivalBoost:
     max_features
         Features considered per split: `None` (all), `"sqrt"`, `"log2"`, an int, or a float.
     n_time_grid_steps
-        Number of time points in the default prediction grid. The grid is built from quantiles of
-        observed event times.
+        Number of time points in the default prediction grid. The grid is the distinct event times
+        when there are no more of them than this, and otherwise their distinct quantiles.
     hard_zero_fraction
         Fraction of sampled time horizons forced to zero at each iteration, ensuring the model
-        learns zero incidence at `t = 0`.
+        learns zero incidence at `t = 0`. The number set to zero is rounded down, so `0` sets none.
     n_horizons_per_observation
         Number of independent time horizons sampled per subject at each iteration. Higher values
         give more stable gradients at the cost of larger per-iteration datasets.
@@ -306,54 +317,50 @@ class SurvivalBoost:
 
         any_event_mask = status > 0
         observed_event_times = time[any_event_mask]
+        # Quantiles of tied event times can repeat, so the grid keeps each time once.
         if len(observed_event_times) > self.n_time_grid_steps:
-            self.time_grid_ = np.quantile(
-                observed_event_times, np.linspace(0, 1, num=self.n_time_grid_steps)
+            self.time_grid_ = np.unique(
+                np.quantile(observed_event_times, np.linspace(0, 1, num=self.n_time_grid_steps))
             )
         else:
-            self.time_grid_ = np.sort(observed_event_times.copy())
+            self.time_grid_ = np.unique(observed_event_times)
 
         rng = np.random.default_rng(self.random_state)
         n_features_aug = x.shape[1] + 1
         n_features_split = _resolve_max_features(self.max_features, n_features_aug)
 
         trees: list[list[_RegressionTree]] = []
-        scores = np.zeros((n, n_classes))
-
         t_max = float(time.max())
+        n_hard = int(np.floor(self.hard_zero_fraction * n))
 
         for _ in range(self.n_estimators):
-            x_aug_all = np.empty((0, n_features_aug))
-            targets_all = np.empty(0, dtype=int)
-            weights_all = np.empty(0)
-            scores_all = np.empty((0, n_classes))
+            x_aug_parts: list[Array] = []
+            targets_parts: list[Array] = []
+            weights_parts: list[Array] = []
 
             for _ in range(self.n_horizons_per_observation):
                 sampled = rng.uniform(0.0, t_max, size=n)
-                n_hard = max(int(self.hard_zero_fraction * n), 1)
-                hard_idx = rng.choice(n, size=n_hard, replace=False)
-                sampled[hard_idx] = 0.0
+                if n_hard > 0:
+                    sampled[rng.choice(n, size=n_hard, replace=False)] = 0.0
 
                 targets, weights = _ipcw_targets(
                     status, time, sampled, g_times, g_surv, n_classes, self.epsilon_censoring
                 )
+                x_aug_parts.append(np.column_stack([sampled, x]))
+                targets_parts.append(targets)
+                weights_parts.append(weights)
 
-                x_aug = np.column_stack([sampled, x])
-                x_aug_all = np.vstack([x_aug_all, x_aug])
-                targets_all = np.concatenate([targets_all, targets])
-                weights_all = np.concatenate([weights_all, weights])
-                scores_all = np.vstack([scores_all, scores])
-
+            weights_all = np.concatenate(weights_parts)
             mask = weights_all > 0
             if mask.sum() < 2:
                 continue
 
-            x_aug_active = x_aug_all[mask]
-            targets_active = targets_all[mask]
+            x_aug_active = np.vstack(x_aug_parts)[mask]
+            targets_active = np.concatenate(targets_parts)[mask]
             weights_active = weights_all[mask]
-            scores_active = scores_all[mask]
 
-            probs = _softmax(scores_active)
+            # The gradient is that of the current model at each sampled (horizon, covariates) row.
+            probs = _softmax(_ensemble_scores(trees, x_aug_active, self.learning_rate, n_classes))
 
             if self.subsample < 1.0:
                 m = max(2 * self.min_samples_leaf, int(round(self.subsample * mask.sum())))
@@ -378,13 +385,6 @@ class SurvivalBoost:
                 round_trees.append(tree)
 
             trees.append(round_trees)
-
-            for h_idx in range(self.n_horizons_per_observation):
-                start = h_idx * n
-                end = (h_idx + 1) * n
-                x_aug_chunk = x_aug_all[start:end]
-                for k in range(n_classes):
-                    scores[:, k] += self.learning_rate * round_trees[k].predict(x_aug_chunk)
 
         self.trees_ = trees
         self.n_classes_ = n_classes
@@ -438,10 +438,7 @@ class SurvivalBoost:
 
         for t_idx, t in enumerate(query):
             x_aug = np.column_stack([np.full(n_subj, t), x])
-            scores = np.zeros((n_subj, self.n_classes_))
-            for round_trees in self.trees_:
-                for k in range(self.n_classes_):
-                    scores[:, k] += self.learning_rate * round_trees[k].predict(x_aug)
+            scores = _ensemble_scores(self.trees_, x_aug, self.learning_rate, self.n_classes_)
             result[:, :, t_idx] = _softmax(scores)
 
         if format is None:

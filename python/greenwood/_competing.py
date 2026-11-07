@@ -14,6 +14,7 @@ delta-method estimator. Both are validated to tolerance against R's `survfit`.
 
 from __future__ import annotations
 
+import warnings
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -1287,11 +1288,6 @@ class FineGray:
         return to_dataframe(self._coefficient_columns(exponentiate=exponentiate), format=format)
 
 
-def _soft_threshold(v: Array, thr: float) -> Array:
-    """Elementwise soft-thresholding, the proximal operator of the L1 norm."""
-    return np.sign(v) * np.maximum(np.abs(v) - thr, 0.0)
-
-
 class PenalizedFineGray:
     r"""Elastic-net penalized Fine-Gray subdistribution hazard model.
 
@@ -1318,7 +1314,8 @@ class PenalizedFineGray:
     standardize
         Standardize covariates to unit variance before penalizing (default `True`).
     max_iter, tol
-        Maximum FISTA iterations and the relative-change convergence tolerance.
+        Maximum FISTA iterations and the relative-change convergence tolerance. A fit that reaches
+        `max_iter` warns, and records it in `converged_` (with the iterations in `n_iter_`).
 
     Examples
     --------
@@ -1505,27 +1502,15 @@ class PenalizedFineGray:
             grad_h = grad / n + lam * (1.0 - alpha) * b
             return h, grad_h
 
-        beta = np.zeros(p)
-        momentum = beta.copy()
-        t_acc = 1.0
-        step_size = 1.0
-        for _ in range(self.max_iter):
-            h_z, grad_z = smooth(momentum)
-            while True:
-                candidate = _soft_threshold(momentum - step_size * grad_z, step_size * lam * alpha)
-                diff = candidate - momentum
-                h_c, _ = smooth(candidate)
-                if h_c <= h_z + float(grad_z @ diff) + float(diff @ diff) / (2.0 * step_size):
-                    break
-                step_size *= 0.5
-                if step_size < 1e-12:
-                    break
-            t_next = (1.0 + np.sqrt(1.0 + 4.0 * t_acc**2)) / 2.0
-            momentum = candidate + ((t_acc - 1.0) / t_next) * (candidate - beta)
-            change = np.linalg.norm(candidate - beta) / (np.linalg.norm(beta) + self.tol)
-            beta, t_acc = candidate, t_next
-            if change < self.tol:
-                break
+        from ._penalized import _convergence_message, _fista
+
+        beta, self.n_iter_, self.converged_ = _fista(
+            smooth, p, lam * alpha, self.max_iter, self.tol
+        )
+        if not self.converged_:
+            warnings.warn(
+                _convergence_message("PenalizedFineGray", self.max_iter), UserWarning, stacklevel=2
+            )
 
         self.term_names_ = names
         self._beta_standardized = beta
