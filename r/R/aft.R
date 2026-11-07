@@ -291,7 +291,7 @@ aft_engine <- function(x, response, w, dist, threshold, max_iter, tol, fn) {
     var = var,
     loglik = c(null_fit$loglik, fit$loglik),
     lr_test = if (df > 0L) cox_chisq(2 * (fit$loglik - null_fit$loglik), df) else NULL,
-    linear_predictors = drop(x %*% beta),
+    linear_predictors = linear_predictor(x, beta),
     n = length(time),
     n_event = sum(event),
     iterations = fit$iterations,
@@ -613,7 +613,7 @@ predict.aft <- function(object,
   check_conf_level(conf_level)
   x <- if (missing(newdata)) object$x else aft_new_design(object, newdata)
   if (type == "lp") {
-    return(drop(x %*% object$coefficients))
+    return(linear_predictor(x, object$coefficients))
   }
   z <- z_value(conf_level)
   if (type == "quantile") {
