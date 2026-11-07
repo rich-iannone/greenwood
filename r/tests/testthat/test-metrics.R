@@ -1,6 +1,6 @@
-# Replays the metric fixtures in fixtures/r/ (td_auc_lung, concordance_ipcw_lung, brier_lung, and
-# the concordance of cox_diag_efron) and checks the other metrics against values from the Python
-# package and against their special cases.
+# Replays the metric fixtures in fixtures/r/ (td_auc_lung, concordance_ipcw_lung, concordance_ci_ij,
+# calibration_incidence_mgus2, brier_lung, and the concordance of cox_diag_efron) and checks the
+# other metrics against values from the Python package and against their special cases.
 
 TOL <- 1e-9
 
@@ -196,6 +196,121 @@ test_that("calibration_incidence() reads the reference curve as steps", {
     r_numbers(expected$cif_pcm),
     tolerance = TOL
   )
+})
+
+test_that("concordance standard errors match the jackknife fixture", {
+  skip_if_no_shared_cases()
+  skip_if_not_installed("survival")
+  # The fixture's standard errors come from central differences, so they agree to about 1e-8.
+  expected <- read_fixture("concordance_ci_ij")
+  lung <- lung_death()
+  marker <- r_numbers(read_fixture("td_auc_lung")$marker)
+  for (case in list(list("lung_default", NULL), list("lung_tau365", 365))) {
+    result <- concordance_index_ci(lung$death, risk = marker, tau = case[[2]])
+    want <- expected[[case[[1]]]]
+    expect_equal(result$estimate, want$estimate, tolerance = TOL)
+    expect_equal(result$std_error, want$se, tolerance = 1e-7)
+  }
+  compared <- concordance_index_compare(lung$death, risk_a = marker, risk_b = lung$data$age)
+  expect_equal(compared$difference, expected$compare_lung_lp_age$difference, tolerance = TOL)
+  expect_equal(compared$std_error, expected$compare_lung_lp_age$se, tolerance = 1e-7)
+
+  mg <- mgus2_competing()
+  outcome <- Surv(mg$etime, mg$event_f)
+  result <- concordance_index_ci(outcome, risk = mg$age, cause = "pcm")
+  expect_equal(result$estimate, expected$mgus2_pcm_age$estimate, tolerance = TOL)
+  expect_equal(result$std_error, expected$mgus2_pcm_age$se, tolerance = 1e-7)
+  compared <- concordance_index_compare(outcome,
+    risk_a = mg$age, risk_b = as.numeric(mg$sex == "M"), cause = 1
+  )
+  expect_equal(compared$difference, expected$compare_mgus2_age_sex$difference, tolerance = TOL)
+  expect_equal(compared$std_error, expected$compare_mgus2_age_sex$se, tolerance = 1e-7)
+})
+
+test_that("concordance limits and comparisons match the Python package", {
+  skip_if_no_shared_cases()
+  skip_if_not_installed("survival")
+  lung <- lung_death()
+  marker <- r_numbers(read_fixture("td_auc_lung")$marker)
+  limits <- list(
+    logit = c(0.5568745673375953, 0.6337310377540408),
+    log = c(0.5586070965392513, 0.6356627809359079),
+    identity = c(0.5573896627793993, 0.6343917608661847)
+  )
+  for (transform in names(limits)) {
+    result <- concordance_index_ci(lung$death,
+      risk = marker, conf_level = 0.9, transform = transform
+    )
+    expect_named(result, c("estimate", "std_error", "conf_low", "conf_high", "n"))
+    expect_equal(c(result$conf_low, result$conf_high), limits[[transform]], tolerance = TOL)
+    expect_identical(result$n, 228L)
+  }
+  compared <- concordance_index_compare(lung$death, risk_a = marker, risk_b = lung$data$age)
+  expect_named(compared, c("difference", "std_error", "conf_low", "conf_high", "statistic", "p_value"))
+  expect_equal(compared$conf_low, 0.007359706574149492, tolerance = TOL)
+  expect_equal(compared$conf_high, 0.08610127594527242, tolerance = TOL)
+  expect_equal(compared$statistic, 2.3263463144153764, tolerance = TOL)
+  expect_equal(compared$p_value, 0.020000083134870134, tolerance = TOL)
+})
+
+test_that("concordance with a confidence interval agrees with the point estimates", {
+  death <- Surv(small_cox$time, small_cox$status)
+  result <- concordance_index_ci(death, risk = small_cox$age, tau = 500)
+  expect_equal(result$estimate, concordance_index_ipcw(death, risk = small_cox$age, tau = 500))
+  expect_true(result$conf_low < result$estimate && result$estimate < result$conf_high)
+
+  outcome <- Surv(small_cr$time, small_cr$event)
+  result <- concordance_index_ci(outcome, risk = small_cr$age, cause = "death")
+  expect_equal(result$estimate,
+    concordance_index_incidence(outcome, incidence_prob = small_cr$age, cause = "death")
+  )
+
+  # A score compared with itself differs by nothing, and swapping the scores flips the sign.
+  same <- concordance_index_compare(death, risk_a = small_cox$age, risk_b = small_cox$age)
+  expect_identical(c(same$difference, same$std_error, same$statistic, same$p_value), c(0, 0, 0, 1))
+  ab <- concordance_index_compare(death, risk_a = small_cox$age, risk_b = small_cox$time)
+  ba <- concordance_index_compare(death, risk_a = small_cox$time, risk_b = small_cox$age)
+  expect_equal(ab$difference, -ba$difference)
+  expect_equal(ab$std_error, ba$std_error)
+
+  # Perfect ranking without censoring: the logit limits collapse, and the plain ones stay in [0, 1].
+  exact <- Surv(1:6, rep(1, 6))
+  perfect <- concordance_index_ci(exact, risk = 6:1, transform = "identity")
+  expect_identical(perfect$estimate, 1)
+  expect_lte(perfect$conf_high, 1)
+})
+
+test_that("score_cr() bundles the competing-risks measures", {
+  skip_if_not_installed("survival")
+  mg <- mgus2_competing()
+  outcome <- Surv(mg$etime, mg$event_f)
+  times <- c(60, 120, 240)
+  inc <- outer(mg$age / 200, times / 240)
+  result <- score_cr(outcome, incidence_prob = inc, cause = 1, times = times, tau = 150)
+  expect_named(result, c("metric", "estimate", "std_error", "conf_low", "conf_high"))
+  expect_identical(result$metric, c(
+    "concordance", "brier(60)", "brier(120)", "brier(240)", "integrated_brier"
+  ))
+  # Values from the Python package. The concordance uses the predictions at 120, the last time
+  # at or before tau.
+  expect_equal(result$estimate, c(
+    0.4695283044576888, 0.035845191604019076, 0.07306379048271719, 0.15809499940920163,
+    0.09520442697842899
+  ), tolerance = TOL)
+  expect_equal(result$std_error[1], 0.02586715851616006, tolerance = TOL)
+  expect_equal(c(result$conf_low[1], result$conf_high[1]),
+    c(0.4193143160087993, 0.5203669203459961),
+    tolerance = TOL
+  )
+  expect_true(all(is.na(result$std_error[-1])))
+
+  # By default tau is the last time.
+  default <- score_cr(outcome, incidence_prob = inc, cause = "pcm", times = times)
+  expect_equal(default[1, -1], concordance_index_ci(outcome, risk = inc[, 3], cause = 1, tau = 240)[1:4],
+    ignore_attr = TRUE
+  )
+  expect_error(score_cr(outcome, incidence_prob = inc[, 1], cause = 1, times = 60), "at least 2")
+  expect_error(score_cr(outcome, incidence_prob = inc, cause = 1, times = rev(times)), "increasing")
 })
 
 test_that("accuracy in time compares the most likely outcome", {
