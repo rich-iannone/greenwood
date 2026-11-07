@@ -55,6 +55,22 @@ test_that("smooth_hr() matches the Python package's curve", {
     ),
     tolerance = 1e-9
   )
+  expect_equal(
+    curve$log_hr_lower[at],
+    c(
+      -3.0923787757044532, -0.4608238175241319, -0.0473812269979644, -0.1815950163650272,
+      -0.3281246426047284
+    ),
+    tolerance = 1e-9
+  )
+  expect_equal(
+    curve$log_hr_upper[at],
+    c(
+      0.5910549057554233, 0.6022884220971914, 0.0855630497846269, 0.5904886522541540,
+      2.4563549784042533
+    ),
+    tolerance = 1e-9
+  )
   expect_equal(curve$hr, exp(curve$log_hr))
   expect_equal(curve$hr_lower, exp(curve$log_hr_lower))
   expect_equal(curve$log_hr[which.min(abs(curve$grid - curve$reference))], 0, tolerance = 0.01)
