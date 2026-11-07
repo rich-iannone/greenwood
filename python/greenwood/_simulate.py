@@ -107,7 +107,8 @@ def simulate_competing_risks(
         Controls censoring intensity. The censoring time is drawn from an exponential distribution
         with scale equal to `censoring_scale` times the mean latent event time. Larger values
         produce less censoring. Set to `None` or `0` to disable censoring entirely. Default is 1.5,
-        which gives roughly 20-30% censoring depending on the shape/scale configuration.
+        which censors about 40% of subjects with the default shapes and scales. When the event
+        times are exponential, the censored share is close to `1 / (1 + censoring_scale)`.
     n_covariates
         Number of covariates to generate (default 0). When positive, standard-normal covariates are
         drawn and cause-specific proportional-hazards effects are applied.
