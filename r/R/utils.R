@@ -3,9 +3,9 @@
 
 # -- model frames -----------------------------------------------------------------------------
 
-# Split a formula's right-hand side into ordinary terms and the arguments of the `strata()` and
-# `cluster()` specials. The specials are taken apart here rather than evaluated, so no `strata()`
-# function is needed and each stratifying variable keeps its own column and type.
+# Split a formula's right-hand side into ordinary terms and the arguments of the `strata()`,
+# `cluster()`, and `frailty()` specials. The specials are taken apart here rather than evaluated, so
+# no `strata()` function is needed and each stratifying variable keeps its own column and type.
 split_formula <- function(formula, data = NULL) {
   if (!inherits(formula, "formula") || length(formula) != 3L) {
     stop("`formula` must be a two-sided formula such as `Surv(time, status) ~ x`.", call. = FALSE)
@@ -22,6 +22,7 @@ split_formula <- function(formula, data = NULL) {
   }
   is_strata <- special("strata")
   is_cluster <- special("cluster")
+  is_frailty <- special("frailty") | special("frailty.gamma") | special("frailty.gaussian")
   args_of <- function(which) {
     unlist(lapply(exprs[which], function(e) as.list(e)[-1L]), recursive = FALSE)
   }
@@ -30,24 +31,79 @@ split_formula <- function(formula, data = NULL) {
   if (length(cluster) > 1L) {
     stop("A formula can have at most one `cluster()` term.", call. = FALSE)
   }
+  if (sum(is_frailty) > 1L) {
+    stop("A formula can have at most one `frailty()` term.", call. = FALSE)
+  }
+  frailty <- if (any(is_frailty)) frailty_term(exprs[[which(is_frailty)]]) else NULL
   list(
     response = formula[[2L]],
-    terms = labels[!is_strata & !is_cluster],
+    terms = labels[!is_strata & !is_cluster & !is_frailty],
     strata = vapply(strata, deparse1, character(1)),
     cluster = vapply(cluster, deparse1, character(1)),
+    frailty = frailty,
     intercept = attr(tt, "intercept") == 1L,
     offset = attr(tt, "offset"),
     env = environment(formula)
   )
 }
 
+# The cluster variable and distribution of a `frailty(id)` term. `frailty(id)` is gamma, and
+# `frailty(id, distribution = "gaussian")`, `frailty.gaussian(id)`, and `frailty.gamma(id)` choose
+# the distribution explicitly. A gaussian frailty is a lognormal one on the hazard scale.
+frailty_term <- function(expr) {
+  term <- deparse1(expr)
+  head <- as.character(expr[[1L]])
+  args <- as.list(expr)[-1L]
+  named <- if (is.null(names(args))) rep(FALSE, length(args)) else names(args) != ""
+  distributions <- c(gamma = "gamma", gaussian = "lognormal", lognormal = "lognormal")
+  distribution <- if (head == "frailty") {
+    NULL
+  } else {
+    distributions[[sub("frailty.", "", head, fixed = TRUE)]]
+  }
+  for (name in names(args)[named]) {
+    value <- args[[name]]
+    if (name != "distribution" || !is.character(value) || !value %in% names(distributions)) {
+      stop(
+        sprintf(
+          paste(
+            "`%s` isn't supported. Use `frailty(id)`, or choose the distribution with",
+            "`distribution = \"gamma\"` or `distribution = \"gaussian\"` (lognormal)."
+          ),
+          term
+        ),
+        call. = FALSE
+      )
+    }
+    if (!is.null(distribution) && distribution != distributions[[value]]) {
+      stop(sprintf("`%s` names two different frailty distributions.", term), call. = FALSE)
+    }
+    distribution <- distributions[[value]]
+  }
+  if (sum(!named) != 1L) {
+    stop(sprintf("`%s` must name exactly one cluster variable.", term), call. = FALSE)
+  }
+  list(
+    variable = deparse1(args[!named][[1L]]),
+    distribution = if (is.null(distribution)) "gamma" else distribution
+  )
+}
+
 # Build the model frame for a call to one of the estimators, the way lm() does, so `weights`,
 # `subset`, `cluster`, and the formula's variables are evaluated in `data` and rows missing any of
 # them are dropped together. An `istate` argument (the state each row starts in, for multi-state
-# data) is carried along the same way. `call` is the estimator's match.call() and `frame` its parent frame.
-gw_model_frame <- function(call, frame, formula, data = NULL) {
+# data) and a `frailty_cluster` argument are carried along the same way. `call` is the estimator's
+# match.call() and `frame` its parent frame. Only estimators passing `frailty = TRUE` take a
+# `frailty()` term.
+gw_model_frame <- function(call, frame, formula, data = NULL, frailty = FALSE) {
   parts <- split_formula(formula, data)
-  labels <- c(parts$terms, parts$strata, parts$cluster)
+  if (!is.null(parts$frailty) && !frailty) {
+    stop(
+      sprintf("`%s()` doesn't support `frailty()` terms.", deparse1(call[[1L]])),
+      call. = FALSE
+    )
+  }
+  labels <- c(parts$terms, parts$strata, parts$cluster, parts$frailty$variable)
   rebuilt <- stats::reformulate(
     if (length(labels) == 0L) "1" else labels,
     response = parts$response,
@@ -55,7 +111,9 @@ gw_model_frame <- function(call, frame, formula, data = NULL) {
     env = parts$env
   )
   mf <- call[c(1L, match(
-    c("data", "weights", "subset", "na.action", "cluster", "istate"), names(call), 0L
+    c("data", "weights", "subset", "na.action", "cluster", "istate", "frailty_cluster"),
+    names(call),
+    0L
   ))]
   mf$formula <- rebuilt
   mf$drop.unused.levels <- TRUE
@@ -80,6 +138,20 @@ gw_model_frame <- function(call, frame, formula, data = NULL) {
     cluster <- mf[[parts$cluster]]
   }
 
+  frailty_cluster <- mf[["(frailty_cluster)"]]
+  if (!is.null(parts$frailty)) {
+    if (!is.null(frailty_cluster)) {
+      stop(
+        paste(
+          "Give the frailty clusters either as `frailty_cluster =` or as a `frailty()` term,",
+          "not both."
+        ),
+        call. = FALSE
+      )
+    }
+    frailty_cluster <- mf[[parts$frailty$variable]]
+  }
+
   pick <- function(names) {
     if (length(names) == 0L) {
       return(NULL)
@@ -95,6 +167,9 @@ gw_model_frame <- function(call, frame, formula, data = NULL) {
     has_weights = !is.null(w),
     cluster = cluster,
     istate = mf[["(istate)"]],
+    frailty_cluster = frailty_cluster,
+    frailty_distribution = parts$frailty$distribution,
+    frailty_name = if (is.null(parts$frailty)) NULL else parts$frailty$variable,
     terms = parts$terms,
     vars = pick(parts$terms),
     strata = pick(parts$strata),
@@ -102,6 +177,32 @@ gw_model_frame <- function(call, frame, formula, data = NULL) {
     n_dropped = length(attr(mf, "na.action")),
     na_action = attr(mf, "na.action"),
     formula = formula
+  )
+}
+
+# The covariate design matrix, without the intercept column (the model supplies its own), and
+# what's needed to rebuild it for new data. It can have no columns. Collinear covariates are an
+# error unless `check_rank = FALSE` (for the penalized models, which can fit them).
+covariate_design <- function(frame, check_rank = TRUE) {
+  tt <- attr(frame$mf, "terms")
+  mm <- stats::model.matrix(tt, frame$mf)
+  contrasts <- attr(mm, "contrasts")
+  x <- mm[, colnames(mm) != "(Intercept)", drop = FALSE]
+  if (check_rank && ncol(x) > 0L && qr(cbind(1, x))$rank < ncol(x) + 1L) {
+    stop(
+      "The covariates are collinear (or one is constant), so the model can't be fit.",
+      call. = FALSE
+    )
+  }
+  attr(x, "assign") <- NULL
+  attr(x, "contrasts") <- NULL
+  storage.mode(x) <- "double"
+  rownames(x) <- NULL
+  list(
+    x = x,
+    terms = stats::delete.response(tt),
+    xlevels = stats::.getXlevels(tt, frame$mf),
+    contrasts = contrasts
   )
 }
 
@@ -115,6 +216,8 @@ surv_parts <- function(response, fn, types = c("right", "counting")) {
         fn,
         if (identical(types, c("right", "counting"))) {
           "right-censored or counting-process"
+        } else if (identical(types, "right")) {
+          "right-censored"
         } else {
           paste(types, collapse = " or ")
         },
