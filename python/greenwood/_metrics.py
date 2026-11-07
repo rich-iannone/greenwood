@@ -1517,7 +1517,9 @@ def calibration_incidence(
 
     where $\bar{\hat{F}}_k(t) = \frac{1}{n}\sum_{i=1}^n \hat{F}_k(t \mid \mathbf{x}_i)$ is the mean
     predicted CIF and $\hat{F}_k^{\mathrm{AJ}}(t)$ is the marginal Aalen-Johansen CIF. The AJ
-    estimator is fit internally from the supplied `surv`{.gd-no-link} response.
+    estimator is fit internally from the supplied `surv`{.gd-no-link} response, and is read at
+    each $t$ as a right-continuous step function (its value at the last event time at or before
+    $t$, and 0 before the first).
 
     Examples
     --------
@@ -1539,12 +1541,10 @@ def calibration_incidence(
     cif_df = aj.to_frame(format="polars")
     pcm_cif = cif_df.filter(cif_df["cause"] == "pcm")
 
-    # Naive model: same marginal CIF for every subject
+    # Naive model: the same marginal CIF for every subject, read as a step function
     times = np.array([60, 120, 240])
-    marginal = np.array(
-        [float(np.interp(t, pcm_cif["time"].to_numpy(), pcm_cif["estimate"].to_numpy()))
-         for t in times]
-    )
+    step = np.searchsorted(pcm_cif["time"].to_numpy(), times, side="right") - 1
+    marginal = pcm_cif["estimate"].to_numpy()[step]
     probs = np.tile(marginal, (mgus2.height, 1))
 
     # Calibration error should be near zero for the marginal model
@@ -1587,12 +1587,10 @@ def calibration_incidence(
     aj_time = cause_data["time"]
     aj_estimate = cause_data["estimate"]
 
-    out = np.empty(query.shape[0])
-    for j, t in enumerate(query):
-        mean_pred = float(probs[:, j].mean())
-        aj_ref = float(np.interp(t, aj_time, aj_estimate, left=0.0))
-        out[j] = abs(mean_pred - aj_ref)
-    return out
+    # The Aalen-Johansen curve is a right-continuous step function, 0 before the first time.
+    idx = np.searchsorted(aj_time, query, side="right") - 1
+    aj_ref = np.where(idx >= 0, aj_estimate[np.clip(idx, 0, None)], 0.0)
+    return np.abs(probs.mean(axis=0) - aj_ref)
 
 
 def accuracy_in_time(
@@ -1899,8 +1897,9 @@ def _ipcw_concordance_influence(
 ) -> tuple[float, Array]:
     """Compute IPCW concordance and per-subject influence function values.
 
-    Returns `(c_hat, phi)` where `phi` is an array of length `n` such that
-    `Var(c_hat) ≈ sum(phi**2) / n**2`.
+    Returns `(c_hat, phi)`, where `phi[k]` is the derivative of `c_hat` in subject `k`'s case
+    weight (the infinitesimal jackknife, with the censoring weights held fixed). Then
+    `Var(c_hat) ≈ sum(phi**2)`.
     """
     T = surv.stop
     evt = surv.event.astype(bool)
@@ -1969,9 +1968,10 @@ def _ipcw_concordance_influence(
         # Subject i is the "case" in this set of pairs
         pair_contrib = w[ci] * (conc_j - c_hat) / denominator
         phi[i_global] += float(pair_contrib.sum())
-        # Each j in the "later" set also gets influence
+        # Upweighting either member of a pair scales that pair, so each j in the "later" set
+        # gets the same contribution as the case.
         j_indices = np.where(later)[0]
-        phi[j_indices] += w[ci] * (conc_j - c_hat) / denominator * (-1.0)
+        phi[j_indices] += w[ci] * (conc_j - c_hat) / denominator
 
     return c_hat, phi
 
@@ -2041,8 +2041,8 @@ def _ipcw_concordance_influence_incidence(
         raise ValueError("No comparable pairs found.")
     c_hat = numerator / denominator
 
-    # Influence via perturbation: for each subject, compute the leave-one-out
-    # change in concordance. This is the infinitesimal jackknife approach.
+    # Infinitesimal jackknife: phi[k] is the derivative of c_hat in subject k's case weight.
+    # Upweighting either member of a pair scales that pair, so both members get its contribution.
     phi = np.zeros(n)
     case_indices = np.where(case_mask)[0]
 
@@ -2060,7 +2060,7 @@ def _ipcw_concordance_influence_incidence(
             pair_val = w_a * (conc_j - c_hat) / denominator
             phi[i_global] += float(pair_val.sum())
             j_indices = np.where(type_a)[0]
-            phi[j_indices] -= pair_val
+            phi[j_indices] += pair_val
 
         type_b = (status > 0) & (status != cause_int) & (T_case[ci_idx] >= T)
         if type_b.any():
@@ -2075,7 +2075,7 @@ def _ipcw_concordance_influence_incidence(
                 pair_val_b = w_b * (conc_b - c_hat) / denominator
                 phi[i_global] += float(pair_val_b.sum())
                 j_b = np.where(type_b)[0][valid_b]
-                phi[j_b] -= pair_val_b
+                phi[j_b] += pair_val_b
 
     return c_hat, phi
 
@@ -2092,9 +2092,10 @@ def concordance_index_ci(
 ) -> ConcordanceResult:
     r"""IPCW concordance index with a confidence interval.
 
-    Computes the Uno-style IPCW concordance and derives the standard error from the influence
-    function decomposition. The confidence interval is constructed on the logit (default), log, or
-    identity scale and back-transformed.
+    Computes the Uno-style IPCW concordance and derives the standard error from the infinitesimal
+    jackknife: each subject's influence is the derivative of the estimate in that subject's case
+    weight, with the censoring weights held fixed. The confidence interval is constructed on the
+    logit (default), log, or identity scale and back-transformed.
 
     Parameters
     ----------
