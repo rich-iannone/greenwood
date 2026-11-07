@@ -1015,6 +1015,16 @@ def test_concordance_index_ci_se_matches_r_jackknife() -> None:
     assert_allclose_to_r(res.estimate, expected["estimate"], what="mgus2 pcm C")
     assert_allclose_to_r(res.se, expected["se"], rtol=1e-7, what="mgus2 pcm se")
 
+    cmp = gw.concordance_index_compare(y, marker, df["age"].to_numpy(dtype=float))
+    expected = fixture["compare_lung_lp_age"]
+    assert_allclose_to_r(cmp.delta, expected["difference"], what="lung lp - age")
+    assert_allclose_to_r(cmp.se, expected["se"], rtol=1e-7, what="lung lp - age se")
+    male = (mg["sex"] == "M").to_numpy(dtype=float)
+    cmp = gw.concordance_index_compare(y_cr, mg["age"].to_numpy(dtype=float), male, cause=1)
+    expected = fixture["compare_mgus2_age_sex"]
+    assert_allclose_to_r(cmp.delta, expected["difference"], what="mgus2 age - sex")
+    assert_allclose_to_r(cmp.se, expected["se"], rtol=1e-7, what="mgus2 age - sex se")
+
 
 def test_risk_table_numbers_match_r() -> None:
     # get_risk_table_frame() needs only numpy/pandas (no plotnine), so it runs here.
