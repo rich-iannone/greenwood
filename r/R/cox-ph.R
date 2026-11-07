@@ -215,6 +215,7 @@ cox_ph <- function(formula,
     cluster = frame$cluster,
     frailty = frailty_fit,
     n_dropped = frame$n_dropped,
+    na_action = frame$na_action,
     formula = formula,
     call = match.call()
   )
