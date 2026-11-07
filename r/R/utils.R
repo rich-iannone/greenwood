@@ -36,7 +36,7 @@ split_formula <- function(formula, data = NULL) {
   }
   frailty <- if (any(is_frailty)) frailty_term(exprs[[which(is_frailty)]]) else NULL
   list(
-    response = formula[[2L]],
+    response = formula_response(formula[[2L]]),
     terms = labels[!is_strata & !is_cluster & !is_frailty],
     strata = vapply(strata, deparse1, character(1)),
     cluster = vapply(cluster, deparse1, character(1)),
@@ -45,6 +45,16 @@ split_formula <- function(formula, data = NULL) {
     offset = attr(tt, "offset"),
     env = environment(formula)
   )
+}
+
+# The response of a formula, with an event_time() response converted by as_surv() so the model
+# frame holds a Surv() response.
+formula_response <- function(expr) {
+  heads <- list(quote(event_time), quote(greenwood::event_time))
+  if (is.call(expr) && any(vapply(heads, identical, logical(1), expr[[1L]]))) {
+    return(as.call(list(quote(greenwood::as_surv), expr)))
+  }
+  expr
 }
 
 # The cluster variable and distribution of a `frailty(id)` term. `frailty(id)` is gamma, and
