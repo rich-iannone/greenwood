@@ -102,7 +102,7 @@ cross_validate <- function(model,
   vars <- intersect(all.vars(formula), names(data))
   keep <- stats::complete.cases(data[vars])
   data <- data[keep, , drop = FALSE]
-  response <- eval(formula[[2L]], data, environment(formula))
+  response <- eval(formula_response(formula[[2L]]), data, environment(formula))
   if (!inherits(response, "Surv")) {
     stop("The left-hand side of `formula` must be a `Surv()` response.", call. = FALSE)
   }
