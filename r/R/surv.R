@@ -289,6 +289,14 @@ length.greenwood_surv <- function(x) {
   nrow(unclass(x))
 }
 
+# A response carries no names. model.response() names it by the data's row names, and once
+# survival's namespace is loaded its `names<-.Surv` would turn them into row names, so results
+# would change with whether survival is loaded.
+#' @export
+`names<-.greenwood_surv` <- function(x, value) {
+  x
+}
+
 #' @export
 is.na.greenwood_surv <- function(x) {
   rowSums(is.na(unclass(x))) > 0
