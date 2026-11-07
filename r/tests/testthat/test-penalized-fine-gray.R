@@ -49,8 +49,11 @@ test_that("the fits match Python", {
     tolerance = 1e-5
   )
 
+  # With a penalizer this small the steps shrink slowly, and at the default `tol` the rounding of
+  # one platform's arithmetic can stop the fit 3e-5 short of the optimum. A smaller `tol` stops it
+  # within 1e-6 of it everywhere, which is closer than Python's fit (4e-6 off).
   small <- penalized_fine_gray(pfg_formula, data = mg, cause = "pcm", penalizer = 0.002,
-    l1_ratio = 1
+    l1_ratio = 1, max_iter = 5000, tol = 1e-9
   )
   expect_equal(unname(coef(small)), c(-0.01555323506830837, -0.19957789370125636, 0),
     tolerance = 1e-4
