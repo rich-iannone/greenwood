@@ -55,11 +55,16 @@ and the places where the R package differs from the Python one on purpose.
 | `simulate_competing_risks()` | same name | the latent times checked against the data, and the parameters recovered by `cox_ph()` and `aft()` |
 | `cross_validate()` | same name | each fold's score rebuilt from the recorded folds |
 | `bootstrap()`, `BootstrapResult` | `bootstrap()`, a `greenwood_bootstrap` object | estimates checked against the Python values, standard errors to within the Monte Carlo error |
+| `event_time()`, `new_event_time()`, `extract_time()`, `extract_status()`, `as_surv()` | same names | [`event_time.md`](event_time.md) and its conformance cases |
+| `duration()` | `duration(start, end, unit)` | the elapsed times checked by hand in each unit |
+| `load_dataset()` | lazy data: `colon`, `e1684`, `lung`, `mgus2`, `ovarian`, `pbc`, `pbcseq`, `veteran` | the same values as the Python copies in `python/greenwood/data/` |
+| `tidy()`, `glance()`, `augment()` | methods for the generics package's `tidy()`, `glance()`, and `augment()`, re-exported | each model's own tables and fields, and the `glance()` values on lung against the Python values |
+| `CoxPH.influence_diagnostics()`, `CoxPH.smooth_hr()` | `influence_diagnostics(fit)`, `smooth_hr(fit, term)` | checked against the Python values |
+| `greenwood.viz`: `plot_survival()`, `plot_cif()`, `plot_predicted_survival()`, `plot_forest()`, `plot_influence()`, `plot_schoenfeld()`, `plot_smooth_hr()`, `plot_weibull()`, `risk_table()`, `get_risk_table_frame()`, `theme_survival()`, `theme_forest()` | same names, drawn with ggplot2 | each plot's layers and the data it draws, and the numbers at risk against the risk sets |
 
 ## Not yet in R
 
-The tidy/glance/augment layer, plots, risk tables, the bundled datasets, `duration()`,
-`extract_time()`, `extract_status()`, `as_surv()`, and the `EventTime` and `Outcome` layers.
+The `Outcome` layer, which R's formulas cover (see the adaptations below).
 
 ## Adaptations
 
@@ -153,3 +158,18 @@ The tidy/glance/augment layer, plots, risk tables, the bundled datasets, `durati
 | `first_event(endpoints={name: (time, event)})` | `first_event(list(name = list(time, event)))` | R has no tuples, and a named list keeps the endpoint order. A row with a missing endpoint time gives a missing response, so `na.action` drops it. |
 | `Outcome.first_event()` for a formula | `first_event()` on the left of the formula, its columns found in `data` | R formulas evaluate the response in `data`. |
 | `CoxPH.predict(trajectory=, strata=, ci=)` gives `time` and survival columns, with `type="survival"` only | `predict(fit, trajectory = , type = c("survival", "cumhaz"), times)`, long (`subject` 1, `strata`, `time`, `estimate`, `std_error`, `conf_low`, `conf_high`), the upper survival limit capped at 1 | As the other Cox predictions. The strata come from `trajectory` and can change between intervals, and overlapping intervals are an error. |
+| `Outcome` objects (`Outcome.right()`, `.interval()`, `.counting()`, `.competing()`) and formula strings | R formulas with `Surv()`, `event_time()`, `first_event()`, or `duration()` on the left | R's formulas already name the response and evaluate it in `data`. |
+| `duration("enroll", "exit", unit=)` names two columns, computed when the data is read | `duration(enroll, exit, unit = )` computes the elapsed times from the vectors, in a formula or on its own | R evaluates the call in `data`, so it needs no deferred spec. |
+| `load_dataset("lung", backend=)` | lazy data, such as `lung` once the package is attached | R's convention for package data. Factor columns stay factors. |
+| `tidy()`, `glance()`, `augment()` from a registry in `greenwood.summaries` | S3 methods for the generics package's generics, so they work alongside broom | R's dispatch. |
+| AFT `glance()` has a `method` column | no `method` column | The distribution is in `dist`. |
+| `AalenAdditive` `glance()` counts the events used | `n_times`, the distinct event times used | As `fit$n_times`. |
+| curve `glance()` (Kaplan-Meier, Nelson-Aalen, Aalen-Johansen) has a `strata` column | `strata`, then the grouping variables | As the curves' own tables. |
+| no `tidy()` or `glance()` for a single survival tree, or `tidy()` for the tests | `tidy()` and `glance()` for `survival_tree()`, and `tidy()` for the log-rank, MaxCombo, and RMST tests | Every R result can be tidied. |
+| `CoxPH.smooth_hr()` table columns `log_hr`, `log_hr_lower`, `log_hr_upper` (or `hr_*`) | `as.data.frame(curve, scale = "log_hr" or "hr")`: the covariate, `log_hr` (or `hr`), `conf_low`, `conf_high`. The object keeps the `log_hr_lower`, `hr_lower`, ... fields | One set of names across every R table. |
+| `CoxPH.smooth_hr()` refits with the full B-spline basis, whose columns sum to one, and inverts its singular information matrix. The refit leaves out the strata and clusters | the first basis column dropped, and the refit keeps the strata, weights, entry times, ties, and clusters | The model is the same, so the curves agree to about `1e-14`. Python's limits are off by up to about 0.3% from the singular inverse. |
+| `plot_survival()` and `plot_predicted_survival()` in Altair or plotnine, `plot_cif()`, `plot_weibull()` in Altair | ggplot2 for every plot | R's usual plotting system. The plots can be extended with `+`. |
+| `risk_table()` gives a great_tables table | a ggplot of the numbers at risk, which `plot_survival(risk_table = TRUE)` and `plot_cif(risk_table = TRUE)` stack under the curves with patchwork | patchwork is suggested, not imported. |
+| `get_risk_table_frame(km)` for a Kaplan-Meier fit | `get_risk_table_frame(fit)` for `kaplan_meier()` or `aalen_johansen()` fits | Every cause shares one risk set. |
+| `plot_predicted_survival(type="cumulative_hazard")` | `type = "cumhaz"` | As `predict()`. |
+| `plot_forest()` takes a fitted model or a table | any model with a `tidy()` method, or a data frame with `term`, `estimate`, and `conf_low` and `conf_high` (or `ci_lower` and `ci_upper`) | The tidiers give the estimates. |
