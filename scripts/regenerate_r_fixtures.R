@@ -1223,16 +1223,46 @@ ipcw_concordance_ij <- function(T, status, marker, tau, cause = NULL, h = 1e-6) 
   list(estimate = c_of(ones), se = sqrt(sum(infl^2)))
 }
 
+# The difference of two markers' concordances and its infinitesimal-jackknife standard error, from
+# the central differences of the difference.
+ipcw_concordance_compare_ij <- function(T, status, marker_a, marker_b, tau, cause = NULL,
+                                        h = 1e-6) {
+  c_a <- ipcw_concordance_weighted(T, status, marker_a, tau, cause)
+  c_b <- ipcw_concordance_weighted(T, status, marker_b, tau, cause)
+  d_of <- function(v) c_a(v) - c_b(v)
+  n <- length(T)
+  ones <- rep(1, n)
+  infl <- vapply(seq_len(n), function(k) {
+    up <- ones
+    down <- ones
+    up[k] <- 1 + h
+    down[k] <- 1 - h
+    (d_of(up) - d_of(down)) / (2 * h)
+  }, numeric(1))
+  list(difference = d_of(ones), se = sqrt(sum(infl^2)))
+}
+
 conc_ci_lung_default <- ipcw_concordance_ij(lung$time, ipcw_delta, auc_lp, ipcw_tau_default)
 conc_ci_lung_365 <- ipcw_concordance_ij(lung$time, ipcw_delta, auc_lp, 365)
 conc_ci_mgus2 <- ipcw_concordance_ij(mg$etime, mg$event, mg$age, max(mg$etime[mg$event == 1]),
+  cause = 1L
+)
+# The age + sex linear predictor against age alone.
+conc_compare_lung <- ipcw_concordance_compare_ij(lung$time, ipcw_delta, auc_lp, lung$age,
+  ipcw_tau_default
+)
+conc_compare_mgus2 <- ipcw_concordance_compare_ij(mg$etime, mg$event, mg$age,
+  as.integer(mg$sex == "M"),
+  max(mg$etime[mg$event == 1]),
   cause = 1L
 )
 write_json_fixture(
   list(
     lung_default = conc_ci_lung_default,
     lung_tau365 = conc_ci_lung_365,
-    mgus2_pcm_age = conc_ci_mgus2
+    mgus2_pcm_age = conc_ci_mgus2,
+    compare_lung_lp_age = conc_compare_lung,
+    compare_mgus2_age_sex = conc_compare_mgus2
   ),
   "concordance_ci_ij"
 )

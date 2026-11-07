@@ -63,31 +63,21 @@ ipc_weights_full[event_mask] <- 1.0 / ipc_weights_events
 # IPC-weighted ridge: log(time) ~ age + sex, alpha = 1.0
 # ---------------------------------------------------------------------------
 
-# Fit weighted ridge by hand: beta = (X'WX + alpha*I)^{-1} X'Wy
+# The ridge has an unpenalized intercept and penalizes alpha * sum((beta_j * scale_j)^2), where
+# scale_j is the standard deviation of covariate j among the events. It's fit as weighted least
+# squares on the design augmented with one pseudo-row per coefficient, sqrt(alpha) * scale_j,
+# with a response of 0 and a weight of 1.
 x_raw <- cbind(lung_clean$age[event_mask], lung_clean$sex[event_mask])
 y_log <- log(lung_clean$time[event_mask])
-w <- 1.0 / ipc_weights_events # these are G(t^-), so 1/G(t^-) = ipc weight
 w_ipc <- ipc_weights_full[event_mask]
 
-# Standardize
-x_center <- colMeans(x_raw)
-x_scale <- apply(x_raw, 2, sd)
-x_std <- scale(x_raw, center = x_center, scale = x_scale)
-
 alpha <- 1.0
-p <- ncol(x_std)
-
-# Weighted ridge on standardized covariates
-W <- diag(w_ipc)
-gram <- t(x_std) %*% W %*% x_std + alpha * diag(p)
-rhs <- t(x_std) %*% (w_ipc * y_log)
-beta_std <- solve(gram, rhs)
-
-# Back to original scale
-beta_orig <- beta_std / x_scale
-
-# Intercept: weighted mean of y - x_center' * beta_orig
-intercept <- weighted.mean(y_log, w_ipc) - sum(x_center * beta_orig)
+p <- ncol(x_raw)
+x_scale <- apply(x_raw, 2, sd)
+augmented <- rbind(cbind(1, x_raw), cbind(0, diag(sqrt(alpha) * x_scale, p)))
+ridge <- lm.wfit(augmented, c(y_log, rep(0, p)), c(w_ipc, rep(1, p)))
+intercept <- unname(ridge$coefficients[1])
+beta_orig <- unname(ridge$coefficients[-1])
 
 # Predictions (lp) for all subjects (including censored, using full design)
 x_all <- cbind(lung_clean$age, lung_clean$sex)
