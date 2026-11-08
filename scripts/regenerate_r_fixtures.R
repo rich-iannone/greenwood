@@ -13,6 +13,9 @@ suppressPackageStartupMessages({
   if (!requireNamespace("jsonlite", quietly = TRUE)) {
     stop("jsonlite is required: install.packages('jsonlite')")
   }
+  if (!requireNamespace("numDeriv", quietly = TRUE)) {
+    stop("numDeriv is required: install.packages('numDeriv')")
+  }
 })
 
 out_dir <- file.path("fixtures", "r")
@@ -653,6 +656,41 @@ write_json_fixture(
 
 aft_pred_newdata <- data.frame(age = c(50, 70, 60), sex = c(1, 2, 1))
 aft_pred_p <- c(0.1, 0.25, 0.5, 0.75, 0.9)
+aft_pred_times <- c(100, 365, 730)
+aft_pred_tau <- 365
+
+# Survival at aft_pred_times and the restricted mean to aft_pred_tau for the same subjects, with
+# standard errors by the delta method: numDeriv's gradient in (coefficients, log scale) and
+# survreg's variance. Matrices have a row per subject.
+aft_survival_parts <- function(m, dist) {
+  x <- cbind(1, aft_pred_newdata$age, aft_pred_newdata$sex)
+  ncoef <- length(m$coef)
+  theta <- c(m$coef, if (dist != "exponential") log(m$scale))
+  survival_of <- function(par, t) {
+    eta <- drop(x %*% par[seq_len(ncoef)])
+    scale <- if (dist == "exponential") 1 else exp(par[ncoef + 1])
+    outer(eta, t, function(e, tt) 1 - psurvreg(tt, mean = e, scale = scale, distribution = dist))
+  }
+  survival_at <- function(par) c(survival_of(par, aft_pred_times))
+  rmst_at <- function(par) {
+    vapply(seq_len(nrow(x)), function(i) {
+      integrate(function(t) survival_of(par, t)[i, ], 0, aft_pred_tau, rel.tol = 1e-12)$value
+    }, numeric(1))
+  }
+  delta_se <- function(value) {
+    g <- numDeriv::jacobian(value, theta)
+    sqrt(pmax(rowSums((g %*% m$var) * g), 0))
+  }
+  shape <- c(nrow(x), length(aft_pred_times))
+  list(
+    pred_times = aft_pred_times,
+    pred_survival = matrix(survival_at(theta), shape[1], shape[2]),
+    pred_survival_se = matrix(delta_se(survival_at), shape[1], shape[2]),
+    tau = aft_pred_tau,
+    rmst = rmst_at(theta),
+    rmst_se = delta_se(rmst_at)
+  )
+}
 
 aft_fixture <- function(dist) {
   m <- survreg(Surv(time, status) ~ age + sex, data = lung, dist = dist)
@@ -666,7 +704,7 @@ aft_fixture <- function(dist) {
     predict(m, aft_pred_newdata, type = "quantile", p = aft_pred_p, se.fit = TRUE)$se.fit
   )
   dimnames(pred_q_se) <- NULL
-  list(
+  c(list(
     dist = dist,
     terms = names(m$coef),
     coef = unname(m$coef),
@@ -679,7 +717,7 @@ aft_fixture <- function(dist) {
     pred_newdata = list(age = aft_pred_newdata$age, sex = aft_pred_newdata$sex),
     pred_quantile = pred_q,
     pred_quantile_se = pred_q_se
-  )
+  ), aft_survival_parts(m, dist))
 }
 
 for (d in c("weibull", "exponential", "lognormal", "loglogistic")) {
