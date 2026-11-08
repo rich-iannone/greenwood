@@ -42,7 +42,8 @@ match where both have them (`conf_type`, `conf_level`, `weights`, `robust`, `clu
   weights can produce) is treated as exactly zero, so the estimate reaches exactly 0.
 - Confidence limits on the `log` (default), `log-log`, or `plain` scale, clipped to \([0, 1]\).
   The interval is \([1, 1]\) while \(S = 1\) and missing once \(S = 0\).
-- Groups are ordered by the grouping variables (factor levels, otherwise sorted values).
+- Groups come in the order of their values (categorical levels, otherwise sorted values), as set
+  out in [`results.md`](results.md#group-order).
 
 ## Output columns
 
@@ -60,6 +61,5 @@ first times `conf_low` and `conf_high` do. A quantile is missing when the curve 
 | Python | R | Why |
 |---|---|---|
 | `strata` column | `strata` column, then one column per grouping variable | Keeps each variable's type, so results can be filtered without parsing labels. |
-| curves in order of first appearance | curves sorted by the grouping variables | Python's long-standing order. Labels and layout match. |
 | `n_dropped_` | `fit$n_dropped`, from `na.action` | R's model-frame conventions. |
 
