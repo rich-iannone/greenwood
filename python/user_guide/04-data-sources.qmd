@@ -109,15 +109,17 @@ interface you need for the entire package.
 
 The `load_dataset()` function is itself dataframe-agnostic. With its default it returns a Polars
 data frame when Polars is installed, falls back to Pandas when only Pandas is available, and raises
-a clear error if neither is. When you want a specific type, name it with the `backend=` argument.
+a clear error if neither is. When you want a specific type, name it with the `backend=` argument,
+which also accepts `"pyarrow"` for a PyArrow `Table`.
 
 ```{python}
 # Load the same dataset explicitly in each backend
 lung_pd = gw.load_dataset("lung", backend="pandas")
 lung_pl = gw.load_dataset("lung", backend="polars")
+lung_pa = gw.load_dataset("lung", backend="pyarrow")
 
 # Confirm each object belongs to a different library
-type(lung_pd).__module__.split(".")[0], type(lung_pl).__module__.split(".")[0]
+[type(frame).__module__.split(".")[0] for frame in (lung_pd, lung_pl, lung_pa)]
 ```
 
 The backend makes no difference to any result. The same model fit on any supported frame returns
@@ -133,8 +135,8 @@ import duckdb
 frames = {
     "pandas": lung_pd,
     "polars": lung_pl,
-    "pyarrow": lung_pl.to_arrow(),
-    "duckdb": duckdb.from_arrow(lung_pl.to_arrow()),
+    "pyarrow": lung_pa,
+    "duckdb": duckdb.from_arrow(lung_pa),
     "lazy": lung_pl.lazy(),
 }
 
@@ -313,16 +315,17 @@ that lets Greenwood feed publication tables in Great Tables.
 
 ## Datasets bundled with Greenwood
 
-For learning, testing, and reproducible examples, Greenwood ships six classic survival datasets
-drawn from R's **survival** package. You can load any of them by name with the `load_dataset()`
-function, and you can list them with `available_datasets()`.
+For learning, testing, and reproducible examples, Greenwood ships eight classic survival datasets.
+Seven come from R's **survival** package and one (`e1684`) from R's **smcure** package. You can load
+any of them by name with the `load_dataset()` function, and you can list them with
+`available_datasets()`.
 
 ```{python}
 # List the names of all datasets bundled with Greenwood
 gw.available_datasets()
 ```
 
-The six datasets vary widely in size, covariate richness, and event structure. The sections below
+The eight datasets vary widely in size, covariate richness, and event structure. The sections below
 describe each one, identify which Greenwood models are a natural fit, and display the raw data in an
 interactive explorer so you can inspect columns and spot missing values before writing a single line
 of analysis code.
@@ -330,7 +333,9 @@ of analysis code.
 Columns that are factors in R keep R's levels. The veteran `celltype`, the colon `rx`, and `sex` in
 pbc, pbcseq, and mgus2 load as a Polars `Enum` or a Pandas `Categorical`. A regression model then
 takes the first level as its reference, as R does, and curves and group tests list the groups in
-level order.
+level order. With `backend="pyarrow"` they are Arrow dictionary columns whose dictionaries hold R's
+levels. Models still take the first level as the reference, but Arrow sorts a dictionary by value, so
+curves list its groups in sorted order.
 
 ```{python}
 # The cell type keeps R's levels, with squamous first
@@ -445,6 +450,32 @@ give the response to `AalenJohansen` or `FineGray`.
 gd.tbl_explorer(gw.load_dataset("pbc"), caption="pbc: 418 patients, 20 variables")
 ```
 
+### `pbcseq`: Mayo Clinic PBC, sequential laboratory data
+
+`pbcseq` is the companion to `pbc`. It holds the follow-up laboratory values of the 312 patients in
+the randomized trial, with one row per clinic visit (1945 rows in all). Visits were scheduled at six
+months, one year, and yearly after that, with extra visits when a patient's condition changed. Each
+row repeats the patient's final follow-up time and status, so the frame is ready to turn into
+counting-process data.
+
+**Columns:** `id` (case number, as in `pbc`), `futime` (days to death, transplant, or the end of the
+study), `status` (`0` = censored, `1` = transplant, `2` = dead), `trt`, `age`, `sex`, `day` (days
+from enrollment to this visit), and the visit's measurements: `ascites`, `hepato`, `spiders`,
+`edema`, `bili`, `chol`, `albumin`, `alk.phos`, `ast`, `platelet`, `protime`, and `stage`.
+
+**Model fit:** `pbcseq` is the dataset for Cox models with time-varying covariates. The
+`split_episodes()` function turns the visits into `(start, stop]` intervals, each carrying the lab
+values measured at its start, and `CoxPH` fits them with a counting-process response. The
+[Time-varying covariates](10-time-varying-covariates.qmd) page builds its examples on this dataset.
+The `status` column uses the same three levels as `pbc`, so death alone is `status == 2`.
+
+```{python}
+#| echo: false
+gd.tbl_explorer(
+    gw.load_dataset("pbcseq"), caption="pbcseq: 1945 visits of 312 patients, 19 variables"
+)
+```
+
 ### `colon`: Adjuvant therapy for colon cancer
 
 `colon` is Greenwood's largest dataset at 1858 rows. It comes from a three-arm trial (observation,
@@ -497,6 +528,28 @@ builds its examples entirely on this dataset.
 ```{python}
 #| echo: false
 gd.tbl_explorer(gw.load_dataset("mgus2"), caption="mgus2: 1384 patients, 11 variables")
+```
+
+### `e1684`: ECOG melanoma trial E1684
+
+`e1684` comes from the Eastern Cooperative Oncology Group trial E1684 of high-dose interferon
+alfa-2b as adjuvant therapy for melanoma, in 284 patients. Many patients never relapse, so the
+Kaplan-Meier curve levels off well above zero. That plateau is the signature of a cured fraction,
+and it makes `e1684` the standard dataset for cure models.
+
+**Columns:** `TRT` (`0` = control, `1` = interferon), `FAILTIME` (relapse-free time in years),
+`FAILCENS` (`0` = censored, `1` = relapse), `AGE` (age centered at its mean), `SEX` (`0` = male,
+`1` = female).
+
+**Model fit:** `e1684` is designed for `MixtureCure`, which models who is cured (the incidence
+submodel) separately from when the uncured relapse (the latency submodel). The response is
+`Surv(FAILTIME, FAILCENS)`. The [mixture cure section](11-parametric-models.qmd#mixture-cure-models)
+of the parametric models page uses it throughout. It also works for Kaplan-Meier curves and
+log-rank tests comparing the two arms.
+
+```{python}
+#| echo: false
+gd.tbl_explorer(gw.load_dataset("e1684"), caption="e1684: 284 patients, 5 variables")
 ```
 
 ::: {.callout-warning}
