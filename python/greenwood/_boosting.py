@@ -156,16 +156,39 @@ class _RegressionTree:
         self.n_features_split = n_features_split
         self.rng = rng
         self.n_features_in_ = 0
+        self._hessian: Array | None = None
+        self._scale = 1.0
 
-    def fit(self, x: Array, y: Array, importances: Array) -> _RegressionTree:
+    def fit(
+        self,
+        x: Array,
+        y: Array,
+        importances: Array,
+        hessian: Array | None = None,
+        scale: float = 1.0,
+    ) -> _RegressionTree:
+        # With `hessian`, each node's value is the Newton step `scale * sum(y) / sum(hessian)`
+        # rather than the mean of y. The splits are the same either way.
         self.n_features_in_ = x.shape[1]
-        self._root = self._grow(x, y, depth=0, importances=importances)
+        self._hessian = hessian
+        self._scale = scale
+        self._root = self._grow(x, y, np.arange(x.shape[0]), depth=0, importances=importances)
         return self
 
-    def _grow(self, x: Array, y: Array, *, depth: int, importances: Array) -> _RegressionNode:
+    def _value(self, y: Array, rows: Array) -> float:
+        if not len(y):
+            return 0.0
+        if self._hessian is None:
+            return float(y.mean())
+        denominator = float(self._hessian[rows].sum())
+        return self._scale * float(y.sum()) / denominator if denominator > 1e-150 else 0.0
+
+    def _grow(
+        self, x: Array, y: Array, rows: Array, *, depth: int, importances: Array
+    ) -> _RegressionNode:
         node = _RegressionNode()
         n = x.shape[0]
-        node.value = float(y.mean()) if n else 0.0
+        node.value = self._value(y, rows)
         if depth < self.max_depth and n >= 2 * self.min_samples_leaf and np.ptp(y) > 0:
             features = self.rng.choice(
                 self.n_features_in_, size=self.n_features_split, replace=False
@@ -177,9 +200,11 @@ class _RegressionTree:
                 mask = x[:, feat] <= threshold
                 node.feature = feat
                 node.threshold = threshold
-                node.left = self._grow(x[mask], y[mask], depth=depth + 1, importances=importances)
+                node.left = self._grow(
+                    x[mask], y[mask], rows[mask], depth=depth + 1, importances=importances
+                )
                 node.right = self._grow(
-                    x[~mask], y[~mask], depth=depth + 1, importances=importances
+                    x[~mask], y[~mask], rows[~mask], depth=depth + 1, importances=importances
                 )
         return node
 
