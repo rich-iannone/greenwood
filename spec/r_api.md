@@ -41,7 +41,7 @@ and the places where the R package differs from the Python one on purpose.
 | `SurvivalTree` | `survival_tree()` | checked against the Python values, `survdiff()`'s log-rank statistic at every split, and `kaplan_meier()` and `nelson_aalen()` in every leaf |
 | `RandomSurvivalForest`, `ExtraSurvivalTrees`, `variable_importance()` | `random_survival_forest()`, `extra_survival_trees()`, `variable_importance()` | the bagging, ensemble curves, out-of-bag concordance, and permutation importance rebuilt by hand |
 | `GradientBoostingSurvivalAnalysis` | `gradient_boosting_survival_analysis()` | checked against the Python values, `coxph()`'s martingale residuals and Breslow baseline, and a brute-force search for each split |
-| `SurvivalBoost` | `survival_boost()` | the sampled horizons, class targets, censoring weights, and trees of each round rebuilt by hand |
+| `SurvivalBoost` | `survival_boost()` | the sampled horizons, class targets, censoring weights, and trees (with their Newton-step leaves) of each round rebuilt by hand |
 | `CompetingRiskForest` | `competing_risk_forest()` | checked against the Python values, the composite log-rank statistic computed from its definition for the best split, and `aalen_johansen()` in every leaf. The bagging, ensemble curves, out-of-bag concordance, and permutation importance rebuilt by hand |
 | `split_episodes()` | same name | the time-varying `cox_ph()` fit of pbcseq in `tvc_pbcseq`, and the interval rules checked on small cases |
 | `first_event()` | same name | the mgus2 response built by hand, and `fine_gray()` on it in `finegray_mgus2_pcm` |
