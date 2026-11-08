@@ -28,7 +28,8 @@ and the places where the R package differs from the Python one on purpose.
 | `PiecewiseExponential`, `PiecewiseExponential.baseline_hazard()` | `piecewise_exponential()`, `baseline_hazard(fit)` | `glm()` on the split data, the exponential `aft()`, and the Python values |
 | `MixtureCure` | `mixture_cure()` | `cure_ph_e1684`, `glm()` and `coxph()` for the EM steps, and the Python values |
 | `IPCRidge` | `ipc_ridge()` | `ipcridge_lung`, and `lm()` for the unpenalized and unstandardized fits |
-| `AFT` | `aft()` | `aft_*`, `aft_residuals_*`, `predict_*` |
+| `AFT` | `aft()` | `aft_*` (the generalized gamma in `aft_gengamma`), `aft_residuals_*`, `predict_*` |
+| `AFT.test_distributions()` | `test_distributions(fit)` | the nested fits in `aft_gengamma` |
 | `Parametric`, `compare_distributions()` | `parametric()`, `compare_distributions()` | `parametric_*` |
 | `AalenJohansen`, `grays_test()` | `aalen_johansen()`, `grays_test()` | `cif_mgus2`, `grays_test_*` |
 | `FineGray` | `fine_gray()` | `finegray_mgus2_pcm` |
@@ -57,7 +58,7 @@ and the places where the R package differs from the Python one on purpose.
 | `bootstrap()`, `BootstrapResult` | `bootstrap()`, a `greenwood_bootstrap` object | estimates checked against the Python values, standard errors to within the Monte Carlo error |
 | `event_time()`, `new_event_time()`, `extract_time()`, `extract_status()`, `as_surv()` | same names | [`event_time.md`](event_time.md) and its conformance cases |
 | `duration()` | `duration(start, end, unit)` | the elapsed times checked by hand in each unit |
-| `load_dataset()` | lazy data: `colon`, `e1684`, `lung`, `mgus2`, `ovarian`, `pbc`, `pbcseq`, `veteran` | the same values as the Python copies in `python/greenwood/data/` |
+| `load_dataset()` | lazy data: `colon`, `e1684`, `lung`, `mgus2`, `ovarian`, `pbc`, `pbcseq`, `veteran` | the same values as the Python copies in `python/greenwood/data/`, and the factor levels in its `levels.json` |
 | `tidy()`, `glance()`, `augment()` | methods for the generics package's `tidy()`, `glance()`, and `augment()`, re-exported | each model's own tables and fields, and the `glance()` values on lung against the Python values |
 | `CoxPH.influence_diagnostics()`, `CoxPH.smooth_hr()` | `influence_diagnostics(fit)`, `smooth_hr(fit, term)` | checked against the Python values (the `smooth_hr()` curves and limits to about `1e-14`, with strata and clusters) |
 | `greenwood.viz`: `plot_survival()`, `plot_cif()`, `plot_predicted_survival()`, `plot_forest()`, `plot_influence()`, `plot_schoenfeld()`, `plot_smooth_hr()`, `plot_weibull()`, `risk_table()`, `get_risk_table_frame()`, `theme_survival()`, `theme_forest()` | same names, drawn with ggplot2 | each plot's layers and the data it draws, and the numbers at risk against the risk sets |
@@ -82,6 +83,7 @@ The `Outcome` layer, which R's formulas cover (see the adaptations below).
 | `baseline_hazard()` columns `strata`, `time`, `cumhaz`, `survival` | `strata`, `time`, `n_risk`, `n_event`, `estimate` (the cumulative hazard), `std_error`, `conf_low`, `conf_high` | The same columns as `nelson_aalen()`. |
 | `predict(type="lp")` | a plain numeric vector for `cox_ph()`, `aft()`, and `fine_gray()`. Other types give data frames | As `predict.lm()` and the base generics do. |
 | AFT `score`, `dfbeta`, and `dfbetas` residuals leave out the case weights | include them | Matches `cox_ph()`, where the weights enter the score. |
+| AFT `score`, `dfbeta`, and `dfbetas` residuals have a column per coefficient | a column per parameter, adding `log(scale)`, `Q` for the generalized gamma, and the threshold | One column for each row of `vcov()`. The coefficient columns agree. |
 | `Parametric` limits on the natural scale | positive parameters (shape, scale, rate, sigma) get limits on the log scale | The limits stay positive. |
 | `FineGray.predict_cumulative_incidence()` wide | `predict(fit, newdata, type = "cif", times)` long: `subject`, `time`, `estimate` | Same as the Cox predictions. |
 | `FineGray.naive_vcov_` | `fit$naive_var`, with `vcov()` giving the robust variance | R names. |
@@ -156,9 +158,10 @@ The `Outcome` layer, which R's formulas cover (see the adaptations below).
 | `CoxPH.predict(trajectory=, strata=, ci=)` gives `time` and survival columns, with `type="survival"` only | `predict(fit, trajectory = , type = c("survival", "cumhaz"), times)`, long (`subject` 1, `strata`, `time`, `estimate`, `std_error`, `conf_low`, `conf_high`), the upper survival limit capped at 1 | As the other Cox predictions. The strata come from `trajectory` and can change between intervals, and overlapping intervals are an error. |
 | `Outcome` objects (`Outcome.right()`, `.interval()`, `.counting()`, `.competing()`) and formula strings | R formulas with `Surv()`, `event_time()`, `first_event()`, or `duration()` on the left | R's formulas already name the response and evaluate it in `data`. |
 | `duration("enroll", "exit", unit=)` names two columns, computed when the data is read | `duration(enroll, exit, unit = )` computes the elapsed times from the vectors, in a formula or on its own | R evaluates the call in `data`, so it needs no deferred spec. |
-| `load_dataset("lung", backend=)` | lazy data, such as `lung` once the package is attached | R's convention for package data. Factor columns stay factors. |
+| `load_dataset("lung", backend=)` | lazy data, such as `lung` once the package is attached | R's convention for package data. Factor columns are factors, with the levels of the Python package's categoricals. |
 | `tidy()`, `glance()`, `augment()` from a registry in `greenwood.summaries` | S3 methods for the generics package's generics, so they work alongside broom | R's dispatch. |
 | AFT `glance()` has a `method` column | no `method` column | The distribution is in `dist`. |
+| AFT `glance()` has a `Q` column only for the generalized gamma, and a `threshold` column only for a three-parameter fit | always `Q` (`NA` for the other distributions) and `threshold` (0 without one) | The same columns for every distribution. |
 | `AalenAdditive` `glance()` counts the events used | `n_times`, the distinct event times used | As `fit$n_times`. |
 | curve `glance()` (Kaplan-Meier, Nelson-Aalen, Aalen-Johansen) has a `strata` column | `strata`, then the grouping variables | As the curves' own tables. |
 | no `tidy()` or `glance()` for a single survival tree, or `tidy()` for the tests | `tidy()` and `glance()` for `survival_tree()`, and `tidy()` for the log-rank, MaxCombo, and RMST tests | Every R result can be tidied. |
