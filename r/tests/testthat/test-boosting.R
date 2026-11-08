@@ -164,6 +164,23 @@ test_that("each regression tree fits its gradient by least squares", {
   leaf_sse <- sum(vapply(leaves, function(rows) sse(residuals[rows]), numeric(1)))
   expect_equal(sum(deep$importance), sse(residuals) - leaf_sse, tolerance = 1e-10)
 
+  # With a hessian, the splits are the same and each leaf takes the Newton step on its rows.
+  set.seed(3)
+  hessian <- stats::runif(nrow(x), 0.1, 1)
+  newton <- grow_regression_tree(x, residuals,
+    max_depth = 4, min_leaf = 7, mtry = ncol(x), hessian = hessian, scale = 0.5
+  )
+  expect_identical(newton[c("feature", "threshold", "left", "right")],
+    deep[c("feature", "threshold", "left", "right")]
+  )
+  expect_identical(newton$importance, deep$importance)
+  for (leaf in names(leaves)) {
+    rows <- leaves[[leaf]]
+    expect_equal(newton$value[as.integer(leaf)], 0.5 * sum(residuals[rows]) / sum(hessian[rows]),
+      tolerance = 1e-12
+    )
+  }
+
   # sse_best_split() keeps the first feature on ties.
   twins <- cbind(x[, "ph.ecog"], x[, "ph.ecog"])
   expect_identical(sse_best_split(twins, residuals, c(2L, 1L), 3)$feature, 2L)
@@ -398,7 +415,8 @@ rebuild_survival_boost <- function(mg, seed, n_rounds, learning_rate, max_depth,
     probs <- exp(scores) / rowSums(exp(scores))
     rounds[[b]] <- lapply(1:3, function(k) {
       y <- weight[keep] * ((target[keep] == k - 1) - probs[, k])
-      grow_regression_tree(xa, y, max_depth, min_leaf, mtry = 4L)
+      h <- weight[keep] * probs[, k] * (1 - probs[, k])
+      grow_regression_tree(xa, y, max_depth, min_leaf, mtry = 4L, hessian = h, scale = 2 / 3)
     })
   }
   rounds
@@ -493,6 +511,23 @@ test_that("survival_boost() picks up a covariate that moves one cause", {
   b <- cif$estimate[cif$cause == "b"]
   expect_gt(a[2], a[1] + 0.2)
   expect_lt(b[2], b[1])
+})
+
+test_that("survival_boost() at its defaults tracks the incidence of each cause", {
+  # Averaged over the subjects, the incidence of each cause is close to the Aalen-Johansen
+  # estimate, down to the earliest times.
+  set.seed(23)
+  data <- simulate_competing_risks(n = 300, n_causes = 2, n_covariates = 3)
+  event_times <- data$time[data$event != "censor"]
+  times <- c(0, stats::quantile(event_times, c(0.1, 0.25, 0.5, 0.75), names = FALSE))
+  set.seed(0)
+  fit <- survival_boost(Surv(time, event) ~ x1 + x2 + x3, data = data)
+  cif <- predict(fit, times = times)
+  marginal <- predict(aalen_johansen(Surv(time, event) ~ 1, data = data), times = times)
+  for (cause in c("cause1", "cause2")) {
+    average <- tapply(cif$estimate[cif$cause == cause], cif$time[cif$cause == cause], mean)
+    expect_lt(max(abs(average - marginal$estimate[marginal$cause == cause])), 0.06)
+  }
 })
 
 test_that("survival_boost() builds its time grid from the event times", {
