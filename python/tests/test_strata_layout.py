@@ -166,14 +166,15 @@ def test_km_bool_group_prints_r_style() -> None:
     y = Surv(time=[1, 2, 3, 4], event=[1, 1, 1, 1])
     km = KaplanMeier().fit(y, by=np.array([True, True, False, False]))
 
-    assert km.median(format="polars")["strata"].to_list() == ["by=TRUE", "by=FALSE"]
+    # FALSE sorts before TRUE, as in R.
+    assert km.median(format="polars")["strata"].to_list() == ["by=FALSE", "by=TRUE"]
 
 
-def test_km_group_order_is_first_appearance() -> None:
+def test_km_group_order_is_sorted() -> None:
     y = Surv(time=[1, 2, 3, 4], event=[1, 1, 1, 1])
     km = KaplanMeier().fit(y, by=["b", "a", "b", "a"])
 
-    assert km.median(format="polars")["strata"].to_list() == ["by=b", "by=a"]
+    assert km.median(format="polars")["strata"].to_list() == ["by=a", "by=b"]
 
 
 def test_km_summary_formats_agree(lung: pl.DataFrame) -> None:
