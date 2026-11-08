@@ -46,6 +46,37 @@ def test_categorical_coding_uses_fitted_levels(veteran: Any) -> None:
     np.testing.assert_allclose(_lp(cox, veteran.loc[rows]), full[rows])
 
 
+@pytest.mark.parametrize("backend", ["pandas", "polars"])
+def test_categorical_reference_is_the_first_declared_level(backend: str) -> None:
+    data = gw.load_dataset("veteran", backend=backend)
+    vet = Outcome.surv(time="time", event="status")
+    cox = gw.CoxPH().fit(vet, covariates=["age", "celltype"], data=data)
+    assert cox.term_names_ == ["age", "celltypesmallcell", "celltypeadeno", "celltypelarge"]
+    formula = gw.CoxPH().fit("Surv(time, status) ~ age + celltype", data=data)
+    np.testing.assert_allclose(cox.coef_, formula.coef_, rtol=1e-10)
+    np.testing.assert_allclose(_lp(cox, data), _lp(formula, data), rtol=1e-10)
+
+
+def test_categorical_levels_skip_unused_and_text_is_sorted(veteran: Any) -> None:
+    vet = Outcome.surv(time="time", event="status")
+    text = veteran.assign(celltype=veteran["celltype"].astype(object))
+    cox = gw.CoxPH().fit(vet, covariates=["celltype"], data=text)
+    assert cox.term_names_ == ["celltypelarge", "celltypesmallcell", "celltypesquamous"]
+
+    pd = pytest.importorskip("pandas")
+    levels = ["other", "squamous", "smallcell", "adeno", "large"]
+    padded = veteran.assign(celltype=pd.Categorical(veteran["celltype"], categories=levels))
+    cox = gw.CoxPH().fit(vet, covariates=["celltype"], data=padded)
+    assert cox.term_names_ == ["celltypesmallcell", "celltypeadeno", "celltypelarge"]
+
+    # A categorical of numbers is still coded by its levels, not taken as a number.
+    trt = veteran.assign(trt=pd.Categorical(veteran["trt"], categories=[2, 1]))
+    cox = gw.CoxPH().fit(vet, covariates=["trt"], data=trt)
+    assert cox.term_names_ == ["trt1"]
+    plain = gw.CoxPH().fit(vet, covariates=["trt"], data=veteran)
+    np.testing.assert_allclose(cox.coef_, -plain.coef_, rtol=1e-8)
+
+
 def test_formula_fit_predicts_from_full_frame(veteran: Any) -> None:
     cox = gw.CoxPH().fit("Surv(time, status) ~ age + C(celltype)", data=veteran)
     full = _lp(cox, veteran)

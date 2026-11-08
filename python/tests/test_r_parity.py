@@ -330,11 +330,18 @@ def test_pairwise_logrank_matches_r() -> None:
     fixture = load_fixture("pairwise_logrank_veteran")
     for correction, key in [("holm", "holm"), ("bh", "bh"), ("bonferroni", "bonferroni")]:
         pw = gw.pairwise_logrank_test(y, df["celltype"], correction=correction, format="pandas")
-        # Order rows by (group1, group2) to align with R's combn ordering.
-        pw = pw.sort_values(["group1", "group2"]).reset_index(drop=True)
-        assert_allclose_to_r(pw["p_value"].to_numpy(), fixture["p_value"], what="pairwise raw p")
+        # The pairs come in level order. The fixture's are in sorted order, so match them up.
+        pairs = zip(pw["group1"], pw["group2"], strict=True)
+        row_of = {frozenset(pair): i for i, pair in enumerate(pairs)}
+        rows = [
+            row_of[frozenset(pair)]
+            for pair in zip(fixture["group1"], fixture["group2"], strict=True)
+        ]
         assert_allclose_to_r(
-            pw["p_adjusted"].to_numpy(), fixture[key], what=f"pairwise {correction} p"
+            pw["p_value"].to_numpy()[rows], fixture["p_value"], what="pairwise raw p"
+        )
+        assert_allclose_to_r(
+            pw["p_adjusted"].to_numpy()[rows], fixture[key], what=f"pairwise {correction} p"
         )
 
 
@@ -712,6 +719,105 @@ def test_aft_matches_r_survreg(dist: str) -> None:
             rtol=1e-3,
             atol=1e-2,
             what=f"{dist} quantile {bound} limits",
+        )
+
+
+def test_aft_gengamma_matches_r() -> None:
+    """The generalized gamma against flexsurv's likelihood, maximized to about 1e-8.
+
+    The fixture comes from `scripts/generate_gengamma_fixture.R`. Its derivatives are numerical,
+    so the variance and the standard errors agree to about 1e-7.
+    """
+    df = gw.load_dataset("lung", backend="pandas")
+    y = Surv(time=df["time"], event=df["status"] == 2)
+    fixture = load_fixture("aft_gengamma")
+    model = gw.AFT("gengamma").fit(y, df[["age", "sex"]])
+    tol = {"rtol": 1e-7, "atol": 0.0}
+    assert model.term_names_ == fixture["terms"]
+    assert_allclose_to_r(model.coef_, fixture["coef"], **tol, what="gengamma coef")
+    assert_allclose_to_r(model.std_error_, fixture["coef_se"], rtol=1e-6, what="gengamma se")
+    assert_allclose_to_r(model.scale_, fixture["scale"], **tol, what="gengamma scale")
+    assert_allclose_to_r(model.Q_, fixture["Q"], **tol, what="gengamma Q")
+    assert_allclose_to_r(model.Q_se_, fixture["Q_se"], rtol=1e-6, what="gengamma Q se")
+    assert_allclose_to_r(
+        model.log_scale_se_, fixture["log_scale_se"], rtol=1e-6, what="gengamma log-scale se"
+    )
+    assert_allclose_to_r(
+        model.vcov_.ravel(),
+        np.array(fixture["vcov"]).ravel(),
+        rtol=1e-5,
+        atol=1e-9,
+        what="gengamma vcov",
+    )
+    assert_allclose_to_r(model.loglik_, fixture["loglik"], what="gengamma loglik")
+
+    newdata = pd.DataFrame(fixture["pred_newdata"])
+    n_subj = len(newdata)
+    q = model.predict_quantile(newdata, p=fixture["pred_p"], ci=True, format="pandas")
+    ours_q = np.array([q[f"subject_{i + 1}"] for i in range(n_subj)])
+    assert_allclose_to_r(
+        ours_q.ravel(), np.array(fixture["pred_quantile"]).ravel(), **tol, what="gengamma quantiles"
+    )
+    q_r = np.array(fixture["pred_quantile"])
+    se_r = np.array(fixture["pred_quantile_se"])
+    z = 1.959963984540054
+    for bound, sign in (("lower", -1.0), ("upper", 1.0)):
+        ours_ci = np.array([q[f"subject_{i + 1}_{bound}"] for i in range(n_subj)])
+        assert_allclose_to_r(
+            ours_ci.ravel(),
+            (q_r * np.exp(sign * z * se_r / q_r)).ravel(),
+            rtol=1e-7,
+            atol=0.0,
+            what=f"gengamma quantile {bound} limits",
+        )
+
+    s = model.predict(newdata, type="survival", times=fixture["pred_times"], format="pandas")
+    ours_s = np.array([s[f"subject_{i + 1}"] for i in range(n_subj)])
+    assert_allclose_to_r(
+        ours_s.ravel(), np.array(fixture["pred_survival"]).ravel(), **tol, what="gengamma survival"
+    )
+    assert_allclose_to_r(
+        model.predict(newdata, type="mean"), fixture["mean"], **tol, what="gengamma mean"
+    )
+    assert_allclose_to_r(
+        model.predict(newdata, type="rmst", tau=fixture["tau"]),
+        fixture["rmst"],
+        **tol,
+        what="gengamma rmst",
+    )
+    assert_allclose_to_r(
+        model.residuals("cox_snell"), fixture["cox_snell"], **tol, what="gengamma cox-snell"
+    )
+    # The fixture's score has a column per parameter, and the residuals one per coefficient. Each
+    # column agrees to about 1e-8 of its largest value.
+    score = model.residuals("score", format="pandas").to_numpy()
+    expected_score = np.array(fixture["score"])[:, :3]
+    for j, term in enumerate(model.term_names_):
+        assert_allclose_to_r(
+            score[:, j],
+            expected_score[:, j],
+            rtol=0.0,
+            atol=1e-7 * float(np.max(np.abs(expected_score[:, j]))),
+            what=f"gengamma score {term}",
+        )
+
+    nested = model.test_distributions(format="pandas")
+    expected = fixture["nested"]
+    assert list(nested["dist"]) == [row["dist"] for row in expected]
+    assert list(nested["df"]) == [row["df"] for row in expected]
+    for column in ("loglik", "aic"):
+        assert_allclose_to_r(
+            nested[column].to_numpy(),
+            [row[column] for row in expected],
+            what=f"gengamma nested {column}",
+        )
+    for column in ("lr_statistic", "p_value"):
+        assert_allclose_to_r(
+            nested[column].to_numpy(),
+            [row[column] for row in expected],
+            rtol=1e-6,
+            atol=0.0,
+            what=f"gengamma nested {column}",
         )
 
 

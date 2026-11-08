@@ -24,13 +24,17 @@ SORTED_CELLTYPE = sorted(CELLTYPE)
 
 @pytest.fixture(scope="module")
 def veteran() -> pd.DataFrame:
-    return gw.load_dataset("veteran", backend="pandas")
+    """The cell type as plain text, so its values are sorted."""
+    out = gw.load_dataset("veteran", backend="pandas")
+    out["celltype"] = out["celltype"].astype(object)
+    return out
 
 
 @pytest.fixture(scope="module")
-def veteran_cat(veteran: pd.DataFrame) -> pd.DataFrame:
-    out = veteran.copy()
-    out["celltype"] = pd.Categorical(out["celltype"], categories=LEVELS)
+def veteran_cat() -> pd.DataFrame:
+    """The cell type as loaded, a categorical with R's levels."""
+    out = gw.load_dataset("veteran", backend="pandas")
+    assert list(out["celltype"].cat.categories) == LEVELS
     return out
 
 

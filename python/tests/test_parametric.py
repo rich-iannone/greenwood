@@ -455,11 +455,139 @@ def test_gengamma_test_distributions(lung_surv) -> None:  # type: ignore[no-unty
     df, y = lung_surv
     gg = AFT("gengamma").fit(y, df[["age", "sex"]])
     result = gg.test_distributions(format="pandas")
-    assert len(result) == 4
-    assert set(result["dist"]) == {"weibull", "lognormal", "exponential", "loglogistic"}
+    assert list(result.columns) == ["dist", "loglik", "aic", "lr_statistic", "df", "p_value"]
+    # The log-logistic isn't nested in the generalized gamma.
+    assert list(result["dist"]) == ["weibull", "lognormal", "exponential"]
+    assert list(result["df"]) == [1, 1, 2]
     assert all(result["p_value"] >= 0)
     assert all(result["p_value"] <= 1)
     assert all(result["lr_statistic"] >= 0)
+    # Each nested log-likelihood is that distribution's own fit.
+    for dist, loglik in zip(result["dist"], result["loglik"], strict=True):
+        assert loglik == pytest.approx(AFT(dist).fit(y, df[["age", "sex"]]).loglik_, abs=1e-6)
+
+
+def test_gengamma_nests_weibull_and_lognormal_on_simulated_data() -> None:
+    rng = np.random.default_rng(11)
+    n = 300
+    x = rng.normal(size=n)
+    covariates = x[:, None]
+    # Weibull data: Q lands near 1, and the fit is at least as good as the Weibull's.
+    time = np.exp(1.0 + 0.5 * x + 0.6 * np.log(rng.exponential(size=n)))
+    y = gw.Surv(time=time, event=np.ones(n))
+    gg = AFT("gengamma").fit(y, covariates)
+    assert gg.Q_ is not None and gg.Q_se_ is not None
+    assert abs(gg.Q_ - 1.0) < 3.0 * gg.Q_se_
+    assert gg.loglik_ >= AFT("weibull").fit(y, covariates).loglik_ - 1e-6
+    # Log-normal data: Q lands near 0, where the family passes smoothly through the normal limit.
+    time = np.exp(1.0 + 0.5 * x + 0.6 * rng.normal(size=n))
+    y = gw.Surv(time=time, event=np.ones(n))
+    gg = AFT("gengamma").fit(y, covariates)
+    assert gg.Q_ is not None and gg.Q_se_ is not None
+    assert abs(gg.Q_) < 3.0 * gg.Q_se_
+    assert gg.loglik_ >= AFT("lognormal").fit(y, covariates).loglik_ - 1e-6
+
+
+def test_gengamma_family_is_continuous_at_q_zero() -> None:
+    from scipy.stats import norm
+
+    from greenwood._parametric import (
+        _gengamma_log_density_survival,
+        _gengamma_mean,
+        _gengamma_quantile,
+    )
+
+    z = np.array([-3.0, -0.5, 0.0, 1.0, 2.5])
+    p = np.array([0.1, 0.5, 0.9])
+    for q in (-1e-4, -1e-7, 1e-7, 1e-4):
+        log_f, log_s = _gengamma_log_density_survival(z, q)
+        np.testing.assert_allclose(log_f, norm.logpdf(z), rtol=1e-3)
+        np.testing.assert_allclose(log_s, norm.logsf(z), rtol=1e-3)
+        np.testing.assert_allclose(_gengamma_quantile(p, q), norm.ppf(p), atol=1e-3)
+        mean = _gengamma_mean(np.zeros(1), 0.7, q)
+        np.testing.assert_allclose(mean, np.exp(0.7**2 / 2.0), rtol=1e-3)
+
+
+@pytest.mark.parametrize("q", [-1.5, -0.4, 0.3, 1.0, 2.0])
+def test_gengamma_family_matches_its_definition(q: float) -> None:
+    from scipy.integrate import quad
+    from scipy.special import gammainc, gammaincc, gammaln
+
+    from greenwood._parametric import (
+        _error_pieces,
+        _gengamma_log_density_survival,
+        _gengamma_mean,
+        _gengamma_quantile,
+    )
+
+    k = q**-2.0
+    z = np.array([-2.0, -0.3, 0.4, 1.7])
+    u = k * np.exp(q * z)
+    log_f, log_s = _gengamma_log_density_survival(z, q)
+    expected = np.log(abs(q)) + k * np.log(k) - gammaln(k) + k * q * z - u
+    np.testing.assert_allclose(log_f, expected, rtol=1e-12)
+    upper = gammaincc(k, u) if q > 0 else gammainc(k, u)
+    np.testing.assert_allclose(np.exp(log_s), upper, rtol=1e-12)
+    _, log_s_q = _gengamma_log_density_survival(_gengamma_quantile(np.array([0.2, 0.7]), q), q)
+    np.testing.assert_allclose(np.exp(log_s_q), [0.8, 0.3], rtol=1e-10)
+
+    # The derivatives in z agree with differences, for events and censored rows.
+    h = 1e-5
+    for status in (1.0, 0.0):
+        event = np.full(z.shape, status)
+        _, d1, d2 = _error_pieces("gengamma", z, event, Q=q)
+        g_up, d1_up, _ = _error_pieces("gengamma", z + h, event, Q=q)
+        g_down, d1_down, _ = _error_pieces("gengamma", z - h, event, Q=q)
+        np.testing.assert_allclose(d1, (g_up - g_down) / (2 * h), rtol=1e-6, atol=1e-8)
+        np.testing.assert_allclose(d2, (d1_up - d1_down) / (2 * h), rtol=1e-6, atol=1e-8)
+
+    # The mean of exp(sigma W) by integration.
+    sigma = 0.6
+
+    def integrand(w: float) -> float:
+        lf, _ = _gengamma_log_density_survival(np.array([w]), q)
+        return float(np.exp(sigma * w + lf[0]))
+
+    area = quad(integrand, -np.inf, np.inf, epsrel=1e-10, limit=500)[0]
+    np.testing.assert_allclose(_gengamma_mean(np.zeros(1), sigma, q), area, rtol=1e-7)
+
+
+@pytest.mark.parametrize("q", [-1.5, -0.4, 0.6, 1.4])
+def test_gengamma_rmst_and_tail_match_integration(q: float) -> None:
+    from scipy.integrate import quad
+
+    from greenwood._parametric import (
+        _gengamma_log_survival,
+        _rmst_value,
+        _tail_partial_moment,
+    )
+
+    # sigma = 0.9 makes k + sigma / Q negative for Q = -1.5, so that mean is infinite.
+    mu, sigma, tau = np.array([0.2, 1.1]), 0.9, 3.0
+    for i, m in enumerate(mu):
+
+        def surv(t: float, m: float = float(m)) -> float:
+            return float(np.exp(_gengamma_log_survival(np.array([(np.log(t) - m) / sigma]), q)[0]))
+
+        area = quad(surv, 0.0, tau, epsrel=1e-11, limit=500)[0]
+        np.testing.assert_allclose(_rmst_value("gengamma", mu, sigma, tau, Q=q)[i], area, rtol=1e-8)
+        tail = _tail_partial_moment("gengamma", mu, sigma, np.full(2, tau), Q=q)[i]
+        if q**-2.0 + sigma / q > 0:
+            expected = quad(surv, tau, np.inf, epsrel=1e-11, limit=500)[0]
+            np.testing.assert_allclose(tail, expected, rtol=1e-7)
+        else:
+            assert tail == np.inf
+
+
+def test_gengamma_mps_starts_from_the_mle(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    df, y = lung_surv
+    mle = AFT("gengamma").fit(y, df[["age", "sex"]])
+    mps = AFT("gengamma", method="mps").fit(y, df[["age", "sex"]])
+    assert mps.Q_ is not None and mle.Q_ is not None
+    assert np.all(np.isfinite(mps.std_error_))
+    # MPS and MLE are asymptotically equivalent, so the estimates are within a standard error.
+    assert np.all(np.abs(mps.coef_ - mle.coef_) < mle.std_error_)
+    assert mps.loglik_ <= mle.loglik_ + 1e-9
 
 
 def test_gengamma_test_distributions_only_gengamma(lung_surv) -> None:  # type: ignore[no-untyped-def]
