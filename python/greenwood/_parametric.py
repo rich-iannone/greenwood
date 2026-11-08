@@ -589,7 +589,10 @@ class AFT:
         Estimation method: `"mle"` (default, ordinary maximum likelihood) or `"mps"` (maximum
         product of spacings). MPS replaces each exact observation's density contribution with
         the gap between consecutive order statistics on the CDF scale, which stays bounded where
-        MLE's density can diverge; see `threshold` for when this matters.
+        MLE's density can diverge; see `threshold` for when this matters. With covariates, the
+        order of the standardized times changes with the coefficients, so the MPS objective has
+        many local optima. The search starts from the MLE and stops at a nearby one, so treat
+        these estimates as approximate.
     threshold
         If `True`, fit a three-parameter model with a location/threshold parameter $\gamma$: $T =
         \gamma + T'$, where $T'$ follows the ordinary 2-parameter `dist`. Not supported for
