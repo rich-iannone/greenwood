@@ -25,7 +25,8 @@ Available datasets (from R's `survival` package, except `e1684`, which is from `
   fraction. Use `"Surv(FAILTIME, FAILCENS)"`.
 
 The factor columns (veteran `celltype`, colon `rx`, and `sex` in pbc, pbcseq, and mgus2) load as
-categoricals with R's levels, so models take R's reference level and curves come in R's order.
+categoricals with R's levels, so models take R's reference level. With the Polars and pandas
+backends, curves also come in R's order.
 """
 
 from __future__ import annotations
@@ -74,8 +75,8 @@ def _resolve_backend(backend: str | None) -> str:
     """Pick a data frame backend, matching Greenwood's dataframe-agnostic stance.
 
     When `backend` is `None`, prefer Polars if it is installed, otherwise fall back to
-    pandas. If neither is installed, raise a clear error. An explicit `"pandas"` or
-    `"polars"` is honored as given.
+    pandas. If neither is installed, raise a clear error. An explicit `"pandas"`,
+    `"polars"`, or `"pyarrow"` is honored as given.
     """
     if backend is None:
         if importlib.util.find_spec("polars") is not None:
@@ -87,8 +88,8 @@ def _resolve_backend(backend: str | None) -> str:
             "(for example `pip install greenwood[pl]` or `greenwood[pd]`), or pass "
             "an explicit backend."
         )
-    if backend not in ("pandas", "polars"):
-        raise ValueError(f"Unknown backend {backend!r}; use 'pandas' or 'polars'.")
+    if backend not in ("pandas", "polars", "pyarrow"):
+        raise ValueError(f"Unknown backend {backend!r}; use 'pandas', 'polars', or 'pyarrow'.")
     return backend
 
 
@@ -103,19 +104,22 @@ def load_dataset(name: str, *, backend: str | None = None) -> Any:
     ----------
     name
         One of `available_datasets()` (e.g., `"lung"`, `"veteran"`, `"ovarian"`, `"pbc"`,
-        `"pbcseq"`, `"colon"`, `"mgus2"`).
+        `"pbcseq"`, `"colon"`, `"mgus2"`, `"e1684"`).
     backend
-        `"pandas"` or `"polars"`. When left as `None` (the default), Greenwood picks a
-        backend for you: it prefers Polars if it is installed, otherwise uses Pandas, and
-        raises if neither is available.
+        `"pandas"`, `"polars"`, or `"pyarrow"`. When left as `None` (the default), Greenwood
+        picks a backend for you: it prefers Polars if it is installed, otherwise uses Pandas,
+        and raises if neither is available.
 
     Returns
     -------
     DataFrame
-        A Polars or Pandas DataFrame with the dataset contents. Columns that are factors in R
-        (veteran `celltype`, colon `rx`, and `sex` in pbc, pbcseq, and mgus2) are categoricals
-        with R's levels in R's order: a Polars `Enum` or a Pandas `Categorical`. Models then take
-        the first level as the reference, and curves and tests come in level order.
+        A Polars DataFrame, a Pandas DataFrame, or a PyArrow Table with the dataset contents.
+        Columns that are factors in R (veteran `celltype`, colon `rx`, and `sex` in pbc, pbcseq,
+        and mgus2) are categoricals with R's levels in R's order: a Polars `Enum`, a Pandas
+        `Categorical`, or an Arrow dictionary column. Models then take the first level as the
+        reference. Curves and tests come in level order for the Polars and Pandas frames. An
+        Arrow dictionary sorts by value, as Arrow itself does, so its groups come in sorted
+        order.
 
     Examples
     --------
@@ -159,6 +163,24 @@ def load_dataset(name: str, *, backend: str | None = None) -> Any:
         )
 
     import io
+
+    if resolved == "pyarrow":
+        import pyarrow as pa
+        import pyarrow.csv as pv
+
+        table = pv.read_csv(  # pyright: ignore[reportPrivateImportUsage]
+            io.BytesIO(content),
+            convert_options=pv.ConvertOptions(  # pyright: ignore[reportPrivateImportUsage]
+                column_types=dict.fromkeys(factors, pa.string()), strings_can_be_null=True
+            ),
+        )
+        for column, lv in factors.items():
+            # Dictionary-encode against R's levels, so the dictionary keeps R's order.
+            code = {level: i for i, level in enumerate(lv)}
+            indices = pa.array([code.get(v) for v in table.column(column).to_pylist()], pa.int32())
+            encoded = pa.DictionaryArray.from_arrays(indices, pa.array(lv, type=pa.string()))
+            table = table.set_column(table.schema.get_field_index(column), column, encoded)
+        return table
 
     import pandas as pd
 
