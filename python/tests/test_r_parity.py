@@ -679,29 +679,22 @@ def test_aft_matches_r_survreg(dist: str) -> None:
     fixture = load_fixture(f"aft_{dist}")
     model = gw.AFT(dist).fit(y, df[["age", "sex"]])
     assert model.term_names_ == fixture["terms"]
-    # Coefficients agree with survreg to ~5 significant figures (optimizer tolerance).
-    assert_allclose_to_r(model.coef_, fixture["coef"], atol=1e-4, what=f"{dist} coef")
-    assert_allclose_to_r(model.std_error_, fixture["coef_se"], atol=1e-4, what=f"{dist} se")
-    assert_allclose_to_r(model.scale_, fixture["scale"], atol=1e-4, what=f"{dist} scale")
-    assert_allclose_to_r(model.loglik_, fixture["loglik"], atol=1e-3, what=f"{dist} loglik")
+    # Newton-Raphson and survreg reach the same maximum, so the fits agree to about 1e-10.
+    assert_allclose_to_r(model.coef_, fixture["coef"], what=f"{dist} coef")
+    assert_allclose_to_r(model.std_error_, fixture["coef_se"], what=f"{dist} se")
+    assert_allclose_to_r(model.scale_, fixture["scale"], what=f"{dist} scale")
+    assert_allclose_to_r(model.loglik_, fixture["loglik"], what=f"{dist} loglik")
     if dist != "exponential":
         assert_allclose_to_r(
-            model.log_scale_se_, fixture["log_scale_se"], atol=1e-4, what=f"{dist} log-scale se"
+            model.log_scale_se_, fixture["log_scale_se"], what=f"{dist} log-scale se"
         )
 
     # Predicted survival-time quantiles match survreg's predict(type="quantile").
-    # Agreement is at the coefficient optimizer floor (relative ~1e-5 on day-scale values).
-    import pandas as pd
-
     newdata = pd.DataFrame(fixture["pred_newdata"])
     pred = model.predict(newdata, type="quantile", p=fixture["pred_p"])
     ours = pred[[c for c in pred.columns if c != "p"]].to_numpy().T  # subjects x p
     assert_allclose_to_r(
-        ours.ravel(),
-        np.array(fixture["pred_quantile"]).ravel(),
-        rtol=1e-3,
-        atol=1e-2,
-        what=f"{dist} quantiles",
+        ours.ravel(), np.array(fixture["pred_quantile"]).ravel(), what=f"{dist} quantiles"
     )
 
     # The limits come from the delta method with the full variance, scale included:
@@ -716,9 +709,58 @@ def test_aft_matches_r_survreg(dist: str) -> None:
         assert_allclose_to_r(
             ours_ci.ravel(),
             (q_r * np.exp(sign * z * se_r / q_r)).ravel(),
-            rtol=1e-3,
-            atol=1e-2,
             what=f"{dist} quantile {bound} limits",
+        )
+
+    # Survival and restricted-mean standard errors also use the full variance. The fixture's
+    # gradients are numerical (numDeriv), so they agree to about 1e-8.
+    _assert_survival_and_rmst_match(model, fixture, label=dist)
+
+
+def _assert_survival_and_rmst_match(
+    model: Any, fixture: dict[str, Any], *, label: str, rtol: float = 1e-8
+) -> None:
+    """Survival at `pred_times` and the restricted mean to `tau`, with their standard errors.
+
+    The plain survival limits are `S +/- z se(S)`, and the restricted-mean limits
+    `rmst * exp(+/- z se / rmst)`, so both carry the fixture's standard errors. `rtol` is for the
+    estimates, and the limits get ten times as much.
+    """
+    newdata = pd.DataFrame(fixture["pred_newdata"])
+    n_subj = len(newdata)
+    z = 1.959963984540054
+    s_r = np.array(fixture["pred_survival"])
+    s_se_r = np.array(fixture["pred_survival_se"])
+    s = model.predict(
+        newdata,
+        type="survival",
+        times=fixture["pred_times"],
+        ci=True,
+        conf_type="plain",
+        format="pandas",
+    )
+    ours_s = np.array([s[f"subject_{i + 1}"] for i in range(n_subj)])
+    assert_allclose_to_r(ours_s.ravel(), s_r.ravel(), rtol=rtol, what=f"{label} survival")
+    ours_low = np.array([s[f"subject_{i + 1}_lower"] for i in range(n_subj)])
+    assert_allclose_to_r(
+        ours_low.ravel(),
+        (s_r - z * s_se_r).ravel(),
+        rtol=10 * rtol,
+        what=f"{label} survival limits",
+    )
+
+    rmst_r = np.array(fixture["rmst"])
+    rmst_se_r = np.array(fixture["rmst_se"])
+    e = model.predict_expectation(newdata, tau=fixture["tau"], ci=True, format="pandas")
+    assert_allclose_to_r(
+        [e[f"subject_{i + 1}"][0] for i in range(n_subj)], rmst_r, rtol=rtol, what=f"{label} rmst"
+    )
+    for bound, sign in (("lower", -1.0), ("upper", 1.0)):
+        assert_allclose_to_r(
+            [e[f"subject_{i + 1}_{bound}"][0] for i in range(n_subj)],
+            rmst_r * np.exp(sign * z * rmst_se_r / rmst_r),
+            rtol=10 * rtol,
+            what=f"{label} rmst {bound} limits",
         )
 
 
@@ -785,6 +827,7 @@ def test_aft_gengamma_matches_r() -> None:
         **tol,
         what="gengamma rmst",
     )
+    _assert_survival_and_rmst_match(model, fixture, label="gengamma", rtol=1e-7)
     assert_allclose_to_r(
         model.residuals("cox_snell"), fixture["cox_snell"], **tol, what="gengamma cox-snell"
     )
