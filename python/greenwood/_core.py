@@ -14,6 +14,7 @@ what we compute with sorted cumulative weights.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -22,6 +23,7 @@ import numpy.typing as npt
 
 from ._backends import to_dataframe
 from ._outcome import bind_fit_inputs
+from ._strata import group_order
 
 if TYPE_CHECKING:
     from ._outcome import Outcome
@@ -207,8 +209,8 @@ def event_table(
     group
         Optional grouping variable for stratification, one value per subject. Can be a column
         name, a Pandas/Polars series, a 1-D array, or a Python sequence. When provided, the table
-        is split into one block per group. Groups appear in order of first appearance in the
-        data.
+        is split into one block per group. Groups come in the order of their values (see the
+        Details).
     weights
         Optional case weights. Can be a 1-D array or series. If `None` (default), uses
         weights from the `surv`{.gd-no-link} response if present, otherwise treats all subjects as
@@ -249,9 +251,10 @@ def event_table(
     convention in survival analysis). The table counts them in `n_risk` at time t, but
     removes them from `n_risk` at times > t.
 
-    **Stratification order**: If grouped, strata appear in the order of first appearance in
-    the input data, not alphabetically. This allows meaningful orderings (e.g., control,
-    then treatment).
+    **Group order**: Groups come in the order of their values, not the order they appear in the
+    data. Numbers are in numeric order and text in code-point order. A pandas `Categorical` or a
+    Polars `Enum` keeps its declared order of levels, which gives a meaningful order such as
+    control, then treatment. With several grouping columns, the first varies slowest.
 
     **Weights**: If weights are provided, all counts (n_risk, n_event, n_censor) are sums
     of weights, not subject counts. This handles case weights or frequency weights.
@@ -314,15 +317,18 @@ def event_table(
     )
     from ._strata import resolve_strata
 
-    labels, _ = resolve_strata(bound, "group")
-    return tabulate_groups(bound.surv, labels, bound.labels["weights"])
+    labels, levels, _ = resolve_strata(bound, "group")
+    return tabulate_groups(bound.surv, labels, bound.labels["weights"], levels=levels)
 
 
-def tabulate_groups(surv: Surv, group: Any, weights: Any) -> EventTable:
+def tabulate_groups(
+    surv: Surv, group: Any, weights: Any, *, levels: Sequence[Any] | None = None
+) -> EventTable:
     """Tabulate `surv` by the given group values, used as-is (no relabeling).
 
     `group=None` gives one block with no `strata`. Estimators pass curve labels from
     `resolve_strata()`, and comparisons such as RMST pass the raw group values they report.
+    The blocks follow `levels`, which defaults to the sorted values.
     """
     from ._ingest import to_1d_array as _to_1d_array
     from ._surv import CensoringType
@@ -347,9 +353,7 @@ def tabulate_groups(surv: Surv, group: Any, weights: Any) -> EventTable:
     if labels.shape[0] != surv.n:
         raise ValueError("`group` must have the same length as the response.")
 
-    # Stable, deterministic stratum order: first appearance.
-    _, first_idx = np.unique(labels, return_index=True)
-    ordered_levels = labels[np.sort(first_idx)]
+    ordered_levels = list(levels) if levels is not None else group_order(labels)
 
     times_all: list[Array] = []
     risk_all: list[Array] = []
