@@ -10,7 +10,12 @@ from scipy.stats import weibull_min
 
 import greenwood as gw
 from greenwood import AFT, Surv
-from greenwood._parametric import _error_quantile, _mean_survival_aft
+from greenwood._parametric import (
+    _cdf,
+    _error_quantile,
+    _log_density_survival,
+    _mean_survival_aft,
+)
 
 
 @pytest.fixture
@@ -75,16 +80,32 @@ def test_threshold_false_unchanged(lung_surv) -> None:  # type: ignore[no-untype
     assert b.threshold_ == 0.0
 
 
-# -- MPS without a threshold should track MLE closely on real data ----------------------
+# -- MPS without a threshold refines the MLE on real data -------------------------------
 
 
-def test_mps_no_threshold_close_to_mle(lung_surv) -> None:  # type: ignore[no-untyped-def]
+def _neg_mps_weibull(df, fit) -> float:  # type: ignore[no-untyped-def]
+    # The MPS objective at a fit's estimates, rebuilt here from the fitted coefficients and scale.
+    x = np.column_stack([np.ones(len(df)), df[["age", "sex"]].to_numpy(float)])
+    z = (np.log(df["time"].to_numpy(float)) - x @ fit.coef_) / fit.scale_
+    exact = (df["status"] == 2).to_numpy()
+    obj = float(_log_density_survival("weibull", z[~exact])[1].sum())
+    u = np.concatenate(([0.0], _cdf("weibull", np.sort(z[exact])), [1.0]))
+    obj += float(np.log(np.clip(np.diff(u), 1e-300, None)).sum())
+    return -obj
+
+
+def test_mps_no_threshold_refines_mle(lung_surv) -> None:  # type: ignore[no-untyped-def]
+    # With covariates the order of the standardized times changes with the coefficients, so the
+    # MPS objective has many local optima and where the search stops can vary across platforms.
+    # What holds wherever it stops: the search starts from the MLE and only moves downhill.
     df, y = lung_surv
     mle = AFT("weibull").fit(y, df[["age", "sex"]])
     mps = AFT("weibull", method="mps").fit(y, df[["age", "sex"]])
-    np.testing.assert_allclose(mps.coef_, mle.coef_, atol=0.02)
-    np.testing.assert_allclose(mps.scale_, mle.scale_, atol=0.05)
+    assert np.isfinite(mps.coef_).all()
+    assert np.isfinite(mps.scale_) and mps.scale_ > 0
     assert mps.threshold_ == 0.0
+    assert _neg_mps_weibull(df, mps) <= _neg_mps_weibull(df, mle)
+    assert mps.loglik_ <= mle.loglik_
 
 
 # -- recovering a genuine three-parameter model ------------------------------------------
