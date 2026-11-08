@@ -35,7 +35,8 @@ matrix with one row per row of the data and one column per parameter.
 \item \code{"deviance"}: the signed square root of twice the gap between the row's log-likelihood and
 its largest possible value.
 \item \code{"score"}: each row's contribution to the gradient of the log-likelihood in the parameters,
-one column per parameter (the coefficients, the log scale, and the threshold).
+one column per parameter (the coefficients, the log scale, the generalized gamma's \eqn{Q},
+and the threshold).
 \item \code{"dfbeta"}: the approximate change in each parameter when the row is left out, the score
 residuals times the variance of the parameters.
 \item \code{"dfbetas"}: dfbeta divided by the standard errors of the parameters.

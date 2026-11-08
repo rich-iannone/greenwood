@@ -28,7 +28,7 @@ the grouping variables on the right, such as \code{Surv(time, status) ~ 1} or
 \item{na.action}{What to do with rows that have missing values. The default drops them.}
 
 \item{dist}{The error distribution: \code{"weibull"} (the default), \code{"exponential"}, \code{"lognormal"},
-or \code{"loglogistic"}.}
+\code{"loglogistic"}, or \code{"gengamma"} (the generalized gamma).}
 
 \item{conf_level}{The confidence level, between 0 and 1. The default is \code{0.95}.}
 }

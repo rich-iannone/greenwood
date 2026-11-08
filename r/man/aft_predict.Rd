@@ -56,10 +56,12 @@ The mean is \eqn{\gamma + \int_0^\infty S(t) dt}, and the restricted mean is the
 up to \code{tau}.
 
 Standard errors use the delta method with the full variance of the parameters (the
-coefficients, the log scale, and the threshold). Confidence limits for quantiles, means, and
-restricted means are built on the log scale. Limits for survival and the cumulative hazard are
-built on the scale of \eqn{z = (\log(t - \gamma) - \eta) / \sigma}, which for the Weibull is the
-log of the cumulative hazard, so they stay within 0 and 1.
+coefficients, the log scale, the generalized gamma's \eqn{Q}, and the threshold). Confidence
+limits for quantiles, means, and restricted means are built on the log scale. Limits for survival
+and the cumulative hazard are built on the scale of \eqn{z = (\log(t - \gamma) - \eta) / \sigma},
+which for the Weibull is the log of the cumulative hazard, so they stay within 0 and 1. For the
+generalized gamma, a change in \eqn{Q} is carried onto that scale as the change in \eqn{z} that
+moves survival as much at the estimated \eqn{Q}.
 }
 \examples{
 lung <- data.frame(

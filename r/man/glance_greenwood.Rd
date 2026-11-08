@@ -97,7 +97,8 @@ frailty columns are \code{NA} without a frailty term).
 \code{n_iter}, and \code{converged}.
 \item \code{\link[=aalen_johansen]{aalen_johansen()}}: \code{n_causes} and \code{causes}.
 \item \code{\link[=multi_state]{multi_state()}}: \code{n_states}, \code{states}, and \code{n_times}.
-\item \code{\link[=aft]{aft()}}: \code{dist}, \code{n}, \code{nevent}, \code{scale}, \code{threshold}, \code{loglik}, and \code{aic}.
+\item \code{\link[=aft]{aft()}}: \code{dist}, \code{n}, \code{nevent}, \code{scale}, \code{Q} (the generalized gamma's shape, missing for the
+other distributions), \code{threshold}, \code{loglik}, and \code{aic}.
 \item \code{\link[=parametric]{parametric()}}: \code{dist}, \code{n}, \code{nevent}, \code{loglik}, \code{aic}, and \code{bic}.
 \item \code{\link[=piecewise_exponential]{piecewise_exponential()}}: \code{n_intervals}, \code{n}, \code{nevent}, \code{loglik}, \code{aic}, \code{bic}, \code{df}, and
 \code{lr_statistic}.

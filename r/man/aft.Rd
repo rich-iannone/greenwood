@@ -10,7 +10,7 @@ aft(
   weights,
   subset,
   na.action = stats::na.omit,
-  dist = c("weibull", "exponential", "lognormal", "loglogistic"),
+  dist = c("weibull", "exponential", "lognormal", "loglogistic", "gengamma"),
   threshold = FALSE,
   conf_level = 0.95,
   max_iter = 50,
@@ -31,9 +31,10 @@ contrasts, and an intercept is always included.}
 \item{na.action}{What to do with rows that have missing values. The default drops them.}
 
 \item{dist}{The error distribution: \code{"weibull"} (the default), \code{"exponential"}, \code{"lognormal"},
-or \code{"loglogistic"}.}
+\code{"loglogistic"}, or \code{"gengamma"} (the generalized gamma).}
 
-\item{threshold}{Estimate a threshold (a third, location parameter). The default is \code{FALSE}.}
+\item{threshold}{Estimate a threshold (a third, location parameter). Not available for the
+generalized gamma. The default is \code{FALSE}.}
 
 \item{conf_level}{The confidence level, between 0 and 1. The default is \code{0.95}.}
 
@@ -48,11 +49,12 @@ for the estimates and their variance, \code{\link[=predict]{predict()}} for line
 curves, and means, and \code{\link[=residuals]{residuals()}} for diagnostics. \code{\link[=logLik]{logLik()}}, \code{\link[=AIC]{AIC()}}, \code{\link[=BIC]{BIC()}}, and
 \code{\link[=nobs]{nobs()}} work as usual.
 
-The object also holds \code{scale} (\eqn{\sigma}), \code{threshold} (\eqn{\gamma}, 0 without
-\code{threshold = TRUE}), \code{loglik} (the log-likelihood of the intercept-only model and of the fit),
-the likelihood ratio test \code{lr_test} (with \code{statistic}, \code{df}, and \code{p_value}), \code{n}, \code{n_event},
-\code{iterations}, and \code{converged}. \code{vcov()} covers \eqn{\beta}, \eqn{\log \sigma} (except for the
-exponential), and \eqn{\gamma} (with \code{threshold = TRUE}).
+The object also holds \code{scale} (\eqn{\sigma}), \code{Q} (the generalized gamma's shape, \code{NULL} for
+the other distributions), \code{threshold} (\eqn{\gamma}, 0 without \code{threshold = TRUE}), \code{loglik}
+(the log-likelihood of the intercept-only model and of the fit), the likelihood ratio test
+\code{lr_test} (with \code{statistic}, \code{df}, and \code{p_value}), \code{n}, \code{n_event}, \code{iterations}, and
+\code{converged}. \code{vcov()} covers \eqn{\beta}, \eqn{\log \sigma} (except for the exponential),
+\eqn{Q} (for the generalized gamma), and \eqn{\gamma} (with \code{threshold = TRUE}).
 }
 \description{
 \code{aft()} fits a parametric accelerated failure time (AFT) model by maximum likelihood. The log of
@@ -63,11 +65,20 @@ one-unit increase in its covariate, so \eqn{\exp(\beta_j)} is a time ratio.
 }
 \details{
 The distributions are the Weibull (an extreme-value error), the exponential (the Weibull with
-\eqn{\sigma = 1}), the log-normal (a normal error), and the log-logistic (a logistic error). The
-estimates come from Newton-Raphson iterations on \eqn{(\beta, \log \sigma)}, halving the step
-whenever it lowers the likelihood, and the variance is the inverse of the observed information
-on that scale. The log-likelihood is on the time scale, so it's comparable across
-distributions and with other parametric models.
+\eqn{\sigma = 1}), the log-normal (a normal error), the log-logistic (a logistic error), and the
+generalized gamma. The estimates come from Newton-Raphson iterations on
+\eqn{(\beta, \log \sigma)}, halving the step whenever it lowers the likelihood, and the variance
+is the inverse of the observed information on that scale. The log-likelihood is on the time
+scale, so it's comparable across distributions and with other parametric models.
+
+The generalized gamma (Prentice's parameterization) has a third parameter, the shape \eqn{Q}.
+With \eqn{k = Q^{-2}}, its error has the density
+\eqn{|Q| k^k \exp(k (Q \varepsilon - e^{Q \varepsilon})) / \Gamma(k)}. It's the Weibull at
+\eqn{Q = 1}, the exponential at \eqn{Q = 1} and \eqn{\sigma = 1}, and the log-normal in the
+limit \eqn{Q \to 0}, so \code{\link[=test_distributions]{test_distributions()}} can test those simpler distributions against it.
+Newton-Raphson starts from the best of the fits with \eqn{Q} fixed on a grid from -3 to 3 and
+then moves \eqn{(\beta, \log \sigma, Q)} together. The derivatives in \eqn{Q} are numerical,
+and those in the other parameters are exact.
 
 With \code{threshold = TRUE} the model has a third parameter, a threshold \eqn{\gamma \ge 0} below
 which no events happen: \eqn{T = \gamma + T'}, where \eqn{T'} follows the AFT model. The
@@ -93,4 +104,8 @@ as.data.frame(fit, exponentiate = TRUE)
 # A log-normal model, and the median survival time of two new subjects
 fit_lognormal <- aft(Surv(time, status) ~ age + sex, data = lung, dist = "lognormal")
 predict(fit_lognormal, newdata = data.frame(age = c(55, 70), sex = c(1, 2)), type = "quantile")
+
+# The generalized gamma, and tests of the distributions it nests
+fit_gengamma <- aft(Surv(time, status) ~ age + sex, data = lung, dist = "gengamma")
+test_distributions(fit_gengamma)
 }
