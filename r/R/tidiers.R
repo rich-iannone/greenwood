@@ -81,7 +81,8 @@ NULL
 #'   `n_iter`, and `converged`.
 #' * [aalen_johansen()]: `n_causes` and `causes`.
 #' * [multi_state()]: `n_states`, `states`, and `n_times`.
-#' * [aft()]: `dist`, `n`, `nevent`, `scale`, `threshold`, `loglik`, and `aic`.
+#' * [aft()]: `dist`, `n`, `nevent`, `scale`, `Q` (the generalized gamma's shape, missing for the
+#'   other distributions), `threshold`, `loglik`, and `aic`.
 #' * [parametric()]: `dist`, `n`, `nevent`, `loglik`, `aic`, and `bic`.
 #' * [piecewise_exponential()]: `n_intervals`, `n`, `nevent`, `loglik`, `aic`, `bic`, `df`, and
 #'   `lr_statistic`.
@@ -366,6 +367,7 @@ glance.aft <- function(x, ...) {
     n = x$n,
     nevent = sum(x$n_event),
     scale = x$scale,
+    Q = if (is.null(x$Q)) NA_real_ else x$Q,
     threshold = x$threshold,
     loglik = ll$loglik,
     aic = ll$aic
