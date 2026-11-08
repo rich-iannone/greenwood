@@ -3,7 +3,7 @@
 #
 # They are the datasets of python/greenwood/data/ (see scripts/export_datasets.R), from the same
 # sources: survival for all but e1684, which is from smcure. Factor columns stay factors, and the
-# values are checked against the Python copies. Run from the repo root:
+# values and factor levels are checked against the Python copies. Run from the repo root:
 #   Rscript scripts/export_r_datasets.R
 
 suppressPackageStartupMessages({
@@ -12,6 +12,8 @@ suppressPackageStartupMessages({
 if (!requireNamespace("smcure", quietly = TRUE)) {
   stop("smcure is required for e1684: install.packages('smcure')")
 }
+
+python_levels <- jsonlite::read_json(file.path("python", "greenwood", "data", "levels.json"))
 
 out_dir <- file.path("r", "data")
 dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
@@ -44,6 +46,15 @@ check_against_csv <- function(df, name) {
     }
     if (!same) {
       stop(sprintf("%s$%s differs from %s", name, column, path))
+    }
+  }
+  # The Python copy gives the factor columns back as categoricals with these levels.
+  recorded <- python_levels[[name]]
+  factors <- names(df)[vapply(df, is.factor, logical(1))]
+  stopifnot(setequal(factors, names(recorded)))
+  for (column in factors) {
+    if (!identical(levels(df[[column]]), as.character(recorded[[column]]))) {
+      stop(sprintf("the levels of %s$%s differ from levels.json", name, column))
     }
   }
 }
