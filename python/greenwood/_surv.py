@@ -1449,7 +1449,7 @@ def first_event(
     # argmin picks the first column among equal times, so ties follow the endpoint order.
     event_times = np.where(event_matrix, time_matrix, np.inf)
     first = np.argmin(event_times, axis=1)
-    observed = event_matrix.any(axis=1)
+    observed = np.asarray(event_matrix.any(axis=1))
     if censor_at is not None:
         censor_time = _numeric(censor_at, "`censor_at` is not numeric")
     else:
