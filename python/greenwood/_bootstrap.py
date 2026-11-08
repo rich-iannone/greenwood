@@ -17,6 +17,7 @@ import numpy.typing as npt
 from scipy.stats import norm
 
 from ._outcome import bind_fit_inputs
+from ._strata import OrderedGroups, group_levels
 
 if TYPE_CHECKING:
     from ._nonparametric import KaplanMeier
@@ -222,8 +223,8 @@ def _per_curve(km: KaplanMeier, value: Callable[[Any], float]) -> dict[str, floa
 
 
 def _grouped_diff(result: dict[str, float]) -> float:
-    """The difference between two curves' values (first label minus second, sorted as text)."""
-    keys = sorted(result.keys())
+    """The difference between two curves' values, the first curve minus the second."""
+    keys = list(result)
     if len(keys) != 2:
         raise ValueError(f"Diff statistics require exactly 2 groups, got {len(keys)}: {keys}.")
     return float(result[keys[0]]) - float(result[keys[1]])
@@ -323,7 +324,8 @@ def bootstrap(
         Alternatively, pass a callable that takes a fitted `KaplanMeier` and returns a float.
     by
         Grouping variable for two-sample comparisons. Required for `"_diff"` statistics. Must define
-        exactly two groups.
+        exactly two groups. The difference is the first group minus the second, in the order of the
+        `KaplanMeier` curves (see `event_table()` for how groups are ordered).
     weights
         Optional case weights passed through to each bootstrap KM fit.
     n_boot
@@ -427,13 +429,14 @@ def bootstrap(
     if weights is not None:
         weights_arr = _to_1d_array(weights)
 
-    by_arr: Array | None = None
+    # The group values carry their order, so every refit lists the curves the same way.
+    by_arr: OrderedGroups | None = None
     if by is not None:
-        by_arr = _to_1d_array(by, dtype=object)
+        by_arr = OrderedGroups(_to_1d_array(by, dtype=object), group_levels(bound, "by"))
 
     km_orig = _KM()
     if is_grouped:
-        km_orig.fit(surv, by=by, weights=weights)
+        km_orig.fit(surv, by=by_arr, weights=weights)
     else:
         km_orig.fit(surv, weights=weights)
     estimate = float(stat_fn(km_orig))
@@ -441,20 +444,23 @@ def bootstrap(
     theta_boot = np.empty(n_boot)
 
     if is_diff and by_arr is not None:
-        levels = sorted(dict.fromkeys(by_arr.tolist()).keys(), key=str)
+        levels = by_arr.categories
         if len(levels) != 2:
             raise ValueError(
                 f"Diff statistics require exactly 2 groups, got {len(levels)}: {levels}."
             )
-        idx_g1 = np.where(by_arr == levels[0])[0]
-        idx_g2 = np.where(by_arr == levels[1])[0]
+        idx_g1 = np.where(by_arr.values == levels[0])[0]
+        idx_g2 = np.where(by_arr.values == levels[1])[0]
 
         for b in range(n_boot):
             boot_i1 = rng.choice(idx_g1, size=len(idx_g1), replace=True)
             boot_i2 = rng.choice(idx_g2, size=len(idx_g2), replace=True)
             boot_idx = np.concatenate([boot_i1, boot_i2])
             boot_surv = _subset_surv(surv, boot_idx)
-            boot_by = np.array([levels[0]] * len(idx_g1) + [levels[1]] * len(idx_g2), dtype=object)
+            boot_by = OrderedGroups(
+                np.array([levels[0]] * len(idx_g1) + [levels[1]] * len(idx_g2), dtype=object),
+                levels,
+            )
             boot_w = weights_arr[boot_idx] if weights_arr is not None else None
             try:
                 km_b = _KM().fit(boot_surv, by=boot_by, weights=boot_w)
@@ -484,7 +490,7 @@ def bootstrap(
     elif ci_type == "normal":
         conf_low, conf_high = _normal_ci(estimate, se, conf_level)
     elif ci_type == "bca":
-        jk_values = _jackknife_values(surv, stat_fn, by=by, weights=weights, is_diff=is_diff)
+        jk_values = _jackknife_values(surv, stat_fn, by=by_arr, weights=weights, is_diff=is_diff)
         conf_low, conf_high = _bca_ci(theta_boot, estimate, jk_values, conf_level)
     else:
         raise ValueError(f"ci_type must be one of {sorted(_VALID_CI_TYPES)}, got {ci_type!r}.")
@@ -505,7 +511,7 @@ def _jackknife_values(
     surv: Surv,
     stat_fn: Callable[[KaplanMeier], float],
     *,
-    by: Any,
+    by: OrderedGroups | None,
     weights: Any,
     is_diff: bool,
 ) -> Array:
@@ -516,7 +522,7 @@ def _jackknife_values(
 
     n = surv.n
     jk = np.empty(n)
-    by_arr = _to_1d_array(by, dtype=object) if by is not None else None
+    by_arr = by
     weights_arr = _to_1d_array(weights) if weights is not None else None
 
     all_idx = np.arange(n)
