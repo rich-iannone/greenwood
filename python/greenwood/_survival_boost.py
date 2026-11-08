@@ -115,13 +115,16 @@ def _interp_censoring(t: float, g_times: Array, g_surv: Array, epsilon: float) -
 
 
 class SurvivalBoost:
-    """Gradient-boosted cumulative incidence model for competing risks.
+    r"""Gradient-boosted cumulative incidence model for competing risks.
 
     Builds an ensemble of regression trees that estimates the cause-specific cumulative incidence
     functions (CIFs) and the any-event survival function via multi-class softmax gradient boosting.
     At each boosting iteration, random time horizons are sampled and concatenated as an extra input
-    feature. IPCW weights correct for right censoring. The result is a flexible, nonparametric
-    competing-risks model that learns CIFs directly from the data.
+    feature. IPCW weights correct for right censoring. Each class's tree is grown on the weighted
+    gradient of the multi-class log loss, $w (y_k - p_k)$, and each leaf takes a Newton step,
+    $\frac{K - 1}{K} \sum w (y_k - p_k) / \sum w p_k (1 - p_k)$ over its rows, with $K$ the number
+    of classes (Friedman 2001). The result is a flexible, nonparametric competing-risks model that
+    learns CIFs directly from the data.
 
     Parameters
     ----------
@@ -374,6 +377,7 @@ class SurvivalBoost:
             for k in range(n_classes):
                 one_hot = (targets_active == k).astype(float)
                 residuals = weights_active * (one_hot - probs[:, k])
+                hessian = weights_active * probs[:, k] * (1.0 - probs[:, k])
 
                 tree = _RegressionTree(
                     max_depth=self.max_depth,
@@ -381,7 +385,15 @@ class SurvivalBoost:
                     n_features_split=n_features_split,
                     rng=rng,
                 )
-                tree.fit(x_aug_active[rows], residuals[rows], importances)
+                # The leaves take a Newton step on the multi-class log loss, scaled by
+                # (K - 1) / K as in Friedman (2001).
+                tree.fit(
+                    x_aug_active[rows],
+                    residuals[rows],
+                    importances,
+                    hessian=hessian[rows],
+                    scale=(n_classes - 1) / n_classes,
+                )
                 round_trees.append(tree)
 
             trees.append(round_trees)
