@@ -1,0 +1,17 @@
+{
+  "veteran": {
+    "celltype": ["squamous", "smallcell", "adeno", "large"]
+  },
+  "pbc": {
+    "sex": ["m", "f"]
+  },
+  "pbcseq": {
+    "sex": ["m", "f"]
+  },
+  "colon": {
+    "rx": ["Obs", "Lev", "Lev+5FU"]
+  },
+  "mgus2": {
+    "sex": ["F", "M"]
+  }
+}
