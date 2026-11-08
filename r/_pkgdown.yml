@@ -72,6 +72,7 @@ reference:
       - aft_predict
       - aft_residuals
       - aft_table
+      - test_distributions
       - parametric
       - parametric_predict
       - compare_distributions
