@@ -34,12 +34,13 @@ def test_event_table_weights() -> None:
     np.testing.assert_allclose(et.n_event, [2.0, 3.0])
 
 
-def test_event_table_grouped_strata_order_is_first_appearance() -> None:
+def test_event_table_grouped_strata_order_is_sorted() -> None:
     y = Surv(time=[5, 4, 6, 4], event=[1, 1, 1, 1])
     et = event_table(y, group=["b", "a", "b", "a"])
     assert et.strata is not None
-    # "b" appears first, so its rows come first. Labels take the argument name.
-    assert list(dict.fromkeys(et.strata.tolist())) == ["group=b", "group=a"]
+    # "b" appears first, but "a" sorts first. Labels take the argument name.
+    assert list(dict.fromkeys(et.strata.tolist())) == ["group=a", "group=b"]
+    np.testing.assert_array_equal(et.time, [4, 5, 6])
 
 
 def test_event_table_group_length_checked() -> None:
