@@ -32,7 +32,7 @@ from scipy.stats import chi2, norm
 from ._backends import to_dataframe
 from ._outcome import bind_fit_inputs
 from ._repr import dropped_note
-from ._strata import resolve_strata
+from ._strata import category_levels, group_order, resolve_strata
 
 if TYPE_CHECKING:
     from ._outcome import Outcome
@@ -526,8 +526,10 @@ def _design_matrix(covariates: Any, data: Any = None) -> tuple[Array, list[str]]
     """Build a numeric design matrix and term names from covariates.
 
     Accepts a right-hand-side formula string (with `data`), a 2-D NumPy array, or any
-    Narwhals-compatible dataframe. Numeric columns pass through; non-numeric columns are
-    treatment-coded (drop-first dummies) with names like `celltypesmallcell`.
+    Narwhals-compatible dataframe. Numeric columns pass through. Categorical and other
+    non-numeric columns are treatment-coded (drop-first dummies) with names like
+    `celltypesmallcell`. The levels are a categorical's declared ones that occur, in their order,
+    and otherwise the sorted values.
     """
     x, names, _ = _design_matrix_spec(covariates, data)
     return x, names
@@ -565,14 +567,17 @@ def _design_matrix_spec(covariates: Any, data: Any = None) -> tuple[Array, list[
     source_levels: list[tuple[Any, ...] | None] = []
     for name in frame.columns:
         values = frame[name].to_numpy()
+        declared = category_levels(frame[name].to_native())
         sources.append(name)
-        if values.dtype.kind in "iufb":
+        if declared is None and values.dtype.kind in "iufb":
             columns.append(values.astype(float))
             names.append(name)
             source_levels.append(None)
         else:
             missing = missing_mask(as_1d(values))
-            levels = sorted({v for v, m in zip(values.tolist(), missing, strict=True) if not m})
+            # A categorical's declared levels come first, so its first level is the reference.
+            kept = [v for v, m in zip(values.tolist(), missing, strict=True) if not m]
+            levels = group_order(np.array(kept, dtype=object), declared)
             source_levels.append(tuple(levels))
             columns += _dummies(values, tuple(levels), missing)
             names += [f"{name}{level}" for level in levels[1:]]
