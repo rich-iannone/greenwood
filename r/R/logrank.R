@@ -348,7 +348,7 @@ lr_group_labels <- function(keys) {
 #' @param formula A formula with a [Surv()] response on the left and one grouping variable on the
 #'   right, such as `Surv(time, status) ~ ph.ecog`. A `strata()` term stratifies the test.
 #' @param scores The score of each group, in the order of the groups (factor levels or sorted
-#'   values), or named by the group values. The default gives the groups the scores 0, 1, 2, and so
+#'   values, as for [kaplan_meier()]), or named by the group values. The default gives the groups the scores 0, 1, 2, and so
 #'   on.
 #'
 #' @return A `greenwood_test` object, as from [logrank_test()], with 1 degree of freedom. Its
