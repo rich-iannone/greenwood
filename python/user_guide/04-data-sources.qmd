@@ -327,6 +327,16 @@ describe each one, identify which Greenwood models are a natural fit, and displa
 interactive explorer so you can inspect columns and spot missing values before writing a single line
 of analysis code.
 
+Columns that are factors in R keep R's levels. The veteran `celltype`, the colon `rx`, and `sex` in
+pbc, pbcseq, and mgus2 load as a Polars `Enum` or a Pandas `Categorical`. A regression model then
+takes the first level as its reference, as R does, and curves and group tests list the groups in
+level order.
+
+```{python}
+# The cell type keeps R's levels, with squamous first
+gw.load_dataset("veteran", backend="polars")["celltype"].dtype
+```
+
 ### `lung`: NCCTG lung cancer
 
 The `lung` dataset follows 228 patients enrolled in a North Central Cancer Treatment Group trial of
@@ -374,8 +384,8 @@ therapy: `0` or `10`).
 
 **Model fit:** `veteran` is ideal for Kaplan-Meier curves stratified by `trt` or `celltype`,
 log-rank tests, pairwise log-rank, and trend tests. For regression, `CoxPH` accepts the `celltype`
-string column directly and converts it to treatment-coded dummies automatically, giving one hazard
-ratio per cell type relative to the reference level.
+column directly and converts it to treatment-coded dummies automatically, giving one hazard ratio
+per cell type relative to squamous, the first level.
 
 ```{python}
 #| echo: false
