@@ -1,9 +1,10 @@
 """Bundled survival datasets for docs, tests, and the R-parity harness.
 
 Datasets are stored as gzipped CSVs next to this module and regenerated from their
-authoritative R sources by `scripts/export_datasets.R`. They are loaded lazily.
+authoritative R sources by `scripts/export_datasets.R`, which also writes `levels.json`, the
+levels of each R factor column. They are loaded lazily.
 
-Available datasets (all from R's `survival` package):
+Available datasets (from R's `survival` package, except `e1684`, which is from `smcure`):
 
 - `lung`: NCCTG lung cancer (228 x 10). Note `status` is coded 1 = censored, 2 = dead. As in
   R, this coding passes straight through: `"Surv(time, status)"`.
@@ -20,12 +21,18 @@ Available datasets (all from R's `survival` package):
   plasma-cell malignancy vs death). Build the endpoint from `ptime`/`pstat` (progression)
   and `futime`/`death` with `gw.Outcome.first_event(endpoints={"pcm": ("ptime", "pstat"),
   "death": ("futime", "death")})`.
+- `e1684`: ECOG E1684 melanoma trial of interferon alpha-2b (284 x 5), a dataset with a cured
+  fraction. Use `"Surv(FAILTIME, FAILCENS)"`.
+
+The factor columns (veteran `celltype`, colon `rx`, and `sex` in pbc, pbcseq, and mgus2) load as
+categoricals with R's levels, so models take R's reference level and curves come in R's order.
 """
 
 from __future__ import annotations
 
 import gzip
 import importlib.util
+import json
 from importlib.resources import files
 from typing import Any
 
@@ -105,7 +112,10 @@ def load_dataset(name: str, *, backend: str | None = None) -> Any:
     Returns
     -------
     DataFrame
-        A Polars or Pandas DataFrame with the dataset contents.
+        A Polars or Pandas DataFrame with the dataset contents. Columns that are factors in R
+        (veteran `celltype`, colon `rx`, and `sex` in pbc, pbcseq, and mgus2) are categoricals
+        with R's levels in R's order: a Polars `Enum` or a Pandas `Categorical`. Models then take
+        the first level as the reference, and curves and tests come in level order.
 
     Examples
     --------
@@ -119,6 +129,14 @@ def load_dataset(name: str, *, backend: str | None = None) -> Any:
     lung.head()
     ```
 
+    The cell type in the veteran dataset keeps R's levels, with squamous first:
+
+    ```{python}
+    # The cell type is an Enum with R's levels
+    veteran = gw.load_dataset("veteran", backend="polars")
+    veteran["celltype"].dtype
+    ```
+
     See all available dataset names:
 
     ```{python}
@@ -129,16 +147,30 @@ def load_dataset(name: str, *, backend: str | None = None) -> Any:
     if name not in _DATASETS:
         raise ValueError(f"Unknown dataset {name!r}; available: {available_datasets()}.")
     resource = files("greenwood.data").joinpath(_DATASETS[name])
-    text = gzip.decompress(resource.read_bytes()).decode("utf-8")
+    content = gzip.decompress(resource.read_bytes())
+    factors = _factor_levels(name)
 
     resolved = _resolve_backend(backend)
     if resolved == "polars":
         import polars as pl
 
-        return pl.read_csv(text.encode("utf-8"))
+        return pl.read_csv(
+            content, schema_overrides={column: pl.Enum(lv) for column, lv in factors.items()}
+        )
 
     import io
 
     import pandas as pd
 
-    return pd.read_csv(io.StringIO(text))
+    return pd.read_csv(
+        io.BytesIO(content),
+        dtype={column: pd.CategoricalDtype(lv) for column, lv in factors.items()},
+    )
+
+
+def _factor_levels(name: str) -> dict[str, list[str]]:
+    """The levels of each factor column of a dataset, in R's order, from `levels.json`."""
+    recorded: dict[str, dict[str, list[str]]] = json.loads(
+        files("greenwood.data").joinpath("levels.json").read_text(encoding="utf-8")
+    )
+    return recorded.get(name, {})
