@@ -66,6 +66,25 @@ test_that("the datasets hold the values of the Python package's copies", {
   }
 })
 
+test_that("the factors have the levels of the Python package's categoricals", {
+  root <- repo_root()
+  skip_if(is.null(root), "The Python package's datasets are not available.")
+  skip_if_not_installed("jsonlite")
+  path <- file.path(root, "python", "greenwood", "data", "levels.json")
+  recorded <- jsonlite::read_json(path, simplifyVector = TRUE)
+  for (name in names(DATASETS)) {
+    df <- get_dataset(name)
+    factors <- names(df)[vapply(df, is.factor, logical(1))]
+    expect_setequal(as.character(names(recorded[[name]])), factors)
+    for (column in factors) {
+      expect_identical(
+        levels(df[[column]]), recorded[[name]][[column]],
+        label = paste(name, column)
+      )
+    }
+  }
+})
+
 test_that("the datasets fit as the documented responses", {
   fit <- kaplan_meier(Surv(time, status) ~ sex, data = lung)
   expect_identical(glance(fit)$events, c(112, 53))

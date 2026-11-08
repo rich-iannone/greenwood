@@ -96,11 +96,15 @@ test_that("glance() of the parametric and flexible models matches the Python val
   expect_identical(out$dist, "weibull")
   expect_equal(out$scale, 0.7540512562105107, tolerance = 1e-6)
   expect_identical(out$threshold, 0)
+  expect_identical(out$Q, NA_real_)
   expect_equal(out$loglik, -1147.0544314334734, tolerance = 1e-9)
   expect_equal(out$aic, 2302.1088628669468, tolerance = 1e-9)
   expect_equal(glance(aft(f, data = lung, dist = "exponential"))$aic, 2318.1980742780493,
     tolerance = 1e-9
   )
+  out <- glance(aft(f, data = lung, dist = "gengamma"))
+  expect_equal(out$Q, 0.985829818969026, tolerance = 1e-7)
+  expect_equal(out$aic, 2 * 1147.05223250424 + 2 * 5, tolerance = 1e-9)
 
   out <- glance(parametric(Surv(time, status) ~ 1, data = lung, dist = "weibull"))
   expect_named(out, c("dist", "n", "nevent", "loglik", "aic", "bic"))
