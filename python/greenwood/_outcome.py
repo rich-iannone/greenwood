@@ -30,6 +30,7 @@ import numpy.typing as npt
 from ._event_time import EventTime, as_surv, event_time
 from ._ingest import Duration, as_1d, missing_mask, select_columns
 from ._ingest import _check_names as check_names  # pyright: ignore[reportPrivateUsage]
+from ._strata import OrderedGroups, category_levels, format_value, group_order
 from ._surv import Surv, first_event
 
 __all__ = ["Outcome"]
@@ -1296,6 +1297,9 @@ class BoundInputs:
     # The column names behind each label argument (one for `by="sex"`, several for `~ sex + ecog`),
     # or `None` when the label was given as values. Curve labels use them (`sex=1`).
     label_names: dict[str, tuple[str, ...] | None] = field(default_factory=lambda: {})
+    # The group order of each label read from a column, when binding turned the column into plain
+    # values: a categorical column's declared levels, or the combined labels of several columns.
+    label_levels: dict[str, list[Any] | None] = field(default_factory=lambda: {})
 
 
 @dataclass(frozen=True)
@@ -1556,7 +1560,11 @@ def _bind_plain(
     out_designs = {
         k: eager.select(list(v)).to_native() if _is_name_list(v) else v for k, v in designs.items()
     }
-    return BoundInputs(surv, out_designs, out_labels, data, n_input=surv.n)
+    bound = BoundInputs(surv, out_designs, out_labels, data, n_input=surv.n)
+    bound.label_levels = {
+        k: category_levels(eager.get_column(v)) for k, v in labels.items() if isinstance(v, str)
+    }
+    return bound
 
 
 def _is_name_list(value: Any) -> bool:
@@ -1619,13 +1627,15 @@ def _bind_outcome(
     surv = outcome.bind(native)
 
     out_labels: dict[str, Any] = {}
+    label_levels: dict[str, list[Any] | None] = {}
     for key, value in labels.items():
         if value is None:
             out_labels[key] = None
         elif isinstance(value, str):
             out_labels[key] = as_1d(filtered.get_column(value).to_numpy())
+            label_levels[key] = category_levels(filtered.get_column(value))
         elif isinstance(value, _GroupTerms):
-            out_labels[key] = _group_labels(filtered, value.names)
+            out_labels[key], label_levels[key] = _group_labels(filtered, value.names)
         else:
             out_labels[key] = _filter_rows(value, keep)
 
@@ -1638,12 +1648,14 @@ def _bind_outcome(
         else:
             out_designs[key] = _filter_rows(value, keep)
 
-    return BoundInputs(surv, out_designs, out_labels, native, n_dropped, n_input=n_rows)
+    bound = BoundInputs(surv, out_designs, out_labels, native, n_dropped, n_input=n_rows)
+    bound.label_levels = label_levels
+    return bound
 
 
 def _filter_rows(value: Any, keep: Array) -> Any:
     """Keep the rows of an array, frame, or series that pass the mask (2-D arrays included)."""
-    if isinstance(value, np.ndarray):
+    if isinstance(value, (np.ndarray, OrderedGroups)):
         return value[keep]  # pyright: ignore[reportUnknownVariableType]
     try:
         frame: Any = nw.from_native(value, eager_only=True)
@@ -1662,17 +1674,26 @@ def _row_count(value: Any) -> int:
         return int(as_1d(value).shape[0])
 
 
-def _group_labels(frame: Any, names: tuple[str, ...]) -> Array:
-    """One grouping label per row. A single column is used as-is, several are combined R-style."""
-    columns = [as_1d(frame.get_column(n).to_numpy()) for n in names]
-    if len(columns) == 1:
-        return columns[0]
-    from ._strata import format_value
+def _group_labels(frame: Any, names: tuple[str, ...]) -> tuple[Array, list[Any] | None]:
+    """One grouping label per row, and the group order when the values alone don't give it.
 
-    return np.array(
-        [
-            ", ".join(f"{n}={format_value(v)}" for n, v in zip(names, row, strict=True))
-            for row in zip(*columns, strict=True)
-        ],
-        dtype=object,
+    A single column is used as-is, with its declared levels if it is categorical. Several are
+    combined R-style, ordered by the first column, then the second, and so on.
+    """
+    series = [frame.get_column(n) for n in names]
+    columns = [as_1d(s.to_numpy()) for s in series]
+    if len(columns) == 1:
+        return columns[0], category_levels(series[0])
+    rank: list[dict[Any, int]] = []
+    for s, column in zip(series, columns, strict=True):
+        order = group_order(column.astype(object), category_levels(s))
+        rank.append({value: i for i, value in enumerate(order)})
+    rows = list(zip(*columns, strict=True))
+    distinct = sorted(
+        dict.fromkeys(rows), key=lambda row: [r[v] for r, v in zip(rank, row, strict=True)]
     )
+
+    def label(row: tuple[Any, ...]) -> str:
+        return ", ".join(f"{n}={format_value(v)}" for n, v in zip(names, row, strict=True))
+
+    return np.array([label(row) for row in rows], dtype=object), [label(row) for row in distinct]

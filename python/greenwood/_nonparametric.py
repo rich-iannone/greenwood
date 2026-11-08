@@ -147,6 +147,7 @@ def _resolve_weights(surv: Surv, weights: Any) -> Array:
 def _fit_blocks(
     surv: Surv,
     strata: Array,
+    levels: list[str],
     weights: Any,
     conf_type: str,
     z: float,
@@ -155,8 +156,8 @@ def _fit_blocks(
     cluster: Any = None,
 ) -> list[_Block]:
     # `strata` holds one curve label per subject ("all" for an ungrouped fit), so every fit has at
-    # least one labeled block.
-    et = tabulate_groups(surv, strata, weights)
+    # least one labeled block. The blocks follow `levels`, the curve order.
+    et = tabulate_groups(surv, strata, weights, levels=levels)
     assert et.strata is not None
     labels: list[str] = list(dict.fromkeys(et.strata.tolist()))
     masks = [et.strata == lab for lab in labels]
@@ -486,6 +487,12 @@ class KaplanMeier:
             are stored and can be accessed separately via `~~greenwood.KaplanMeier.to_frame()`, or
             visualized as separate curves via `plot_survival()`. Default (`None`) means to fit a
             single, unstratified curve.
+
+            The curves come in the order of the group values, not the order of the rows. Numbers
+            are in numeric order and text in code-point order (`"B"` before `"a"`). A pandas
+            `Categorical` or a Polars `Enum` keeps its declared order of levels. With several
+            grouping columns, the first varies slowest. Every estimator and test that works by
+            group uses this order.
         weights
             Optional weights (e.g., from survey design or inverse-probability-of-censoring
             adjustments). Must have the same length as `surv`{.gd-no-link}. Default (`None`): unit
@@ -549,7 +556,7 @@ class KaplanMeier:
             estimator="KaplanMeier",
         )
         surv = bound.surv
-        strata, self._grouped = resolve_strata(bound, "by")
+        strata, levels, self._grouped = resolve_strata(bound, "by")
         weights = bound.labels["weights"]
         cluster = bound.labels["cluster"]
         self._n_input = bound.n_input
@@ -558,7 +565,7 @@ class KaplanMeier:
         z = float(norm.ppf(1.0 - (1.0 - self.conf_level) / 2.0))
         use_robust = self.robust or cluster is not None
         self._blocks = _fit_blocks(
-            surv, strata, weights, self.conf_type, z, robust=use_robust, cluster=cluster
+            surv, strata, levels, weights, self.conf_type, z, robust=use_robust, cluster=cluster
         )
         return self
 
@@ -1124,7 +1131,8 @@ class NelsonAalen:
         by
             Optional grouping variable (e.g., a column or array). Produces one fit (one
             cumulative hazard curve) per unique value of `by`, enabling stratified
-            Nelson-Aalen analysis. Default (`None`): fit a single, unstratified curve.
+            Nelson-Aalen analysis. Default (`None`): fit a single, unstratified curve. The curves
+            come in the same order as those of `~~greenwood.KaplanMeier.fit()`.
         weights
             Optional weights (e.g., from survey design or inverse-probability-of-censoring
             adjustments). Must have the same length as `surv`{.gd-no-link}. Default (`None`): unit
@@ -1191,13 +1199,13 @@ class NelsonAalen:
             estimator="NelsonAalen",
         )
         surv = bound.surv
-        strata, self._grouped = resolve_strata(bound, "by")
+        strata, levels, self._grouped = resolve_strata(bound, "by")
         weights = bound.labels["weights"]
         self._n_input = bound.n_input
         self.n_dropped_ = bound.n_dropped
 
         z = float(norm.ppf(1.0 - (1.0 - self.conf_level) / 2.0))
-        self._blocks = _fit_blocks(surv, strata, weights, "log", z)
+        self._blocks = _fit_blocks(surv, strata, levels, weights, "log", z)
         self._z = z
         return self
 

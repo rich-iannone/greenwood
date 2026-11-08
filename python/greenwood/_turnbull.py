@@ -216,13 +216,13 @@ class _TurnbullBlock:
 
 
 def _fit_turnbull_blocks(
-    surv: Surv, strata: Array, weights: Any, tol: float, max_iter: int
+    surv: Surv, strata: Array, levels: list[str], weights: Any, tol: float, max_iter: int
 ) -> list[_TurnbullBlock]:
-    """One NPMLE per curve label in `strata` ("all" for an ungrouped fit), in first-seen order."""
+    """One NPMLE per curve label in `strata` ("all" for an ungrouped fit), in `levels` order."""
     lower, upper = _to_interval_bounds(surv)
     weight = _resolve_weights(surv, weights)
 
-    labels: list[str] = list(dict.fromkeys(strata.tolist()))
+    labels = levels
     masks = [strata == label for label in labels]
 
     blocks: list[_TurnbullBlock] = []
@@ -454,7 +454,8 @@ class Turnbull:
             column(s).
         by
             Optional grouping variable (e.g., a column or array). Produces one fit per unique
-            value of `by`. Default (`None`): a single, unstratified fit.
+            value of `by`. Default (`None`): a single, unstratified fit. The fits come in the same
+            order as the curves of `~~greenwood.KaplanMeier.fit()`.
         weights
             Optional case weights. Must have the same length as `surv`{.gd-no-link}. Default
             (`None`): unit weights.
@@ -491,12 +492,12 @@ class Turnbull:
             estimator="Turnbull",
         )
         surv = bound.surv
-        strata, self._grouped = resolve_strata(bound, "by")
+        strata, levels, self._grouped = resolve_strata(bound, "by")
         weights = bound.labels["weights"]
         self._n_input = bound.n_input
         self.n_dropped_ = bound.n_dropped
 
-        self._blocks = _fit_turnbull_blocks(surv, strata, weights, self.tol, self.max_iter)
+        self._blocks = _fit_turnbull_blocks(surv, strata, levels, weights, self.tol, self.max_iter)
         return self
 
     # -- aligned-array accessors ---------------------------------------------

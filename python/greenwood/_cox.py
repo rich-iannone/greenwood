@@ -1212,7 +1212,7 @@ class CoxPH:
         strata_labels = None if strata is None else _to_labels(strata, surv.n, "strata")
         # `name=value` labels for the baseline table (spec/results.md). The raw values in
         # `strata_labels` stay the keys that `predict(strata=)` matches against.
-        strata_display = resolve_strata(bound, "strata")[0]
+        strata_display, strata_order, _ = resolve_strata(bound, "strata")
         cluster_labels = None if cluster is None else _to_labels(cluster, surv.n, "cluster")
         frailty_labels = (
             None
@@ -1281,9 +1281,13 @@ class CoxPH:
         if strata_labels is None:
             strata_groups = [(np.arange(x.shape[0]), np.unique(exit_[event]))]
         else:
+            # One group per stratum, in curve order (spec/results.md). Strata emptied by the
+            # complete-case step are skipped.
             strata_groups = []
-            for level in dict.fromkeys(strata_labels.tolist()):
-                members = np.nonzero(strata_labels == level)[0]
+            for level in strata_order:
+                members = np.nonzero(strata_display == level)[0]
+                if members.size == 0:
+                    continue
                 ev_times = np.unique(exit_[members][event[members]])
                 strata_groups.append((members, ev_times))
         p = x.shape[1]

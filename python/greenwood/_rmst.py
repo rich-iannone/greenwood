@@ -23,6 +23,7 @@ from scipy.stats import norm
 from ._backends import to_dataframe
 from ._nonparametric import _Block, _rmst_block
 from ._outcome import bind_fit_inputs
+from ._strata import group_levels
 
 if TYPE_CHECKING:
     from ._outcome import Outcome
@@ -221,7 +222,7 @@ def _stratified_rmst_group_values(
 
 
 def _rmst_group_values(
-    surv: Surv, tau: float, group: Any
+    surv: Surv, tau: float, group: Any, *, levels: list[Any] | None = None
 ) -> tuple[dict[Any, tuple[float, float]], list[Any]]:
     """Compute RMST and SE for each group.
 
@@ -229,15 +230,15 @@ def _rmst_group_values(
     """
     from ._core import tabulate_groups
 
-    et = tabulate_groups(surv, group, None)
+    et = tabulate_groups(surv, group, None, levels=levels)
 
     # The event table has a 'strata' column when group is provided
     if et.strata is None:  # pragma: no cover
         msg = "event_table should have strata when group is provided"
         raise ValueError(msg)
 
-    # Get unique group labels from strata
-    group_labels = list(dict.fromkeys(et.strata.tolist()))  # Preserve order of first appearance
+    # The group labels, in the order of the event table's blocks
+    group_labels = list(dict.fromkeys(et.strata.tolist()))
 
     rmst_dict: dict[Any, tuple[float, float]] = {}
 
@@ -418,11 +419,9 @@ def rmst_test(
             f"estimand must be 'difference', 'ratio', or 'percentage_difference', got {estimand!r}"
         )
 
-    # Get RMST values and SEs for each group
-    rmst_dict, group_labels_ordered = _rmst_group_values(surv, tau, group)
-
-    # Sort group labels for consistent ordering
-    group_labels = sorted(set(group_labels_ordered), key=lambda v: (str(type(v)), v))
+    # RMST values and SEs for each group, in group order
+    group_labels = group_levels(bound, "group")
+    rmst_dict, _ = _rmst_group_values(surv, tau, group, levels=group_labels)
 
     if len(group_labels) < 2:
         raise ValueError("RMST comparison requires at least two groups")
@@ -714,7 +713,7 @@ def pairwise_rmst_test(
     from ._ingest import to_1d_array as _to_1d_array
 
     group_arr = _to_1d_array(group, dtype=object)
-    groups = sorted(set(group_arr.tolist()), key=lambda v: (str(type(v)), v))
+    groups = group_levels(bound, "group")
 
     if len(groups) < 2:
         raise ValueError("pairwise_rmst_test needs at least two groups.")

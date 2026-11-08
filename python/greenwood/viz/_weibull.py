@@ -230,7 +230,8 @@ def _plot_weibull_altair(
 
     km_data = _weibull_columns(km, dist)
     km_frame = to_dataframe(km_data)
-    strata_names = sorted(set(km_data["strata"]))
+    # Legend entries in curve order, the same as the fit's tables.
+    strata_names = list(dict.fromkeys(km_data["strata"]))
     grouped = len(strata_names) > 1
 
     if grouped:

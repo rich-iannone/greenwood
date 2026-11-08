@@ -19,6 +19,7 @@ from scipy.stats import chi2
 
 from ._backends import to_dataframe
 from ._outcome import bind_fit_inputs
+from ._strata import group_levels
 
 if TYPE_CHECKING:
     from ._outcome import Outcome
@@ -473,7 +474,7 @@ def logrank_test(
     event = surv.event
     weight = bound.labels["weights"] if bound.labels["weights"] is not None else np.ones(surv.n)
 
-    groups = sorted(set(labels_all.tolist()), key=lambda v: (str(type(v)), v))
+    groups = group_levels(bound, "group")
     if len(groups) < 2:
         raise ValueError("logrank_test needs at least two groups.")
     if np.count_nonzero(event) == 0:
@@ -749,7 +750,7 @@ def maxcombo_test(
     event = surv.event
     obs_weight = bound.labels["weights"] if bound.labels["weights"] is not None else np.ones(surv.n)
 
-    groups = sorted(set(labels_all.tolist()), key=lambda v: (str(type(v)), v))
+    groups = group_levels(bound, "group")
     if len(groups) != 2:
         raise ValueError("maxcombo_test requires exactly two groups.")
     if np.count_nonzero(event) == 0:
@@ -984,7 +985,7 @@ def pairwise_logrank_test(
 
     entry, exit_, event = surv.entry, surv.stop, surv.event
     weight = bound.labels["weights"] if bound.labels["weights"] is not None else np.ones(surv.n)
-    groups = sorted(set(labels_all.tolist()), key=lambda v: (str(type(v)), v))
+    groups = group_levels(bound, "group")
     if len(groups) < 2:
         raise ValueError("pairwise_logrank_test needs at least two groups.")
 
@@ -1031,7 +1032,7 @@ def trend_test(
     medium, high). It's more powerful than the multi-degree-of-freedom log-rank test when
     groups are naturally ordered.
 
-    The test assigns numeric scores to each group (default: 0, 1, 2, ... for sorted order)
+    The test assigns numeric scores to each group (default: 0, 1, 2, ... in group order)
     and tests whether a linear relationship exists between group score and survival. It can
     be combined with Fleming-Harrington weights and stratification, just like `logrank_test`.
 
@@ -1053,11 +1054,12 @@ def trend_test(
         Must have the same length as `surv`{.gd-no-link}.
     scores
         Numeric scores assigned to each group to define the linear trend. If `None` (default),
-        groups are sorted lexicographically and assigned scores 0, 1, 2, ..., (k-1) where k
-        is the number of groups. Provide custom scores as a dictionary mapping group labels
-        to numeric values (e.g., `{1: 0, 2: 1, 3: 2}` for stage labels 1,2,3) to use
-        different scoring (e.g., unequal spacing). Scores can be any real numbers (including
-        negative).
+        the groups get the scores 0, 1, 2, ..., (k-1) in group order, where k is the number of
+        groups. Numbers are in numeric order, text in code-point order, and a pandas
+        `Categorical` or a Polars `Enum` keeps its declared order. Provide custom scores as a
+        dictionary mapping group labels to numeric values (e.g., `{1: 0, 2: 1, 3: 2}` for stage
+        labels 1,2,3) to use different scoring (e.g., unequal spacing). Scores can be any real
+        numbers (including negative).
     rho
         Fleming-Harrington weight exponent applied to the pooled survival probability.
         The default of `0` gives a standard trend test with equal weight across all times.
@@ -1187,7 +1189,7 @@ def trend_test(
     event = surv.event
     weight = bound.labels["weights"] if bound.labels["weights"] is not None else np.ones(surv.n)
 
-    groups = sorted(set(labels_all.tolist()), key=lambda v: (str(type(v)), v))
+    groups = group_levels(bound, "group")
     if len(groups) < 2:
         raise ValueError("trend_test needs at least two groups.")
     if np.count_nonzero(event) == 0:
