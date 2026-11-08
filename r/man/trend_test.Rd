@@ -28,7 +28,7 @@ right, such as \code{Surv(time, status) ~ ph.ecog}. A \code{strata()} term strat
 \item{na.action}{What to do with rows that have missing values. The default drops them.}
 
 \item{scores}{The score of each group, in the order of the groups (factor levels or sorted
-values), or named by the group values. The default gives the groups the scores 0, 1, 2, and so
+values, as for \code{\link[=kaplan_meier]{kaplan_meier()}}), or named by the group values. The default gives the groups the scores 0, 1, 2, and so
 on.}
 
 \item{rho, gamma}{The Fleming-Harrington weight exponents, each at least 0. The default of 0 for

@@ -50,6 +50,11 @@ Every table from a fit has the same layout whether it holds one curve or several
 column, \code{strata}, labels the curve: \code{"all"} for a single curve, or \code{name=value} pairs such as
 \code{"sex=1"} or \code{"sex=1, ph.ecog=0"}. The grouping variables follow as their own columns, so
 results can be filtered on them directly.
+
+The curves come in the order of the grouping variables, not the order of the rows: a factor's
+levels, and otherwise sorted values, with numbers in numeric order and text in code-point
+order (\code{"B"} before \code{"a"}) in every locale. With several grouping variables the first varies
+slowest. Every estimator and test that works by group uses the same order.
 }
 \description{
 \code{kaplan_meier()} estimates the survival function from censored event times with the
