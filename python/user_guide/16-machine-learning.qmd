@@ -263,7 +263,10 @@ excluded. Uncensored subjects are reweighted by the inverse probability of censo
 correct for informative dropout.
 
 The model then fits one regression tree per class to the softmax gradient residuals of the current
-ensemble, exactly as in multi-class gradient boosting for tabular data. Because the time horizon
+ensemble, exactly as in multi-class gradient boosting for tabular data. Each leaf takes a Newton
+step: the sum of the gradients in the leaf divided by the sum of the second derivatives of the log
+loss. This scales each step to the curvature of the loss, which fits much faster than averaging
+the gradients. Because the time horizon
 varies from iteration to iteration, the ensemble learns how the class probabilities evolve over time
 without being tied to a fixed grid. Predictions are probability-calibrated by construction: the
 softmax output sums to one at every time point.
