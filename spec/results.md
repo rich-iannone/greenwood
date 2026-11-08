@@ -30,6 +30,26 @@ The name in `name=value` is the grouping column's name (from a formula or a colu
 In Python, values passed directly use the Series name if they have one, and otherwise the argument's
 name (`by=1`, `group=1`). Values are written as R prints them (`1`, not `1.0`, and `TRUE`/`FALSE`).
 
+## Group order
+
+Groups come in the order of their values, never the order of the rows, so shuffling the data
+doesn't change a result.
+
+- A categorical variable keeps its declared levels: an R factor, a pandas `Categorical` (bare or in
+  a Series), or a Polars `Enum`. Levels that don't occur in the data are skipped.
+- A Polars `Categorical` and an Arrow dictionary are sorted by value, the way their own libraries
+  sort them.
+- Other values are sorted. Numbers sort numerically (`2` before `10`), logicals put `FALSE` first,
+  and text sorts by code point (`"B"` before `"a"`), the C locale's order, in every locale. Missing
+  values come last.
+- With several grouping variables, every combination that occurs is a group, and the first variable
+  varies slowest (`sex=1, ph.ecog=0`, `sex=1, ph.ecog=1`, `sex=2, ph.ecog=0`, ...).
+
+The same order applies everywhere: the curves of every estimator in the table below, the strata of
+a stratified Cox model, the groups of the log-rank, trend, Gray, and RMST tests, and the default
+trend scores (0, 1, 2, ... in group order). Two-group differences (`rmst_test()` and the bootstrap's
+`"_diff"` statistics) take the first group minus the second.
+
 ## Status
 
 | Estimator | R | Python |
@@ -48,6 +68,4 @@ shared across strata, but its baseline hazard is one curve per stratum and follo
 
 ## Known differences
 
-- Group order: R sorts curves by the grouping variables (factor levels, otherwise sorted values).
-  Python keeps the order of first appearance in the data. Layout and labels match either way.
 - R keeps each grouping variable as its own column after `strata`. Python has only `strata`.
