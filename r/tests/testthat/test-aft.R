@@ -306,6 +306,23 @@ test_that("the generalized gamma matches the fixture", {
   expect_equal(unname(score), fixture_matrix(expected$score), tolerance = 1e-6)
 })
 
+test_that("survival and restricted-mean standard errors match the fixtures", {
+  skip_if_no_shared_cases()
+  skip_if_not_installed("survival")
+  for (dist in c("weibull", "exponential", "lognormal", "loglogistic")) {
+    expected <- read_fixture(paste0("aft_", dist))
+    fit <- lung_aft(dist)
+    times <- r_numbers(expected$pred_times)
+    s <- predict(fit, newdata = new_subjects, type = "survival", times = times)
+    expect_equal(s$estimate, c(t(fixture_matrix(expected$pred_survival))), tolerance = TOL)
+    expect_equal(s$std_error, c(t(fixture_matrix(expected$pred_survival_se))), tolerance = 1e-8)
+    e <- predict(fit, newdata = new_subjects, type = "expectation", tau = expected$tau)
+    expect_equal(e$estimate, r_numbers(expected$rmst), tolerance = TOL)
+    # The gradient of the restricted mean is a central difference, and the fixture's is extrapolated.
+    expect_equal(e$std_error, r_numbers(expected$rmst_se), tolerance = 1e-6)
+  }
+})
+
 test_that("test_distributions() matches the nested fits", {
   skip_if_no_shared_cases()
   skip_if_not_installed("survival")
