@@ -44,6 +44,11 @@
 #'   `"sex=1"` or `"sex=1, ph.ecog=0"`. The grouping variables follow as their own columns, so
 #'   results can be filtered on them directly.
 #'
+#'   The curves come in the order of the grouping variables, not the order of the rows: a factor's
+#'   levels, and otherwise sorted values, with numbers in numeric order and text in code-point
+#'   order (`"B"` before `"a"`) in every locale. With several grouping variables the first varies
+#'   slowest. Every estimator and test that works by group uses the same order.
+#'
 #' @examples
 #' lung <- data.frame(
 #'   time = c(306, 455, 1010, 210, 883, 1022, 310, 361, 218, 166),
