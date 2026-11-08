@@ -249,8 +249,8 @@ surv_parts <- function(response, fn, types = c("right", "counting")) {
 
 # -- groups ----------------------------------------------------------------------------------
 
-# One row per group (sorted by the grouping variables), and each row's group number. The keys
-# start with the `strata` label, followed by the grouping variables.
+# One row per group, in group order (see group_factor(), with the first variable varying slowest),
+# and each row's group number. The keys start with the `strata` label, then the grouping variables.
 group_keys <- function(vars, n = NULL) {
   if (is.null(vars) || length(vars) == 0L) {
     keys <- data.frame(strata = "all", stringsAsFactors = FALSE)
@@ -259,12 +259,22 @@ group_keys <- function(vars, n = NULL) {
     }
     return(list(keys = keys, index = rep(1L, n)))
   }
-  key <- interaction(lapply(vars, factor), drop = TRUE, lex.order = TRUE)
+  key <- interaction(lapply(vars, group_factor), drop = TRUE, lex.order = TRUE)
   first <- match(levels(key), key)
   values <- vars[first, , drop = FALSE]
   rownames(values) <- NULL
   keys <- cbind(data.frame(strata = strata_labels(values), stringsAsFactors = FALSE), values)
   list(keys = keys, index = as.integer(key))
+}
+
+# A grouping variable as a factor, which sets the group order. A factor keeps its levels. Other
+# values are sorted, numbers in numeric order and text in code-point order (the C locale's), so the
+# order is the same in every locale.
+group_factor <- function(x) {
+  if (is.factor(x)) {
+    return(x)
+  }
+  factor(x, levels = sort(unique(x), method = "radix"))
 }
 
 # Curve labels: `name=value` pairs joined with ", ", the same in every table, printout, and plot.
@@ -287,15 +297,6 @@ bind_groups <- function(keys, tables) {
   }))
   rownames(out) <- NULL
   out
-}
-
-# A single label per row for a data frame of grouping values, for tests that compare groups.
-group_labels <- function(vars) {
-  if (ncol(vars) == 1L) {
-    values <- vars[[1L]]
-    return(if (is.factor(values)) values else factor(values))
-  }
-  interaction(vars, drop = TRUE, lex.order = TRUE, sep = ", ")
 }
 
 # -- risk sets ---------------------------------------------------------------------------------
