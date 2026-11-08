@@ -85,7 +85,9 @@ censoring taken to come first), kept at least \code{epsilon_censoring}. These in
 censoring weights make up for the subjects left out. For each class, a regression tree on
 \eqn{(\tau, x)} is then fit to the weighted gradient of the multi-class log loss,
 \eqn{w (y_k - p_k)}, with \eqn{p_k} the current model's probability of the class at
-\eqn{(\tau, x)}, and added to the class's score, shrunk by \code{learning_rate}.
+\eqn{(\tau, x)}. Each leaf of the tree takes a Newton step on the log loss,
+\eqn{\frac{K}{K + 1} \sum w (y_k - p_k) / \sum w p_k (1 - p_k)} over the rows in the leaf
+(Friedman, 2001), and the tree is added to the class's score, shrunk by \code{learning_rate}.
 
 The model uses R's random number generator for the times, and for \code{subsample} and
 \code{max_features} (which work as in \code{\link[=gradient_boosting_survival_analysis]{gradient_boosting_survival_analysis()}}, with the time counted
@@ -114,6 +116,9 @@ predict(fit, newdata = data.frame(age = 75, hgb = 11), times = c(50, 150))
 Alberge, J., Maladiere, V., Grisel, O., Abecassis, J., and Varoquaux, G. (2025).
 Survival models: proper scoring rule and stochastic optimization with competing risks.
 \emph{Proceedings of the 28th International Conference on Artificial Intelligence and Statistics}.
+
+Friedman, J. H. (2001). Greedy function approximation: a gradient boosting machine.
+\emph{The Annals of Statistics}, 29(5), 1189-1232.
 }
 \seealso{
 \code{\link[=aalen_johansen]{aalen_johansen()}} for the cumulative incidence without covariates, and \code{\link[=fine_gray]{fine_gray()}}
