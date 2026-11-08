@@ -169,8 +169,9 @@ boost_cox_gradient <- function(scores, time, event) {
 # Grow a squared-error regression tree of depth at most `max_depth`. A node is split when it has
 # at least 2 * min_leaf rows and y isn't constant on it, at the cut-point that most reduces the
 # squared error, if any does. `importance` is the reduction credited to each column. Nodes are
-# numbered as in grow_logrank_tree(), and `value` is the mean of y on each node.
-grow_regression_tree <- function(x, y, max_depth, min_leaf, mtry) {
+# numbered as in grow_logrank_tree(), and `value` is the mean of y on each node. With `hessian`,
+# `value` is instead the Newton step `scale * sum(y) / sum(hessian)`, and the splits don't change.
+grow_regression_tree <- function(x, y, max_depth, min_leaf, mtry, hessian = NULL, scale = 1) {
   n <- length(y)
   p <- ncol(x)
   size <- max(2L * n - 1L, 1L)
@@ -194,7 +195,14 @@ grow_regression_tree <- function(x, y, max_depth, min_leaf, mtry) {
     }
     rows <- item$rows
     node_y <- y[rows]
-    value[id] <- if (length(rows) > 0L) mean(node_y) else 0
+    value[id] <- if (length(rows) == 0L) {
+      0
+    } else if (is.null(hessian)) {
+      mean(node_y)
+    } else {
+      denominator <- sum(hessian[rows])
+      if (denominator > 1e-150) scale * sum(node_y) / denominator else 0
+    }
     if (item$depth >= max_depth || length(rows) < 2L * min_leaf ||
       diff(range(node_y)) <= 0) {
       next
@@ -378,7 +386,9 @@ print.gradient_boosting_survival_analysis <- function(x, digits = getOption("dig
 #' censoring weights make up for the subjects left out. For each class, a regression tree on
 #' \eqn{(\tau, x)} is then fit to the weighted gradient of the multi-class log loss,
 #' \eqn{w (y_k - p_k)}, with \eqn{p_k} the current model's probability of the class at
-#' \eqn{(\tau, x)}, and added to the class's score, shrunk by `learning_rate`.
+#' \eqn{(\tau, x)}. Each leaf of the tree takes a Newton step on the log loss,
+#' \eqn{\frac{K}{K + 1} \sum w (y_k - p_k) / \sum w p_k (1 - p_k)} over the rows in the leaf
+#' (Friedman, 2001), and the tree is added to the class's score, shrunk by `learning_rate`.
 #'
 #' The model uses R's random number generator for the times, and for `subsample` and
 #' `max_features` (which work as in [gradient_boosting_survival_analysis()], with the time counted
@@ -413,6 +423,9 @@ print.gradient_boosting_survival_analysis <- function(x, digits = getOption("dig
 #' @references Alberge, J., Maladiere, V., Grisel, O., Abecassis, J., and Varoquaux, G. (2025).
 #'   Survival models: proper scoring rule and stochastic optimization with competing risks.
 #'   *Proceedings of the 28th International Conference on Artificial Intelligence and Statistics*.
+#'
+#'   Friedman, J. H. (2001). Greedy function approximation: a gradient boosting machine.
+#'   *The Annals of Statistics*, 29(5), 1189-1232.
 #'
 #' @seealso [aalen_johansen()] for the cumulative incidence without covariates, and [fine_gray()]
 #'   for a regression model of it.
@@ -516,8 +529,11 @@ survival_boost <- function(formula,
     w <- weight[active]
     rounds[[length(rounds) + 1L]] <- lapply(seq_len(n_classes), function(k) {
       gradient <- w * ((target[active] == k - 1L) - probs[, k])
+      hessian <- w * probs[, k] * (1 - probs[, k])
+      # The leaves take a Newton step on the multi-class log loss, scaled by (K - 1) / K.
       grow_regression_tree(xa[rows, , drop = FALSE], gradient[rows], max_depth,
-        min_samples_leaf, mtry
+        min_samples_leaf, mtry,
+        hessian = hessian[rows], scale = (n_classes - 1) / n_classes
       )
     })
   }
