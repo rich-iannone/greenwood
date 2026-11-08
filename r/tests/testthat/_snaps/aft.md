@@ -30,3 +30,20 @@
       Log-likelihood: -197.837
       Likelihood ratio test: 0.31 on 1 df, p = 0.577
 
+---
+
+    Code
+      print(aft(Surv(time, status) ~ age, data = small_cox, dist = "gengamma"))
+    Output
+      <aft> Surv(time, status) ~ age
+      Generalized gamma distribution. n = 30, events = 28
+      
+                  estimate time_ratio std_error statistic   p_value
+      (Intercept)  5.36221    213.195   1.35475    3.9581 7.555e-05
+      age          0.01231      1.012   0.02044    0.6024 5.469e-01
+      
+      Scale: 0.767 (std. error of log(scale) 0.234)
+      Q: 1.05 (std. error 0.588)
+      Log-likelihood: -196.675
+      Likelihood ratio test: 0.374 on 1 df, p = 0.541
+
