@@ -343,9 +343,10 @@ aft.predict_expectation(newdata, tau=365, ci=True, format="polars")
 
 The four standard AFT distributions each impose a fixed hazard shape. Picking among them by AIC
 works, but it treats the candidates as unrelated. The generalized gamma distribution offers a more
-principled approach: it is a three-parameter family that nests Weibull (Q = 1), log-normal (Q
-approaches 0), and exponential (Q = 1, sigma = 1) as special cases. Fitting it gives a formal
-likelihood ratio test of whether a simpler sub-model is adequate.
+principled approach: it is a three-parameter family that nests Weibull (Q = 1), log-normal (Q = 0),
+and exponential (Q = 1, sigma = 1) as special cases. Fitting it gives a formal likelihood ratio test
+of whether a simpler sub-model is adequate. The log-logistic isn't nested in it, so compare that one
+by AIC.
 
 ```{python}
 # Fit a generalized gamma AFT model
@@ -357,13 +358,15 @@ gg
 
 The extra shape parameter Q controls the distributional family. When Q is near 1 the data favor a
 Weibull shape. When it is near 0 the data favor a log-normal shape. Values far from both suggest
-that neither simple family is adequate.
+that neither simple family is adequate. Here Q is close to 1, with a standard error of about 0.2, so
+the lung data look Weibull.
 
 ### Testing nested sub-models
 
-The `test_distributions()` method fits each nested sub-model (Weibull, log-normal, exponential,
-log-logistic) and compares it against the generalized gamma via a likelihood ratio test with one
-degree of freedom. A large p-value means the simpler model cannot be rejected.
+The `test_distributions()` method fits each nested sub-model (Weibull, log-normal, and exponential)
+and compares it against the generalized gamma via a likelihood ratio test. The test has one degree
+of freedom for the Weibull and the log-normal, which each fix Q, and two for the exponential, which
+also fixes the scale. A large p-value means the simpler model cannot be rejected.
 
 ```{python}
 # Compare the generalized gamma against its nested sub-models
@@ -372,7 +375,9 @@ gg.test_distributions(format="polars")
 
 A non-significant p-value for a sub-model (say, Weibull) means the extra Q parameter does not
 improve the fit enough to justify the added complexity. You can then use the simpler model with
-confidence. The AIC column gives a penalty-adjusted comparison that also accounts for sample size.
+confidence. On lung the Weibull is adequate (p near 0.95), while the log-normal and the exponential
+are rejected. The AIC column penalizes each sub-model for its number of parameters, so the
+sub-models can also be compared with one another.
 
 ### Predictions
 
