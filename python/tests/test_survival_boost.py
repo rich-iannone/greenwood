@@ -274,17 +274,25 @@ class TestSurvivalBoostRounds:
     """Each round's trees are rebuilt from the rows and gradients they were grown on."""
 
     @staticmethod
-    def _capture(monkeypatch: pytest.MonkeyPatch) -> list[tuple[np.ndarray, np.ndarray]]:
+    def _capture(
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> list[tuple[np.ndarray, np.ndarray, np.ndarray, float]]:
         from greenwood import _survival_boost
 
-        calls: list[tuple[np.ndarray, np.ndarray]] = []
+        calls: list[tuple[np.ndarray, np.ndarray, np.ndarray, float]] = []
         original = _survival_boost._RegressionTree.fit
 
         def fit(
-            self: _survival_boost._RegressionTree, x: np.ndarray, y: np.ndarray, imp: np.ndarray
+            self: _survival_boost._RegressionTree,
+            x: np.ndarray,
+            y: np.ndarray,
+            imp: np.ndarray,
+            hessian: np.ndarray | None = None,
+            scale: float = 1.0,
         ) -> _survival_boost._RegressionTree:
-            calls.append((x.copy(), y.copy()))
-            return original(self, x, y, imp)
+            assert hessian is not None
+            calls.append((x.copy(), y.copy(), hessian.copy(), scale))
+            return original(self, x, y, imp, hessian=hessian, scale=scale)
 
         monkeypatch.setattr(_survival_boost._RegressionTree, "fit", fit)
         return calls
@@ -307,7 +315,7 @@ class TestSurvivalBoostRounds:
         assert len(calls) == 4 * n_classes
 
         for r in range(4):
-            xa, _ = calls[r * n_classes]
+            xa = calls[r * n_classes][0]
             # Every row is a subject at one horizon. The covariates identify the subject.
             subject = np.array(
                 [int(np.flatnonzero((x == row).all(axis=1))[0]) for row in xa[:, 1:]]
@@ -317,10 +325,56 @@ class TestSurvivalBoostRounds:
             )
             probs = _softmax(_ensemble_scores(sb.trees_[:r], xa, sb.learning_rate, n_classes))
             for k in range(n_classes):
-                xk, yk = calls[r * n_classes + k]
+                xk, yk, hk, scale = calls[r * n_classes + k]
                 np.testing.assert_array_equal(xk, xa)
                 expected = weights * ((targets == k).astype(float) - probs[:, k])
                 np.testing.assert_allclose(yk, expected, rtol=1e-12, atol=1e-12)
+                hessian = weights * probs[:, k] * (1.0 - probs[:, k])
+                np.testing.assert_allclose(hk, hessian, rtol=1e-12, atol=1e-12)
+                assert scale == (n_classes - 1) / n_classes
+
+    def test_leaves_take_newton_steps(
+        self, monkeypatch: pytest.MonkeyPatch, competing_data: gw.SimulatedCompetingRisks
+    ) -> None:
+        calls = self._capture(monkeypatch)
+        sb = gw.SurvivalBoost(
+            n_estimators=3, learning_rate=0.3, max_depth=2, min_samples_leaf=5, random_state=4
+        ).fit(competing_data.surv, competing_data.covariates)
+        n_classes = sb.n_classes_
+        for r, round_trees in enumerate(sb.trees_):
+            for k, tree in enumerate(round_trees):
+                x, y, hessian, _ = calls[r * n_classes + k]
+                # The rows that reach each leaf, found by walking the tree.
+                leaves: dict[int, list[int]] = {}
+                for i, row in enumerate(x):
+                    node = tree._root
+                    while not node.is_leaf:
+                        assert node.left is not None and node.right is not None
+                        node = node.left if row[node.feature] <= node.threshold else node.right
+                    leaves.setdefault(id(node), []).append(i)
+                values = tree.predict(x)
+                assert len(leaves) > 1
+                for rows in leaves.values():
+                    step = (n_classes - 1) / n_classes * y[rows].sum() / hessian[rows].sum()
+                    np.testing.assert_allclose(values[rows], step, rtol=1e-12)
+
+    @pytest.mark.slow
+    def test_defaults_track_the_marginal_incidence(
+        self, competing_data: gw.SimulatedCompetingRisks
+    ) -> None:
+        # Averaged over the subjects, the default model's incidence of each cause is close to
+        # the Aalen-Johansen estimate, down to the earliest times.
+        surv = competing_data.surv
+        event_times = np.asarray(surv.stop)[np.asarray(surv.status) > 0]
+        times = np.concatenate(([0.0], np.quantile(event_times, [0.1, 0.25, 0.5, 0.75])))
+        sb = gw.SurvivalBoost(random_state=0).fit(surv, competing_data.covariates)
+        cif = sb.predict_cumulative_incidence(competing_data.covariates, times=times)
+        aj = gw.AalenJohansen().fit(surv).to_frame(format="pandas")
+        for k, cause in enumerate(surv.states or (), start=1):
+            curve = aj[aj["cause"] == cause]
+            at = np.searchsorted(curve["time"].to_numpy(), times, side="right") - 1
+            marginal = np.where(at >= 0, curve["estimate"].to_numpy()[np.maximum(at, 0)], 0.0)
+            np.testing.assert_allclose(cif[:, k, :].mean(axis=0), marginal, atol=0.06)
 
     @pytest.mark.parametrize(("fraction", "n_zero"), [(0.0, 0), (0.1, 30), (0.05, 15)])
     def test_hard_zero_fraction_rounds_down(
@@ -338,7 +392,7 @@ class TestSurvivalBoostRounds:
             random_state=0,
         ).fit(competing_data.surv, competing_data.covariates)
         # A horizon of 0 is before every follow-up time, so its row is never left out.
-        for xa, _ in calls:
+        for xa, *_ in calls:
             assert int((xa[:, 0] == 0.0).sum()) == 2 * n_zero
 
     def test_time_grid_has_distinct_times(self) -> None:
