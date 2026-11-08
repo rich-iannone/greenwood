@@ -5,16 +5,20 @@ error $W$ follows a standard distribution chosen by `dist`:
 
 - `"weibull"` and `"exponential"` (exponential fixes $\sigma = 1$): minimum extreme value,
 - `"lognormal"`: standard normal,
-- `"loglogistic"`: standard logistic.
+- `"loglogistic"`: standard logistic,
+- `"gengamma"`: Prentice's generalized gamma, with a shape `Q` that nests the Weibull (`Q = 1`) and
+  the log-normal (`Q = 0`).
 
 Coefficients are on the log-time scale (with an intercept), matching R's `survreg`. The model is fit
 by maximum likelihood for right-censored data, and the coefficients, scale, standard errors, and
-log-likelihood are validated to tolerance against `survreg`.
+log-likelihood are validated to tolerance against `survreg` (and the generalized gamma against
+flexsurv's likelihood).
 """
 
 from __future__ import annotations
 
 import warnings
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -39,6 +43,8 @@ if TYPE_CHECKING:
 __all__ = ["AFT"]
 
 Array = npt.NDArray[Any]
+# A log-likelihood with its gradient and Hessian, as a function of the parameters.
+_Terms = Callable[[Array], tuple[float, Array, Array]]
 
 _DISTS = frozenset({"weibull", "exponential", "lognormal", "loglogistic", "gengamma"})
 
@@ -73,46 +79,248 @@ def _dlogf_dz(dist: str, z: Array, *, Q: float = 0.0) -> Array:
     if dist == "lognormal":
         return -z
     if dist == "gengamma":
-        h = 1e-5
-        f_plus, _ = _gengamma_log_density_survival(z + h, Q)
-        f_minus, _ = _gengamma_log_density_survival(z - h, Q)
-        return (f_plus - f_minus) / (2.0 * h)
+        return _gengamma_slope(z, Q)
     # loglogistic
     return 1.0 - 2.0 * logistic.cdf(z)
 
 
-def _gengamma_log_density_survival(z: Array, Q: float) -> tuple[Array, Array]:
-    """Log-density and log-survival for the generalized gamma error at standardized `z`.
+def _gengamma_log_density(z: Array, Q: float) -> Array:
+    r"""Log-density of the generalized gamma error at standardized `z`.
 
-    Uses the Prentice (1974) parameterization where w = z, k = Q^(-2), u = k * exp(Q * w). Falls
-    back to log-normal when |Q| < 1e-10.
+    In Prentice's parameterization, with $k = Q^{-2}$ and $u = k e^{Qz}$, the log-density is
+    $\log|Q| + k \log k - \log\Gamma(k) + kQz - u$. It is computed as a constant minus
+    $(e^{Qz} - 1 - Qz) / Q^2$, with both parts kept accurate as $Q$ nears 0. $Q = 0$ is the
+    standard normal limit.
     """
-    if np.abs(Q) < 1e-10:
-        return norm.logpdf(z), norm.logsf(z)
-
+    if Q == 0.0:
+        return norm.logpdf(z)
     k = Q ** (-2.0)
-    w = z
-    qw = Q * w
-    log_u = np.log(k) + qw
-    u = np.exp(log_u)
-
-    log_f = (
-        np.log(np.abs(Q))
-        + k * np.log(k)
-        - _sp_gammaln(k)
-        + k * qw
-        - u
-        - np.log(np.abs(Q))  # cancels, but kept for clarity before simplification
-    )
-    # Simplified: log_f = k*log(k) - gammaln(k) + k*Q*w - k*exp(Q*w)
-    log_f = k * np.log(k) - _sp_gammaln(k) + k * qw - u
-
-    if Q > 0:
-        log_s = np.log(np.clip(_sp_gammaincc(k, u), 1e-300, None))
+    if k > 1e4:
+        # Stirling's series for k log k - k - log Gamma(k) + log|Q|.
+        constant = -0.5 * np.log(2.0 * np.pi) - 1.0 / (12.0 * k) + 1.0 / (360.0 * k**3)
     else:
-        log_s = np.log(np.clip(_sp_gammainc(k, u), 1e-300, None))
+        constant = np.log(abs(Q)) + k * np.log(k) - k - float(_sp_gammaln(k))
+    a = Q * z
+    with np.errstate(over="ignore"):
+        excess = np.where(
+            np.abs(a) < 1e-3,
+            z**2 * (0.5 + a / 6.0 + a**2 / 24.0 + a**3 / 120.0),
+            (np.expm1(a) - a) / Q**2,
+        )
+    return constant - excess
 
-    return log_f, log_s
+
+def _gengamma_log_survival(z: Array, Q: float) -> Array:
+    """Log-survival of the generalized gamma error at standardized `z`.
+
+    The survival is the upper regularized incomplete gamma function at $(k, u)$ for $Q > 0$ and
+    the lower one for $Q < 0$.
+    """
+    if Q == 0.0:
+        return norm.logsf(z)
+    k = Q ** (-2.0)
+    with np.errstate(over="ignore"):
+        u = np.exp(Q * z + np.log(k))
+    tail = _sp_gammaincc(k, u) if Q > 0 else _sp_gammainc(k, u)
+    with np.errstate(divide="ignore"):
+        return np.log(np.clip(tail, 1e-300, None))
+
+
+def _gengamma_slope(z: Array, Q: float) -> Array:
+    r"""Derivative of the generalized gamma log-density in `z`, $-(e^{Qz} - 1) / Q$."""
+    if Q == 0.0:
+        return -np.asarray(z, dtype=float)
+    with np.errstate(over="ignore"):
+        return -np.expm1(Q * z) / Q
+
+
+def _gengamma_log_density_survival(z: Array, Q: float) -> tuple[Array, Array]:
+    """Log-density and log-survival for the generalized gamma error at standardized `z`."""
+    return _gengamma_log_density(z, Q), _gengamma_log_survival(z, Q)
+
+
+def _gengamma_log_moment(k: float, shift: float) -> float:
+    r"""$\log\Gamma(k + c) - \log\Gamma(k) - c \log k$ for $c = \sigma/Q$.
+
+    This is the log of $E[e^{\sigma W}]$. For a large `k`, the difference of Stirling's series
+    avoids the cancellation of the direct form.
+    """
+    if min(k, k + shift) < 1e5:
+        return float(_sp_gammaln(k + shift) - _sp_gammaln(k) - shift * np.log(k))
+
+    def correction(v: float) -> float:
+        return 1.0 / (12.0 * v) - 1.0 / (360.0 * v**3)
+
+    return float(
+        (k + shift - 0.5) * np.log1p(shift / k) - shift + correction(k + shift) - correction(k)
+    )
+
+
+def _error_pieces(
+    dist: str, z: Array, event: Array, *, Q: float = 0.0
+) -> tuple[Array, Array, Array]:
+    """Each row's log-likelihood term on the `z` scale, with its first two derivatives in `z`.
+
+    Events contribute the error's log-density and censored rows its log-survival.
+    """
+    is_event = event == 1
+    if dist in ("weibull", "exponential"):
+        e = np.exp(z)
+        return np.where(is_event, z - e, -e), np.where(is_event, 1.0 - e, -e), -e
+    if dist == "loglogistic":
+        f = logistic.cdf(z)
+        g = np.where(is_event, logistic.logpdf(z), logistic.logsf(z))
+        d1 = np.where(is_event, 1.0 - 2.0 * f, -f)
+        d2 = np.where(is_event, -2.0 * f * (1.0 - f), -f * (1.0 - f))
+        return g, d1, d2
+    if dist == "lognormal":
+        log_f, log_s, slope, curve = norm.logpdf(z), norm.logsf(z), -z, -np.ones_like(z)
+    else:
+        log_f, log_s = _gengamma_log_density_survival(z, Q)
+        slope = _gengamma_slope(z, Q)
+        with np.errstate(over="ignore"):
+            curve = -np.exp(Q * z)
+    with np.errstate(over="ignore", invalid="ignore"):
+        h = np.exp(log_f - log_s)
+        d2 = np.where(is_event, curve, -h * (h + slope))
+    g = np.where(is_event, log_f, log_s)
+    d1 = np.where(is_event, slope, -h)
+    return g, d1, d2
+
+
+def _aft_terms(
+    theta: Array, x: Array, log_t: Array, event: Array, dist: str, *, Q: float = 0.0
+) -> tuple[float, Array, Array]:
+    """Log-likelihood of the AFT model with its gradient and Hessian in `theta`.
+
+    `theta` is `(beta, log sigma)`, or `beta` alone for the exponential. The density is on the
+    time scale, so events carry the Jacobian `-log(sigma) - log(t)`.
+    """
+    p = x.shape[1]
+    fixed_scale = dist == "exponential"
+    s = 0.0 if fixed_scale else float(theta[p])
+    sigma = np.exp(s)
+    z = (log_t - x @ theta[:p]) / sigma
+    g, d1, d2 = _error_pieces(dist, z, event, Q=Q)
+    loglik = float(np.sum(g - event * (s + log_t)))
+    if not np.isfinite(loglik):
+        return -np.inf, np.zeros(0), np.zeros((0, 0))
+    gradient = x.T @ (-d1 / sigma)
+    hessian = (x * (d2 / sigma**2)[:, None]).T @ x
+    if not fixed_scale:
+        h_bs = x.T @ ((d2 * z + d1) / sigma)
+        h_ss = float(np.sum(d2 * z**2 + d1 * z))
+        gradient = np.append(gradient, np.sum(-d1 * z - event))
+        hessian = np.block([[hessian, h_bs[:, None]], [h_bs[None, :], np.array([[h_ss]])]])
+    return loglik, gradient, hessian
+
+
+def _gengamma_terms(
+    theta: Array, x: Array, log_t: Array, event: Array
+) -> tuple[float, Array, Array]:
+    """Generalized gamma log-likelihood with its gradient and Hessian in `(beta, log sigma, Q)`.
+
+    The derivatives in `(beta, log sigma)` are exact at each `Q`, and those in `Q` are five-point
+    differences of them.
+    """
+    Q = float(theta[-1])
+    rest = theta[:-1]
+    mid = _aft_terms(rest, x, log_t, event, "gengamma", Q=Q)
+    h = 1e-3
+    sides = [_aft_terms(rest, x, log_t, event, "gengamma", Q=Q + d * h) for d in (-2, -1, 1, 2)]
+    values = [side[0] for side in sides]
+    if not np.isfinite(mid[0]) or not np.all(np.isfinite(values)):
+        return -np.inf, np.zeros(0), np.zeros((0, 0))
+
+    def stencil(v: list[Any]) -> Any:
+        return (v[0] - 8.0 * v[1] + 8.0 * v[2] - v[3]) / (12.0 * h)
+
+    d_q = stencil(values)
+    d_qq = (-values[0] + 16.0 * values[1] - 30.0 * mid[0] + 16.0 * values[2] - values[3]) / (
+        12.0 * h**2
+    )
+    d_q_other = stencil([side[1] for side in sides])
+    gradient = np.append(mid[1], d_q)
+    hessian = np.block([[mid[2], d_q_other[:, None]], [d_q_other[None, :], np.array([[d_qq]])]])
+    return mid[0], gradient, hessian
+
+
+def _newton_step(info: Array, gradient: Array) -> Array:
+    """Solve `info @ step = gradient`, adding a ridge until `info` is positive definite."""
+    ridge = 0.0
+    scale = max(float(np.max(np.abs(np.diag(info)))), 1.0)
+    eye = np.eye(info.shape[0])
+    for _ in range(30):
+        try:
+            factor = np.linalg.cholesky(info + ridge * eye)
+        except np.linalg.LinAlgError:
+            ridge = 1e-8 * scale if ridge == 0.0 else ridge * 10.0
+            continue
+        return np.linalg.solve(factor.T, np.linalg.solve(factor, gradient))
+    return gradient / scale
+
+
+def _newton_maximize(
+    theta: Array, terms: _Terms, *, max_iter: int = 50, tol: float = 1e-10
+) -> tuple[Array, float, Array, bool]:
+    """Newton-Raphson from `theta`, halving the step whenever it lowers the log-likelihood.
+
+    `terms(theta)` gives the log-likelihood with its gradient and Hessian. Returns the estimates,
+    the log-likelihood, the observed information, and whether the iterations converged.
+    """
+    current = terms(theta)
+    if not np.isfinite(current[0]):
+        raise ValueError("The log-likelihood isn't finite at the starting values.")
+    converged = False
+    for _ in range(max_iter):
+        step = _newton_step(-current[2], current[1])
+        candidate = terms(theta + step)
+        halvings = 0
+        while (
+            not (np.isfinite(candidate[0]) and candidate[0] >= current[0] - 1e-12) and halvings < 30
+        ):
+            step = step / 2.0
+            halvings += 1
+            candidate = terms(theta + step)
+        change = candidate[0] - current[0]
+        theta = theta + step
+        current = candidate
+        if abs(change) <= tol * (abs(current[0]) + tol):
+            converged = True
+            break
+    return theta, float(current[0]), -current[2], converged
+
+
+def _aft_newton(
+    x: Array, log_t: Array, event: Array, dist: str, *, Q: float = 0.0
+) -> tuple[Array, float, Array, bool]:
+    """Fit the AFT model by Newton-Raphson, starting from least squares on all the rows."""
+    beta, *_ = np.linalg.lstsq(x, log_t, rcond=None)
+    theta = np.asarray(beta, dtype=float)
+    if dist != "exponential":
+        spread = float(np.sqrt(np.mean((log_t - x @ theta) ** 2)))
+        theta = np.append(theta, np.log(max(spread, 1e-3)))
+    return _newton_maximize(theta, lambda th: _aft_terms(th, x, log_t, event, dist, Q=Q))
+
+
+def _gengamma_newton(x: Array, log_t: Array, event: Array) -> tuple[Array, float, Array, bool]:
+    """Fit the generalized gamma, with `theta = (beta, log sigma, Q)`.
+
+    The start is the best of the fits over a grid of fixed values of `Q`, and Newton-Raphson then
+    moves all the parameters together.
+    """
+    best: tuple[float, Array, float] | None = None
+    for q in np.arange(-6, 7) * 0.5:
+        try:
+            theta_q, loglik_q, _, _ = _aft_newton(x, log_t, event, "gengamma", Q=float(q))
+        except (ValueError, np.linalg.LinAlgError):
+            continue
+        if np.isfinite(loglik_q) and (best is None or loglik_q > best[0]):
+            best = (loglik_q, theta_q, float(q))
+    if best is None:
+        raise ValueError("The generalized gamma likelihood isn't finite for any starting Q.")
+    start = np.append(best[1], best[2])
+    return _newton_maximize(start, lambda th: _gengamma_terms(th, x, log_t, event))
 
 
 def _error_quantile(dist: str, p: Array, *, Q: float = 0.0) -> Array:
@@ -134,13 +342,13 @@ def _gengamma_quantile(p: Array, Q: float) -> Array:
     """Quantile of the standardized generalized gamma error distribution."""
     from scipy.special import gammainccinv, gammaincinv
 
-    if np.abs(Q) < 1e-10:
+    if Q == 0.0:
         return norm.ppf(p)
 
     k = Q ** (-2.0)
-    u = gammainccinv(k, 1.0 - p) if Q > 0 else gammaincinv(k, 1.0 - p)
-    w = (np.log(u) - np.log(k)) / Q
-    return w
+    # F(w) = p is the lower tail of u = k exp(Q w) for Q > 0 and the upper tail for Q < 0.
+    u = gammaincinv(k, p) if Q > 0 else gammainccinv(k, p)
+    return np.log(u / k) / Q
 
 
 def _mean_survival_aft(dist: str, mu: Array, sigma: float, *, Q: float = 0.0) -> Array:
@@ -163,20 +371,34 @@ def _mean_survival_aft(dist: str, mu: Array, sigma: float, *, Q: float = 0.0) ->
 def _gengamma_mean(mu: Array, sigma: float, Q: float) -> Array:
     r"""$E[T]$ for the generalized gamma distribution.
 
-    Uses the identity $E[T] = \exp(\mu) \cdot \Gamma(k + 1/Q) / (k^{1/Q} \cdot \Gamma(k))$ when
-    $Q > 0$ and $k + 1/Q > 0$.
+    With $c = \sigma / Q$, $E[T] = e^\mu \Gamma(k + c) / (k^c \Gamma(k))$ when $k + c > 0$. The
+    mean is infinite otherwise.
     """
-    if np.abs(Q) < 1e-10:
+    if Q == 0.0:
         return np.exp(mu + 0.5 * sigma**2)
-
     k = Q ** (-2.0)
-    # E[T] = exp(mu) * Gamma(k + sigma/Q^2*Q) / (k^(sigma/Q^2*Q) * Gamma(k))
-    # In Prentice parameterization: E[T] = exp(mu) * k^(-1/Q) * Gamma(k + 1/Q) / Gamma(k)
-    arg = k + 1.0 / Q
-    if arg <= 0:
+    shift = sigma / Q
+    if k + shift <= 0:
         return np.full_like(mu, np.inf)
-    log_ratio = _sp_gammaln(arg) - _sp_gammaln(k) - (1.0 / Q) * np.log(k)
-    return np.exp(mu + log_ratio)
+    return np.exp(mu + _gengamma_log_moment(k, shift))
+
+
+def _gengamma_partial_moment(mu: Array, sigma: float, Q: float, t0: Array, *, upper: bool) -> Array:
+    r"""$E[T \, 1\{T > t_0\}]$ (`upper=True`) or $E[T \, 1\{T \le t_0\}]$ for the generalized gamma.
+
+    With $c = \sigma / Q$, $T = e^\mu (U/k)^c$ for $U \sim \text{Gamma}(k)$, and
+    $E[U^c 1\{U \in A\}] = \Gamma(k + c) / \Gamma(k) \cdot P_{k+c}(A)$, so each part is the mean
+    times a regularized incomplete gamma function of shape $k + c$. Needs $k + c > 0$.
+    """
+    k = Q ** (-2.0)
+    shift = sigma / Q
+    with np.errstate(divide="ignore"):
+        z0 = (np.log(t0) - mu) / sigma
+    with np.errstate(over="ignore"):
+        u0 = np.exp(Q * z0 + np.log(k))
+    # T > t0 is U > u0 for Q > 0 and U < u0 for Q < 0.
+    share = _sp_gammaincc(k + shift, u0) if upper == (Q > 0) else _sp_gammainc(k + shift, u0)
+    return np.exp(mu + _gengamma_log_moment(k, shift)) * share
 
 
 def _tail_partial_moment(dist: str, mu: Array, sigma: float, t0: Array, *, Q: float = 0.0) -> Array:
@@ -204,6 +426,9 @@ def _tail_partial_moment(dist: str, mu: Array, sigma: float, t0: Array, *, Q: fl
       $E[T] \cdot I_{S(t_0)}(1-\sigma,\, \sigma)$ where $I_x$ is the regularized incomplete Beta
       function and $S(t_0) = \operatorname{logistic.sf}(z_0)$.
     - **Log-logistic** ($\sigma \ge 1$): numerical integration via `scipy.integrate.quad`.
+    - **Generalized gamma** ($k + \sigma/Q > 0$): $E[T \, 1\{T > t_0\}] - t_0 S(t_0)$, the first
+      part a regularized incomplete gamma function of shape $k + \sigma/Q$ (see
+      `_gengamma_partial_moment`). The tail is infinite otherwise.
     """
     t0 = np.broadcast_to(np.asarray(t0, dtype=float), mu.shape).copy()
 
@@ -223,21 +448,15 @@ def _tail_partial_moment(dist: str, mu: Array, sigma: float, t0: Array, *, Q: fl
         return term1 - term2
 
     if dist == "gengamma":
-        from scipy.integrate import quad
-
-        out = np.empty_like(mu)
-        for i in range(mu.shape[0]):
-            mu_i, t0_i = float(mu[i]), float(t0[i])
-
-            def _sf_gg(t: float, _mu: float = mu_i) -> float:
-                if t <= 0:
-                    return 1.0
-                z = (np.log(t) - _mu) / sigma
-                _, log_s = _gengamma_log_density_survival(np.array([z]), Q)
-                return float(np.exp(log_s[0]))
-
-            out[i], _ = quad(_sf_gg, t0_i, np.inf, limit=200)
-        return out
+        if Q == 0.0:
+            return _tail_partial_moment("lognormal", mu, sigma, t0)
+        if Q ** (-2.0) + sigma / Q <= 0:
+            return np.full_like(mu, np.inf)
+        with np.errstate(divide="ignore"):
+            z0 = (np.log(t0) - mu) / sigma
+        s0 = np.exp(_gengamma_log_survival(z0, Q))
+        moment = _gengamma_partial_moment(mu, sigma, Q, t0, upper=True)
+        return moment - np.where(t0 > 0.0, t0 * s0, 0.0)
 
     # loglogistic
     with np.errstate(divide="ignore", invalid="ignore"):
@@ -278,8 +497,16 @@ def _rmst_value(
     if tau <= threshold:
         return np.full_like(mu, tau)
     tau_shifted = tau - threshold
-    if dist == "loglogistic" and sigma >= 1.0:
-        # E[T'] = inf when sigma >= 1; integrate S' from 0 to tau_shifted directly.
+    gengamma_finite = dist == "gengamma" and Q != 0.0 and Q ** (-2.0) + sigma / Q > 0
+    if gengamma_finite:
+        # E[min(T, tau)] = E[T 1{T <= tau}] + tau S(tau), which avoids subtracting the tail from
+        # the mean.
+        tau_arr = np.full_like(mu, tau_shifted)
+        s_tau = np.exp(_gengamma_log_survival((np.log(tau_shifted) - mu) / sigma, Q))
+        lower = _gengamma_partial_moment(mu, sigma, Q, tau_arr, upper=False)
+        return threshold + lower + tau_shifted * s_tau
+    if (dist == "loglogistic" and sigma >= 1.0) or (dist == "gengamma" and Q != 0.0):
+        # E[T'] = inf; integrate S' from 0 to tau_shifted directly.
         from scipy.integrate import quad
 
         out = np.empty_like(mu)
@@ -287,8 +514,9 @@ def _rmst_value(
             mu_i = float(mu[i])
 
             def _sf(t: float, _mu: float = mu_i) -> float:
-                z = (np.log(t) - _mu) / sigma
-                return float(logistic.sf(z))
+                z = np.atleast_1d((np.log(t) - _mu) / sigma)
+                _, log_s = _log_density_survival(dist, z, Q=Q)
+                return float(np.exp(log_s[0]))
 
             val, _ = quad(_sf, 0.0, tau_shifted, limit=200)
             out[i] = val
@@ -335,7 +563,8 @@ class AFT:
 
     AFT models are useful when you want explicit, interpretable survival time predictions or when
     the parametric assumptions are reasonable. Unlike Cox models, they require choosing a
-    distributional family (Weibull, exponential, lognormal, or loglogistic). Call `fit()` with a
+    distributional family (Weibull, exponential, lognormal, loglogistic, or generalized gamma).
+    Call `fit()` with a
     right-censored `Surv` response and a design matrix. The model automatically adds an intercept
     and estimates coefficients (on the log-time scale), the scale parameter, and standard errors via
     maximum likelihood.
@@ -352,7 +581,8 @@ class AFT:
         Error distribution: `"weibull"` (default), `"exponential"`, `"lognormal"`, `"loglogistic"`,
         or `"gengamma"` (generalized gamma). The generalized gamma encompasses Weibull and
         log-normal as special cases, making it useful for distribution selection via likelihood
-        ratio tests (see `test_distributions()`).
+        ratio tests (see `test_distributions()`). Its shape $Q$ is estimated along with the
+        coefficients and the scale, and its estimate and standard error are in `Q_` and `Q_se_`.
     conf_level
         Confidence level for coefficient intervals (the default is `0.95`).
     method
@@ -468,8 +698,8 @@ class AFT:
 
         Fits a parametric accelerated failure time (AFT) model to a right-censored response and
         covariates. The AFT models the log-survival time as a linear regression on covariates plus a
-        random error from a specified parametric distribution (Weibull, exponential, log-normal, or
-        log-logistic). An intercept is added automatically.
+        random error from a specified parametric distribution (Weibull, exponential, log-normal,
+        log-logistic, or generalized gamma). An intercept is added automatically.
 
         The AFT is a parametric alternative to Cox regression, providing a fully specified survival
         distribution at the cost of stronger distributional assumptions. Unlike Cox, AFT supports
@@ -631,28 +861,16 @@ class AFT:
         n_extra = (1 if has_scale else 0) + (1 if has_Q else 0)
         x0 = np.zeros(n_coef + n_extra)
         x0[0] = float(np.log(time).mean())
+        mle_info: Array | None = None
         if has_Q:
-            # Initialize from a Weibull fit for a better starting point
-            log_t_plain = np.log(time)
+            # Newton-Raphson from the best of a grid of fixed-Q fits. The likelihood is often flat
+            # in Q, which a quasi-Newton search from a single start can stall on. Under
+            # method="mps" the MLE is the starting point.
+            x0, _, mle_info, converged = _gengamma_newton(x, np.log(time), event)
+            if not converged:
+                warnings.warn("The generalized gamma fit didn't converge.", stacklevel=2)
 
-            def _weibull_nll(params_w: Array) -> float:
-                beta_w = params_w[:n_coef]
-                sigma_w = np.exp(params_w[n_coef])
-                z_w = (log_t_plain - x @ beta_w) / sigma_w
-                log_f_w, log_s_w = _log_density_survival("weibull", z_w)
-                ll_w = event * (log_f_w - params_w[n_coef] - log_t_plain) + (1.0 - event) * log_s_w
-                return -float(ll_w.sum())
-
-            x0_w = np.zeros(n_coef + 1)
-            x0_w[0] = float(log_t_plain.mean())
-            res_w = minimize(
-                _weibull_nll, x0_w, method="BFGS", options={"gtol": 1e-8, "maxiter": 1000}
-            )
-            x0[:n_coef] = res_w.x[:n_coef]
-            x0[n_coef] = res_w.x[n_coef]
-            x0[n_coef + 1] = 1.0  # Q = 1 (Weibull starting point)
-
-        if self.method == "mps":
+        if self.method == "mps" and not has_Q:
             # MPS and MLE are asymptotically equivalent estimators, and the MPS objective's
             # sort-induced kinks make it harder for BFGS's numerical gradient to navigate from a
             # naive start; the (fast, reliable) MLE optimum is a much better starting point.
@@ -704,10 +922,17 @@ class AFT:
                     bounds=bounds,
                     options={"maxiter": 2000, "ftol": 1e-12, "gtol": 1e-10},
                 )
+            params = result.x
+        elif mle_info is not None and self.method == "mle":
+            params = x0
         else:
-            result = minimize(objective, x0, method="BFGS", options={"gtol": 1e-8, "maxiter": 1000})
-        params = result.x
-        vcov = np.linalg.inv(_num_hessian(objective, params))
+            params = minimize(
+                objective, x0, method="BFGS", options={"gtol": 1e-8, "maxiter": 1000}
+            ).x
+        if mle_info is not None and self.method == "mle":
+            vcov = np.linalg.inv((mle_info + mle_info.T) / 2.0)
+        else:
+            vcov = np.linalg.inv(_num_hessian(objective, params))
 
         self._x = x
         self.term_names_ = names
@@ -1446,7 +1671,9 @@ class AFT:
         The restricted mean survival time (RMST) up to horizon $\tau$ is
         $\mathrm{RMST}_i(\tau) = \int_0^{\tau} S(t \mid x_i)\, dt$. For the AFT model with Weibull
         or log-normal errors, this is computed in closed form using the mean minus tail partial
-        moment. For log-logistic with $\sigma \ge 1$, numerical integration is used.
+        moment, and for the generalized gamma through incomplete gamma functions. Numerical
+        integration is used where the mean is infinite (the log-logistic with $\sigma \ge 1$, and
+        the generalized gamma with $k + \sigma/Q \le 0$).
 
         When `ci=True`, confidence intervals are computed via the delta method on the linear
         predictor.
@@ -1541,12 +1768,14 @@ class AFT:
         return to_dataframe(columns, format=format)
 
     def test_distributions(self, *, format: str | None = None) -> Any:
-        """Compare the generalized gamma fit against nested sub-models.
+        r"""Compare the generalized gamma fit against the distributions nested in it.
 
-        Fits Weibull (Q=1) and log-normal (Q=0) sub-models with the same covariates and tests each
-        against the generalized gamma using a likelihood ratio test with 1 degree of freedom. This
-        helps determine whether the extra flexibility of the generalized gamma is warranted or
-        whether a simpler distribution is adequate.
+        Fits the Weibull ($Q = 1$), the log-normal ($Q = 0$), and the exponential ($Q = 1$ with
+        $\sigma = 1$) with the same covariates, and tests each against the generalized gamma by a
+        likelihood ratio test. The test has 1 degree of freedom for the Weibull and the log-normal,
+        and 2 for the exponential. A small p-value says the extra flexibility of the generalized
+        gamma is warranted, and a large one that the simpler distribution is adequate. The
+        log-logistic isn't nested in the generalized gamma, so it isn't tested.
 
         Only available when `dist="gengamma"`.
 
@@ -1576,61 +1805,30 @@ class AFT:
 
         from scipy.stats import chi2
 
-        log_t = self._log_t
-        event = self._event
-        x = self._x
-        n_coef = x.shape[1]
-
-        def _fit_sub(dist: str) -> tuple[float, int]:
-            has_scale = dist != "exponential"
-
-            def neg_ll(params: Array) -> float:
-                beta = params[:n_coef]
-                log_sigma = params[n_coef] if has_scale else 0.0
-                sigma = np.exp(log_sigma)
-                z = (log_t - x @ beta) / sigma
-                log_f, log_s = _log_density_survival(dist, z)
-                ll = event * (log_f - log_sigma - log_t) + (1.0 - event) * log_s
-                return -float(ll.sum())
-
-            x0 = np.zeros(n_coef + (1 if has_scale else 0))
-            x0[0] = float(log_t.mean())
-            res = minimize(neg_ll, x0, method="BFGS", options={"gtol": 1e-8, "maxiter": 1000})
-            n_params = n_coef + (1 if has_scale else 0)
-            return -float(res.fun), n_params
-
-        sub_dists = ["weibull", "lognormal", "exponential", "loglogistic"]
-        names: list[str] = []
-        ll_subs: list[float] = []
-        aic_subs: list[float] = []
+        n_coef = self._x.shape[1]
+        # The Weibull is Q = 1 and the log-normal Q = 0, each one constraint. The exponential is
+        # also sigma = 1, a second constraint.
+        sub_dists = {"weibull": 1, "lognormal": 1, "exponential": 2}
+        logliks: list[float] = []
+        aics: list[float] = []
         lr_stats: list[float] = []
-        df_list: list[int] = []
         p_values: list[float] = []
-
-        gg_ll = self.loglik_
-
-        for d in sub_dists:
-            ll_sub, n_params_sub = _fit_sub(d)
-            aic_sub = -2.0 * ll_sub + 2.0 * n_params_sub
-            lr = 2.0 * (gg_ll - ll_sub)
-            lr = max(lr, 0.0)
-            df_diff = 1  # gengamma has one extra parameter (Q)
-            p_val = float(chi2.sf(lr, df_diff))
-
-            names.append(d)
-            ll_subs.append(ll_sub)
-            aic_subs.append(aic_sub)
+        for dist, df in sub_dists.items():
+            _, loglik, _, _ = _aft_newton(self._x, self._log_t, self._event, dist)
+            n_params = n_coef + (0 if dist == "exponential" else 1)
+            lr = max(2.0 * (self.loglik_ - loglik), 0.0)
+            logliks.append(loglik)
+            aics.append(-2.0 * loglik + 2.0 * n_params)
             lr_stats.append(lr)
-            df_list.append(df_diff)
-            p_values.append(p_val)
+            p_values.append(float(chi2.sf(lr, df)))
 
         return to_dataframe(
             {
-                "dist": names,
-                "loglik": ll_subs,
-                "aic": aic_subs,
+                "dist": list(sub_dists),
+                "loglik": logliks,
+                "aic": aics,
                 "lr_statistic": lr_stats,
-                "df": df_list,
+                "df": list(sub_dists.values()),
                 "p_value": p_values,
             },
             format=format,
