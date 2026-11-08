@@ -24,7 +24,7 @@ from scipy.stats import chi2, norm
 from ._backends import to_dataframe
 from ._outcome import bind_fit_inputs
 from ._repr import dropped_note
-from ._strata import resolve_strata
+from ._strata import group_levels, resolve_strata
 from ._surv import MULTISTATE_HINT
 
 if TYPE_CHECKING:
@@ -425,7 +425,7 @@ def grays_test(
     if labels_all.shape[0] != surv.n:
         raise ValueError("`group` must have the same length as the response.")
 
-    groups = sorted(set(labels_all.tolist()), key=lambda v: (str(type(v)), v))
+    groups = group_levels(bound, "group")
     if len(groups) < 2:
         raise ValueError("grays_test needs at least two groups.")
 
@@ -580,7 +580,8 @@ class AalenJohansen:
         by
             Optional grouping variable (e.g., a column or array). Produces one set of cumulative
             incidence functions per unique value of `by`. Default (`None`): fit a single,
-            unstratified set of CIFs.
+            unstratified set of CIFs. The groups come in the same order as the curves of
+            `~~greenwood.KaplanMeier.fit()`.
         data
             A data frame (pandas, Polars, PyArrow, DuckDB, a lazy frame, ...) holding the columns
             named by the response and `by`. When `surv`{.gd-no-link} is an `Outcome` or a formula,
@@ -640,7 +641,7 @@ class AalenJohansen:
             estimator="AalenJohansen",
         )
         surv = bound.surv
-        strata, self._grouped = resolve_strata(bound, "by")
+        strata, levels, self._grouped = resolve_strata(bound, "by")
         self._n_input = bound.n_input
         self.n_dropped_ = bound.n_dropped
 
@@ -663,9 +664,9 @@ class AalenJohansen:
         exit_ = surv.stop
         status = surv.status
 
-        # One block per curve label ("all" for an ungrouped fit), in first-seen order.
+        # One block per curve label ("all" for an ungrouped fit), in curve order.
         self._blocks = {}
-        for label in dict.fromkeys(strata.tolist()):
+        for label in levels:
             mask = strata == label
             self._blocks[label] = _cif_block(exit_[mask], status[mask], causes, z, self.conf_type)
         self._causes = causes
