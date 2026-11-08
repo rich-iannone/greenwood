@@ -569,8 +569,8 @@ class AFT:
     and estimates coefficients (on the log-time scale), the scale parameter, and standard errors via
     maximum likelihood.
 
-    The implementation uses numerical optimization (typically Newton-Raphson) to maximize the
-    likelihood. Coefficients on the log-time scale can be exponentiated to obtain
+    The likelihood is maximized by Newton-Raphson with exact derivatives in the coefficients and
+    the log scale. Coefficients on the log-time scale can be exponentiated to obtain
     time-acceleration ratios: $\exp(\beta)$ is the multiplicative effect on median or mean survival.
     The model also supports prediction of survival probabilities and quantiles at future times given
     covariate values.
@@ -739,7 +739,9 @@ class AFT:
         $S(t \mid X) = P(T > t \mid X) = G((\log(t) - X\beta) / \sigma)$, where $G$ is the survival
         function of the error distribution.
 
-        Estimation uses maximum likelihood via numerical optimization by default (`method="mle"`).
+        Estimation uses maximum likelihood by default (`method="mle"`), maximized by Newton-Raphson.
+        A three-parameter fit uses a bounded quasi-Newton search instead, since the threshold has to
+        stay below the smallest observed time.
         Exponential and Weibull models are nested special cases; log-normal and log-logistic offer
         different tail behaviors. With `threshold=True`, $T = \gamma + T'$ for a location parameter
         $\gamma \ge 0$ and 2-parameter `dist` $T'$; `method="mps"` (maximum product of spacings)
@@ -862,18 +864,19 @@ class AFT:
         x0 = np.zeros(n_coef + n_extra)
         x0[0] = float(np.log(time).mean())
         mle_info: Array | None = None
-        if has_Q:
-            # Newton-Raphson from the best of a grid of fixed-Q fits. The likelihood is often flat
-            # in Q, which a quasi-Newton search from a single start can stall on. Under
-            # method="mps" the MLE is the starting point.
-            x0, _, mle_info, converged = _gengamma_newton(x, np.log(time), event)
+        if not has_threshold:
+            # Newton-Raphson on the exact derivatives. The generalized gamma starts from the best
+            # of a grid of fixed-Q fits, since its likelihood is often flat in Q. Under
+            # method="mps", the MLE is the starting point: MPS and MLE are asymptotically
+            # equivalent, and the MPS objective's sort-induced kinks make a naive start harder.
+            if has_Q:
+                x0, _, mle_info, converged = _gengamma_newton(x, np.log(time), event)
+            else:
+                x0, _, mle_info, converged = _aft_newton(x, np.log(time), event, self.dist)
             if not converged:
-                warnings.warn("The generalized gamma fit didn't converge.", stacklevel=2)
-
-        if self.method == "mps" and not has_Q:
-            # MPS and MLE are asymptotically equivalent estimators, and the MPS objective's
-            # sort-induced kinks make it harder for BFGS's numerical gradient to navigate from a
-            # naive start; the (fast, reliable) MLE optimum is a much better starting point.
+                warnings.warn(f"The {self.dist} AFT fit didn't converge.", stacklevel=2)
+        elif self.method == "mps":
+            # A threshold fit under method="mps" starts from a quasi-Newton MLE.
             res_mle_warm = minimize(
                 neg_loglik, x0, method="BFGS", options={"gtol": 1e-8, "maxiter": 1000}
             )
@@ -923,7 +926,7 @@ class AFT:
                     options={"maxiter": 2000, "ftol": 1e-12, "gtol": 1e-10},
                 )
             params = result.x
-        elif mle_info is not None and self.method == "mle":
+        elif self.method == "mle":
             params = x0
         else:
             params = minimize(
@@ -1005,21 +1008,40 @@ class AFT:
         # loglogistic
         return logistic.pdf(z)
 
+    def _theta(self) -> Array:
+        """The fitted parameters in the order of `vcov_`: beta, log sigma, Q, and the threshold."""
+        parts = [self.coef_]
+        if self.dist != "exponential":
+            parts.append(np.array([np.log(self.scale_)]))
+        if self.Q_ is not None:
+            parts.append(np.array([self.Q_]))
+        if self.threshold:
+            parts.append(np.array([self.threshold_]))
+        return np.concatenate(parts)
+
+    def _unpack_theta(self, theta: Array) -> tuple[Array, float, float, float]:
+        """Split a parameter vector into the coefficients, sigma, Q, and the threshold."""
+        n_coef = self.coef_.shape[0]
+        sigma = 1.0 if self.dist == "exponential" else float(np.exp(theta[n_coef]))
+        q = float(theta[n_coef + 1]) if self.Q_ is not None else 0.0
+        gamma = float(theta[-1]) if self.threshold else 0.0
+        return theta[:n_coef], sigma, q, gamma
+
     def _survival_se(self, x: Array, times: Array) -> Array:
-        r"""Standard error of survival predictions via delta-method.
+        r"""Standard error of the survival predictions, by the delta method.
 
-        Computes SE of $S(t|x)$ using the delta-method, propagating coefficient uncertainty through
-        the survival function. The derivative of survival w.r.t. the linear predictor
-        (mu = X @ beta) is:
-
-        $$\frac{\partial S}{\partial \mu} = -f_\varepsilon(z) \cdot \frac{1}{\sigma}$$
-
-        where f_varepsilon is the PDF of the error distribution and z = (log(t) - mu) / sigma.
+        With $z = (\log(t - \gamma) - \mu) / \sigma$ and $S(t) = S_0(z)$, the standard error is
+        $f_0(z) \, \text{SE}(z)$, where $f_0$ is the error's density. $\text{SE}(z)$ uses the full
+        parameter variance. The gradient of $z$ is $-x / \sigma$ in the coefficients, $-z$ in
+        $\log \sigma$, and $-1 / ((t - \gamma) \sigma)$ in the threshold. For the generalized
+        gamma, a change in $Q$ is carried onto $z$ as the change in $z$ that moves survival as
+        much at the estimated $Q$, $(\partial \log S_0 / \partial Q) / (\partial \log S_0 /
+        \partial z)$.
 
         Parameters
         ----------
         x
-            Design matrix (n_subjects, n_features). Typically includes intercept.
+            Design matrix (n_subjects, n_features), with the intercept.
         times
             Query times (n_times,).
 
@@ -1028,28 +1050,57 @@ class AFT:
         Array
             Standard errors of survival predictions, shape (n_times, n_subjects).
         """
-        mu = x @ self.coef_  # (n_subjects,)
-        sigma = self.scale_
-        # For times <= threshold_, S(t) = 1 identically regardless of mu, so dS/dmu = 0 there.
-        shifted = times - self.threshold_
-        resolvable = shifted > 0.0
-        log_shifted = np.where(resolvable, np.log(np.where(resolvable, shifted, 1.0)), 0.0)
-        z = (log_shifted[:, None] - mu[None, :]) / sigma  # (n_times, n_subjects)
+        z, se_z, live = self._z_se(x, times)
+        return np.where(live[:, None], self._survival_pdf(z) * se_z, 0.0)
 
-        # Derivative of survival w.r.t. mu: dS/dmu = -f(z) / sigma
-        pdf_z = self._survival_pdf(z)
-        ds_dmu = np.where(resolvable[:, None], -pdf_z / sigma, 0.0)  # (n_times, n_subjects)
-
-        # SE(mu) for each subject: sqrt(diag(x @ vcov @ x.T))
-        # vcov_ includes scale parameter; extract only the coefficient part
+    def _z_se(self, x: Array, times: Array) -> tuple[Array, Array, Array]:
+        """The standardized `z` at each time and subject, its standard error, and which times
+        are past the threshold (where `z` is defined)."""
         n_coef = x.shape[1]
-        vcov_coef = self.vcov_[:n_coef, :n_coef]
-        se_mu_sq = np.diag(x @ vcov_coef @ x.T)  # (n_subjects,)
-        se_mu = np.sqrt(np.clip(se_mu_sq, 0.0, None))
+        sigma = self.scale_
+        mu = x @ self.coef_
+        shifted = times - self.threshold_
+        live = shifted > 0.0
+        safe = np.where(live, shifted, 1.0)
+        z = (np.log(safe)[:, None] - mu[None, :]) / sigma  # (n_times, n_subjects)
 
-        # SE(S) = |dS/dmu| * SE(mu)
-        se_s = np.abs(ds_dmu) * se_mu[None, :]  # (n_times, n_subjects)
-        return se_s
+        grad = np.zeros((*z.shape, self.vcov_.shape[0]))
+        grad[:, :, :n_coef] = -x[None, :, :] / sigma
+        if self.dist != "exponential":
+            grad[:, :, n_coef] = -z
+        if self.Q_ is not None:
+            h = 1e-3
+            sides = [_gengamma_log_survival(z, self.Q_ + d * h) for d in (-2, -1, 1, 2)]
+            d_log_s = (sides[0] - 8.0 * sides[1] + 8.0 * sides[2] - sides[3]) / (12.0 * h)
+            log_f, log_s = _gengamma_log_density_survival(z, self.Q_)
+            with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
+                dz_dq = d_log_s / -np.exp(log_f - log_s)
+            grad[:, :, n_coef + 1] = np.where(np.isfinite(dz_dq), dz_dq, 0.0)
+        if self.threshold:
+            grad[:, :, -1] = (-1.0 / (safe * sigma))[:, None]
+        grad[~live] = 0.0
+        var = np.einsum("tsi,ij,tsj->ts", grad, self.vcov_, grad)
+        return z, np.sqrt(np.clip(var, 0.0, None)), live
+
+    def _rmst_se(self, x: Array, tau: float) -> Array:
+        """Standard error of the restricted mean at `tau` for each subject, by the delta method
+        with a central-difference gradient in all the parameters."""
+        theta = self._theta()
+
+        def rmst_at(par: Array) -> Array:
+            beta, sigma, q, gamma = self._unpack_theta(par)
+            return _rmst_value(self.dist, x @ beta, sigma, tau, threshold=gamma, Q=q)
+
+        grad = np.zeros((x.shape[0], theta.shape[0]))
+        for j in range(theta.shape[0]):
+            h = 1e-5 * max(abs(float(theta[j])), 1.0)
+            up = theta.copy()
+            down = theta.copy()
+            up[j] += h
+            down[j] -= h
+            grad[:, j] = (rmst_at(up) - rmst_at(down)) / (2.0 * h)
+        var = np.einsum("si,ij,sj->s", grad, self.vcov_, grad)
+        return np.sqrt(np.clip(var, 0.0, None))
 
     def _quantile_se(self, x: Array, p: Array) -> Array:
         r"""Standard error of the time quantiles $\gamma + \exp(\mu + \sigma w_p)$.
@@ -1284,7 +1335,9 @@ class AFT:
             is `None` (unconditional).
         ci
             If `True` (survival only), include confidence intervals (`_lower` and `_upper` columns
-            per subject). Default is `False`. Not supported with `conditional_after`.
+            per subject). Default is `False`. Not supported with `conditional_after`. The standard
+            error of $S(t)$ comes from the delta method with the full parameter variance (the
+            coefficients, the log scale, and $Q$ and the threshold when fitted).
         conf_type
             Confidence interval transform (used only if `ci=True` and `type="survival"`):
 
@@ -1675,8 +1728,11 @@ class AFT:
         integration is used where the mean is infinite (the log-logistic with $\sigma \ge 1$, and
         the generalized gamma with $k + \sigma/Q \le 0$).
 
-        When `ci=True`, confidence intervals are computed via the delta method on the linear
-        predictor.
+        When `ci=True`, the standard error of the RMST comes from the delta method with the full
+        parameter variance, so the uncertainty in the scale (and in $Q$ and the threshold, when
+        fitted) counts as well as the coefficients'. The limits are
+        $\mathrm{RMST} \exp(\pm z_{\alpha/2} \, \text{SE} / \mathrm{RMST})$, which keeps them
+        positive.
 
         Parameters
         ----------
@@ -1727,40 +1783,16 @@ class AFT:
         columns: dict[str, Any] = {"tau": tau_arr}
 
         if ci:
-            x = self._design(newdata)
             z_val = float(norm.ppf(1.0 - (1.0 - self.conf_level) / 2.0))
-            n_coef = x.shape[1]
-            vcov_coef = self.vcov_[:n_coef, :n_coef]
-            se_mu = np.sqrt(np.clip(np.diag(x @ vcov_coef @ x.T), 0.0, None))
-
+            se_log = self._rmst_se(self._design(newdata), tau_val) / rmst_vals
             for i in range(rmst_vals.shape[0]):
-                mu_lo = x[i] @ self.coef_ - z_val * se_mu[i]
-                mu_hi = x[i] @ self.coef_ + z_val * se_mu[i]
-
-                rmst_lo = float(
-                    _rmst_value(
-                        self.dist,
-                        np.array([mu_lo]),
-                        self.scale_,
-                        tau_val,
-                        threshold=self.threshold_,
-                        Q=self._q,
-                    )[0]
-                )
-                rmst_hi = float(
-                    _rmst_value(
-                        self.dist,
-                        np.array([mu_hi]),
-                        self.scale_,
-                        tau_val,
-                        threshold=self.threshold_,
-                        Q=self._q,
-                    )[0]
-                )
-
                 columns[f"subject_{i + 1}"] = np.array([rmst_vals[i]])
-                columns[f"subject_{i + 1}_lower"] = np.array([min(rmst_lo, rmst_hi)])
-                columns[f"subject_{i + 1}_upper"] = np.array([max(rmst_lo, rmst_hi)])
+                columns[f"subject_{i + 1}_lower"] = np.array(
+                    [rmst_vals[i] * np.exp(-z_val * se_log[i])]
+                )
+                columns[f"subject_{i + 1}_upper"] = np.array(
+                    [rmst_vals[i] * np.exp(z_val * se_log[i])]
+                )
         else:
             for i in range(rmst_vals.shape[0]):
                 columns[f"subject_{i + 1}"] = np.array([rmst_vals[i]])
