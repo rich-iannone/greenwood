@@ -11,11 +11,20 @@
 #' one-unit increase in its covariate, so \eqn{\exp(\beta_j)} is a time ratio.
 #'
 #' The distributions are the Weibull (an extreme-value error), the exponential (the Weibull with
-#' \eqn{\sigma = 1}), the log-normal (a normal error), and the log-logistic (a logistic error). The
-#' estimates come from Newton-Raphson iterations on \eqn{(\beta, \log \sigma)}, halving the step
-#' whenever it lowers the likelihood, and the variance is the inverse of the observed information
-#' on that scale. The log-likelihood is on the time scale, so it's comparable across
-#' distributions and with other parametric models.
+#' \eqn{\sigma = 1}), the log-normal (a normal error), the log-logistic (a logistic error), and the
+#' generalized gamma. The estimates come from Newton-Raphson iterations on
+#' \eqn{(\beta, \log \sigma)}, halving the step whenever it lowers the likelihood, and the variance
+#' is the inverse of the observed information on that scale. The log-likelihood is on the time
+#' scale, so it's comparable across distributions and with other parametric models.
+#'
+#' The generalized gamma (Prentice's parameterization) has a third parameter, the shape \eqn{Q}.
+#' With \eqn{k = Q^{-2}}, its error has the density
+#' \eqn{|Q| k^k \exp(k (Q \varepsilon - e^{Q \varepsilon})) / \Gamma(k)}. It's the Weibull at
+#' \eqn{Q = 1}, the exponential at \eqn{Q = 1} and \eqn{\sigma = 1}, and the log-normal in the
+#' limit \eqn{Q \to 0}, so [test_distributions()] can test those simpler distributions against it.
+#' Newton-Raphson starts from the best of the fits with \eqn{Q} fixed on a grid from -3 to 3 and
+#' then moves \eqn{(\beta, \log \sigma, Q)} together. The derivatives in \eqn{Q} are numerical,
+#' and those in the other parameters are exact.
 #'
 #' With `threshold = TRUE` the model has a third parameter, a threshold \eqn{\gamma \ge 0} below
 #' which no events happen: \eqn{T = \gamma + T'}, where \eqn{T'} follows the AFT model. The
@@ -32,8 +41,9 @@
 #' @param subset An optional expression selecting the rows of `data` to use.
 #' @param na.action What to do with rows that have missing values. The default drops them.
 #' @param dist The error distribution: `"weibull"` (the default), `"exponential"`, `"lognormal"`,
-#'   or `"loglogistic"`.
-#' @param threshold Estimate a threshold (a third, location parameter). The default is `FALSE`.
+#'   `"loglogistic"`, or `"gengamma"` (the generalized gamma).
+#' @param threshold Estimate a threshold (a third, location parameter). Not available for the
+#'   generalized gamma. The default is `FALSE`.
 #' @param conf_level The confidence level, between 0 and 1. The default is `0.95`.
 #' @param max_iter The largest number of Newton-Raphson iterations. The default is `50`.
 #' @param tol The convergence tolerance: iterations stop once the log-likelihood changes by less
@@ -44,11 +54,12 @@
 #'   curves, and means, and [residuals()] for diagnostics. [logLik()], [AIC()], [BIC()], and
 #'   [nobs()] work as usual.
 #'
-#'   The object also holds `scale` (\eqn{\sigma}), `threshold` (\eqn{\gamma}, 0 without
-#'   `threshold = TRUE`), `loglik` (the log-likelihood of the intercept-only model and of the fit),
-#'   the likelihood ratio test `lr_test` (with `statistic`, `df`, and `p_value`), `n`, `n_event`,
-#'   `iterations`, and `converged`. `vcov()` covers \eqn{\beta}, \eqn{\log \sigma} (except for the
-#'   exponential), and \eqn{\gamma} (with `threshold = TRUE`).
+#'   The object also holds `scale` (\eqn{\sigma}), `Q` (the generalized gamma's shape, `NULL` for
+#'   the other distributions), `threshold` (\eqn{\gamma}, 0 without `threshold = TRUE`), `loglik`
+#'   (the log-likelihood of the intercept-only model and of the fit), the likelihood ratio test
+#'   `lr_test` (with `statistic`, `df`, and `p_value`), `n`, `n_event`, `iterations`, and
+#'   `converged`. `vcov()` covers \eqn{\beta}, \eqn{\log \sigma} (except for the exponential),
+#'   \eqn{Q} (for the generalized gamma), and \eqn{\gamma} (with `threshold = TRUE`).
 #'
 #' @examples
 #' lung <- data.frame(
@@ -67,19 +78,26 @@
 #' # A log-normal model, and the median survival time of two new subjects
 #' fit_lognormal <- aft(Surv(time, status) ~ age + sex, data = lung, dist = "lognormal")
 #' predict(fit_lognormal, newdata = data.frame(age = c(55, 70), sex = c(1, 2)), type = "quantile")
+#'
+#' # The generalized gamma, and tests of the distributions it nests
+#' fit_gengamma <- aft(Surv(time, status) ~ age + sex, data = lung, dist = "gengamma")
+#' test_distributions(fit_gengamma)
 #' @export
 aft <- function(formula,
                 data,
                 weights,
                 subset,
                 na.action = stats::na.omit,
-                dist = c("weibull", "exponential", "lognormal", "loglogistic"),
+                dist = c("weibull", "exponential", "lognormal", "loglogistic", "gengamma"),
                 threshold = FALSE,
                 conf_level = 0.95,
                 max_iter = 50,
                 tol = 1e-10) {
   dist <- match.arg(dist)
   check_flag(threshold, "threshold")
+  if (threshold && dist == "gengamma") {
+    stop("`threshold = TRUE` isn't available for `dist = \"gengamma\"`.", call. = FALSE)
+  }
   check_conf_level(conf_level)
   check_number(max_iter, "max_iter", min = 1)
   check_number(tol, "tol", min = 0)
@@ -154,8 +172,12 @@ aft_new_design <- function(object, newdata) {
 # -- the error distributions -----------------------------------------------------------------------
 
 # The standard error distribution of each family on the log-time scale. `event` and `censor` give
-# the log density and the log survival at z with their first two derivatives in z.
-aft_family <- function(dist) {
+# the log density and the log survival at z with their first two derivatives in z. The generalized
+# gamma's shape `Q` is fixed here, so its family is rebuilt for each value of Q.
+aft_family <- function(dist, Q = 0) {
+  if (dist == "gengamma") {
+    return(gengamma_family(Q))
+  }
   switch(dist,
     weibull = ,
     exponential = list(
@@ -201,12 +223,77 @@ aft_family <- function(dist) {
   )
 }
 
+# The family of a fitted model, at its estimated Q for the generalized gamma.
+aft_fit_family <- function(object) {
+  aft_family(object$dist, if (is.null(object$Q)) 0 else object$Q)
+}
+
+# The generalized gamma error at shape Q (Prentice's parameterization). With k = 1 / Q^2 and
+# u = k exp(Q z), the log density is log|Q| + k log k - log Gamma(k) + k Q z - u, and the survival
+# is the upper regularized incomplete gamma function at (k, u) for Q > 0 and the lower one for
+# Q < 0. Q = 0 is the normal limit. The density is written as a constant minus
+# (exp(Qz) - 1 - Qz) / Q^2, with both parts computed so they stay accurate as Q nears 0.
+gengamma_family <- function(Q) {
+  if (Q == 0) {
+    return(aft_family("lognormal"))
+  }
+  k <- 1 / Q^2
+  log_k <- -2 * log(abs(Q))
+  constant <- if (k > 1e4) {
+    -0.5 * log(2 * pi) - 1 / (12 * k) + 1 / (360 * k^3)
+  } else {
+    log(abs(Q)) + k * log_k - k - lgamma(k)
+  }
+  log_f <- function(z) {
+    a <- Q * z
+    excess <- ifelse(
+      abs(a) < 1e-3,
+      z^2 * (0.5 + a / 6 + a^2 / 24 + a^3 / 120),
+      (expm1(a) - a) / Q^2
+    )
+    constant - excess
+  }
+  log_s <- function(z) stats::pgamma(exp(Q * z + log_k), k, lower.tail = Q < 0, log.p = TRUE)
+  slope <- function(z) -expm1(Q * z) / Q
+  list(
+    event = function(z) list(g = log_f(z), d1 = slope(z), d2 = -exp(Q * z)),
+    censor = function(z) {
+      g <- log_s(z)
+      h <- exp(log_f(z) - g)
+      list(g = g, d1 = -h, d2 = -h * (h + slope(z)))
+    },
+    survival = function(z) exp(log_s(z)),
+    density = function(z) exp(log_f(z)),
+    quantile = function(p) log(stats::qgamma(p, k, lower.tail = Q > 0) / k) / Q,
+    mean = function(sigma) {
+      shift <- sigma / Q
+      if (k + shift <= 0) Inf else exp(gengamma_log_moment(k, shift))
+    }
+  )
+}
+
+# log Gamma(k + c) - log Gamma(k) - c log k, the log of E[exp(sigma W)] with c = sigma / Q. For a
+# large k, the difference of Stirling's series avoids the cancellation of the direct form.
+gengamma_log_moment <- function(k, shift) {
+  if (min(k, k + shift) < 1e5) {
+    return(lgamma(k + shift) - lgamma(k) - shift * log(k))
+  }
+  correction <- function(x) 1 / (12 * x) - 1 / (360 * x^3)
+  (k + shift - 0.5) * log1p(shift / k) - shift + correction(k + shift) - correction(k)
+}
+
+# The derivative in Q of `value(Q)` by a five-point central difference.
+gengamma_dq <- function(value, Q, h = 1e-3) {
+  (value(Q - 2 * h) - 8 * value(Q - h) + 8 * value(Q + h) - value(Q + 2 * h)) / (12 * h)
+}
+
 dist_label <- function(dist) {
   switch(dist,
     weibull = "Weibull",
     exponential = "Exponential",
     lognormal = "Log-normal",
-    loglogistic = "Log-logistic"
+    loglogistic = "Log-logistic",
+    gengamma = "Generalized gamma"
   )
 }
 
@@ -226,8 +313,12 @@ aft_engine <- function(x, response, w, dist, threshold, max_iter, tol, fn) {
   }
   family <- aft_family(dist)
   fixed_scale <- dist == "exponential"
+  gengamma <- dist == "gengamma"
 
   fit_at <- function(gamma, x) {
+    if (gengamma) {
+      return(gengamma_newton(x, time, event, w, max_iter, tol))
+    }
     aft_newton(x, log(time - gamma), event, w, family, fixed_scale, max_iter, tol)
   }
   gamma <- 0
@@ -261,7 +352,7 @@ aft_engine <- function(x, response, w, dist, threshold, max_iter, tol, fn) {
   null_fit <- if (ncol(x) > 1L) fit_at(gamma, x[, 1L, drop = FALSE]) else fit
 
   p <- ncol(x)
-  names_theta <- c(colnames(x), if (!fixed_scale) "log(scale)")
+  names_theta <- c(colnames(x), if (!fixed_scale) "log(scale)", if (gengamma) "Q")
   info <- fit$info
   if (threshold) {
     theta <- c(fit$theta, gamma)
@@ -287,6 +378,7 @@ aft_engine <- function(x, response, w, dist, threshold, max_iter, tol, fn) {
   list(
     coefficients = beta,
     scale = if (fixed_scale) 1 else unname(exp(fit$theta[p + 1L])),
+    Q = if (gengamma) unname(fit$theta[p + 2L]),
     threshold = gamma,
     var = var,
     loglik = c(null_fit$loglik, fit$loglik),
@@ -369,20 +461,81 @@ aft_newton <- function(x, y, event, w, family, fixed_scale, max_iter, tol) {
     spread <- sqrt(sum(w * start$residuals^2) / sum(w))
     theta <- c(theta, log(max(spread, 1e-3)))
   }
-  current <- aft_terms(theta, x, time, event, w, family, fixed_scale)
+  newton_maximize(
+    theta,
+    function(theta) aft_terms(theta, x, time, event, w, family, fixed_scale),
+    max_iter,
+    tol
+  )
+}
+
+# The generalized gamma, with theta = (beta, log sigma, Q). The start is the best of the fits over
+# a grid of fixed values of Q, and Newton-Raphson then moves all the parameters together.
+gengamma_newton <- function(x, time, event, w, max_iter, tol) {
+  y <- log(time)
+  grid <- seq(-3, 3, by = 0.5)
+  fits <- lapply(grid, function(Q) {
+    tryCatch(
+      aft_newton(x, y, event, w, gengamma_family(Q), FALSE, max_iter, tol),
+      error = function(e) NULL
+    )
+  })
+  values <- vapply(fits, function(fit) {
+    if (is.null(fit) || !is.finite(fit$loglik)) -Inf else fit$loglik
+  }, numeric(1))
+  best <- which.max(values)
+  newton_maximize(
+    c(fits[[best]]$theta, grid[best]),
+    function(theta) gengamma_terms(theta, x, time, event, w),
+    max_iter,
+    tol
+  )
+}
+
+# The log-likelihood of the generalized gamma with its gradient and Hessian in (beta, log sigma, Q).
+# Those in (beta, log sigma) are exact at each Q, and the derivatives in Q are differences of them.
+gengamma_terms <- function(theta, x, time, event, w) {
+  k <- length(theta)
+  Q <- theta[k]
+  at <- function(q) aft_terms(theta[-k], x, time, event, w, gengamma_family(q), FALSE)
+  mid <- at(Q)
+  h <- 1e-3
+  sides <- lapply(Q + c(-2, -1, 1, 2) * h, at)
+  loglik <- vapply(sides, function(s) s$loglik, numeric(1))
+  if (!is.finite(mid$loglik) || !all(is.finite(loglik))) {
+    return(list(loglik = -Inf))
+  }
+  stencil <- function(v) (v[[1L]] - 8 * v[[2L]] + 8 * v[[3L]] - v[[4L]]) / (12 * h)
+  d_q <- stencil(loglik)
+  d_qq <- (-loglik[1L] + 16 * loglik[2L] - 30 * mid$loglik + 16 * loglik[3L] - loglik[4L]) /
+    (12 * h^2)
+  d_q_other <- stencil(lapply(sides, function(s) s$gradient))
+  list(
+    loglik = mid$loglik,
+    gradient = c(mid$gradient, d_q),
+    hessian = rbind(cbind(mid$hessian, d_q_other), c(d_q_other, d_qq)),
+    z = mid$z,
+    pieces = mid$pieces
+  )
+}
+
+# Newton-Raphson from `theta`, where `terms(theta)` gives the log-likelihood with its gradient and
+# Hessian. Halves the step whenever it lowers the log-likelihood.
+newton_maximize <- function(theta, terms, max_iter, tol) {
+  current <- terms(theta)
   converged <- FALSE
   iterations <- 0L
   for (iter in seq_len(max_iter)) {
     iterations <- iter
     info <- -current$hessian
     step <- aft_step(info, current$gradient)
-    candidate <- aft_terms(theta + step, x, time, event, w, family, fixed_scale)
+    candidate <- terms(theta + step)
     halvings <- 0L
     while (!(is.finite(candidate$loglik) && candidate$loglik >= current$loglik - 1e-12) &&
       halvings < 30L) {
       step <- step / 2
       halvings <- halvings + 1L
-      candidate <- aft_terms(theta + step, x, time, event, w, family, fixed_scale)
+      candidate <- terms(theta + step)
     }
     change <- candidate$loglik - current$loglik
     theta <- theta + step
@@ -528,6 +681,13 @@ print.aft <- function(x, digits = getOption("digits"), ...) {
       format(sqrt(x$var["log(scale)", "log(scale)"]), digits = short)
     ))
   }
+  if (x$dist == "gengamma") {
+    cat(sprintf(
+      "Q: %s (std. error %s)\n",
+      format(x$Q, digits = short),
+      format(sqrt(x$var["Q", "Q"]), digits = short)
+    ))
+  }
   if (x$has_threshold) {
     cat(sprintf(
       "Threshold: %s (std. error %s)\n",
@@ -564,10 +724,12 @@ print.aft <- function(x, digits = getOption("digits"), ...) {
 #' up to `tau`.
 #'
 #' Standard errors use the delta method with the full variance of the parameters (the
-#' coefficients, the log scale, and the threshold). Confidence limits for quantiles, means, and
-#' restricted means are built on the log scale. Limits for survival and the cumulative hazard are
-#' built on the scale of \eqn{z = (\log(t - \gamma) - \eta) / \sigma}, which for the Weibull is the
-#' log of the cumulative hazard, so they stay within 0 and 1.
+#' coefficients, the log scale, the generalized gamma's \eqn{Q}, and the threshold). Confidence
+#' limits for quantiles, means, and restricted means are built on the log scale. Limits for survival
+#' and the cumulative hazard are built on the scale of \eqn{z = (\log(t - \gamma) - \eta) / \sigma},
+#' which for the Weibull is the log of the cumulative hazard, so they stay within 0 and 1. For the
+#' generalized gamma, a change in \eqn{Q} is carried onto that scale as the change in \eqn{z} that
+#' moves survival as much at the estimated \eqn{Q}.
 #'
 #' @param object An [aft()] fit.
 #' @param newdata A data frame with the covariates of the subjects to predict for. The default is
@@ -645,11 +807,12 @@ predict.aft <- function(object,
   out
 }
 
-# The full parameter vector, in the order of vcov(): beta, log(scale), threshold.
+# The full parameter vector, in the order of vcov(): beta, log(scale), Q, threshold.
 aft_theta <- function(object) {
   c(
     object$coefficients,
     if (object$dist != "exponential") log(object$scale),
+    object$Q,
     if (object$has_threshold) object$threshold
   )
 }
@@ -659,6 +822,7 @@ aft_unpack <- function(object, theta) {
   list(
     beta = theta[seq_len(p)],
     sigma = if (object$dist == "exponential") 1 else exp(theta[p + 1L]),
+    Q = if (object$dist == "gengamma") theta[p + 2L] else 0,
     gamma = if (object$has_threshold) theta[length(theta)] else 0
   )
 }
@@ -666,11 +830,14 @@ aft_unpack <- function(object, theta) {
 # Quantiles: log(q - gamma) = eta + sigma * w_p, with the delta method on that scale. A threshold
 # adds its own (time-scale) term to the variance of q.
 aft_quantiles <- function(object, x, p, z) {
-  family <- aft_family(object$dist)
+  family <- aft_fit_family(object)
   v <- object$var
   k <- nrow(v)
   n_coef <- length(object$coefficients)
   w_p <- family$quantile(p)
+  if (object$dist == "gengamma") {
+    dw_dq <- gengamma_dq(function(q) gengamma_family(q)$quantile(p), object$Q)
+  }
   rows <- lapply(seq_len(nrow(x)), function(i) {
     eta <- sum(x[i, ] * object$coefficients)
     log_q <- eta + object$scale * w_p
@@ -680,6 +847,9 @@ aft_quantiles <- function(object, x, p, z) {
     grad[, seq_len(n_coef)] <- q %o% x[i, ]
     if (object$dist != "exponential") {
       grad[, n_coef + 1L] <- q * object$scale * w_p
+    }
+    if (object$dist == "gengamma") {
+      grad[, n_coef + 2L] <- q * object$scale * dw_dq
     }
     if (object$has_threshold) {
       grad[, k] <- 1
@@ -699,9 +869,11 @@ aft_quantiles <- function(object, x, p, z) {
   do.call(rbind, rows)
 }
 
-# Survival and cumulative hazard curves, with limits built on the scale of z.
+# Survival and cumulative hazard curves, with limits built on the scale of z. For the generalized
+# gamma, that's the z at which the error distribution with the estimated Q has the same survival,
+# so the uncertainty in Q moves it too.
 aft_curves <- function(object, x, times, type, z_alpha) {
-  family <- aft_family(object$dist)
+  family <- aft_fit_family(object)
   v <- object$var
   k <- nrow(v)
   n_coef <- length(object$coefficients)
@@ -715,6 +887,14 @@ aft_curves <- function(object, x, times, type, z_alpha) {
     grad[, seq_len(n_coef)] <- -outer(rep(1 / sigma, length(times)), x[i, ])
     if (object$dist != "exponential") {
       grad[, n_coef + 1L] <- -zs
+    }
+    if (object$dist == "gengamma") {
+      # dz/dQ = -(d log S / dQ) / h(z), with h the hazard of the error distribution.
+      zl <- zs[live]
+      d_log_s <- gengamma_dq(function(q) gengamma_family(q)$censor(zl)$g, object$Q)
+      dz_dq <- d_log_s / family$censor(zl)$d1
+      dz_dq[!is.finite(dz_dq)] <- 0
+      grad[live, n_coef + 2L] <- dz_dq
     }
     if (object$has_threshold) {
       grad[, k] <- -1 / (pmax(shifted, .Machine$double.xmin) * sigma)
@@ -750,11 +930,11 @@ aft_curves <- function(object, x, times, type, z_alpha) {
 # Means restricted to tau (tau = Inf gives the mean), with the delta method through a numerical
 # gradient in the parameters.
 aft_means <- function(object, x, tau, z) {
-  family <- aft_family(object$dist)
   theta <- aft_theta(object)
   v <- object$var
   mean_at <- function(theta, xi) {
     par <- aft_unpack(object, theta)
+    family <- aft_family(object$dist, par$Q)
     eta <- sum(xi * par$beta)
     if (!is.finite(tau)) {
       return(par$gamma + exp(eta) * family$mean(par$sigma))
@@ -806,7 +986,8 @@ aft_means <- function(object, x, tau, z) {
 #' - `"deviance"`: the signed square root of twice the gap between the row's log-likelihood and
 #'   its largest possible value.
 #' - `"score"`: each row's contribution to the gradient of the log-likelihood in the parameters,
-#'   one column per parameter (the coefficients, the log scale, and the threshold).
+#'   one column per parameter (the coefficients, the log scale, the generalized gamma's \eqn{Q},
+#'   and the threshold).
 #' - `"dfbeta"`: the approximate change in each parameter when the row is left out, the score
 #'   residuals times the variance of the parameters.
 #' - `"dfbetas"`: dfbeta divided by the standard errors of the parameters.
@@ -839,7 +1020,7 @@ residuals.aft <- function(object,
                           ),
                           ...) {
   type <- match.arg(type)
-  family <- aft_family(object$dist)
+  family <- aft_fit_family(object)
   eta <- object$linear_predictors
   if (type == "response") {
     return(object$time - object$threshold - exp(eta))
@@ -868,6 +1049,10 @@ residuals.aft <- function(object,
   if (object$dist != "exponential") {
     score <- cbind(score, w * (-pieces$d1 * z - is_event))
   }
+  if (object$dist == "gengamma") {
+    d_q <- gengamma_dq(function(q) aft_pieces(gengamma_family(q), z, is_event)$g, object$Q)
+    score <- cbind(score, w * d_q)
+  }
   if (object$has_threshold) {
     score <- cbind(score, w * (pieces$d1 / sigma - is_event) * (-1 / shifted))
   }
@@ -880,4 +1065,56 @@ residuals.aft <- function(object,
     return(dfbeta)
   }
   sweep(dfbeta, 2L, sqrt(diag(object$var)), "/")
+}
+
+# -- nested distributions --------------------------------------------------------------------------
+
+#' Test the distributions nested in a generalized gamma model
+#'
+#' `test_distributions()` refits a generalized gamma [aft()] model with each distribution it
+#' nests, using the same covariates and weights, and tests each against it with a likelihood ratio
+#' test. The Weibull is the generalized gamma with \eqn{Q = 1}, and the log-normal its limit as
+#' \eqn{Q \to 0}, so each has one parameter fewer. The exponential also fixes \eqn{\sigma = 1}, so
+#' it has two fewer. A small p-value says the simpler distribution fits worse than the generalized
+#' gamma. The log-logistic isn't nested in the generalized gamma, so it isn't tested here (compare
+#' it by AIC instead).
+#'
+#' @param fit An [aft()] fit with `dist = "gengamma"`.
+#'
+#' @return A data frame with one row per nested distribution (`"weibull"`, `"lognormal"`, and
+#'   `"exponential"`): `dist`, `loglik` and `aic` of its fit, and the likelihood ratio test against
+#'   the generalized gamma, `lr_statistic`, `df`, and `p_value`.
+#'
+#' @examples
+#' lung <- data.frame(
+#'   time = c(306, 455, 1010, 210, 883, 1022, 310, 361, 218, 166, 170, 654, 728, 71, 567),
+#'   status = c(2, 2, 1, 2, 2, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2),
+#'   age = c(74, 68, 56, 57, 60, 74, 68, 71, 53, 61, 57, 68, 68, 60, 57)
+#' )
+#' fit <- aft(Surv(time, status) ~ age, data = lung, dist = "gengamma")
+#' test_distributions(fit)
+#' @export
+test_distributions <- function(fit) {
+  if (!inherits(fit, "aft") || fit$dist != "gengamma") {
+    stop("`fit` must be an `aft()` fit with `dist = \"gengamma\"`.", call. = FALSE)
+  }
+  dists <- c("weibull", "lognormal", "exponential")
+  y <- log(fit$time)
+  rows <- lapply(dists, function(dist) {
+    fixed_scale <- dist == "exponential"
+    sub <- aft_newton(fit$x, y, fit$event, fit$weights, aft_family(dist), fixed_scale, 50, 1e-10)
+    n_params <- ncol(fit$x) + !fixed_scale
+    df <- if (fixed_scale) 2L else 1L
+    statistic <- max(2 * (fit$loglik[2L] - sub$loglik), 0)
+    data.frame(
+      dist = dist,
+      loglik = sub$loglik,
+      aic = -2 * sub$loglik + 2 * n_params,
+      lr_statistic = statistic,
+      df = df,
+      p_value = stats::pchisq(statistic, df, lower.tail = FALSE),
+      stringsAsFactors = FALSE
+    )
+  })
+  do.call(rbind, rows)
 }
