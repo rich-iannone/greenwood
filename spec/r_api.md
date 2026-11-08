@@ -84,6 +84,7 @@ The `Outcome` layer, which R's formulas cover (see the adaptations below).
 | `predict(type="lp")` | a plain numeric vector for `cox_ph()`, `aft()`, and `fine_gray()`. Other types give data frames | As `predict.lm()` and the base generics do. |
 | AFT `score`, `dfbeta`, and `dfbetas` residuals leave out the case weights | include them | Matches `cox_ph()`, where the weights enter the score. |
 | AFT `score`, `dfbeta`, and `dfbetas` residuals have a column per coefficient | a column per parameter, adding `log(scale)`, `Q` for the generalized gamma, and the threshold | One column for each row of `vcov()`. The coefficient columns agree. |
+| AFT survival limits apply `conf_type` (`"log-log"` or `"plain"`) to the survival probability | limits on the scale of the standardized log time `z`, mapped through the error distribution's survival function | The limits stay in [0, 1] for every distribution. For the Weibull and the exponential, `log(-log S) = z`, so they match Python's `"log-log"`. The standard errors agree. |
 | `Parametric` limits on the natural scale | positive parameters (shape, scale, rate, sigma) get limits on the log scale | The limits stay positive. |
 | `FineGray.predict_cumulative_incidence()` wide | `predict(fit, newdata, type = "cif", times)` long: `subject`, `time`, `estimate` | Same as the Cox predictions. |
 | `FineGray.naive_vcov_` | `fit$naive_var`, with `vcov()` giving the robust variance | R names. |
