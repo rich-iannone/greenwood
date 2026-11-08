@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 from greenwood import data
@@ -51,6 +53,13 @@ def test_load_pandas_backend() -> None:
     assert df.shape == (228, 10)
 
 
+def test_load_pyarrow_backend() -> None:
+    pa = pytest.importorskip("pyarrow")
+    table = data.load_dataset("lung", backend="pyarrow")
+    assert isinstance(table, pa.Table)
+    assert table.shape == (228, 10)
+
+
 def test_default_backend_prefers_polars() -> None:
     # With both installed (as in dev), the agnostic default resolves to Polars.
     pl = pytest.importorskip("polars")
@@ -78,6 +87,30 @@ def test_factor_columns_load_with_r_levels(name: str, column: str) -> None:
     assert list(pandas_df[column].cat.categories) == levels
     assert not pandas_df[column].cat.ordered
     assert pandas_df[column].astype(str).tolist() == polars_df[column].cast(pl.String).to_list()
+
+
+@pytest.mark.parametrize(("name", "column"), list(FACTORS))
+def test_factor_columns_are_arrow_dictionaries_with_r_levels(name: str, column: str) -> None:
+    pa = pytest.importorskip("pyarrow")
+    pl = pytest.importorskip("polars")
+    levels = FACTORS[(name, column)]
+    values = data.load_dataset(name, backend="pyarrow").column(column).combine_chunks()
+    assert pa.types.is_dictionary(values.type)
+    assert not values.type.ordered
+    assert values.dictionary.to_pylist() == levels
+    polars_df = data.load_dataset(name, backend="polars")
+    assert values.cast(pa.string()).to_pylist() == polars_df[column].cast(pl.String).to_list()
+
+
+@pytest.mark.parametrize("name", sorted(data.available_datasets()))
+def test_pyarrow_backend_matches_polars(name: str) -> None:
+    pytest.importorskip("pyarrow")
+    pl = pytest.importorskip("polars")
+    factors = [column for dataset, column in FACTORS if dataset == name]
+    polars_df = data.load_dataset(name, backend="polars")
+    from_arrow: Any = pl.from_arrow(data.load_dataset(name, backend="pyarrow"))
+    as_text = pl.col(factors).cast(pl.String)
+    assert from_arrow.with_columns(as_text).equals(polars_df.with_columns(as_text))
 
 
 @pytest.mark.parametrize("name", sorted(data.available_datasets()))
