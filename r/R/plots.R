@@ -139,7 +139,7 @@ plot_survival <- function(fit,
   plot <- plot +
     ggplot2::scale_y_continuous(limits = c(0, 1)) +
     ggplot2::labs(x = xlab, y = ylab) +
-    group_labs(grouped) +
+    group_legend(labels, grouped, fill = conf_int) +
     theme_survival()
   if (!risk_table) {
     return(plot)
@@ -249,10 +249,27 @@ risk_table_plot <- function(frame, grouped, xlab, causes = NULL) {
   plot
 }
 
-# The legend titles of a plot with groups.
-group_labs <- function(grouped) {
-  if (grouped) ggplot2::labs(color = "Group", fill = "Group") else NULL
+# The legend of a plot with groups, titled `title`, or nothing without groups. The bands' fill
+# shares the title when the plot has bands (`fill = TRUE`), and only then, since ggplot2 reports
+# labels it has no use for. Labels too long for one line across a plot about 7 inches wide wrap
+# onto more rows, in order.
+group_legend <- function(labels, grouped = TRUE, fill = FALSE, title = "Group") {
+  if (!grouped) {
+    return(NULL)
+  }
+  # Each key takes about as much room as five characters of label text.
+  rows <- ceiling((nchar(title) + sum(nchar(labels) + 5L)) / LEGEND_LINE_CHARS)
+  legend <- ggplot2::guide_legend(nrow = rows, byrow = TRUE)
+  # ggplot2 merges the color and fill legends into one, so they're laid out the same way.
+  if (fill) {
+    list(ggplot2::labs(color = title, fill = title), ggplot2::guides(color = legend, fill = legend))
+  } else {
+    list(ggplot2::labs(color = title), ggplot2::guides(color = legend))
+  }
 }
+
+# The characters of legend text that fit on one line across a plot about 7 inches wide.
+LEGEND_LINE_CHARS <- 75
 
 # The curve over its risk table, on a shared time range.
 stack_risk_table <- function(plot, table, steps) {
@@ -368,7 +385,7 @@ plot_cif <- function(fit,
     ggplot2::facet_wrap(ggplot2::vars(.data$cause)) +
     ggplot2::scale_y_continuous(limits = c(0, 1)) +
     ggplot2::labs(x = xlab, y = ylab, title = title) +
-    group_labs(grouped) +
+    group_legend(labels, grouped, fill = conf_int) +
     theme_survival()
   if (!risk_table) {
     return(plot)
@@ -456,7 +473,8 @@ plot_predicted_survival <- function(model,
     steps, ggplot2::aes(x = .data$time, y = .data$estimate, color = .data$subject)
   ) +
     ggplot2::geom_step(direction = "hv") +
-    ggplot2::labs(x = xlab, y = ylab, color = "Subject") +
+    ggplot2::labs(x = xlab, y = ylab) +
+    group_legend(labels, title = "Subject") +
     theme_survival()
   if (type == "survival") {
     plot <- plot + ggplot2::scale_y_continuous(limits = c(0, 1))
@@ -465,6 +483,18 @@ plot_predicted_survival <- function(model,
 }
 
 # -- forest plots ----------------------------------------------------------------------------------
+
+# Labels such as `celltype: smallcell` for the terms that a model's factors expand to, named by the
+# terms (`celltypesmallcell`). Models that don't record their factor levels get none.
+factor_term_labels <- function(model) {
+  xlevels <- if (is.list(model)) model$xlevels
+  if (!is.list(xlevels) || length(xlevels) == 0L) {
+    return(character())
+  }
+  variables <- rep(names(xlevels), lengths(xlevels))
+  levels <- unlist(xlevels, use.names = FALSE)
+  stats::setNames(paste0(variables, ": ", levels), paste0(variables, levels))
+}
 
 #' Forest plot of model estimates
 #'
@@ -484,7 +514,8 @@ plot_predicted_survival <- function(model,
 #' @param exponentiate For a model, plot the exponentiated estimates.
 #' @param title An optional plot title.
 #' @param term_labels Optional display labels for the terms, as a named character vector such as
-#'   `c(age = "Age (years)")`. Terms without a label keep their names.
+#'   `c(age = "Age (years)")`. A model's factor terms are labelled with the variable and level, such
+#'   as `celltype: smallcell` for the term `celltypesmallcell`, and other terms keep their names.
 #' @param xlab The x axis label. The default is `"Hazard Ratio"` on the log scale and `"Estimate"`
 #'   otherwise.
 #'
@@ -551,7 +582,12 @@ plot_forest <- function(result,
     )
   }
   table$term <- as.character(table$term)
-  if (!is.null(term_labels)) {
+  if (is_model) {
+    # The given labels take the place of the default ones for the same terms.
+    term_labels <- c(factor_term_labels(result), term_labels)
+    term_labels <- term_labels[!duplicated(names(term_labels), fromLast = TRUE)]
+  }
+  if (length(term_labels) > 0L) {
     labelled <- table$term %in% names(term_labels)
     table$term[labelled] <- term_labels[table$term[labelled]]
   }
@@ -895,7 +931,7 @@ plot_weibull <- function(fit,
   }
   plot +
     ggplot2::labs(x = xlab, y = ylab, title = title) +
-    group_labs(grouped) +
+    group_legend(labels, grouped) +
     theme_survival()
 }
 
