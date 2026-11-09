@@ -13,6 +13,7 @@ as their outcome.
 \seealso{
 Useful links:
 \itemize{
+  \item \url{https://rich-iannone.github.io/greenwood/r/}
   \item \url{https://github.com/rich-iannone/greenwood}
   \item Report bugs at \url{https://github.com/rich-iannone/greenwood/issues}
 }
