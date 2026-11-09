@@ -1,10 +1,17 @@
+# The site is published under r/ of the Python documentation site.
+url: https://rich-iannone.github.io/greenwood/r/
+
 template:
   bootstrap: 5
 
 navbar:
   structure:
-    left: [intro, reference, news]
+    left: [intro, reference, news, python]
     right: [search, github]
+  components:
+    python:
+      text: Python
+      href: ../index.html
 
 reference:
   - title: Survival responses
