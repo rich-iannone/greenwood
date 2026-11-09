@@ -135,7 +135,8 @@ pak::pak("rich-iannone/greenwood/r")
 ## Learn more
 
 - The [documentation site](https://rich-iannone.github.io/greenwood/) has a user guide that starts
-  from the basics, and a full reference.
+  from the basics, and a full reference. The
+  [R reference](https://rich-iannone.github.io/greenwood/r/) is part of the same site.
 - The [Python README](python/README.md) gives a tour of the Python package.
 - The [R README](r/README.md) does the same for R, and every R function has a help page (try
   `?kaplan_meier`).
