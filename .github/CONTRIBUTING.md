@@ -45,6 +45,15 @@ If you only changed one package, its gate is enough: `make py-check` (ruff, pyri
 Individual targets include `make py-lint`, `make py-type-check`, `make py-test`,
 `make py-test-rparity`, `make r-test`, and `make r-document`. Run `make help` for the full list.
 
+## Documentation
+
+The two packages share one documentation site. The Great Docs site from `python/` is at the root,
+and the pkgdown site from `r/` is under `r/`. `make docs` builds both and assembles them in
+`python/great-docs/_site/`, and `make docs-serve` serves the result at http://localhost:8000.
+`make docs-preview` does both, so you see the site as it is published. `make py-docs` and
+`make r-site` build one package's site at a time. pkgdown needs Pandoc, and `make r-site` uses the
+copy bundled with Quarto when there's none on your `PATH`.
+
 ## House conventions
 
 - **R-validated numerics.** Correctness to tolerance against R's **survival** (and
