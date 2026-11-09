@@ -8,7 +8,7 @@ Description: Tools for survival analysis, the study of time-to-event data.
     Represents censored and multi-state outcomes and provides methods for
     estimating, comparing, and modeling survival.
 License: MIT + file LICENSE
-URL: https://github.com/rich-iannone/greenwood
+URL: https://rich-iannone.github.io/greenwood/r/, https://github.com/rich-iannone/greenwood
 BugReports: https://github.com/rich-iannone/greenwood/issues
 Depends:
     R (>= 4.1.0)
