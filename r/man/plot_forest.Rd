@@ -25,7 +25,8 @@ exponentiated model and \code{"linear"} otherwise.}
 \item{title}{An optional plot title.}
 
 \item{term_labels}{Optional display labels for the terms, as a named character vector such as
-\code{c(age = "Age (years)")}. Terms without a label keep their names.}
+\code{c(age = "Age (years)")}. A model's factor terms are labelled with the variable and level, such
+as \code{celltype: smallcell} for the term \code{celltypesmallcell}, and other terms keep their names.}
 
 \item{xlab}{The x axis label. The default is \code{"Hazard Ratio"} on the log scale and \code{"Estimate"}
 otherwise.}
