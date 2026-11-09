@@ -1,7 +1,7 @@
 # Greenwood monorepo: the Python package lives in python/ and the R package in r/. Both read the
 # shared contracts and conformance cases in spec/ and the R-generated numeric fixtures in
 # fixtures/r/. Targets name their language (`py-*`, `r-*`), and the bare names (`test`, `check`,
-# `install`) run both.
+# `install`, `docs`) run both.
 
 PYTHON ?= $(CURDIR)/.venv/bin/python
 RSCRIPT ?= Rscript
@@ -25,6 +25,22 @@ test: py-test r-test ## Run the Python and R test suites
 
 .PHONY: check
 check: py-check r-check ## Run the Python gate and R CMD check (the pre-push gate)
+
+# The published site is the Great Docs build with the pkgdown site under r/, which replaces the
+# stand-in page from python/r_site/. The docs workflow assembles it the same way.
+DOCS_SITE := $(PY_DIR)/great-docs/_site
+
+.PHONY: docs
+docs: py-docs r-site ## Build the Python and R docs into one site at python/great-docs/_site
+	rm -rf $(DOCS_SITE)/r
+	cp -R $(R_DIR)/docs $(DOCS_SITE)/r
+
+.PHONY: docs-serve
+docs-serve: ## Serve the site that `make docs` built, at http://localhost:8000
+	@$(PYTHON) -m http.server 8000 --directory $(DOCS_SITE)
+
+.PHONY: docs-preview
+docs-preview: docs docs-serve ## Build the Python and R docs into one site and serve it
 
 # -- Python -------------------------------------------------------------------------------------
 
@@ -125,9 +141,14 @@ r-test: ## Run the R package's testthat suite
 r-check: ## Run R CMD check on the R package
 	@$(RSCRIPT) -e 'devtools::check("$(R_DIR)", document = FALSE, manual = FALSE, error_on = "warning", check_dir = "$(R_DIR)/check")'
 
+# pkgdown needs Pandoc. Without one on PATH or in RSTUDIO_PANDOC, use the copy that Quarto bundles.
 .PHONY: r-site
 r-site: ## Build the R package's pkgdown site into r/docs/
-	@$(RSCRIPT) -e 'pkgdown::build_site("$(R_DIR)", install = TRUE, new_process = TRUE)'
+	@if [ -z "$$RSTUDIO_PANDOC" ] && ! command -v pandoc >/dev/null 2>&1 \
+		&& command -v quarto >/dev/null 2>&1; then \
+		export RSTUDIO_PANDOC="$$(quarto --paths | head -n 1)/tools"; \
+	fi; \
+	$(RSCRIPT) -e 'pkgdown::build_site("$(R_DIR)", install = TRUE, new_process = TRUE)'
 
 # -- Cleanup ------------------------------------------------------------------------------------
 
