@@ -7,6 +7,12 @@ site_url: "https://rich-iannone.github.io/greenwood/"
 
 dynamic: true
 
+# The R package's pkgdown site is published under r/ of this site. r_site/ holds a stand-in page
+# that adds the "R" navbar link. `make docs` and the docs workflow replace r/ with the pkgdown build.
+custom_pages:
+  dir: r_site
+  output: r
+
 # Logo & Favicon
 # ---------------
 # Point to a single logo file (replaces the text title in the navbar):
