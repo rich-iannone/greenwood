@@ -38,15 +38,29 @@ test_that("plot_survival() draws steps, bands, and censoring marks", {
   expect_identical(plot$labels$colour, "Group")
   expect_identical(plot$labels$x, "Time")
 
+  expect_identical(plot$labels$fill, "Group")
+  expect_identical(plot$guides$guides$colour$params$nrow, 1)
+
   bare <- plot_survival(fit, conf_int = FALSE, censor_marks = FALSE, ylab = "S(t)")
   expect_identical(layer_geoms(bare), "GeomLine")
   expect_identical(bare$labels$y, "S(t)")
+  # Without bands there's no fill to title.
+  expect_null(bare$labels$fill)
+  expect_silent(ggplot2::ggplot_build(bare))
 
   single <- plot_survival(kaplan_meier(Surv(time, status) ~ 1, data = lung))
   expect_identical(as.character(unique(single$data$strata)), "all")
   expect_null(single$labels$colour)
   expect_identical(unique(ggplot2::layer_data(single, 2L)$colour), "#20558A")
   expect_silent(ggplot2::ggplot_build(single))
+})
+
+test_that("a legend too long for one line wraps onto more rows", {
+  plot <- plot_survival(kaplan_meier(Surv(time, status) ~ celltype, data = veteran))
+  for (aesthetic in c("colour", "fill")) {
+    expect_identical(plot$guides$guides[[aesthetic]]$params$nrow, 2)
+    expect_true(plot$guides$guides[[aesthetic]]$params$theme$legend.byrow)
+  }
 })
 
 test_that("plot_survival() stacks the numbers at risk under the curves", {
@@ -152,6 +166,14 @@ test_that("plot_forest() plots hazard ratios or a table of estimates", {
   expect_identical(ggplot2::layer_data(plot, 3L)$xintercept, 0)
   expect_s3_class(plot$scales$get_scales("x")$trans, "transform")
 
+  # Factor terms show their variable and level, unless they're given labels.
+  factors <- cox_ph(Surv(time, status) ~ trt + celltype + factor(prior), data = veteran)
+  plot <- plot_forest(factors, term_labels = c(celltypeadeno = "Adeno"))
+  expect_identical(
+    levels(plot$data$term),
+    c("factor(prior): 10", "celltype: large", "Adeno", "celltype: smallcell", "trt")
+  )
+
   linear <- plot_forest(fit, exponentiate = FALSE)
   expect_equal(linear$data$estimate, unname(coef(fit)))
   expect_identical(linear$labels$x, "Estimate")
@@ -247,6 +269,8 @@ test_that("plot_weibull() linearizes the Kaplan-Meier estimate", {
   expect_equal(plot$data$log_time, log(table$time))
   expect_equal(plot$data$y, log(-log(table$estimate)))
   expect_identical(plot$labels$y, "log(-log S(t))")
+  expect_null(plot$labels$fill)
+  expect_silent(ggplot2::ggplot_build(plot))
 
   plot <- plot_weibull(fit, dist = "lognormal")
   expect_equal(plot$data$y, stats::qnorm(1 - table$estimate))
