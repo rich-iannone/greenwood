@@ -1,8 +1,12 @@
-name: Python Docs
+name: Docs
 
-# Path filters: a workflow runs only when files it depends on change. The docs site is built from
-# python/ plus the shared community files linked into it. main has no required status checks, so a
-# skipped workflow can't block a PR. If checks become required, replace these filters with an
+# One GitHub Pages site serves both packages: the Great Docs site from python/ at the root and the
+# pkgdown site from r/ under r/. A deployment replaces the whole site, so a change to either package
+# rebuilds both.
+#
+# Path filters: a workflow runs only when files it depends on change. The site is built from
+# python/ and r/ plus the shared community files linked into it. main has no required status checks,
+# so a skipped workflow can't block a PR. If checks become required, replace these filters with an
 # always-running gate job.
 on:
   push:
@@ -10,6 +14,7 @@ on:
       - main
     paths:
       - "python/**"
+      - "r/**"
       - "CITATION.cff"
       - ".github/CONTRIBUTING.md"
       - ".github/CODE_OF_CONDUCT.md"
@@ -18,6 +23,7 @@ on:
   pull_request:
     paths:
       - "python/**"
+      - "r/**"
       - "CITATION.cff"
       - ".github/CONTRIBUTING.md"
       - ".github/CODE_OF_CONDUCT.md"
@@ -27,7 +33,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-docs:
+  build-python-docs:
     name: "Build Python docs"
     runs-on: ubuntu-latest
     # The Great Docs project (pyproject.toml, great-docs.yml, user_guide/) lives in python/.
@@ -54,14 +60,41 @@ jobs:
       - name: Save docs artifact
         uses: actions/upload-artifact@v4
         with:
-          name: docs-html
+          name: python-docs-html
           path: python/great-docs/_site
           include-hidden-files: true
 
-  publish-docs:
-    name: "Publish Python docs"
+  build-r-docs:
+    name: "Build R docs"
     runs-on: ubuntu-latest
-    needs: "build-docs"
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-pandoc@v2
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          working-directory: r
+          extra-packages: any::pkgdown, local::.
+          needs: website
+      # The package is already installed, so pkgdown builds from that copy. The site lands in r/docs.
+      - name: Build docs
+        run: pkgdown::build_site("r", new_process = FALSE, install = FALSE)
+        shell: Rscript {0}
+      - name: Save docs artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: r-docs-html
+          path: r/docs
+          include-hidden-files: true
+
+  publish-docs:
+    name: "Publish docs"
+    runs-on: ubuntu-latest
+    needs: ["build-python-docs", "build-r-docs"]
     if: github.ref == 'refs/heads/main'
     permissions:
       pages: write
@@ -72,13 +105,22 @@ jobs:
     steps:
       - uses: actions/download-artifact@v7
         with:
-          name: docs-html
-          path: great-docs/_site
+          name: python-docs-html
+          path: site
+
+      # The Python site's r/ holds a stand-in page for the navbar link. The pkgdown site replaces it.
+      - name: Remove the R stand-in page
+        run: rm -rf site/r
+
+      - uses: actions/download-artifact@v7
+        with:
+          name: r-docs-html
+          path: site/r
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v5
         with:
-          path: great-docs/_site
+          path: site
           include-hidden-files: true
 
       - name: Deploy to GitHub Pages
