@@ -54,6 +54,7 @@ pak::pak("rich-iannone/greenwood/r")
 
 ## Development
 
-Greenwood is developed alongside a Python package of the same name, in the same repository. See
+Greenwood is developed alongside a Python package of the same name, in the same repository, and
+the [Python documentation](https://rich-iannone.github.io/greenwood/) shares this site. See
 [CONTRIBUTING](https://github.com/rich-iannone/greenwood/blob/main/.github/CONTRIBUTING.md) for
 how to run the tests (`make r-test`) and `R CMD check` (`make r-check`).
